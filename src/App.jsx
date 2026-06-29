@@ -1542,9 +1542,16 @@ function CoachingProBoost({ session }) {
     if (_staySaved) { setEditing(clean); } else { setShowForm(false); setEditing(null); }
   };
 
-  const newSession = () => {
-    const s = { id: uid(), titre: "Nouvelle séance", date: new Date().toISOString().slice(0, 10), exerciseIds: [], teamId: team.id || null };
+  const [teamPickerOpen, setTeamPickerOpen] = useState(false);
+
+  const newSession = (teamId) => {
+    const s = { id: uid(), titre: "Nouvelle séance", date: new Date().toISOString().slice(0, 10), exerciseIds: [], teamId: teamId || null };
     saveSessions([...sessions, s]); setActiveSession(s); setView("session");
+  };
+
+  const handleNewSession = () => {
+    if (teams.length <= 1) { newSession(teams[0]?.id || null); return; }
+    setTeamPickerOpen(true);
   };
 
   const updateSession = (next) => { saveSessions(sessions.map(s => s.id === next.id ? next : s)); setActiveSession(next); };
@@ -2004,26 +2011,43 @@ function CoachingProBoost({ session }) {
                 ) : (
                   <button onClick={() => setNewTeamOpen(true)} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 text-[#1B2A4A] px-3 py-2 rounded-md text-sm font-medium hover:bg-[#1B2A4A]/5"><Users size={16} /> Nouvelle équipe</button>
                 )}
-                <button onClick={newSession} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvelle séance</button>
+                <button onClick={handleNewSession} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvelle séance</button>
               </div>
             </div>
 
-            {sessions.length === 0 ? (
-              <div className="text-center py-16 text-[#1B2A4A]/40">Aucune séance pour l'instant.</div>
-            ) : (
-              <div className="space-y-8">
-                {[...teams, ...(sessions.some(s => !s.teamId) ? [{ id: null, nom: "Sans équipe", niveau: "" }] : [])].map(t => {
-                  const tSessions = sessions.filter(s => (s.teamId || null) === (t.id || null));
-                  if (tSessions.length === 0) return null;
-                  const tSeasons = [...new Set(tSessions.map(s => getSeason(s.date)))].sort().reverse();
-                  return (
-                    <div key={t.id || "no-team"}>
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="h-px flex-1 bg-[#1B2A4A]/10" />
-                        <span className="font-bold text-[#1B2A4A] text-sm uppercase tracking-wider px-2">{t.nom || "Sans équipe"}{t.niveau ? ` — ${t.niveau}` : ""}</span>
-                        <div className="h-px flex-1 bg-[#1B2A4A]/10" />
-                      </div>
-                      {tSeasons.map(season => {
+            {teamPickerOpen && (
+              <div className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+                  <h3 className="font-bold text-[#1B2A4A] text-lg mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>POUR QUELLE ÉQUIPE ?</h3>
+                  <div className="space-y-2">
+                    {teams.map(t => (
+                      <button key={t.id} onClick={() => { setTeamPickerOpen(false); newSession(t.id); }}
+                        className="w-full text-left px-4 py-3 rounded-lg border border-[#1B2A4A]/15 hover:border-[#FF6B35] hover:bg-[#FF6B35]/5 transition-colors">
+                        <span className="font-semibold text-[#1B2A4A]">{t.nom}</span>
+                        {t.niveau && <span className="text-xs text-[#1B2A4A]/40 ml-2">{t.niveau}</span>}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => setTeamPickerOpen(false)} className="mt-4 w-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A]">Annuler</button>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-8">
+              {[...teams, ...(sessions.some(s => !s.teamId) ? [{ id: null, nom: "Sans équipe", niveau: "" }] : [])].map(t => {
+                const tSessions = sessions.filter(s => (s.teamId || null) === (t.id || null));
+                const tSeasons = [...new Set(tSessions.map(s => getSeason(s.date)))].sort().reverse();
+                return (
+                  <div key={t.id || "no-team"}>
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="h-px flex-1 bg-[#1B2A4A]/10" />
+                      <span className="font-bold text-[#1B2A4A] text-sm uppercase tracking-wider px-2">{t.nom || "Sans équipe"}{t.niveau ? ` — ${t.niveau}` : ""}</span>
+                      <div className="h-px flex-1 bg-[#1B2A4A]/10" />
+                    </div>
+                    {tSessions.length === 0 ? (
+                      <p className="text-sm text-[#1B2A4A]/30 text-center py-3">Aucune séance pour le moment</p>
+                    ) : (
+                      tSeasons.map(season => {
                         const sSessions = tSessions.filter(s => getSeason(s.date) === season).sort((a, b) => new Date(b.date) - new Date(a.date));
                         const mGroups = sSessions.reduce((acc, s) => {
                           const d = new Date(s.date);
@@ -2044,12 +2068,12 @@ function CoachingProBoost({ session }) {
                             </div>
                           </div>
                         );
-                      })}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                      })
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </>
         )}
 
