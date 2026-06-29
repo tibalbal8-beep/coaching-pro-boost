@@ -242,36 +242,49 @@ function Tag({ children, active, onClick, color = "default" }) {
 
 function DictateButton({ onResult }) {
   const [listening, setListening] = useState(false);
+  const [error, setError] = useState(null);
   const recognitionRef = useRef(null);
   const supported = typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition);
 
   const toggle = () => {
-    if (!supported) { alert("La dictée vocale n'est pas prise en charge par ce navigateur."); return; }
+    if (!supported) { setError("Dictée non supportée sur ce navigateur."); return; }
     if (listening) {
       recognitionRef.current?.stop();
+      setListening(false);
       return;
     }
+    setError(null);
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const rec = new SR();
     rec.lang = "fr-FR";
     rec.interimResults = false;
     rec.continuous = false;
+    rec.maxAlternatives = 1;
     rec.onresult = (e) => {
       const transcript = Array.from(e.results).map(r => r[0].transcript).join(" ");
       onResult(transcript);
+      setListening(false);
     };
-    rec.onerror = () => setListening(false);
+    rec.onerror = (e) => {
+      setListening(false);
+      if (e.error === "not-allowed") setError("Autorise l'accès au micro dans les réglages Safari.");
+      else if (e.error === "no-speech") setError("Aucune voix détectée, réessaie.");
+      else setError("Erreur micro : " + e.error);
+    };
     rec.onend = () => setListening(false);
     recognitionRef.current = rec;
     setListening(true);
-    rec.start();
+    try { rec.start(); } catch(e) { setListening(false); setError("Impossible de démarrer le micro."); }
   };
 
   return (
-    <button type="button" onClick={toggle} title="Dicter au micro"
-      className={`p-1.5 rounded-full transition-colors ${listening ? "bg-red-500 text-white animate-pulse" : "text-[#1B2A4A]/40 hover:text-[#FF6B35] hover:bg-[#FF6B35]/10"}`}>
-      <Mic size={15} />
-    </button>
+    <div className="flex flex-col items-end gap-1">
+      <button type="button" onClick={toggle} title={listening ? "Arrêter la dictée" : "Dicter au micro"}
+        className={`p-1.5 rounded-full transition-colors ${listening ? "bg-red-500 text-white animate-pulse" : "text-[#1B2A4A]/40 hover:text-[#FF6B35] hover:bg-[#FF6B35]/10"}`}>
+        <Mic size={15} />
+      </button>
+      {error && <span className="text-xs text-red-500 max-w-[180px] text-right">{error}</span>}
+    </div>
   );
 }
 
@@ -1697,7 +1710,7 @@ function CoachingProBoost({ session }) {
               <div className="flex gap-2">
                 <input ref={importInputRef} type="file" accept="application/pdf,image/*" multiple className="hidden" onChange={e => handleImportFiles(e.target.files)} />
                 <button onClick={() => setView("draw")} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 text-[#1B2A4A] px-4 py-2 rounded-md text-sm font-medium hover:bg-[#1B2A4A]/5"><Pencil size={16} /> Dessiner une fiche</button>
-                <button onClick={() => importInputRef.current.click()} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 text-[#1B2A4A] px-4 py-2 rounded-md text-sm font-medium hover:bg-[#1B2A4A]/5"><FileUp size={16} /> Importer PDF / photos</button>
+                {/* Import IA désactivé temporairement — nécessite clé API Anthropic */}
                 <button onClick={newSession} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvelle séance</button>
               </div>
             </div>
