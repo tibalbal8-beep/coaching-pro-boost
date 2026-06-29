@@ -1615,7 +1615,7 @@ function PlayCard({ play, onClick, onRemove, onAddToSession }) {
   );
 }
 
-function PlayImageSlot({ img, onChange, onRemove }) {
+function PlayImageSlot({ img, playId, onChange, onRemove }) {
   const inputRef = useRef();
   const [localData, setLocalData] = useState(img.file?.data || null);
 
@@ -1624,7 +1624,7 @@ function PlayImageSlot({ img, onChange, onRemove }) {
     if (!img.hasFile || !img.id) { setLocalData(null); return; }
     (async () => {
       try {
-        const r = await storage.get(`playimg:${img.playId}:${img.id}`);
+        const r = await storage.get(`playimg:${playId}:${img.id}`);
         if (r) { const p = JSON.parse(r.value); setLocalData(p.data || null); }
       } catch {}
     })();
@@ -1760,7 +1760,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {images.map(img => (
-            <PlayImageSlot key={img.id} img={img} onChange={updated => updateImage(img.id, updated)} onRemove={() => removeImage(img.id)} />
+            <PlayImageSlot key={img.id} img={img} playId={initial?.id} onChange={updated => updateImage(img.id, updated)} onRemove={() => removeImage(img.id)} />
           ))}
         </div>
       </div>
