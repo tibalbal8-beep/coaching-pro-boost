@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut } from "lucide-react";
+import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen } from "lucide-react";
 import { storage, supabase } from "./storage";
 
 const DEFAULT_THEMES = ["Démarquage","Pick and Roll","Pick non porteur","Transition","Défense individuelle","Défense collective","Aide défensive","Rotation défensive","Contre","Interception","Prise en charge","Tir","Tir en course","Finition","Rebond","Rebond offensif","Rebond défensif","Jeu sans ballon","Sortie de balle","Passe","Dribble","Pivot","Fixation","Jeu intérieur","Spacing","Attaque de zone","Défense de zone"];
@@ -7,6 +7,7 @@ const PHASES = ["Échauffement","Préparation physique","Technique individuelle"
 const FORMATS = ["1c0","1c1","2c1","2c2","3c1","3c2","3c3","4c1","4c2","4c3","4c4","5c3","5c4","5c5","2c1+1","3c2+1","4c3+1","5c4+1"];
 const CATEGORIES = ["U7","U9","U11","U13","U15","U17","U18","U20","Seniors"];
 const NIVEAUX = ["Débutant","Intermédiaire","Confirmé"];
+const PLAY_TYPES = ["Système offensif", "ATO", "SLOB", "BLOB"];
 const JOURS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -27,6 +28,7 @@ function useStore() {
   const [teams, setTeams] = useState([]);
   const [activeTeamId, setActiveTeamId] = useState(null);
   const [players, setPlayers] = useState([]);
+  const [plays, setPlays] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -41,6 +43,7 @@ function useStore() {
       try { const tm = await storage.get("teams"); if (tm) setTeams(JSON.parse(tm.value)); } catch {}
       try { const at = await storage.get("activeTeamId"); if (at) setActiveTeamId(JSON.parse(at.value)); } catch {}
       try { const pl = await storage.get("players"); setPlayers(pl ? JSON.parse(pl.value) : []); } catch {}
+      try { const pb = await storage.get("plays"); setPlays(pb ? JSON.parse(pb.value) : []); } catch {}
       setLoaded(true);
     })();
   }, []);
@@ -65,8 +68,18 @@ function useStore() {
   const saveTeams = (next) => { setTeams(next); persist("teams", JSON.stringify(next)); };
   const saveActiveTeamId = (next) => { setActiveTeamId(next); persist("activeTeamId", JSON.stringify(next)); };
   const savePlayers = (next) => { setPlayers(next); persist("players", JSON.stringify(next)); };
+  const savePlays = async (next) => {
+    for (const p of next) {
+      if (p.file && p.file.data) {
+        try { await storage.set(`playfile:${p.id}`, JSON.stringify(p.file)); } catch {}
+      }
+    }
+    const stripped = next.map(({ file, ...rest }) => ({ ...rest, hasFile: !!file, fileName: file?.name, fileType: file?.type }));
+    setPlays(next);
+    persist("plays", JSON.stringify(stripped));
+  };
 
-  return { exercises, sessions, themes, teams, activeTeamId, players, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, loaded };
+  return { exercises, sessions, themes, teams, activeTeamId, players, plays, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, loaded };
 }
 
 function usePdfJs() {
@@ -1486,8 +1499,109 @@ function AuthScreen() {
   );
 }
 
+function usePlayFileImage(play) {
+  const [data, setData] = useState(play.file?.data || null);
+  useEffect(() => {
+    if (play.file?.data) { setData(play.file.data); return; }
+    if (!play.file || !play.id) { setData(null); return; }
+    let active = true;
+    (async () => {
+      try {
+        const r = await storage.get(`playfile:${play.id}`);
+        if (r && active) { const parsed = JSON.parse(r.value); setData(parsed.data || null); }
+      } catch {}
+    })();
+    return () => { active = false; };
+  }, [play.id, play.file?.data]);
+  return data;
+}
+
+function PlayCard({ play, onClick, onRemove, onAddToSession }) {
+  const fileImage = usePlayFileImage(play);
+  const [confirmDel, setConfirmDel] = useState(false);
+  return (
+    <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3 cursor-pointer hover:border-[#FF6B35]/50 transition-all" onClick={onClick}>
+      {fileImage && play.file?.type?.startsWith("image/") && (
+        <img src={fileImage} alt="" className="w-full h-28 object-cover rounded mb-2 border border-[#1B2A4A]/10" />
+      )}
+      {!fileImage && play.diagram && (
+        <div className="mb-2">
+          <CourtDiagram players={play.diagram.players} paths={play.diagram.paths} screens={play.diagram.screens} />
+        </div>
+      )}
+      <div className="flex items-start justify-between gap-1">
+        <div className="min-w-0">
+          <div className="font-semibold text-[#1B2A4A] text-sm truncate">{play.titre}</div>
+          <div className="text-xs font-medium mt-0.5" style={{ color: "#FF6B35" }}>{play.type}</div>
+          {play.description && <div className="text-xs text-[#1B2A4A]/50 mt-0.5 line-clamp-2">{play.description}</div>}
+        </div>
+        <div className="flex gap-1 shrink-0 ml-1">
+          {onAddToSession && (
+            <button onClick={e => { e.stopPropagation(); onAddToSession(); }}
+              className="p-1 text-[#FF6B35] hover:bg-[#FF6B35]/10 rounded" title="Ajouter à la séance">
+              <Plus size={14} />
+            </button>
+          )}
+          {onRemove && (
+            confirmDel ? (
+              <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                <button onClick={() => onRemove()} className="text-xs text-red-600 font-medium px-1">Suppr.</button>
+                <button onClick={() => setConfirmDel(false)} className="text-xs text-[#1B2A4A]/40 px-1">✕</button>
+              </div>
+            ) : (
+              <button onClick={e => { e.stopPropagation(); setConfirmDel(true); }}
+                className="p-1 text-[#1B2A4A]/30 hover:text-red-600 rounded">
+                <Trash2 size={14} />
+              </button>
+            )
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlayForm({ onSave, onCancel, initial }) {
+  const [titre, setTitre] = useState(initial?.titre || "");
+  const [type, setType] = useState(initial?.type || PLAY_TYPES[0]);
+  const [description, setDescription] = useState(initial?.description || "");
+  const [notes, setNotes] = useState(initial?.notes || "");
+  const [file, setFile] = useState(initial?.file || null);
+
+  return (
+    <div className="space-y-4">
+      <input value={titre} onChange={e => setTitre(e.target.value)} placeholder="Titre du play (ex: Horns, Box BLOB 1...)"
+        className="w-full text-lg font-semibold bg-transparent border-b-2 border-[#1B2A4A]/20 focus:border-[#FF6B35] outline-none pb-1 text-[#1B2A4A]" />
+      <div>
+        <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Type</div>
+        <div className="flex flex-wrap gap-1.5">
+          {PLAY_TYPES.map(t => <Tag key={t} active={type === t} onClick={() => setType(t)}>{t}</Tag>)}
+        </div>
+      </div>
+      <div className="relative">
+        <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Description du système de jeu..." rows={3}
+          className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 pr-9 text-sm bg-white/60" />
+        <div className="absolute right-1 top-1"><DictateButton onResult={t => setDescription(prev => prev ? prev + " " + t : t)} /></div>
+      </div>
+      <div className="relative">
+        <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes, variantes, points clés..." rows={2}
+          className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 pr-9 text-sm bg-white/60" />
+        <div className="absolute right-1 top-1"><DictateButton onResult={t => setNotes(prev => prev ? prev + " " + t : t)} /></div>
+      </div>
+      <FileDrop file={file} onChange={setFile} />
+      <div className="flex justify-end gap-2 pt-2">
+        <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
+        <button onClick={() => {
+          if (!titre.trim()) { alert("Donne un titre au play."); return; }
+          onSave({ id: initial?.id || uid(), titre, type, description, notes, file, diagram: initial?.diagram, createdAt: initial?.createdAt || new Date().toISOString() });
+        }} className="px-5 py-2 text-sm font-medium rounded-md bg-[#FF6B35] text-white hover:bg-[#e85a28]">Enregistrer</button>
+      </div>
+    </div>
+  );
+}
+
 function CoachingProBoost({ session }) {
-  const { exercises, sessions, themes, teams, activeTeamId, players, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, loaded } = useStore();
+  const { exercises, sessions, themes, teams, activeTeamId, players, plays, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, loaded } = useStore();
   const team = teams.find(t => t.id === activeTeamId) || teams[0] || { nom: "", niveau: "", jours: [], nbJoueurs: 0 };
   const updateTeam = (patch) => {
     if (!team.id) {
@@ -1517,6 +1631,9 @@ function CoachingProBoost({ session }) {
   const [filterPhase, setFilterPhase] = useState([]);
   const [filterCategorie, setFilterCategorie] = useState([]);
   const [showForm, setShowForm] = useState(false);
+  const [playbookForm, setPlaybookForm] = useState(false);
+  const [editingPlay, setEditingPlay] = useState(null);
+  const [filterPlayType, setFilterPlayType] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
   const [newThemeInput, setNewThemeInput] = useState("");
   const [newTeamOpen, setNewTeamOpen] = useState(false);
@@ -1545,7 +1662,7 @@ function CoachingProBoost({ session }) {
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
 
   const newSession = (teamId) => {
-    const s = { id: uid(), titre: "Nouvelle séance", date: new Date().toISOString().slice(0, 10), exerciseIds: [], teamId: teamId || null };
+    const s = { id: uid(), titre: "Nouvelle séance", date: new Date().toISOString().slice(0, 10), exerciseIds: [], playIds: [], teamId: teamId || null };
     saveSessions([...sessions, s]); setActiveSession(s); setView("session");
   };
 
@@ -1764,6 +1881,7 @@ function CoachingProBoost({ session }) {
             </div>
             {[
               { key: "library", label: "Bibliothèque", icon: Library },
+              { key: "playbook", label: "Play Book", icon: BookOpen },
               { key: "sessions", label: "Séances", icon: ListPlus, alsoActive: "session" },
               { key: "stats", label: "Stats", icon: BarChart3 },
             ].map(item => {
@@ -1851,6 +1969,56 @@ function CoachingProBoost({ session }) {
           <div className="max-w-xl">
             <h2 className="text-xl font-bold text-[#1B2A4A] mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>{editing ? "MODIFIER L'EXERCICE" : "NOUVEL EXERCICE"}</h2>
             <ExerciseForm themes={themes} initial={editing} onSave={upsertExercise} onCancel={() => { setShowForm(false); setEditing(null); }} />
+          </div>
+        )}
+
+        {view === "playbook" && !playbookForm && (
+          <>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>PLAY BOOK</h2>
+                <p className="text-sm text-[#1B2A4A]/50">{plays.length} play{plays.length !== 1 ? "s" : ""} enregistré{plays.length !== 1 ? "s" : ""}</p>
+              </div>
+              <button onClick={() => { setEditingPlay(null); setPlaybookForm(true); }}
+                className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]">
+                <Plus size={16} /> Nouveau play
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mb-5">
+              <span className="text-xs text-[#1B2A4A]/40 mr-1 self-center">Type :</span>
+              {PLAY_TYPES.map(t => (
+                <Tag key={t} active={filterPlayType.includes(t)} onClick={() => setFilterPlayType(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}>{t}</Tag>
+              ))}
+            </div>
+            {plays.filter(p => filterPlayType.length === 0 || filterPlayType.includes(p.type)).length === 0 ? (
+              <div className="text-center py-16 text-[#1B2A4A]/40">
+                <BookOpen size={40} className="mx-auto mb-3 opacity-30" />
+                <p>Ton Play Book est vide.</p>
+                <p className="text-sm mt-1">Ajoute des systèmes, ATO, SLOB et BLOB.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {plays.filter(p => filterPlayType.length === 0 || filterPlayType.includes(p.type)).map(play => (
+                  <PlayCard key={play.id} play={play}
+                    onClick={() => { setEditingPlay(play); setPlaybookForm(true); }}
+                    onRemove={() => savePlays(plays.filter(p => p.id !== play.id))} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {view === "playbook" && playbookForm && (
+          <div className="max-w-xl">
+            <h2 className="text-xl font-bold text-[#1B2A4A] mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>{editingPlay ? "MODIFIER LE PLAY" : "NOUVEAU PLAY"}</h2>
+            <PlayForm initial={editingPlay}
+              onSave={(play) => {
+                const next = editingPlay ? plays.map(p => p.id === play.id ? play : p) : [...plays, play];
+                savePlays(next);
+                setPlaybookForm(false);
+                setEditingPlay(null);
+              }}
+              onCancel={() => { setPlaybookForm(false); setEditingPlay(null); }} />
           </div>
         )}
 
@@ -2185,6 +2353,43 @@ function CoachingProBoost({ session }) {
                 {exercises.filter(e => !activeSession.exerciseIds.includes(e.id)).map((ex, i) => <ExerciseCard key={ex.id} ex={ex} index={i} onClick={() => addToSession(ex.id)} />)}
               </div>
             </div>
+
+            {plays.length > 0 && (
+              <div className="mt-8">
+                <div className="space-y-2 mb-4">
+                  {(activeSession.playIds || []).length > 0 && (
+                    <>
+                      <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/40 mb-2">Plays de la séance</div>
+                      {(activeSession.playIds || []).map(id => {
+                        const play = plays.find(p => p.id === id);
+                        if (!play) return null;
+                        return (
+                          <div key={id} className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3 flex items-center justify-between">
+                            <div>
+                              <div className="font-medium text-[#1B2A4A]">{play.titre}</div>
+                              <div className="text-xs font-medium mt-0.5" style={{ color: "#FF6B35" }}>{play.type}</div>
+                              {play.description && <div className="text-xs text-[#1B2A4A]/50 mt-0.5">{play.description}</div>}
+                            </div>
+                            <button onClick={() => updateSession({ ...activeSession, playIds: (activeSession.playIds || []).filter(x => x !== id) })}
+                              className="text-[#1B2A4A]/40 hover:text-red-600 no-print ml-2"><X size={16} /></button>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+                <div className="no-print">
+                  <h3 className="text-sm font-semibold text-[#1B2A4A]/60 uppercase tracking-wide mb-3">Ajouter depuis le Play Book</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {plays.filter(p => !(activeSession.playIds || []).includes(p.id)).map(play => (
+                      <PlayCard key={play.id} play={play}
+                        onClick={() => {}}
+                        onAddToSession={() => updateSession({ ...activeSession, playIds: [...(activeSession.playIds || []), play.id] })} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
