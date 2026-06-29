@@ -3,7 +3,7 @@ import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, P
 import { storage, supabase } from "./storage";
 
 const DEFAULT_THEMES = ["Démarquage","Pick and Roll","Pick non porteur","Transition","Défense individuelle","Défense collective","Aide défensive","Rotation défensive","Contre","Interception","Prise en charge","Tir","Tir en course","Finition","Rebond","Rebond offensif","Rebond défensif","Jeu sans ballon","Sortie de balle","Passe","Dribble","Pivot","Fixation","Jeu intérieur","Spacing","Attaque de zone","Défense de zone"];
-const PHASES = ["Échauffement","Préparation physique","Technique individuelle","Collectif","Fin de séance"];
+const PHASES = ["Échauffement","Préparation physique","Technique individuelle","Pré-collectif","Collectif","Fin de séance","Autre"];
 const FORMATS = ["1c0","1c1","2c1","2c2","3c1","3c2","3c3","4c1","4c2","4c3","4c4","5c3","5c4","5c5","2c1+1","3c2+1","4c3+1","5c4+1"];
 const CATEGORIES = ["U7","U9","U11","U13","U15","U17","U18","U20","Seniors"];
 const NIVEAUX = ["Débutant","Intermédiaire","Confirmé"];
