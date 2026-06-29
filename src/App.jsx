@@ -1758,7 +1758,6 @@ function CoachingProBoost({ session }) {
             {[
               { key: "library", label: "Bibliothèque", icon: Library },
               { key: "sessions", label: "Séances", icon: ListPlus, alsoActive: "session" },
-              { key: "equipe", label: "Équipe", icon: Users },
               { key: "stats", label: "Stats", icon: BarChart3 },
             ].map(item => {
               const active = view === item.key || view === item.alsoActive;
@@ -1990,9 +1989,22 @@ function CoachingProBoost({ session }) {
           <>
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>SÉANCES</h2>
-              <div className="flex gap-2">
-                <button onClick={() => setView("draw")} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 text-[#1B2A4A] px-4 py-2 rounded-md text-sm font-medium hover:bg-[#1B2A4A]/5"><Pencil size={16} /> Dessiner une fiche</button>
-                <button onClick={newSession} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvelle séance</button>
+              <div className="flex gap-2 flex-wrap justify-end">
+                <button onClick={() => setView("draw")} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 text-[#1B2A4A] px-3 py-2 rounded-md text-sm font-medium hover:bg-[#1B2A4A]/5"><Pencil size={16} /> Dessiner</button>
+                {newTeamOpen ? (
+                  <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                    <input autoFocus value={newTeamName} onChange={e => setNewTeamName(e.target.value)}
+                      placeholder="Nom de l'équipe"
+                      onKeyDown={e => { if (e.key === "Enter" && newTeamName.trim()) { createTeam(newTeamName.trim()); setNewTeamName(""); setNewTeamOpen(false); } if (e.key === "Escape") { setNewTeamOpen(false); setNewTeamName(""); } }}
+                      className="border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm w-36 focus:outline-none focus:border-[#FF6B35]" />
+                    <button onClick={() => { if (newTeamName.trim()) { createTeam(newTeamName.trim()); setNewTeamName(""); } setNewTeamOpen(false); }}
+                      className="bg-[#1B2A4A] text-white px-3 py-2 rounded-md text-sm">OK</button>
+                    <button onClick={() => { setNewTeamOpen(false); setNewTeamName(""); }} className="text-[#1B2A4A]/40 px-2 py-2 text-sm">✕</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setNewTeamOpen(true)} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 text-[#1B2A4A] px-3 py-2 rounded-md text-sm font-medium hover:bg-[#1B2A4A]/5"><Users size={16} /> Nouvelle équipe</button>
+                )}
+                <button onClick={newSession} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvelle séance</button>
               </div>
             </div>
 
