@@ -1225,6 +1225,47 @@ function SessionRow({ s, totalDuree, onOpen, onRename }) {
   );
 }
 
+function QuickCropForm({ dataUrl, themes, onSave, onCancel }) {
+  const [titre, setTitre] = useState("");
+  const [duree, setDuree] = useState(10);
+  const [selectedThemes, setSelectedThemes] = useState([]);
+
+  return (
+    <div className="fixed inset-0 z-[300] bg-black/70 flex items-end sm:items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-lg p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+        <h3 className="font-bold text-[#1B2A4A] text-lg" style={{ fontFamily: "Oswald, sans-serif" }}>DÉCRIRE L'EXERCICE</h3>
+        <img src={dataUrl} alt="" className="w-full max-h-36 object-contain rounded-lg border border-[#1B2A4A]/10 bg-[#F2EDE4]" />
+        <div>
+          <label className="text-xs font-medium text-[#1B2A4A]/60 uppercase tracking-wide">Titre</label>
+          <input value={titre} onChange={e => setTitre(e.target.value)} placeholder="Nom de l'exercice"
+            className="mt-1 w-full border border-[#1B2A4A]/20 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#FF6B35]" />
+        </div>
+        <div className="flex items-center gap-3">
+          <div>
+            <label className="text-xs font-medium text-[#1B2A4A]/60 uppercase tracking-wide">Durée</label>
+            <input type="number" value={duree} min={1} onChange={e => setDuree(Number(e.target.value))}
+              className="mt-1 w-20 border border-[#1B2A4A]/20 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#FF6B35]" />
+          </div>
+          <span className="text-sm text-[#1B2A4A]/50 mt-5">min</span>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-[#1B2A4A]/60 uppercase tracking-wide mb-2 block">Thèmes</label>
+          <div className="flex flex-wrap gap-1.5">
+            {themes.map(t => <Tag key={t} active={selectedThemes.includes(t)} onClick={() => setSelectedThemes(s => s.includes(t) ? s.filter(x => x !== t) : [...s, t])}>{t}</Tag>)}
+          </div>
+        </div>
+        <div className="flex gap-3 pt-1">
+          <button onClick={onCancel} className="flex-1 border border-[#1B2A4A]/20 rounded-lg py-3 text-sm font-medium text-[#1B2A4A]/60">Annuler</button>
+          <button onClick={() => onSave(titre || "Exercice rogné", duree, selectedThemes)}
+            className="flex-1 text-white rounded-lg py-3 text-sm font-semibold" style={{ backgroundColor: "#FF6B35" }}>
+            Ajouter à la séance
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CropPhotoView({ imageData, onCancel, onCrop }) {
   const canvasRef = useRef();
   const imgRef = useRef(null);
@@ -1522,18 +1563,41 @@ function CoachingProBoost({ session }) {
 
   const [drawProcessing, setDrawProcessing] = useState(false);
   const [cropImage, setCropImage] = useState(null);
-  const cropInputRef = useRef();
+  const [cropContext, setCropContext] = useState("library"); // "library" | "session"
+  const [quickCropData, setQuickCropData] = useState(null);
+  const [currentSessionPhoto, setCurrentSessionPhoto] = useState(null);
+  const sessionPhotoInputRef = useRef();
 
-  const handleCropFile = (e) => {
+  useEffect(() => {
+    if (!activeSession) { setCurrentSessionPhoto(null); return; }
+    (async () => {
+      try {
+        const r = await storage.get(`sessionPhoto:${activeSession.id}`);
+        setCurrentSessionPhoto(r ? JSON.parse(r.value) : null);
+      } catch { setCurrentSessionPhoto(null); }
+    })();
+  }, [activeSession?.id]);
+
+  const handleSessionPhotoFile = async (e) => {
     const f = e.target.files?.[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => { setCropImage(reader.result); setView("crop"); };
-    reader.readAsDataURL(f);
+    if (!f || !activeSession) return;
+    const dataUrl = await readImageAsJpeg(f, 2000, 0.8);
+    setCurrentSessionPhoto(dataUrl);
+    await storage.set(`sessionPhoto:${activeSession.id}`, JSON.stringify(dataUrl));
     e.target.value = "";
   };
 
+  const deleteSessionPhoto = async () => {
+    if (!activeSession) return;
+    setCurrentSessionPhoto(null);
+    await storage.delete(`sessionPhoto:${activeSession.id}`);
+  };
+
   const handleCropDone = (dataUrl) => {
+    if (cropContext === "session") {
+      setQuickCropData(dataUrl);
+      return;
+    }
     const ex = {
       id: uid(), titre: "Exercice rogné " + new Date().toLocaleDateString("fr-FR"),
       themes: [], phases: [], format: FORMATS[0], niveau: NIVEAUX[1], categorie: "",
@@ -1543,6 +1607,25 @@ function CoachingProBoost({ session }) {
     saveExercises([...exercises, ex]);
     setCropImage(null);
     setView("library");
+  };
+
+  const handleQuickCropSave = (titre, duree, selectedThemes) => {
+    const ex = {
+      id: uid(), titre,
+      themes: selectedThemes, phases: [], format: FORMATS[0], niveau: NIVEAUX[1], categorie: "",
+      duree, objectif: "", notes: "",
+      file: { name: "exercice-rogné.jpg", type: "image/jpeg", data: quickCropData },
+    };
+    const nextExercises = [...exercises, ex];
+    saveExercises(nextExercises);
+    if (activeSession) {
+      const updated = { ...activeSession, exerciseIds: [...activeSession.exerciseIds, ex.id] };
+      updateSession(updated);
+    }
+    setQuickCropData(null);
+    // Retour au crop pour pouvoir rogner un autre exercice
+    setCropImage(currentSessionPhoto);
+    setView("crop");
   };
   const addDrawnSheetDirect = (dataUrl) => {
     const ex = {
@@ -1844,7 +1927,16 @@ function CoachingProBoost({ session }) {
         )}
 
         {view === "crop" && cropImage && (
-          <CropPhotoView imageData={cropImage} onCancel={() => { setCropImage(null); setView("library"); }} onCrop={handleCropDone} />
+          <>
+            <CropPhotoView imageData={cropImage}
+              onCancel={() => { setCropImage(null); setView(cropContext === "session" ? "session" : "library"); }}
+              onCrop={handleCropDone} />
+            {quickCropData && (
+              <QuickCropForm dataUrl={quickCropData} themes={themes}
+                onSave={handleQuickCropSave}
+                onCancel={() => setQuickCropData(null)} />
+            )}
+          </>
         )}
 
         {view === "draw" && (
@@ -1961,6 +2053,33 @@ function CoachingProBoost({ session }) {
             <div className="mb-6 no-print">
               <RatingBlock avis={activeSession.avis || []} onAdd={(a) => updateSession({ ...activeSession, avis: [...(activeSession.avis || []), a] })} />
             </div>
+            <div className="mb-6 no-print">
+              <input ref={sessionPhotoInputRef} type="file" accept="image/*" className="hidden" onChange={handleSessionPhotoFile} />
+              {currentSessionPhoto ? (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/40">Photo de séance</span>
+                    <div className="flex gap-2">
+                      <button onClick={() => { setCropImage(currentSessionPhoto); setCropContext("session"); setView("crop"); }}
+                        className="flex items-center gap-1 text-xs border rounded-md px-2.5 py-1 transition-colors text-[#FF6B35] border-[#FF6B35]/40 hover:bg-[#FF6B35] hover:text-white">
+                        <ImageIcon size={12} /> Rogner un exercice
+                      </button>
+                      <button onClick={deleteSessionPhoto}
+                        className="flex items-center gap-1 text-xs border border-[#1B2A4A]/20 rounded-md px-2.5 py-1 text-[#1B2A4A]/40 hover:text-red-600 hover:border-red-300 transition-colors">
+                        <Trash2 size={12} /> Supprimer
+                      </button>
+                    </div>
+                  </div>
+                  <img src={currentSessionPhoto} alt="" className="w-full rounded-lg border border-[#1B2A4A]/10 object-contain max-h-80" />
+                </div>
+              ) : (
+                <button onClick={() => sessionPhotoInputRef.current.click()}
+                  className="w-full border-2 border-dashed border-[#1B2A4A]/20 rounded-lg py-4 flex items-center justify-center gap-2 text-sm text-[#1B2A4A]/50 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
+                  <ImageIcon size={18} /> Ajouter une photo de séance
+                </button>
+              )}
+            </div>
+
             <div className="space-y-2 mb-8">
               {activeSession.exerciseIds.length === 0 && <p className="text-[#1B2A4A]/40 text-sm">Ajoute des exercices depuis la bibliothèque ci-dessous.</p>}
               {activeSession.exerciseIds.map((id, i) => {
