@@ -1618,6 +1618,232 @@ function PlayCard({ play, onView, onEdit, onRemove, onAddToSession }) {
   );
 }
 
+const COURT_W = 440, COURT_H = 420;
+
+function CourtEditor({ value, onChange }) {
+  const svgRef = useRef();
+  const players = value?.players || [];
+  const paths = value?.paths || [];
+  const screens = value?.screens || [];
+
+  const [tool, setTool] = useState("offense");
+  const [pending, setPending] = useState(null); // {x,y} awaiting second click for path/screen
+  const [screenStart, setScreenStart] = useState(null);
+  const [selected, setSelected] = useState(null); // {type:"player"|"path"|"screen", idx}
+
+  const offCount = players.filter(p => p.role === "offense").length;
+  const defCount = players.filter(p => p.role === "defender").length;
+
+  const getSvgPos = (e) => {
+    const svg = svgRef.current;
+    const rect = svg.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return {
+      x: Math.round(((src.clientX - rect.left) / rect.width) * COURT_W),
+      y: Math.round(((src.clientY - rect.top) / rect.height) * COURT_H),
+    };
+  };
+
+  const hitPlayer = (pos) => {
+    const idx = players.findIndex(p => Math.hypot(p.x - pos.x, p.y - pos.y) < 18);
+    return idx >= 0 ? idx : null;
+  };
+
+  const handleSvgClick = (e) => {
+    if (e.target.closest("[data-el]")) return;
+    const pos = getSvgPos(e);
+
+    if (tool === "delete") { setSelected(null); return; }
+
+    if (tool === "offense" || tool === "defense") {
+      const role = tool === "offense" ? "offense" : "defender";
+      const label = role === "offense"
+        ? String(offCount + 1)
+        : `X${defCount + 1}`;
+      onChange({ players: [...players, { x: pos.x, y: pos.y, label, hasBall: false, role }], paths, screens });
+      setSelected(null);
+      return;
+    }
+
+    if (tool === "pass" || tool === "dribble" || tool === "cut") {
+      if (!pending) {
+        const pi = hitPlayer(pos);
+        setPending(pi !== null ? { x: players[pi].x, y: players[pi].y } : pos);
+      } else {
+        const pi = hitPlayer(pos);
+        const end = pi !== null ? { x: players[pi].x, y: players[pi].y } : pos;
+        if (Math.hypot(end.x - pending.x, end.y - pending.y) > 10) {
+          onChange({ players, paths: [...paths, { x1: pending.x, y1: pending.y, x2: end.x, y2: end.y, kind: tool }], screens });
+        }
+        setPending(null);
+      }
+      return;
+    }
+
+    if (tool === "screen") {
+      if (!screenStart) {
+        setScreenStart(pos);
+      } else {
+        if (Math.hypot(pos.x - screenStart.x, pos.y - screenStart.y) > 5) {
+          onChange({ players, paths, screens: [...screens, { x1: screenStart.x, y1: screenStart.y, x2: pos.x, y2: pos.y }] });
+        }
+        setScreenStart(null);
+      }
+      return;
+    }
+  };
+
+  const handleElClick = (e, type, idx) => {
+    e.stopPropagation();
+    if (tool === "delete") {
+      if (type === "player") onChange({ players: players.filter((_, i) => i !== idx), paths, screens });
+      if (type === "path") onChange({ players, paths: paths.filter((_, i) => i !== idx), screens });
+      if (type === "screen") onChange({ players, paths, screens: screens.filter((_, i) => i !== idx) });
+      return;
+    }
+    if (tool === "pass" || tool === "dribble" || tool === "cut") {
+      if (type === "player") {
+        const p = players[idx];
+        if (!pending) { setPending({ x: p.x, y: p.y }); }
+        else {
+          if (Math.hypot(p.x - pending.x, p.y - pending.y) > 10) {
+            onChange({ players, paths: [...paths, { x1: pending.x, y1: pending.y, x2: p.x, y2: p.y, kind: tool }], screens });
+          }
+          setPending(null);
+        }
+        return;
+      }
+    }
+    if (tool === "ball" && type === "player") {
+      onChange({ players: players.map((p, i) => i === idx ? { ...p, hasBall: !p.hasBall } : { ...p, hasBall: false }), paths, screens });
+      return;
+    }
+    setSelected({ type, idx });
+  };
+
+  const cancelPending = () => { setPending(null); setScreenStart(null); };
+
+  const tools = [
+    { key: "offense", label: "Attaquant", icon: "①" },
+    { key: "defense", label: "Défenseur", icon: "X" },
+    { key: "ball", label: "Ballon", icon: "⚽", title: "Cliquer un joueur pour lui donner/retirer le ballon" },
+    { key: "pass", label: "Passe", icon: "- ->" },
+    { key: "dribble", label: "Dribble", icon: "〰→" },
+    { key: "cut", label: "Déplacement", icon: "→" },
+    { key: "screen", label: "Écran", icon: "||" },
+    { key: "delete", label: "Supprimer", icon: "🗑" },
+  ];
+
+  const aid = "ce-arr";
+
+  return (
+    <div className="space-y-2">
+      {/* Palette */}
+      <div className="flex flex-wrap gap-1.5">
+        {tools.map(t => (
+          <button key={t.key} type="button" title={t.title || t.label}
+            onClick={() => { setTool(t.key); cancelPending(); }}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${tool === t.key ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "bg-white/60 text-[#1B2A4A] border-[#1B2A4A]/20 hover:border-[#1B2A4A]/50"}`}>
+            <span className="mr-1">{t.icon}</span>{t.label}
+          </button>
+        ))}
+      </div>
+      {(pending || screenStart) && (
+        <div className="flex items-center gap-2 text-xs text-[#FF6B35]">
+          <span>Cliquer la destination sur le terrain…</span>
+          <button type="button" onClick={cancelPending} className="underline">Annuler</button>
+        </div>
+      )}
+      {/* SVG Court */}
+      <div className="rounded-lg overflow-hidden border border-[#1B2A4A]/15 touch-none select-none" style={{ background: "#f8f5ef" }}>
+        <svg ref={svgRef} viewBox={`0 0 ${COURT_W} ${COURT_H}`} width="100%"
+          style={{ cursor: tool === "delete" ? "crosshair" : "pointer", display: "block" }}
+          onClick={handleSvgClick}>
+          <defs>
+            <marker id={aid} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" strokeWidth="1.5" />
+            </marker>
+          </defs>
+          {/* Court lines — same as CourtDiagram */}
+          {(() => {
+            const cx = COURT_W / 2, kW = COURT_W * 0.36, kH = COURT_H * 0.36;
+            const kX = cx - kW / 2, kY = COURT_H - kH, ftR = kW / 2, tpR = COURT_W * 0.43;
+            const hoopY = COURT_H - kH * 0.22;
+            return (
+              <g stroke="#888780" strokeWidth="1" fill="none">
+                <rect x="1" y="1" width={COURT_W - 2} height={COURT_H - 2} />
+                <path d={`M ${cx - tpR} ${kY} L ${cx - tpR} ${COURT_H} M ${cx + tpR} ${kY} L ${cx + tpR} ${COURT_H}`} />
+                <path d={`M ${cx - tpR} ${kY} A ${tpR} ${tpR} 0 0 0 ${cx + tpR} ${kY}`} />
+                <rect x={kX} y={kY} width={kW} height={kH} />
+                <path d={`M ${cx - ftR} ${kY} A ${ftR} ${ftR} 0 0 0 ${cx + ftR} ${kY}`} />
+                <path d={`M ${cx - ftR * 0.55} ${hoopY - 6} A ${ftR * 0.55} ${ftR * 0.55} 0 0 0 ${cx + ftR * 0.55} ${hoopY - 6}`} />
+                <line x1={cx - ftR * 0.32} y1={hoopY - 6} x2={cx + ftR * 0.32} y2={hoopY - 6} strokeWidth="1.5" />
+                <circle cx={cx} cy={hoopY - 9} r="3" />
+              </g>
+            );
+          })()}
+
+          {/* Paths */}
+          {paths.map((p, i) => {
+            const isWavy = p.kind === "dribble" || p.kind === "handoff";
+            const d = isWavy ? wavyPath(p.x1, p.y1, p.x2, p.y2) : `M ${p.x1} ${p.y1} L ${p.x2} ${p.y2}`;
+            const color = "#1B2A4A";
+            return (
+              <g key={i} data-el="path" onClick={e => handleElClick(e, "path", i)}>
+                <path d={d} fill="none" stroke={color} strokeWidth={2}
+                  strokeDasharray={p.kind === "pass" ? "6 4" : undefined}
+                  markerEnd={p.kind !== "handoff" ? `url(#${aid})` : undefined}
+                  style={{ cursor: "pointer" }} />
+                <path d={d} fill="none" stroke="transparent" strokeWidth={12} />
+              </g>
+            );
+          })}
+
+          {/* Screens */}
+          {screens.map((s, i) => (
+            <g key={i} data-el="screen" onClick={e => handleElClick(e, "screen", i)}>
+              <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke="#1B2A4A" strokeWidth="3" style={{ cursor: "pointer" }} />
+              <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke="transparent" strokeWidth="12" />
+            </g>
+          ))}
+
+          {/* Pending path preview */}
+          {pending && (
+            <circle cx={pending.x} cy={pending.y} r="5" fill="#FF6B35" opacity="0.7" />
+          )}
+          {screenStart && (
+            <circle cx={screenStart.x} cy={screenStart.y} r="5" fill="#FF6B35" opacity="0.7" />
+          )}
+
+          {/* Players */}
+          {players.map((pl, i) => (
+            <g key={i} data-el="player" style={{ cursor: "pointer" }}
+              onClick={e => handleElClick(e, "player", i)}>
+              {pl.role === "defender" ? (
+                <text x={pl.x} y={pl.y + 5} textAnchor="middle" fontSize="16" fontWeight="700" fill="#888780">{pl.label}</text>
+              ) : pl.hasBall ? (
+                <>
+                  <circle cx={pl.x} cy={pl.y} r="14" fill="white" stroke="#1B2A4A" strokeWidth="2" />
+                  <text x={pl.x} y={pl.y + 5} textAnchor="middle" fontSize="13" fontWeight="700" fill="#1B2A4A">{pl.label}</text>
+                </>
+              ) : (
+                <text x={pl.x} y={pl.y + 5} textAnchor="middle" fontSize="16" fontWeight="700" fill="#1B2A4A">{pl.label}</text>
+              )}
+            </g>
+          ))}
+        </svg>
+      </div>
+      <div className="flex justify-between text-xs text-[#1B2A4A]/40">
+        <span>{players.length} joueur{players.length !== 1 ? "s" : ""} · {paths.length} trait{paths.length !== 1 ? "s" : ""} · {screens.length} écran{screens.length !== 1 ? "s" : ""}</span>
+        {(players.length > 0 || paths.length > 0 || screens.length > 0) && (
+          <button type="button" onClick={() => { if (window.confirm("Effacer tout le schéma ?")) onChange({ players: [], paths: [], screens: [] }); }}
+            className="text-red-400 hover:text-red-600">Tout effacer</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PlayViewer({ play, onClose, onEdit }) {
   const images = usePlayImages(play);
   const [imgIdx, setImgIdx] = useState(0);
@@ -1670,8 +1896,13 @@ function PlayViewer({ play, onClose, onEdit }) {
           <div className="text-white/40 text-sm">Aucune image</div>
         )}
       </div>
-      {(play.description || play.notes || (play.tags || []).length > 0) && (
-        <div className="flex-shrink-0 bg-[#1B2A4A]/90 px-4 py-3 max-h-40 overflow-y-auto" onClick={e => e.stopPropagation()}>
+      {(play.description || play.notes || (play.tags || []).length > 0 || play.diagram) && (
+        <div className="flex-shrink-0 bg-[#1B2A4A]/90 px-4 py-3 max-h-60 overflow-y-auto" onClick={e => e.stopPropagation()}>
+          {play.diagram && (
+            <div className="mb-2 bg-white/10 rounded-lg overflow-hidden">
+              <CourtDiagram diagram={play.diagram} />
+            </div>
+          )}
           {play.description && <p className="text-white/80 text-sm mb-1">{play.description}</p>}
           {play.notes && <p className="text-white/50 text-xs">{play.notes}</p>}
           {(play.tags || []).length > 0 && (
@@ -1750,6 +1981,8 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
   const [images, setImages] = useState(
     initial?.images?.map(img => ({ ...img, file: img.hasFile ? { name: img.fileName, type: img.fileType, data: null } : null })) || []
   );
+  const [diagram, setDiagram] = useState(initial?.diagram || null);
+  const [showDiagram, setShowDiagram] = useState(!!(initial?.diagram));
   const [selectedTags, setSelectedTags] = useState(initial?.tags || []);
   const [newTagInput, setNewTagInput] = useState("");
   const [cropSource, setCropSource] = useState(null);
@@ -1846,6 +2079,23 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
           onCancel={() => { setCropSource(null); setCropCount(0); }}
         />
       )}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50">Schéma tactique</div>
+          {!showDiagram ? (
+            <button type="button" onClick={() => setShowDiagram(true)}
+              className="flex items-center gap-1 text-xs text-[#FF6B35] hover:underline font-medium">
+              <Plus size={13} /> Dessiner un play
+            </button>
+          ) : (
+            <button type="button" onClick={() => { setShowDiagram(false); setDiagram(null); }}
+              className="text-xs text-[#1B2A4A]/40 hover:text-red-500">Supprimer le schéma</button>
+          )}
+        </div>
+        {showDiagram && (
+          <CourtEditor value={diagram} onChange={setDiagram} />
+        )}
+      </div>
       <div className="relative">
         <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Description du système de jeu..." rows={3}
           className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 pr-9 text-sm bg-white/60" />
@@ -1860,7 +2110,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
         <button onClick={() => {
           if (!titre.trim()) { alert("Donne un titre au play."); return; }
-          onSave({ id: initial?.id || uid(), titre, type, description, notes, tags: selectedTags, images, diagram: initial?.diagram, createdAt: initial?.createdAt || new Date().toISOString() });
+          onSave({ id: initial?.id || uid(), titre, type, description, notes, tags: selectedTags, images, diagram: showDiagram ? diagram : null, createdAt: initial?.createdAt || new Date().toISOString() });
         }} className="px-5 py-2 text-sm font-medium rounded-md bg-[#FF6B35] text-white hover:bg-[#e85a28]">Enregistrer</button>
       </div>
     </div>
