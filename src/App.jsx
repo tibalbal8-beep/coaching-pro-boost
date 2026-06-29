@@ -558,7 +558,7 @@ function useFileImage(ex) {
   return data;
 }
 
-function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft }) {
+function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage }) {
   const fileImage = useFileImage(ex);
   const [confirmDel, setConfirmDel] = useState(false);
   return (
@@ -581,7 +581,15 @@ function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft }) {
         {ex.diagram ? (
           <div className="mb-2"><CourtDiagram players={ex.diagram.players} paths={ex.diagram.paths} screens={ex.diagram.screens} /></div>
         ) : fileImage && ex.file?.type?.startsWith("image/") ? (
-          <div className="mb-2"><img src={fileImage} alt="" className="w-full rounded border border-[#1B2A4A]/10 object-contain max-h-48" /></div>
+          <div className="mb-2 relative">
+            <img src={fileImage} alt="" className="w-full rounded border border-[#1B2A4A]/10 object-contain max-h-48" />
+            {onCropImage && (
+              <button onClick={(e) => { e.stopPropagation(); onCropImage(fileImage); }}
+                className="absolute bottom-2 right-2 flex items-center gap-1 bg-white/90 border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-xs font-medium text-[#1B2A4A] hover:bg-[#FF6B35] hover:text-white hover:border-[#FF6B35] transition-colors">
+                <ImageIcon size={12} /> Rogner
+              </button>
+            )}
+          </div>
         ) : null}
         <div className="flex items-center gap-3 text-xs text-[#1B2A4A]/60 mb-2">
           <span className="flex items-center gap-1"><Clock size={12} />{ex.duree} min</span>
@@ -1661,11 +1669,7 @@ function CoachingProBoost({ session }) {
                 <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>BIBLIOTHÈQUE D'EXERCICES</h2>
                 <p className="text-sm text-[#1B2A4A]/50">{exercises.length} exercice{exercises.length !== 1 ? "s" : ""} enregistré{exercises.length !== 1 ? "s" : ""}</p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input ref={cropInputRef} type="file" accept="image/*" className="hidden" onChange={handleCropFile} />
-                <button onClick={() => cropInputRef.current.click()} className="flex items-center justify-center gap-1.5 border border-[#1B2A4A]/20 text-[#1B2A4A] px-3 py-2 rounded-md text-sm font-medium hover:bg-[#1B2A4A]/5"><ImageIcon size={16} /> Rogner une photo</button>
-                <button onClick={() => setShowForm(true)} className="flex items-center justify-center gap-1.5 bg-[#FF6B35] text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvel exercice</button>
-              </div>
+              <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvel exercice</button>
             </div>
 
             {addBanner && (
@@ -1703,7 +1707,8 @@ function CoachingProBoost({ session }) {
                   <ExerciseCard key={ex.id} ex={ex} index={i}
                     onClick={() => { setEditing(ex); setShowForm(true); }}
                     onRemove={() => saveExercises(exercises.filter(e => e.id !== ex.id))}
-                    onAddToDraft={() => addExerciseToDraft(ex.id)} />
+                    onAddToDraft={() => addExerciseToDraft(ex.id)}
+                    onCropImage={(imgData) => { setCropImage(imgData); setView("crop"); }} />
                 ))}
               </div>
             )}
