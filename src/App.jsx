@@ -1198,9 +1198,10 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
   );
 }
 
-function SessionRow({ s, totalDuree, onOpen, onRename }) {
+function SessionRow({ s, totalDuree, onOpen, onRename, onDelete }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(s.titre);
+  const [confirmDel, setConfirmDel] = useState(false);
   const commit = () => { setEditing(false); if (val.trim() && val !== s.titre) onRename(val.trim()); };
   return (
     <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-4 flex items-center justify-between hover:shadow-md">
@@ -1219,6 +1220,14 @@ function SessionRow({ s, totalDuree, onOpen, onRename }) {
       </div>
       <div className="flex items-center gap-2 flex-shrink-0 ml-3">
         <button onClick={(e) => { e.stopPropagation(); setEditing(true); }} className="text-[#1B2A4A]/40 hover:text-[#FF6B35] p-1"><Pencil size={15} /></button>
+        {confirmDel ? (
+          <span className="flex items-center gap-1 text-[10px]" onClick={e => e.stopPropagation()}>
+            <button onClick={() => onDelete()} className="text-red-600 font-medium">Confirmer</button>
+            <button onClick={() => setConfirmDel(false)} className="text-[#1B2A4A]/40">Annuler</button>
+          </span>
+        ) : (
+          <button onClick={(e) => { e.stopPropagation(); setConfirmDel(true); }} className="text-[#1B2A4A]/40 hover:text-red-600 p-1"><Trash2 size={15} /></button>
+        )}
         <ChevronRight size={18} className="text-[#1B2A4A]/30 cursor-pointer" onClick={onOpen} />
       </div>
     </div>
@@ -1983,7 +1992,8 @@ function CoachingProBoost({ session }) {
                         {monthSessions.map(s => (
                           <SessionRow key={s.id} s={s} totalDuree={totalDuree(s)}
                             onOpen={() => { setActiveSession(s); setView("session"); }}
-                            onRename={(titre) => saveSessions(sessions.map(x => x.id === s.id ? { ...x, titre } : x))} />
+                            onRename={(titre) => saveSessions(sessions.map(x => x.id === s.id ? { ...x, titre } : x))}
+                            onDelete={() => saveSessions(sessions.filter(x => x.id !== s.id))} />
                         ))}
                       </div>
                     </div>
