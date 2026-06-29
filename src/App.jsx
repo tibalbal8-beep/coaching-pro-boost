@@ -1325,7 +1325,7 @@ function QuickCropForm({ dataUrl, themes, onSave, onCancel }) {
   );
 }
 
-function CropPhotoView({ imageData, onCancel, onCrop }) {
+function CropPhotoView({ imageData, onCancel, onCrop, multiMode = false, cropCount = 0 }) {
   const canvasRef = useRef();
   const imgRef = useRef(null);
   const scaleRef = useRef(1);
@@ -1414,6 +1414,7 @@ function CropPhotoView({ imageData, onCancel, onCrop }) {
     out.height = Math.round(nr.h / s);
     out.getContext("2d").drawImage(imgRef.current, nr.x / s, nr.y / s, nr.w / s, nr.h / s, 0, 0, out.width, out.height);
     onCrop(out.toDataURL("image/jpeg", 0.85));
+    if (multiMode) { setCropRect(null); redraw(null); }
   };
 
   const canCrop = cropRect && Math.abs(cropRect.w) > 10 && Math.abs(cropRect.h) > 10;
@@ -1421,12 +1422,18 @@ function CropPhotoView({ imageData, onCancel, onCrop }) {
   return (
     <div className="fixed inset-0 z-[200] flex flex-col" style={{ backgroundColor: "#1B2A4A" }}>
       <div className="flex items-center justify-between px-4 py-3 flex-shrink-0">
-        <button onClick={onCancel} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><X size={18} /> Annuler</button>
-        <span className="text-white font-medium text-sm">Trace un rectangle autour de l'exercice</span>
+        {multiMode ? (
+          <button onClick={onCancel} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><Check size={18} /> Terminer</button>
+        ) : (
+          <button onClick={onCancel} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><X size={18} /> Annuler</button>
+        )}
+        <span className="text-white font-medium text-sm">
+          {multiMode ? (cropCount > 0 ? `${cropCount} image${cropCount > 1 ? "s" : ""} ajoutée${cropCount > 1 ? "s" : ""} · trace une nouvelle zone` : "Trace un rectangle à rogner") : "Trace un rectangle autour de l'exercice"}
+        </span>
         <button onClick={handleCrop} disabled={!canCrop}
           className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white transition-opacity"
-          style={{ backgroundColor: canCrop ? "#FF6B35" : "#FF6B35", opacity: canCrop ? 1 : 0.4 }}>
-          Rogner
+          style={{ backgroundColor: "#FF6B35", opacity: canCrop ? 1 : 0.4 }}>
+          {multiMode ? "Ajouter" : "Rogner"}
         </button>
       </div>
       <div className="flex-1 flex items-center justify-center overflow-hidden px-2 pb-4">
@@ -1673,10 +1680,26 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
   );
   const [selectedTags, setSelectedTags] = useState(initial?.tags || []);
   const [newTagInput, setNewTagInput] = useState("");
+  const [cropSource, setCropSource] = useState(null);
+  const [cropCount, setCropCount] = useState(0);
+  const cropInputRef = useRef();
 
   const addImage = () => setImages(prev => [...prev, { id: uid(), file: null, annotation: "" }]);
   const updateImage = (id, updated) => setImages(prev => prev.map(img => img.id === id ? updated : img));
   const removeImage = (id) => setImages(prev => prev.filter(img => img.id !== id));
+
+  const handleCropFile = (f) => {
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => setCropSource(reader.result);
+    reader.readAsDataURL(f);
+  };
+
+  const handleCropResult = (dataUrl) => {
+    const newImg = { id: uid(), file: { name: "crop.jpg", type: "image/jpeg", data: dataUrl }, annotation: "" };
+    setImages(prev => [...prev, newImg]);
+    setCropCount(c => c + 1);
+  };
 
   const addTag = (tag) => {
     const trimmed = tag.trim();
@@ -1711,16 +1734,29 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
       <div>
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50">Images ({images.length})</div>
-          <button type="button" onClick={addImage}
-            className="flex items-center gap-1 text-xs text-[#FF6B35] hover:underline font-medium">
-            <Plus size={13} /> Ajouter une image
-          </button>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => { setCropCount(0); cropInputRef.current.click(); }}
+              className="flex items-center gap-1 text-xs text-[#1B2A4A]/60 hover:text-[#FF6B35] font-medium border border-[#1B2A4A]/20 hover:border-[#FF6B35]/40 rounded-full px-2.5 py-1 transition-colors">
+              <ImageIcon size={12} /> Rogner une photo
+            </button>
+            <button type="button" onClick={addImage}
+              className="flex items-center gap-1 text-xs text-[#FF6B35] hover:underline font-medium">
+              <Plus size={13} /> Ajouter une image
+            </button>
+          </div>
         </div>
+        <input ref={cropInputRef} type="file" accept="image/*" className="hidden" onChange={e => handleCropFile(e.target.files?.[0])} />
         {images.length === 0 && (
-          <button type="button" onClick={addImage}
-            className="w-full border-2 border-dashed border-[#1B2A4A]/20 rounded-lg py-5 flex flex-col items-center gap-1.5 text-[#1B2A4A]/40 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
-            <ImageIcon size={20} /><span className="text-xs">Ajouter des images du système</span>
-          </button>
+          <div className="grid grid-cols-2 gap-3">
+            <button type="button" onClick={() => { setCropCount(0); cropInputRef.current.click(); }}
+              className="border-2 border-dashed border-[#1B2A4A]/20 rounded-lg py-5 flex flex-col items-center gap-1.5 text-[#1B2A4A]/40 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
+              <ImageIcon size={20} /><span className="text-xs text-center">Rogner depuis une photo</span>
+            </button>
+            <button type="button" onClick={addImage}
+              className="border-2 border-dashed border-[#1B2A4A]/20 rounded-lg py-5 flex flex-col items-center gap-1.5 text-[#1B2A4A]/40 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
+              <Plus size={20} /><span className="text-xs text-center">Ajouter une image</span>
+            </button>
+          </div>
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {images.map(img => (
@@ -1728,6 +1764,16 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
           ))}
         </div>
       </div>
+
+      {cropSource && (
+        <CropPhotoView
+          imageData={cropSource}
+          multiMode={true}
+          cropCount={cropCount}
+          onCrop={handleCropResult}
+          onCancel={() => { setCropSource(null); setCropCount(0); }}
+        />
+      )}
       <div className="relative">
         <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Description du système de jeu..." rows={3}
           className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 pr-9 text-sm bg-white/60" />
