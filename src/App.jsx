@@ -1538,7 +1538,7 @@ function usePlayImages(play) {
   return images;
 }
 
-function PlayCard({ play, onClick, onRemove, onAddToSession }) {
+function PlayCard({ play, onView, onEdit, onRemove, onAddToSession }) {
   const images = usePlayImages(play);
   const [imgIdx, setImgIdx] = useState(0);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -1546,9 +1546,9 @@ function PlayCard({ play, onClick, onRemove, onAddToSession }) {
   const currentImg = visibleImgs[Math.min(imgIdx, visibleImgs.length - 1)];
 
   return (
-    <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 overflow-hidden cursor-pointer hover:border-[#FF6B35]/50 transition-all" onClick={onClick}>
+    <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 overflow-hidden hover:border-[#FF6B35]/50 transition-all">
       {visibleImgs.length > 0 && (
-        <div className="relative select-none">
+        <div className="relative select-none cursor-pointer" onClick={onView}>
           <img src={currentImg.data} alt="" className="w-full h-48 object-contain bg-white" />
           {visibleImgs.length > 1 && (
             <>
@@ -1574,7 +1574,7 @@ function PlayCard({ play, onClick, onRemove, onAddToSession }) {
           )}
         </div>
       )}
-      <div className="p-3">
+      <div className="p-3 cursor-pointer" onClick={onView}>
         <div className="flex items-start justify-between gap-1">
           <div className="min-w-0">
             <div className="font-semibold text-[#1B2A4A] text-sm truncate">{play.titre}</div>
@@ -1588,22 +1588,25 @@ function PlayCard({ play, onClick, onRemove, onAddToSession }) {
               </div>
             )}
           </div>
-          <div className="flex gap-1 shrink-0 ml-1">
+          <div className="flex gap-1 shrink-0 ml-1" onClick={e => e.stopPropagation()}>
             {onAddToSession && (
-              <button onClick={e => { e.stopPropagation(); onAddToSession(); }}
-                className="p-1 text-[#FF6B35] hover:bg-[#FF6B35]/10 rounded" title="Ajouter à la séance">
+              <button onClick={onAddToSession} className="p-1 text-[#FF6B35] hover:bg-[#FF6B35]/10 rounded" title="Ajouter à la séance">
                 <Plus size={14} />
+              </button>
+            )}
+            {onEdit && (
+              <button onClick={onEdit} className="p-1 text-[#1B2A4A]/40 hover:text-[#FF6B35] rounded" title="Modifier">
+                <Pencil size={14} />
               </button>
             )}
             {onRemove && (
               confirmDel ? (
-                <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                <div className="flex gap-1">
                   <button onClick={() => onRemove()} className="text-xs text-red-600 font-medium px-1">Suppr.</button>
                   <button onClick={() => setConfirmDel(false)} className="text-xs text-[#1B2A4A]/40 px-1">✕</button>
                 </div>
               ) : (
-                <button onClick={e => { e.stopPropagation(); setConfirmDel(true); }}
-                  className="p-1 text-[#1B2A4A]/30 hover:text-red-600 rounded">
+                <button onClick={() => setConfirmDel(true)} className="p-1 text-[#1B2A4A]/30 hover:text-red-600 rounded">
                   <Trash2 size={14} />
                 </button>
               )
@@ -1611,6 +1614,75 @@ function PlayCard({ play, onClick, onRemove, onAddToSession }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function PlayViewer({ play, onClose, onEdit }) {
+  const images = usePlayImages(play);
+  const [imgIdx, setImgIdx] = useState(0);
+  const visibleImgs = images.filter(img => img.data && img.fileType?.startsWith("image/"));
+  const currentImg = visibleImgs[imgIdx];
+
+  return (
+    <div className="fixed inset-0 z-[250] bg-black/85 flex flex-col" onClick={onClose}>
+      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><X size={18} /> Fermer</button>
+        <div className="text-center">
+          <div className="text-white font-semibold">{play.titre}</div>
+          <div className="text-xs font-medium" style={{ color: "#FF6B35" }}>{play.type}</div>
+        </div>
+        <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white">
+          <Pencil size={16} /> Modifier
+        </button>
+      </div>
+      <div className="flex-1 flex flex-col items-center justify-center px-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+        {visibleImgs.length > 0 ? (
+          <>
+            <div className="relative w-full max-w-2xl">
+              <img src={currentImg.data} alt="" className="w-full max-h-[60vh] object-contain rounded-lg" />
+              {visibleImgs.length > 1 && (
+                <>
+                  <button onClick={() => setImgIdx(i => (i - 1 + visibleImgs.length) % visibleImgs.length)}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 text-white rounded-full p-1.5 hover:bg-black/80">
+                    <ChevronRight size={20} className="rotate-180" />
+                  </button>
+                  <button onClick={() => setImgIdx(i => (i + 1) % visibleImgs.length)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 text-white rounded-full p-1.5 hover:bg-black/80">
+                    <ChevronRight size={20} />
+                  </button>
+                </>
+              )}
+            </div>
+            {currentImg.annotation && (
+              <div className="mt-2 text-white/80 text-sm italic text-center">{currentImg.annotation}</div>
+            )}
+            {visibleImgs.length > 1 && (
+              <div className="flex gap-2 mt-3">
+                {visibleImgs.map((_, i) => (
+                  <button key={i} onClick={() => setImgIdx(i)}
+                    className={`w-2.5 h-2.5 rounded-full transition-colors ${i === imgIdx ? "bg-white" : "bg-white/30"}`} />
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-white/40 text-sm">Aucune image</div>
+        )}
+      </div>
+      {(play.description || play.notes || (play.tags || []).length > 0) && (
+        <div className="flex-shrink-0 bg-[#1B2A4A]/90 px-4 py-3 max-h-40 overflow-y-auto" onClick={e => e.stopPropagation()}>
+          {play.description && <p className="text-white/80 text-sm mb-1">{play.description}</p>}
+          {play.notes && <p className="text-white/50 text-xs">{play.notes}</p>}
+          {(play.tags || []).length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {(play.tags || []).map(t => (
+                <span key={t} className="text-xs bg-white/10 text-white/60 rounded-full px-2 py-0.5">{t}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1828,6 +1900,7 @@ function CoachingProBoost({ session }) {
   const [showForm, setShowForm] = useState(false);
   const [playbookForm, setPlaybookForm] = useState(false);
   const [editingPlay, setEditingPlay] = useState(null);
+  const [viewingPlay, setViewingPlay] = useState(null);
   const [filterPlayType, setFilterPlayType] = useState([]);
   const [filterPlayTags, setFilterPlayTags] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
@@ -2212,7 +2285,8 @@ function CoachingProBoost({ session }) {
                   (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t)))
                 ).map(play => (
                   <PlayCard key={play.id} play={play}
-                    onClick={() => { setEditingPlay(play); setPlaybookForm(true); }}
+                    onView={() => setViewingPlay(play)}
+                    onEdit={() => { setEditingPlay(play); setPlaybookForm(true); }}
                     onRemove={() => savePlays(plays.filter(p => p.id !== play.id))} />
                 ))}
               </div>
@@ -2370,6 +2444,11 @@ function CoachingProBoost({ session }) {
 
         {view === "draw" && (
           <DrawSheetView processing={drawProcessing} onCancel={() => setView("sessions")} onValidate={processDrawnSheet} onAddDirect={addDrawnSheetDirect} />
+        )}
+
+        {viewingPlay && (
+          <PlayViewer play={viewingPlay} onClose={() => setViewingPlay(null)}
+            onEdit={() => { setEditingPlay(viewingPlay); setPlaybookForm(true); setViewingPlay(null); }} />
         )}
 
         {view === "sessions" && !reviewItems && (
@@ -2595,7 +2674,7 @@ function CoachingProBoost({ session }) {
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {plays.filter(p => !(activeSession.playIds || []).includes(p.id)).map(play => (
                       <PlayCard key={play.id} play={play}
-                        onClick={() => {}}
+                        onView={() => setViewingPlay(play)}
                         onAddToSession={() => updateSession({ ...activeSession, playIds: [...(activeSession.playIds || []), play.id] })} />
                     ))}
                   </div>
