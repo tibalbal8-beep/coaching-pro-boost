@@ -29,6 +29,7 @@ function useStore() {
   const [activeTeamId, setActiveTeamId] = useState(null);
   const [players, setPlayers] = useState([]);
   const [plays, setPlays] = useState([]);
+  const [playTags, setPlayTags] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -44,6 +45,7 @@ function useStore() {
       try { const at = await storage.get("activeTeamId"); if (at) setActiveTeamId(JSON.parse(at.value)); } catch {}
       try { const pl = await storage.get("players"); setPlayers(pl ? JSON.parse(pl.value) : []); } catch {}
       try { const pb = await storage.get("plays"); setPlays(pb ? JSON.parse(pb.value) : []); } catch {}
+      try { const pt = await storage.get("playTags"); setPlayTags(pt ? JSON.parse(pt.value) : []); } catch {}
       setLoaded(true);
     })();
   }, []);
@@ -69,17 +71,25 @@ function useStore() {
   const saveActiveTeamId = (next) => { setActiveTeamId(next); persist("activeTeamId", JSON.stringify(next)); };
   const savePlayers = (next) => { setPlayers(next); persist("players", JSON.stringify(next)); };
   const savePlays = async (next) => {
-    for (const p of next) {
-      if (p.file && p.file.data) {
-        try { await storage.set(`playfile:${p.id}`, JSON.stringify(p.file)); } catch {}
+    for (const play of next) {
+      for (const img of play.images || []) {
+        if (img.file?.data) {
+          try { await storage.set(`playimg:${play.id}:${img.id}`, JSON.stringify(img.file)); } catch {}
+        }
       }
     }
-    const stripped = next.map(({ file, ...rest }) => ({ ...rest, hasFile: !!file, fileName: file?.name, fileType: file?.type }));
+    const stripped = next.map(play => ({
+      ...play,
+      images: (play.images || []).map(({ file, ...imgRest }) => ({
+        ...imgRest, hasFile: !!file, fileName: file?.name, fileType: file?.type,
+      })),
+    }));
     setPlays(next);
     persist("plays", JSON.stringify(stripped));
   };
+  const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
 
-  return { exercises, sessions, themes, teams, activeTeamId, players, plays, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, loaded };
+  return { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, loaded };
 }
 
 function usePdfJs() {
@@ -1499,74 +1509,182 @@ function AuthScreen() {
   );
 }
 
-function usePlayFileImage(play) {
-  const [data, setData] = useState(play.file?.data || null);
+function usePlayImages(play) {
+  const [images, setImages] = useState([]);
   useEffect(() => {
-    if (play.file?.data) { setData(play.file.data); return; }
-    if (!play.file || !play.id) { setData(null); return; }
+    if (!play.images || play.images.length === 0) { setImages([]); return; }
     let active = true;
     (async () => {
-      try {
-        const r = await storage.get(`playfile:${play.id}`);
-        if (r && active) { const parsed = JSON.parse(r.value); setData(parsed.data || null); }
-      } catch {}
+      const loaded = await Promise.all(play.images.map(async (img) => {
+        if (img.file?.data) return { ...img, data: img.file.data };
+        if (!img.hasFile) return { ...img, data: null };
+        try {
+          const r = await storage.get(`playimg:${play.id}:${img.id}`);
+          if (r && active) { const parsed = JSON.parse(r.value); return { ...img, data: parsed.data || null }; }
+        } catch {}
+        return { ...img, data: null };
+      }));
+      if (active) setImages(loaded);
     })();
     return () => { active = false; };
-  }, [play.id, play.file?.data]);
-  return data;
+  }, [play.id, JSON.stringify(play.images?.map(i => i.id))]);
+  return images;
 }
 
 function PlayCard({ play, onClick, onRemove, onAddToSession }) {
-  const fileImage = usePlayFileImage(play);
+  const images = usePlayImages(play);
+  const [imgIdx, setImgIdx] = useState(0);
   const [confirmDel, setConfirmDel] = useState(false);
+  const visibleImgs = images.filter(img => img.data && img.fileType?.startsWith("image/"));
+  const currentImg = visibleImgs[Math.min(imgIdx, visibleImgs.length - 1)];
+
   return (
-    <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3 cursor-pointer hover:border-[#FF6B35]/50 transition-all" onClick={onClick}>
-      {fileImage && play.file?.type?.startsWith("image/") && (
-        <img src={fileImage} alt="" className="w-full h-28 object-cover rounded mb-2 border border-[#1B2A4A]/10" />
-      )}
-      {!fileImage && play.diagram && (
-        <div className="mb-2">
-          <CourtDiagram players={play.diagram.players} paths={play.diagram.paths} screens={play.diagram.screens} />
-        </div>
-      )}
-      <div className="flex items-start justify-between gap-1">
-        <div className="min-w-0">
-          <div className="font-semibold text-[#1B2A4A] text-sm truncate">{play.titre}</div>
-          <div className="text-xs font-medium mt-0.5" style={{ color: "#FF6B35" }}>{play.type}</div>
-          {play.description && <div className="text-xs text-[#1B2A4A]/50 mt-0.5 line-clamp-2">{play.description}</div>}
-        </div>
-        <div className="flex gap-1 shrink-0 ml-1">
-          {onAddToSession && (
-            <button onClick={e => { e.stopPropagation(); onAddToSession(); }}
-              className="p-1 text-[#FF6B35] hover:bg-[#FF6B35]/10 rounded" title="Ajouter à la séance">
-              <Plus size={14} />
-            </button>
-          )}
-          {onRemove && (
-            confirmDel ? (
-              <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                <button onClick={() => onRemove()} className="text-xs text-red-600 font-medium px-1">Suppr.</button>
-                <button onClick={() => setConfirmDel(false)} className="text-xs text-[#1B2A4A]/40 px-1">✕</button>
-              </div>
-            ) : (
-              <button onClick={e => { e.stopPropagation(); setConfirmDel(true); }}
-                className="p-1 text-[#1B2A4A]/30 hover:text-red-600 rounded">
-                <Trash2 size={14} />
+    <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 overflow-hidden cursor-pointer hover:border-[#FF6B35]/50 transition-all" onClick={onClick}>
+      {visibleImgs.length > 0 && (
+        <div className="relative select-none">
+          <img src={currentImg.data} alt="" className="w-full h-36 object-cover" />
+          {visibleImgs.length > 1 && (
+            <>
+              <button onClick={e => { e.stopPropagation(); setImgIdx(i => (i - 1 + visibleImgs.length) % visibleImgs.length); }}
+                className="absolute left-1.5 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full p-0.5 hover:bg-black/70">
+                <ChevronRight size={15} className="rotate-180" />
               </button>
-            )
+              <button onClick={e => { e.stopPropagation(); setImgIdx(i => (i + 1) % visibleImgs.length); }}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full p-0.5 hover:bg-black/70">
+                <ChevronRight size={15} />
+              </button>
+              <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1">
+                {visibleImgs.map((_, i) => (
+                  <div key={i} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === imgIdx ? "bg-white" : "bg-white/40"}`} />
+                ))}
+              </div>
+            </>
           )}
+          {currentImg.annotation && (
+            <div className="absolute bottom-0 left-0 right-0 bg-black/55 text-white text-xs px-2 py-1 text-center">
+              {currentImg.annotation}
+            </div>
+          )}
+        </div>
+      )}
+      <div className="p-3">
+        <div className="flex items-start justify-between gap-1">
+          <div className="min-w-0">
+            <div className="font-semibold text-[#1B2A4A] text-sm truncate">{play.titre}</div>
+            <div className="text-xs font-medium mt-0.5" style={{ color: "#FF6B35" }}>{play.type}</div>
+            {play.description && <div className="text-xs text-[#1B2A4A]/50 mt-0.5 line-clamp-2">{play.description}</div>}
+            {(play.tags || []).length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {(play.tags || []).map(t => (
+                  <span key={t} className="text-xs bg-[#1B2A4A]/8 text-[#1B2A4A]/60 rounded-full px-2 py-0.5">{t}</span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex gap-1 shrink-0 ml-1">
+            {onAddToSession && (
+              <button onClick={e => { e.stopPropagation(); onAddToSession(); }}
+                className="p-1 text-[#FF6B35] hover:bg-[#FF6B35]/10 rounded" title="Ajouter à la séance">
+                <Plus size={14} />
+              </button>
+            )}
+            {onRemove && (
+              confirmDel ? (
+                <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                  <button onClick={() => onRemove()} className="text-xs text-red-600 font-medium px-1">Suppr.</button>
+                  <button onClick={() => setConfirmDel(false)} className="text-xs text-[#1B2A4A]/40 px-1">✕</button>
+                </div>
+              ) : (
+                <button onClick={e => { e.stopPropagation(); setConfirmDel(true); }}
+                  className="p-1 text-[#1B2A4A]/30 hover:text-red-600 rounded">
+                  <Trash2 size={14} />
+                </button>
+              )
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function PlayForm({ onSave, onCancel, initial }) {
+function PlayImageSlot({ img, onChange, onRemove }) {
+  const inputRef = useRef();
+  const [localData, setLocalData] = useState(img.file?.data || null);
+
+  useEffect(() => {
+    if (img.file?.data) { setLocalData(img.file.data); return; }
+    if (!img.hasFile || !img.id) { setLocalData(null); return; }
+    (async () => {
+      try {
+        const r = await storage.get(`playimg:${img.playId}:${img.id}`);
+        if (r) { const p = JSON.parse(r.value); setLocalData(p.data || null); }
+      } catch {}
+    })();
+  }, [img.id, img.file?.data]);
+
+  const handleFile = (f) => {
+    if (!f) return;
+    if (f.size > 4.5 * 1024 * 1024) { alert("Fichier trop lourd (max ~4.5 Mo)."); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const file = { name: f.name, type: f.type, data: reader.result };
+      setLocalData(reader.result);
+      onChange({ ...img, file });
+    };
+    reader.readAsDataURL(f);
+  };
+
+  return (
+    <div className="border border-[#1B2A4A]/20 rounded-lg overflow-hidden bg-white/60">
+      {localData ? (
+        <div className="relative">
+          <img src={localData} alt="" className="w-full h-36 object-cover" />
+          <button onClick={() => { setLocalData(null); onChange({ ...img, file: null, hasFile: false }); }}
+            className="absolute top-1.5 right-1.5 bg-black/50 text-white rounded-full p-0.5 hover:bg-red-600">
+            <X size={14} />
+          </button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => inputRef.current.click()}
+          className="w-full h-24 flex flex-col items-center justify-center gap-1.5 text-[#1B2A4A]/40 hover:text-[#FF6B35] hover:bg-[#FF6B35]/5 transition-colors">
+          <ImageIcon size={20} />
+          <span className="text-xs">Ajouter une image</span>
+        </button>
+      )}
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={e => handleFile(e.target.files?.[0])} />
+      <div className="p-2 flex items-center gap-2">
+        <input value={img.annotation || ""} onChange={e => onChange({ ...img, annotation: e.target.value })}
+          placeholder="Annotation (ex: situation A, variante 1...)"
+          className="flex-1 text-xs border border-[#1B2A4A]/15 rounded px-2 py-1 bg-white/60 focus:outline-none focus:border-[#FF6B35]" />
+        <button onClick={onRemove} className="text-[#1B2A4A]/30 hover:text-red-500 shrink-0"><X size={14} /></button>
+      </div>
+    </div>
+  );
+}
+
+function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
   const [titre, setTitre] = useState(initial?.titre || "");
   const [type, setType] = useState(initial?.type || PLAY_TYPES[0]);
   const [description, setDescription] = useState(initial?.description || "");
   const [notes, setNotes] = useState(initial?.notes || "");
-  const [file, setFile] = useState(initial?.file || null);
+  const [images, setImages] = useState(
+    initial?.images?.map(img => ({ ...img, file: img.hasFile ? { name: img.fileName, type: img.fileType, data: null } : null })) || []
+  );
+  const [selectedTags, setSelectedTags] = useState(initial?.tags || []);
+  const [newTagInput, setNewTagInput] = useState("");
+
+  const addImage = () => setImages(prev => [...prev, { id: uid(), file: null, annotation: "" }]);
+  const updateImage = (id, updated) => setImages(prev => prev.map(img => img.id === id ? updated : img));
+  const removeImage = (id) => setImages(prev => prev.filter(img => img.id !== id));
+
+  const addTag = (tag) => {
+    const trimmed = tag.trim();
+    if (!trimmed) return;
+    if (!playTags.includes(trimmed)) savePlayTags([...playTags, trimmed]);
+    if (!selectedTags.includes(trimmed)) setSelectedTags(prev => [...prev, trimmed]);
+    setNewTagInput("");
+  };
 
   return (
     <div className="space-y-4">
@@ -1576,6 +1694,38 @@ function PlayForm({ onSave, onCancel, initial }) {
         <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Type</div>
         <div className="flex flex-wrap gap-1.5">
           {PLAY_TYPES.map(t => <Tag key={t} active={type === t} onClick={() => setType(t)}>{t}</Tag>)}
+        </div>
+      </div>
+      <div>
+        <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Mots-clés</div>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {playTags.map(t => (
+            <Tag key={t} active={selectedTags.includes(t)} onClick={() => setSelectedTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])} color="orange">{t}</Tag>
+          ))}
+        </div>
+        <input value={newTagInput} onChange={e => setNewTagInput(e.target.value)}
+          placeholder="+ nouveau mot-clé"
+          className="text-xs border border-[#1B2A4A]/20 rounded-full px-2 py-1 w-36 bg-white/60"
+          onKeyDown={e => { if (e.key === "Enter") addTag(newTagInput); }} />
+      </div>
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50">Images ({images.length})</div>
+          <button type="button" onClick={addImage}
+            className="flex items-center gap-1 text-xs text-[#FF6B35] hover:underline font-medium">
+            <Plus size={13} /> Ajouter une image
+          </button>
+        </div>
+        {images.length === 0 && (
+          <button type="button" onClick={addImage}
+            className="w-full border-2 border-dashed border-[#1B2A4A]/20 rounded-lg py-5 flex flex-col items-center gap-1.5 text-[#1B2A4A]/40 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
+            <ImageIcon size={20} /><span className="text-xs">Ajouter des images du système</span>
+          </button>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {images.map(img => (
+            <PlayImageSlot key={img.id} img={img} onChange={updated => updateImage(img.id, updated)} onRemove={() => removeImage(img.id)} />
+          ))}
         </div>
       </div>
       <div className="relative">
@@ -1588,12 +1738,11 @@ function PlayForm({ onSave, onCancel, initial }) {
           className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 pr-9 text-sm bg-white/60" />
         <div className="absolute right-1 top-1"><DictateButton onResult={t => setNotes(prev => prev ? prev + " " + t : t)} /></div>
       </div>
-      <FileDrop file={file} onChange={setFile} />
       <div className="flex justify-end gap-2 pt-2">
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
         <button onClick={() => {
           if (!titre.trim()) { alert("Donne un titre au play."); return; }
-          onSave({ id: initial?.id || uid(), titre, type, description, notes, file, diagram: initial?.diagram, createdAt: initial?.createdAt || new Date().toISOString() });
+          onSave({ id: initial?.id || uid(), titre, type, description, notes, tags: selectedTags, images, diagram: initial?.diagram, createdAt: initial?.createdAt || new Date().toISOString() });
         }} className="px-5 py-2 text-sm font-medium rounded-md bg-[#FF6B35] text-white hover:bg-[#e85a28]">Enregistrer</button>
       </div>
     </div>
@@ -1601,7 +1750,7 @@ function PlayForm({ onSave, onCancel, initial }) {
 }
 
 function CoachingProBoost({ session }) {
-  const { exercises, sessions, themes, teams, activeTeamId, players, plays, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, loaded } = useStore();
+  const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, loaded } = useStore();
   const team = teams.find(t => t.id === activeTeamId) || teams[0] || { nom: "", niveau: "", jours: [], nbJoueurs: 0 };
   const updateTeam = (patch) => {
     if (!team.id) {
@@ -1634,6 +1783,7 @@ function CoachingProBoost({ session }) {
   const [playbookForm, setPlaybookForm] = useState(false);
   const [editingPlay, setEditingPlay] = useState(null);
   const [filterPlayType, setFilterPlayType] = useState([]);
+  const [filterPlayTags, setFilterPlayTags] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
   const [newThemeInput, setNewThemeInput] = useState("");
   const [newTeamOpen, setNewTeamOpen] = useState(false);
@@ -1984,13 +2134,26 @@ function CoachingProBoost({ session }) {
                 <Plus size={16} /> Nouveau play
               </button>
             </div>
-            <div className="flex flex-wrap gap-1.5 mb-5">
-              <span className="text-xs text-[#1B2A4A]/40 mr-1 self-center">Type :</span>
-              {PLAY_TYPES.map(t => (
-                <Tag key={t} active={filterPlayType.includes(t)} onClick={() => setFilterPlayType(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}>{t}</Tag>
-              ))}
+            <div className="space-y-2 mb-5">
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-xs text-[#1B2A4A]/40 mr-1">Type :</span>
+                {PLAY_TYPES.map(t => (
+                  <Tag key={t} active={filterPlayType.includes(t)} onClick={() => setFilterPlayType(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}>{t}</Tag>
+                ))}
+              </div>
+              {playTags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  <span className="text-xs text-[#1B2A4A]/40 mr-1">Mots-clés :</span>
+                  {playTags.map(t => (
+                    <Tag key={t} active={filterPlayTags.includes(t)} onClick={() => setFilterPlayTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])} color="orange">{t}</Tag>
+                  ))}
+                </div>
+              )}
             </div>
-            {plays.filter(p => filterPlayType.length === 0 || filterPlayType.includes(p.type)).length === 0 ? (
+            {plays.filter(p =>
+              (filterPlayType.length === 0 || filterPlayType.includes(p.type)) &&
+              (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t)))
+            ).length === 0 ? (
               <div className="text-center py-16 text-[#1B2A4A]/40">
                 <BookOpen size={40} className="mx-auto mb-3 opacity-30" />
                 <p>Ton Play Book est vide.</p>
@@ -1998,7 +2161,10 @@ function CoachingProBoost({ session }) {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {plays.filter(p => filterPlayType.length === 0 || filterPlayType.includes(p.type)).map(play => (
+                {plays.filter(p =>
+                  (filterPlayType.length === 0 || filterPlayType.includes(p.type)) &&
+                  (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t)))
+                ).map(play => (
                   <PlayCard key={play.id} play={play}
                     onClick={() => { setEditingPlay(play); setPlaybookForm(true); }}
                     onRemove={() => savePlays(plays.filter(p => p.id !== play.id))} />
@@ -2011,7 +2177,7 @@ function CoachingProBoost({ session }) {
         {view === "playbook" && playbookForm && (
           <div className="max-w-xl">
             <h2 className="text-xl font-bold text-[#1B2A4A] mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>{editingPlay ? "MODIFIER LE PLAY" : "NOUVEAU PLAY"}</h2>
-            <PlayForm initial={editingPlay}
+            <PlayForm initial={editingPlay} playTags={playTags} savePlayTags={savePlayTags}
               onSave={(play) => {
                 const next = editingPlay ? plays.map(p => p.id === play.id ? play : p) : [...plays, play];
                 savePlays(next);
