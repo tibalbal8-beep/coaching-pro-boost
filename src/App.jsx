@@ -427,7 +427,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial }) {
         </div>
         <div>
           <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Durée (min)</div>
-          <input type="number" min={1} value={duree} onChange={e => setDuree(Number(e.target.value))} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+          <input type="number" min={1} value={duree} onFocus={e => e.target.select()} onChange={e => setDuree(e.target.value === "" ? "" : Number(e.target.value))} onBlur={e => { if (e.target.value === "" || Number(e.target.value) < 1) setDuree(1); }} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
         </div>
       </div>
       <div className="relative">
@@ -1252,7 +1252,7 @@ function QuickCropForm({ dataUrl, themes, onSave, onCancel }) {
         <div className="flex items-center gap-3">
           <div>
             <label className="text-xs font-medium text-[#1B2A4A]/60 uppercase tracking-wide">Durée</label>
-            <input type="number" value={duree} min={1} onChange={e => setDuree(Number(e.target.value))}
+            <input type="number" value={duree} min={1} onFocus={e => e.target.select()} onChange={e => setDuree(e.target.value === "" ? "" : Number(e.target.value))} onBlur={e => { if (e.target.value === "" || Number(e.target.value) < 1) setDuree(1); }}
               className="mt-1 w-20 border border-[#1B2A4A]/20 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#FF6B35]" />
           </div>
           <span className="text-sm text-[#1B2A4A]/50 mt-5">min</span>
