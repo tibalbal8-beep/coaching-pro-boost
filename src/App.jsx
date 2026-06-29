@@ -2551,6 +2551,12 @@ function CoachingProBoost({ session }) {
                     <div className="flex items-center gap-3 mb-3">
                       <div className="h-px flex-1 bg-[#1B2A4A]/10" />
                       <span className="font-bold text-[#1B2A4A] text-sm uppercase tracking-wider px-2">{t.nom || "Sans équipe"}{t.niveau ? ` — ${t.niveau}` : ""}</span>
+                      {t.id && (
+                        <button onClick={() => { if (window.confirm(`Supprimer l'équipe "${t.nom}" ?`)) deleteTeam(t.id); }}
+                          className="text-[#1B2A4A]/25 hover:text-red-500 transition-colors" title="Supprimer l'équipe">
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                       <div className="h-px flex-1 bg-[#1B2A4A]/10" />
                     </div>
                     {tSessions.length === 0 ? (
