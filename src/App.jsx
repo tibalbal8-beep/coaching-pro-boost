@@ -4,7 +4,7 @@ import { storage, supabase } from "./storage";
 
 const DEFAULT_THEMES = ["Démarquage","Pick and Roll","Transition","Défense individuelle","Défense collective","Tir","Finition","Rebond","Jeu sans ballon","Sortie de balle"];
 const PHASES = ["Échauffement","Préparation physique","Technique individuelle","Collectif","Fin de séance"];
-const FORMATS = ["1c0","1c1","2c1","2c2","3c2","3c3","4c4","5c5"];
+const FORMATS = ["1c0","1c1","2c1","2c2","3c1","3c2","3c3","4c1","4c2","4c3","4c4","5c3","5c4","5c5","2c1+1","3c2+1","4c3+1","5c4+1"];
 const CATEGORIES = ["U11","U13","U15","U17","U18","U20","Seniors"];
 const NIVEAUX = ["Débutant","Intermédiaire","Confirmé"];
 const JOURS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
@@ -1485,6 +1485,7 @@ function CoachingProBoost({ session }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [filterTheme, setFilterTheme] = useState([]);
+  const [filterFormat, setFilterFormat] = useState([]);
   const [filterPhase, setFilterPhase] = useState([]);
   const [filterCategorie, setFilterCategorie] = useState([]);
   const [showForm, setShowForm] = useState(false);
@@ -1499,6 +1500,7 @@ function CoachingProBoost({ session }) {
 
   const filtered = exercises.filter(ex =>
     (filterTheme.length === 0 || filterTheme.every(t => ex.themes?.includes(t))) &&
+    (filterFormat.length === 0 || filterFormat.includes(ex.format)) &&
     (filterPhase.length === 0 || filterPhase.every(p => ex.phases?.includes(p))) &&
     (filterCategorie.length === 0 || filterCategorie.includes(ex.categorie))
   );
@@ -1781,6 +1783,10 @@ function CoachingProBoost({ session }) {
                   <input value={newThemeInput} onChange={e => setNewThemeInput(e.target.value)} placeholder="+ ajouter un thème" className="text-xs border border-[#1B2A4A]/20 rounded-full px-2 py-1 w-32 bg-white/60"
                     onKeyDown={e => { if (e.key === "Enter" && newThemeInput.trim()) { saveThemes([...themes, newThemeInput.trim()]); setNewThemeInput(""); } }} />
                 </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-xs text-[#1B2A4A]/40 mr-1">Opposition :</span>
+                {FORMATS.map(f => <Tag key={f} active={filterFormat.includes(f)} onClick={() => toggleFilter(filterFormat, setFilterFormat, f)}>{f}</Tag>)}
               </div>
               <div className="flex flex-wrap gap-1.5 items-center">
                 <span className="text-xs text-[#1B2A4A]/40 mr-1">Phase :</span>
