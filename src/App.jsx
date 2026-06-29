@@ -1198,6 +1198,33 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
   );
 }
 
+function MonthRow({ month, monthSessions, totalDuree, onOpen, onRename, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const totalMin = monthSessions.reduce((sum, s) => sum + totalDuree(s), 0);
+  return (
+    <div>
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-white/70 border border-[#1B2A4A]/15 hover:shadow-md transition-shadow text-left">
+        <span className="font-semibold text-[#1B2A4A] capitalize">{month}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-[#1B2A4A]/50">{monthSessions.length} séance{monthSessions.length > 1 ? "s" : ""} · {totalMin} min</span>
+          <ChevronRight size={16} className={`text-[#1B2A4A]/30 transition-transform ${open ? "rotate-90" : ""}`} />
+        </div>
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-1.5 pl-3 border-l-2 ml-4" style={{ borderColor: "#FF6B35" + "33" }}>
+          {monthSessions.map(s => (
+            <SessionRow key={s.id} s={s} totalDuree={totalDuree(s)}
+              onOpen={() => onOpen(s)}
+              onRename={(titre) => onRename(s, titre)}
+              onDelete={() => onDelete(s)} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SessionRow({ s, totalDuree, onOpen, onRename, onDelete }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(s.titre);
@@ -1962,51 +1989,54 @@ function CoachingProBoost({ session }) {
         {view === "sessions" && !reviewItems && (
           <>
             <div className="flex items-center justify-between mb-5">
-              <div>
-                <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>SÉANCES</h2>
-                <p className="text-xs text-[#1B2A4A]/40">{team.nom ? `Équipe : ${team.nom}` : "Aucune équipe sélectionnée"}</p>
-              </div>
+              <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>SÉANCES</h2>
               <div className="flex gap-2">
-                <input ref={importInputRef} type="file" accept="application/pdf,image/*" multiple className="hidden" onChange={e => handleImportFiles(e.target.files)} />
                 <button onClick={() => setView("draw")} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 text-[#1B2A4A] px-4 py-2 rounded-md text-sm font-medium hover:bg-[#1B2A4A]/5"><Pencil size={16} /> Dessiner une fiche</button>
-                {/* Import IA désactivé temporairement — nécessite clé API Anthropic */}
                 <button onClick={newSession} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvelle séance</button>
               </div>
             </div>
 
-            {importing && (
-              <div className="mb-6 border border-[#FF6B35]/30 bg-[#FF6B35]/5 rounded-lg p-4 flex items-center gap-3 text-sm text-[#1B2A4A]">
-                <Loader2 size={18} className="animate-spin text-[#FF6B35]" />
-                {importing.status === "rendering" && "Lecture du PDF..."}
-                {importing.status === "extracting" && `Analyse des exercices : page ${importing.progress}/${importing.total}`}
-              </div>
-            )}
-
             {sessions.length === 0 ? (
               <div className="text-center py-16 text-[#1B2A4A]/40">Aucune séance pour l'instant.</div>
             ) : (
-              <>
-                <div className="flex flex-wrap gap-1.5 mb-6">
-                  {seasonsList.map(s => <Tag key={s} active={currentSeason === s} onClick={() => setSelectedSeason(s)}>{s}</Tag>)}
-                </div>
-                {Object.keys(monthGroups).length === 0 ? (
-                  <div className="text-center py-16 text-[#1B2A4A]/40">Aucune séance sur cette saison.</div>
-                ) : (
-                  Object.entries(monthGroups).map(([monthLabel, monthSessions]) => (
-                    <div key={monthLabel} className="mb-6">
-                      <h3 className="text-xs uppercase tracking-widest text-[#FF6B35] font-semibold mb-2">{monthLabel}</h3>
-                      <div className="space-y-2">
-                        {monthSessions.map(s => (
-                          <SessionRow key={s.id} s={s} totalDuree={totalDuree(s)}
-                            onOpen={() => { setActiveSession(s); setView("session"); }}
-                            onRename={(titre) => saveSessions(sessions.map(x => x.id === s.id ? { ...x, titre } : x))}
-                            onDelete={() => saveSessions(sessions.filter(x => x.id !== s.id))} />
-                        ))}
+              <div className="space-y-8">
+                {[...teams, ...(sessions.some(s => !s.teamId) ? [{ id: null, nom: "Sans équipe", niveau: "" }] : [])].map(t => {
+                  const tSessions = sessions.filter(s => (s.teamId || null) === (t.id || null));
+                  if (tSessions.length === 0) return null;
+                  const tSeasons = [...new Set(tSessions.map(s => getSeason(s.date)))].sort().reverse();
+                  return (
+                    <div key={t.id || "no-team"}>
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="h-px flex-1 bg-[#1B2A4A]/10" />
+                        <span className="font-bold text-[#1B2A4A] text-sm uppercase tracking-wider px-2">{t.nom || "Sans équipe"}{t.niveau ? ` — ${t.niveau}` : ""}</span>
+                        <div className="h-px flex-1 bg-[#1B2A4A]/10" />
                       </div>
+                      {tSeasons.map(season => {
+                        const sSessions = tSessions.filter(s => getSeason(s.date) === season).sort((a, b) => new Date(b.date) - new Date(a.date));
+                        const mGroups = sSessions.reduce((acc, s) => {
+                          const d = new Date(s.date);
+                          const label = isNaN(d) ? "Sans date" : `${MOIS_FR[d.getMonth()]} ${d.getFullYear()}`;
+                          (acc[label] = acc[label] || []).push(s);
+                          return acc;
+                        }, {});
+                        return (
+                          <div key={season} className="mb-4">
+                            <div className="text-xs text-[#FF6B35] uppercase tracking-widest font-semibold mb-2 ml-1">{season}</div>
+                            <div className="space-y-1.5">
+                              {Object.entries(mGroups).map(([month, mSessions]) => (
+                                <MonthRow key={month} month={month} monthSessions={mSessions} totalDuree={totalDuree}
+                                  onOpen={(s) => { setActiveSession(s); setView("session"); }}
+                                  onRename={(s, titre) => saveSessions(sessions.map(x => x.id === s.id ? { ...x, titre } : x))}
+                                  onDelete={(s) => saveSessions(sessions.filter(x => x.id !== s.id))} />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))
-                )}
-              </>
+                  );
+                })}
+              </div>
             )}
           </>
         )}
