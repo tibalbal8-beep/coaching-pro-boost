@@ -1661,10 +1661,10 @@ function CoachingProBoost({ session }) {
                 <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>BIBLIOTHÈQUE D'EXERCICES</h2>
                 <p className="text-sm text-[#1B2A4A]/50">{exercises.length} exercice{exercises.length !== 1 ? "s" : ""} enregistré{exercises.length !== 1 ? "s" : ""}</p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input ref={cropInputRef} type="file" accept="image/*" className="hidden" onChange={handleCropFile} />
-                <button onClick={() => cropInputRef.current.click()} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 text-[#1B2A4A] px-4 py-2 rounded-md text-sm font-medium hover:bg-[#1B2A4A]/5"><ImageIcon size={16} /> Rogner une photo</button>
-                <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvel exercice</button>
+                <button onClick={() => cropInputRef.current.click()} className="flex items-center justify-center gap-1.5 border border-[#1B2A4A]/20 text-[#1B2A4A] px-3 py-2 rounded-md text-sm font-medium hover:bg-[#1B2A4A]/5"><ImageIcon size={16} /> Rogner une photo</button>
+                <button onClick={() => setShowForm(true)} className="flex items-center justify-center gap-1.5 bg-[#FF6B35] text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvel exercice</button>
               </div>
             </div>
 
