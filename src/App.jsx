@@ -2689,10 +2689,26 @@ function CoachingProBoost({ session }) {
               })}
             </div>
             <div className="no-print">
-              <h3 className="text-sm font-semibold text-[#1B2A4A]/60 uppercase tracking-wide mb-3">Ajouter depuis la bibliothèque</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {exercises.filter(e => !activeSession.exerciseIds.includes(e.id)).map((ex, i) => <ExerciseCard key={ex.id} ex={ex} index={i} onClick={() => addToSession(ex.id)} />)}
-              </div>
+              {(() => {
+                const sessionThemes = activeSession.themes || [];
+                const notInSession = exercises.filter(e => !activeSession.exerciseIds.includes(e.id));
+                const suggested = sessionThemes.length > 0
+                  ? notInSession.filter(e => (e.themes || []).some(t => sessionThemes.includes(t))).slice(0, 5)
+                  : notInSession.slice(0, 5);
+                return (
+                  <>
+                    <h3 className="text-sm font-semibold text-[#1B2A4A]/60 uppercase tracking-wide mb-1">Suggestions</h3>
+                    {sessionThemes.length > 0 && <p className="text-xs text-[#1B2A4A]/40 mb-3">Exercices avec les mêmes thèmes que cette séance</p>}
+                    {suggested.length === 0 ? (
+                      <p className="text-xs text-[#1B2A4A]/40 mb-3">Aucune suggestion — tous les exercices sont déjà dans la séance.</p>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {suggested.map((ex, i) => <ExerciseCard key={ex.id} ex={ex} index={i} onClick={() => addToSession(ex.id)} />)}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
             {plays.length > 0 && (
