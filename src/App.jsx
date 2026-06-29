@@ -1549,7 +1549,7 @@ function PlayCard({ play, onClick, onRemove, onAddToSession }) {
     <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 overflow-hidden cursor-pointer hover:border-[#FF6B35]/50 transition-all" onClick={onClick}>
       {visibleImgs.length > 0 && (
         <div className="relative select-none">
-          <img src={currentImg.data} alt="" className="w-full h-36 object-cover" />
+          <img src={currentImg.data} alt="" className="w-full h-48 object-contain bg-white" />
           {visibleImgs.length > 1 && (
             <>
               <button onClick={e => { e.stopPropagation(); setImgIdx(i => (i - 1 + visibleImgs.length) % visibleImgs.length); }}
@@ -1646,7 +1646,7 @@ function PlayImageSlot({ img, onChange, onRemove }) {
     <div className="border border-[#1B2A4A]/20 rounded-lg overflow-hidden bg-white/60">
       {localData ? (
         <div className="relative">
-          <img src={localData} alt="" className="w-full h-36 object-cover" />
+          <img src={localData} alt="" className="w-full h-36 object-contain bg-white" />
           <button onClick={() => { setLocalData(null); onChange({ ...img, file: null, hasFile: false }); }}
             className="absolute top-1.5 right-1.5 bg-black/50 text-white rounded-full p-0.5 hover:bg-red-600">
             <X size={14} />
