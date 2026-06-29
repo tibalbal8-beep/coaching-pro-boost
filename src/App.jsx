@@ -1428,6 +1428,7 @@ function AuthScreen() {
           </div>
           <h1 className="font-bold text-[#1B2A4A] text-xl leading-tight" style={{ fontFamily: "Oswald, sans-serif" }}>COACHING PRO BOOST</h1>
         </div>
+        <p className="text-sm text-[#1B2A4A]/60 mb-6 leading-relaxed">Centralisez vos exercices, construisez vos meilleures séances, partagez votre expertise avec vos collègues — et faites performer votre équipe toute la saison.</p>
         <h2 className="text-lg font-semibold text-[#1B2A4A] mb-6">{mode === "login" ? "Connexion" : "Créer un compte"}</h2>
         {message && <div className="mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">{message}</div>}
         {error && <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div>}
