@@ -1217,6 +1217,121 @@ function SessionRow({ s, totalDuree, onOpen, onRename }) {
   );
 }
 
+function CropPhotoView({ imageData, onCancel, onCrop }) {
+  const canvasRef = useRef();
+  const imgRef = useRef(null);
+  const scaleRef = useRef(1);
+  const dragging = useRef(false);
+  const startRef = useRef({ x: 0, y: 0 });
+  const [cropRect, setCropRect] = useState(null);
+
+  const normalizeRect = (r) => ({
+    x: Math.min(r.x, r.x + r.w), y: Math.min(r.y, r.y + r.h),
+    w: Math.abs(r.w), h: Math.abs(r.h),
+  });
+
+  const redraw = useCallback((r) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !imgRef.current) return;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(imgRef.current, 0, 0, canvas.width, canvas.height);
+    if (r && (Math.abs(r.w) > 2 || Math.abs(r.h) > 2)) {
+      const nr = normalizeRect(r);
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const s = scaleRef.current;
+      ctx.drawImage(imgRef.current, nr.x / s, nr.y / s, nr.w / s, nr.h / s, nr.x, nr.y, nr.w, nr.h);
+      ctx.strokeStyle = "#FF6B35";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 4]);
+      ctx.strokeRect(nr.x, nr.y, nr.w, nr.h);
+    }
+  }, []);
+
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      imgRef.current = img;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const maxW = canvas.parentElement.clientWidth - 16;
+      const maxH = window.innerHeight * 0.72;
+      const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+      scaleRef.current = scale;
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      redraw(null);
+    };
+    img.src = imageData;
+  }, [imageData, redraw]);
+
+  const getPos = (e) => {
+    const canvas = canvasRef.current;
+    const bounds = canvas.getBoundingClientRect();
+    const touch = e.touches ? e.touches[0] : e;
+    return {
+      x: (touch.clientX - bounds.left) * (canvas.width / bounds.width),
+      y: (touch.clientY - bounds.top) * (canvas.height / bounds.height),
+    };
+  };
+
+  const onPointerDown = (e) => {
+    e.preventDefault();
+    const pos = getPos(e);
+    startRef.current = pos;
+    dragging.current = true;
+    const r = { ...pos, w: 0, h: 0 };
+    setCropRect(r);
+    redraw(r);
+  };
+
+  const onPointerMove = (e) => {
+    if (!dragging.current) return;
+    e.preventDefault();
+    const pos = getPos(e);
+    const r = { x: startRef.current.x, y: startRef.current.y, w: pos.x - startRef.current.x, h: pos.y - startRef.current.y };
+    setCropRect(r);
+    redraw(r);
+  };
+
+  const onPointerUp = () => { dragging.current = false; };
+
+  const handleCrop = () => {
+    if (!cropRect || Math.abs(cropRect.w) < 10 || Math.abs(cropRect.h) < 10) return;
+    const nr = normalizeRect(cropRect);
+    const s = scaleRef.current;
+    const out = document.createElement("canvas");
+    out.width = Math.round(nr.w / s);
+    out.height = Math.round(nr.h / s);
+    out.getContext("2d").drawImage(imgRef.current, nr.x / s, nr.y / s, nr.w / s, nr.h / s, 0, 0, out.width, out.height);
+    onCrop(out.toDataURL("image/jpeg", 0.85));
+  };
+
+  const canCrop = cropRect && Math.abs(cropRect.w) > 10 && Math.abs(cropRect.h) > 10;
+
+  return (
+    <div className="fixed inset-0 z-[200] flex flex-col" style={{ backgroundColor: "#1B2A4A" }}>
+      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0">
+        <button onClick={onCancel} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><X size={18} /> Annuler</button>
+        <span className="text-white font-medium text-sm">Trace un rectangle autour de l'exercice</span>
+        <button onClick={handleCrop} disabled={!canCrop}
+          className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white transition-opacity"
+          style={{ backgroundColor: canCrop ? "#FF6B35" : "#FF6B35", opacity: canCrop ? 1 : 0.4 }}>
+          Rogner
+        </button>
+      </div>
+      <div className="flex-1 flex items-center justify-center overflow-hidden px-2 pb-4">
+        <canvas ref={canvasRef}
+          style={{ touchAction: "none", cursor: "crosshair", maxWidth: "100%", display: "block" }}
+          onMouseDown={onPointerDown} onMouseMove={onPointerMove} onMouseUp={onPointerUp}
+          onTouchStart={onPointerDown} onTouchMove={onPointerMove} onTouchEnd={onPointerUp}
+        />
+      </div>
+    </div>
+  );
+}
+
 function AuthScreen() {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
@@ -1398,6 +1513,29 @@ function CoachingProBoost({ session }) {
   const statsThemeRows = Object.entries(statsThemeMin).sort((a, b) => b[1] - a[1]);
 
   const [drawProcessing, setDrawProcessing] = useState(false);
+  const [cropImage, setCropImage] = useState(null);
+  const cropInputRef = useRef();
+
+  const handleCropFile = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => { setCropImage(reader.result); setView("crop"); };
+    reader.readAsDataURL(f);
+    e.target.value = "";
+  };
+
+  const handleCropDone = (dataUrl) => {
+    const ex = {
+      id: uid(), titre: "Exercice rogné " + new Date().toLocaleDateString("fr-FR"),
+      themes: [], phases: [], format: FORMATS[0], niveau: NIVEAUX[1], categorie: "",
+      duree: 10, objectif: "", notes: "",
+      file: { name: "exercice-rogné.jpg", type: "image/jpeg", data: dataUrl },
+    };
+    saveExercises([...exercises, ex]);
+    setCropImage(null);
+    setView("library");
+  };
   const addDrawnSheetDirect = (dataUrl) => {
     const ex = {
       id: uid(), titre: "Fiche dessinée " + new Date().toLocaleDateString("fr-FR"),
@@ -1523,7 +1661,11 @@ function CoachingProBoost({ session }) {
                 <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>BIBLIOTHÈQUE D'EXERCICES</h2>
                 <p className="text-sm text-[#1B2A4A]/50">{exercises.length} exercice{exercises.length !== 1 ? "s" : ""} enregistré{exercises.length !== 1 ? "s" : ""}</p>
               </div>
-              <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvel exercice</button>
+              <div className="flex gap-2">
+                <input ref={cropInputRef} type="file" accept="image/*" className="hidden" onChange={handleCropFile} />
+                <button onClick={() => cropInputRef.current.click()} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 text-[#1B2A4A] px-4 py-2 rounded-md text-sm font-medium hover:bg-[#1B2A4A]/5"><ImageIcon size={16} /> Rogner une photo</button>
+                <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvel exercice</button>
+              </div>
             </div>
 
             {addBanner && (
@@ -1694,6 +1836,10 @@ function CoachingProBoost({ session }) {
               </>
             )}
           </div>
+        )}
+
+        {view === "crop" && cropImage && (
+          <CropPhotoView imageData={cropImage} onCancel={() => { setCropImage(null); setView("library"); }} onCrop={handleCropDone} />
         )}
 
         {view === "draw" && (
