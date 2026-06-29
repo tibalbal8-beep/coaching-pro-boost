@@ -1980,18 +1980,36 @@ function CoachingProBoost({ session }) {
       return acc;
     }, {});
 
-  const [statsMonth, setStatsMonth] = useState(null);
-  const statsMonthLabels = Object.keys(monthGroups);
-  const currentStatsMonth = statsMonth && statsMonthLabels.includes(statsMonth) ? statsMonth : statsMonthLabels[0];
-  const statsSessions = monthGroups[currentStatsMonth] || [];
+  // Stats filters (independent from sessions view)
+  const [statsTeamFilter, setStatsTeamFilter] = useState("all");
+  const [statsSeasonFilter, setStatsSeasonFilter] = useState(null);
+  const [statsMonthFilter, setStatsMonthFilter] = useState(null);
+  const [statsCatFilter, setStatsCatFilter] = useState([]);
+
+  const statsBaseSessions = statsTeamFilter === "all" ? sessions : sessions.filter(s => s.teamId === statsTeamFilter);
+  const statsSeasons = [...new Set(statsBaseSessions.map(s => getSeason(s.date)))].sort().reverse();
+  const statsActiveSeason = statsSeasonFilter && statsSeasons.includes(statsSeasonFilter) ? statsSeasonFilter : statsSeasons[0];
+  const statsSeasonSessions = statsActiveSeason ? statsBaseSessions.filter(s => getSeason(s.date) === statsActiveSeason) : statsBaseSessions;
+  const statsMonthGroups = [...statsSeasonSessions].sort((a, b) => new Date(b.date) - new Date(a.date)).reduce((acc, s) => {
+    const d = new Date(s.date);
+    const label = isNaN(d) ? "Sans date" : `${MOIS_FR[d.getMonth()]} ${d.getFullYear()}`;
+    (acc[label] = acc[label] || []).push(s);
+    return acc;
+  }, {});
+  const statsMonthLabels = Object.keys(statsMonthGroups);
+  const statsActiveMonth = statsMonthFilter && statsMonthLabels.includes(statsMonthFilter) ? statsMonthFilter : null;
+  const statsSessions = statsActiveMonth ? statsMonthGroups[statsActiveMonth] : statsSeasonSessions;
   const statsTotalMin = statsSessions.reduce((sum, s) => sum + totalDuree(s), 0);
   const statsThemeMin = {};
   statsSessions.forEach(s => s.exerciseIds.forEach(id => {
     const ex = exercises.find(e => e.id === id);
     if (!ex) return;
+    if (statsCatFilter.length > 0 && !statsCatFilter.includes(ex.categorie)) return;
     (ex.themes || []).forEach(t => { statsThemeMin[t] = (statsThemeMin[t] || 0) + (ex.duree || 0); });
   }));
   const statsThemeRows = Object.entries(statsThemeMin).sort((a, b) => b[1] - a[1]);
+  const statsAvgMin = statsSessions.length ? Math.round(statsTotalMin / statsSessions.length) : 0;
+  const statsExCount = statsSessions.reduce((sum, s) => sum + s.exerciseIds.length, 0);
 
   const [drawProcessing, setDrawProcessing] = useState(false);
   const [cropImage, setCropImage] = useState(null);
@@ -2378,37 +2396,69 @@ function CoachingProBoost({ session }) {
 
         {view === "stats" && (
           <div className="max-w-2xl">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>STATISTIQUES</h2>
-            </div>
-            <p className="text-xs text-[#1B2A4A]/40 mb-5">{team.nom ? `Équipe : ${team.nom}` : "Aucune équipe sélectionnée"} · Saison {currentSeason || "—"}</p>
+            <h2 className="text-2xl font-bold text-[#1B2A4A] mb-5" style={{ fontFamily: "Oswald, sans-serif" }}>STATISTIQUES</h2>
 
-            {statsMonthLabels.length === 0 ? (
-              <div className="text-center py-16 text-[#1B2A4A]/40">Aucune séance enregistrée sur cette saison.</div>
+            <div className="space-y-2 mb-6">
+              {teams.length > 1 && (
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  <span className="text-xs text-[#1B2A4A]/40 w-20">Équipe :</span>
+                  <Tag active={statsTeamFilter === "all"} onClick={() => { setStatsTeamFilter("all"); setStatsSeasonFilter(null); setStatsMonthFilter(null); }}>Toutes</Tag>
+                  {teams.map(t => (
+                    <Tag key={t.id} active={statsTeamFilter === t.id} onClick={() => { setStatsTeamFilter(t.id); setStatsSeasonFilter(null); setStatsMonthFilter(null); }}>{t.nom || "Sans nom"}</Tag>
+                  ))}
+                </div>
+              )}
+              {statsSeasons.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  <span className="text-xs text-[#1B2A4A]/40 w-20">Saison :</span>
+                  {statsSeasons.map(s => (
+                    <Tag key={s} active={statsActiveSeason === s} onClick={() => { setStatsSeasonFilter(s); setStatsMonthFilter(null); }}>{s}</Tag>
+                  ))}
+                </div>
+              )}
+              {statsMonthLabels.length > 1 && (
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  <span className="text-xs text-[#1B2A4A]/40 w-20">Mois :</span>
+                  <Tag active={!statsActiveMonth} onClick={() => setStatsMonthFilter(null)}>Toute la saison</Tag>
+                  {statsMonthLabels.map(m => (
+                    <Tag key={m} active={statsActiveMonth === m} onClick={() => setStatsMonthFilter(m)}>{m}</Tag>
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-xs text-[#1B2A4A]/40 w-20">Catégorie :</span>
+                {CATEGORIES.map(c => (
+                  <Tag key={c} active={statsCatFilter.includes(c)} onClick={() => setStatsCatFilter(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c])}>{c}</Tag>
+                ))}
+              </div>
+            </div>
+
+            {statsSessions.length === 0 ? (
+              <div className="text-center py-16 text-[#1B2A4A]/40">Aucune séance pour ces filtres.</div>
             ) : (
               <>
-                <div className="flex flex-wrap gap-1.5 mb-6">
-                  {statsMonthLabels.map(m => <Tag key={m} active={currentStatsMonth === m} onClick={() => setStatsMonth(m)}>{m}</Tag>)}
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-4 text-center">
-                    <div className="text-3xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>{statsSessions.length}</div>
-                    <div className="text-xs text-[#1B2A4A]/50 uppercase tracking-wide mt-1">Entraînement{statsSessions.length !== 1 ? "s" : ""}</div>
-                  </div>
-                  <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-4 text-center">
-                    <div className="text-3xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>{Math.floor(statsTotalMin / 60)}h{String(statsTotalMin % 60).padStart(2, "0")}</div>
-                    <div className="text-xs text-[#1B2A4A]/50 uppercase tracking-wide mt-1">Temps total</div>
-                  </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                  {[
+                    { label: "Séances", value: statsSessions.length },
+                    { label: "Temps total", value: `${Math.floor(statsTotalMin / 60)}h${String(statsTotalMin % 60).padStart(2, "0")}` },
+                    { label: "Moy. min/séance", value: statsAvgMin },
+                    { label: "Exercices", value: statsExCount },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-4 text-center">
+                      <div className="text-3xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>{value}</div>
+                      <div className="text-xs text-[#1B2A4A]/50 uppercase tracking-wide mt-1">{label}</div>
+                    </div>
+                  ))}
                 </div>
 
                 <h3 className="text-sm font-semibold text-[#1B2A4A]/70 uppercase tracking-wide mb-3">Répartition par thème</h3>
                 {statsThemeRows.length === 0 ? (
-                  <p className="text-sm text-[#1B2A4A]/40">Aucun exercice catégorisé par thème ce mois-ci.</p>
+                  <p className="text-sm text-[#1B2A4A]/40">Aucun exercice catégorisé par thème.</p>
                 ) : (
                   <div className="space-y-3">
                     {statsThemeRows.map(([t, min]) => {
-                      const pct = statsTotalMin ? Math.round((min / statsTotalMin) * 100) : 0;
+                      const themeTotal = statsThemeRows.reduce((s, [, m]) => s + m, 0);
+                      const pct = themeTotal ? Math.round((min / themeTotal) * 100) : 0;
                       const h = Math.floor(min / 60), m = min % 60;
                       return (
                         <div key={t}>
