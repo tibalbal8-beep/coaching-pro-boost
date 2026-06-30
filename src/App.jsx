@@ -54,6 +54,7 @@ function useStore() {
   const [players, setPlayers] = useState([]);
   const [plays, setPlays] = useState([]);
   const [playTags, setPlayTags] = useState([]);
+  const [clubLogo, setClubLogo] = useState(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -70,6 +71,7 @@ function useStore() {
       try { const pl = await storage.get("players"); setPlayers(pl ? JSON.parse(pl.value) : []); } catch {}
       try { const pb = await storage.get("plays"); setPlays(pb ? JSON.parse(pb.value) : []); } catch {}
       try { const pt = await storage.get("playTags"); setPlayTags(pt ? JSON.parse(pt.value) : []); } catch {}
+      try { const cl = await storage.get("clubLogo"); if (cl) setClubLogo(cl.value); } catch {}
       setLoaded(true);
     })();
   }, []);
@@ -114,8 +116,9 @@ function useStore() {
     persist("plays", JSON.stringify(stripped));
   };
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
+  const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, loaded };
+  return { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded };
 }
 
 function usePdfJs() {
@@ -2419,7 +2422,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
 }
 
 function CoachingProBoost({ session }) {
-  const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, loaded } = useStore();
+  const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded } = useStore();
   const toast = useToast();
   const team = teams.find(t => t.id === activeTeamId) || teams[0] || { nom: "", niveau: "", jours: [], nbJoueurs: 0 };
   const updateTeam = (patch) => {
@@ -2744,6 +2747,29 @@ function CoachingProBoost({ session }) {
               );
             })}
             <div className="mt-auto pt-4 border-t border-[#1B2A4A]/10">
+              {/* Logo du club */}
+              <div className="px-3 py-2 flex items-center gap-2">
+                {clubLogo ? (
+                  <img src={clubLogo} alt="Logo" className="w-9 h-9 rounded object-contain border border-[#1B2A4A]/10 bg-white" />
+                ) : (
+                  <div className="w-9 h-9 rounded border-2 border-dashed border-[#1B2A4A]/20 flex items-center justify-center text-[#1B2A4A]/30">
+                    <ImageIcon size={16} />
+                  </div>
+                )}
+                <div className="flex flex-col gap-0.5">
+                  <label className="text-xs text-[#FF6B35] cursor-pointer hover:underline font-medium">
+                    {clubLogo ? "Changer le logo" : "Ajouter le logo du club"}
+                    <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const dataUrl = await readImageAsJpeg(file, 300, 0.9);
+                      await saveClubLogo(dataUrl);
+                      e.target.value = "";
+                    }} />
+                  </label>
+                  {clubLogo && <button onClick={() => saveClubLogo(null)} className="text-xs text-[#1B2A4A]/30 hover:text-red-500 text-left">Supprimer</button>}
+                </div>
+              </div>
               <div className="px-3 py-1 text-xs text-[#1B2A4A]/40 truncate">{session?.user?.email}</div>
               <button onClick={() => supabase.auth.signOut()}
                 className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-left text-[#1B2A4A]/60 hover:bg-red-50 hover:text-red-600 transition-colors w-full mt-1">
@@ -3181,8 +3207,14 @@ function CoachingProBoost({ session }) {
               <button onClick={() => setViewPersist("sessions")} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Retour aux séances</button>
               <button onClick={() => downloadSessionHTML(activeSession, exercises)} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Télécharger pour impression</button>
             </div>
-            <input value={activeSession.titre} onChange={e => updateSession({ ...activeSession, titre: e.target.value })} className="text-2xl font-bold text-[#1B2A4A] bg-transparent border-b-2 border-transparent focus:border-[#FF6B35] outline-none mb-1 w-full" style={{ fontFamily: "Oswald, sans-serif" }} />
-            <input type="date" value={activeSession.date} onChange={e => updateSession({ ...activeSession, date: e.target.value })} className="text-sm text-[#1B2A4A]/60 bg-transparent outline-none mb-3" />
+            <div className="flex items-start gap-4 mb-1">
+              {clubLogo && <img src={clubLogo} alt="Logo club" className="w-16 h-16 object-contain flex-shrink-0 rounded" />}
+              <div className="flex-1 min-w-0">
+                <input value={activeSession.titre} onChange={e => updateSession({ ...activeSession, titre: e.target.value })} className="text-2xl font-bold text-[#1B2A4A] bg-transparent border-b-2 border-transparent focus:border-[#FF6B35] outline-none w-full" style={{ fontFamily: "Oswald, sans-serif" }} />
+                <input type="date" value={activeSession.date} onChange={e => updateSession({ ...activeSession, date: e.target.value })} className="text-sm text-[#1B2A4A]/60 bg-transparent outline-none mt-1" />
+              </div>
+            </div>
+            <div className="mb-3" />
             <div className="mb-6 no-print">
               <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Thèmes de la séance</div>
               <div className="flex flex-wrap gap-1.5">
