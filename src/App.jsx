@@ -995,7 +995,84 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
 
   const drawPlayerToken = (ctx, t) => {
     const r = 16;
-    if (t.role === "defender") {
+    ctx.save();
+
+    if (t.kind === "plot") {
+      // Cone orange
+      const h = 28, w = 22;
+      ctx.beginPath();
+      ctx.moveTo(t.x, t.y - h / 2);
+      ctx.lineTo(t.x - w / 2, t.y + h / 2);
+      ctx.lineTo(t.x + w / 2, t.y + h / 2);
+      ctx.closePath();
+      ctx.fillStyle = "#FF6B35";
+      ctx.fill();
+      ctx.strokeStyle = "#c0440a";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      // bande blanche
+      ctx.beginPath();
+      ctx.moveTo(t.x - w * 0.28, t.y + h * 0.12);
+      ctx.lineTo(t.x + w * 0.28, t.y + h * 0.12);
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    } else if (t.kind === "chaise") {
+      const s = 18;
+      ctx.strokeStyle = "#5a3e2b";
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      // assise
+      ctx.beginPath();
+      ctx.moveTo(t.x - s / 2, t.y);
+      ctx.lineTo(t.x + s / 2, t.y);
+      ctx.stroke();
+      // dossier
+      ctx.beginPath();
+      ctx.moveTo(t.x + s / 2, t.y);
+      ctx.lineTo(t.x + s / 2, t.y - s * 0.8);
+      ctx.stroke();
+      // pied avant
+      ctx.beginPath();
+      ctx.moveTo(t.x - s / 2, t.y);
+      ctx.lineTo(t.x - s / 2, t.y + s * 0.7);
+      ctx.stroke();
+      // pied arrière
+      ctx.beginPath();
+      ctx.moveTo(t.x + s / 2, t.y);
+      ctx.lineTo(t.x + s / 2, t.y + s * 0.7);
+      ctx.stroke();
+    } else if (t.kind === "rack") {
+      const rw = 36, rh = 12, bR = 6;
+      // structure du rack (rectangle)
+      ctx.strokeStyle = "#555";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(t.x - rw / 2, t.y - rh / 2, rw, rh);
+      // pieds
+      ctx.beginPath();
+      ctx.moveTo(t.x - rw / 2 + 4, t.y + rh / 2);
+      ctx.lineTo(t.x - rw / 2 + 4, t.y + rh / 2 + 8);
+      ctx.moveTo(t.x + rw / 2 - 4, t.y + rh / 2);
+      ctx.lineTo(t.x + rw / 2 - 4, t.y + rh / 2 + 8);
+      ctx.stroke();
+      // ballons (3 cercles orange)
+      [-10, 0, 10].forEach(dx => {
+        ctx.beginPath();
+        ctx.arc(t.x + dx, t.y, bR, 0, Math.PI * 2);
+        ctx.fillStyle = "#e07020";
+        ctx.fill();
+        ctx.strokeStyle = "#b05010";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        // ligne courbe sur le ballon
+        ctx.beginPath();
+        ctx.arc(t.x + dx, t.y, bR * 0.55, -Math.PI * 0.7, Math.PI * 0.3);
+        ctx.strokeStyle = "rgba(0,0,0,0.2)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      });
+    } else if (t.role === "defender") {
       ctx.font = "bold 18px sans-serif";
       ctx.fillStyle = "#888780";
       ctx.textAlign = "center";
@@ -1021,6 +1098,8 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
       ctx.textBaseline = "middle";
       ctx.fillText(t.label, t.x, t.y);
     }
+
+    ctx.restore();
   };
 
   const parseInline = (text) => {
@@ -1088,7 +1167,11 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
     canvasRef.current.setPointerCapture?.(e.pointerId);
     if (tool === "player") {
       const pt = toCanvasPoint(e);
-      elementsRef.current.push({ type: "token", x: pt.x, y: pt.y, label: playerLabel, hasBall: playerHasBall, role: playerIsDefender ? "defender" : "offense" });
+      const equipKinds = ["plot", "chaise", "rack"];
+      const isEquip = equipKinds.includes(playerLabel);
+      elementsRef.current.push(isEquip
+        ? { type: "token", x: pt.x, y: pt.y, kind: playerLabel }
+        : { type: "token", x: pt.x, y: pt.y, label: playerLabel, hasBall: playerHasBall, role: playerIsDefender ? "defender" : "offense" });
       redraw();
       return;
     }
@@ -1240,16 +1323,25 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
           </>
         ) : tool === "player" ? (
           <>
-            <select value={playerLabel} onChange={e => setPlayerLabel(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white w-20">
-              {["1","2","3","4","5","X","X1","X2","X3","X4","X5"].map(n => <option key={n}>{n}</option>)}
+            <select value={playerLabel} onChange={e => setPlayerLabel(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
+              <optgroup label="Joueurs">
+                {["1","2","3","4","5","X","X1","X2","X3","X4","X5"].map(n => <option key={n} value={n}>{n}</option>)}
+              </optgroup>
+              <optgroup label="Équipements">
+                <option value="plot">🔶 Plot</option>
+                <option value="chaise">🪑 Chaise</option>
+                <option value="rack">🏀 Rack à ballons</option>
+              </optgroup>
             </select>
-            <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
-              <input type="checkbox" checked={playerHasBall} onChange={e => setPlayerHasBall(e.target.checked)} disabled={playerIsDefender} /> Avec ballon
-            </label>
-            <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
-              <input type="checkbox" checked={playerIsDefender} onChange={e => setPlayerIsDefender(e.target.checked)} /> Défenseur
-            </label>
-            <span className="text-xs text-[#1B2A4A]/40">Touche le terrain pour placer le joueur</span>
+            {!["plot","chaise","rack"].includes(playerLabel) && <>
+              <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
+                <input type="checkbox" checked={playerHasBall} onChange={e => setPlayerHasBall(e.target.checked)} disabled={playerIsDefender} /> Avec ballon
+              </label>
+              <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
+                <input type="checkbox" checked={playerIsDefender} onChange={e => setPlayerIsDefender(e.target.checked)} /> Défenseur
+              </label>
+            </>}
+            <span className="text-xs text-[#1B2A4A]/40">Touche le terrain pour placer</span>
           </>
         ) : tool === "text" ? (
           <>
