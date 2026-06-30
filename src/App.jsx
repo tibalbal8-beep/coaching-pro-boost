@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
+﻿import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen } from "lucide-react";
 import { storage, supabase } from "./storage";
 
@@ -2421,7 +2421,11 @@ function CoachingProBoost({ session }) {
     if (activeTeamId === id) saveActiveTeamId(next[0]?.id || null);
   };
   const pdfReady = usePdfJs();
-  const [view, setView] = useState("library");
+  const [view, setView] = useState(() => {
+    const saved = localStorage.getItem("cpb_view");
+    return ["library","sessions","stats","playbook","profile"].includes(saved) ? saved : "library";
+  });
+  const setViewPersist = (v) => { setView(v); localStorage.setItem("cpb_view", v); };
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [filterTheme, setFilterTheme] = useState([]);
@@ -2592,7 +2596,7 @@ function CoachingProBoost({ session }) {
     };
     saveExercises([...exercises, ex]);
     setCropImage(null);
-    setView("library");
+    setViewPersist("library");
   };
 
   const handleQuickCropSave = (titre, duree, selectedThemes) => {
@@ -2622,7 +2626,7 @@ function CoachingProBoost({ session }) {
       createdAt: new Date().toISOString(),
     };
     saveExercises([...exercises, ex]);
-    setView("library");
+    setViewPersist("library");
   };
 
   const processDrawnSheet = async (dataUrl) => {
@@ -2631,7 +2635,7 @@ function CoachingProBoost({ session }) {
       const exList = await extractExercisesFromImage(dataUrl, themes);
       const results = exList.map(data => ({ ...data, id: uid(), pageImage: dataUrl, file: { name: "fiche-dessinee.png", type: "image/png", data: dataUrl }, phases: [] }));
       setDrawProcessing(false);
-      setView("sessions");
+      setViewPersist("sessions");
       setReviewItems(results);
     } catch (e) {
       console.error(e);
@@ -2679,7 +2683,7 @@ function CoachingProBoost({ session }) {
     const s = { id: uid(), titre: "Séance importée", date: new Date().toISOString().slice(0, 10), exerciseIds: newExercises.map(e => e.id), teamId: team.id || null };
     saveSessions([...sessions, s]);
     setReviewItems(null);
-    setView("library");
+    setViewPersist("library");
   };
 
   if (!loaded) return <div className="p-8 text-[#1B2A4A]/50 text-sm">Chargement...</div>;
@@ -2711,7 +2715,7 @@ function CoachingProBoost({ session }) {
               const active = view === item.key || view === item.alsoActive;
               const Icon = item.icon;
               return (
-                <button key={item.key} onClick={() => { setView(item.key); setSidebarOpen(false); }}
+                <button key={item.key} onClick={() => { setViewPersist(item.key); setSidebarOpen(false); }}
                   className={`flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-left transition-colors ${active ? "" : "text-[#1B2A4A] hover:bg-[#1B2A4A]/8"}`}
                   style={active ? { backgroundColor: "#2563EB", color: "#ffffff" } : undefined}>
                   <Icon size={19} /> {item.label}
@@ -3029,7 +3033,7 @@ function CoachingProBoost({ session }) {
         )}
 
         {view === "draw" && (
-          <DrawSheetView processing={drawProcessing} onCancel={() => setView("sessions")} onValidate={processDrawnSheet} onAddDirect={addDrawnSheetDirect} />
+          <DrawSheetView processing={drawProcessing} onCancel={() => setViewPersist("sessions")} onValidate={processDrawnSheet} onAddDirect={addDrawnSheetDirect} />
         )}
 
         {viewingPlay && (
@@ -3153,7 +3157,7 @@ function CoachingProBoost({ session }) {
         {view === "session" && activeSession && (
           <div>
             <div className="flex items-center justify-between mb-5 no-print">
-              <button onClick={() => setView("sessions")} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Retour aux séances</button>
+              <button onClick={() => setViewPersist("sessions")} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Retour aux séances</button>
               <button onClick={() => downloadSessionHTML(activeSession, exercises)} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Télécharger pour impression</button>
             </div>
             <input value={activeSession.titre} onChange={e => updateSession({ ...activeSession, titre: e.target.value })} className="text-2xl font-bold text-[#1B2A4A] bg-transparent border-b-2 border-transparent focus:border-[#FF6B35] outline-none mb-1 w-full" style={{ fontFamily: "Oswald, sans-serif" }} />
@@ -3318,3 +3322,4 @@ export default function App() {
   if (!session) return <AuthScreen />;
   return <ToastProvider><CoachingProBoost key={session.user.id} session={session} /></ToastProvider>;
 }
+
