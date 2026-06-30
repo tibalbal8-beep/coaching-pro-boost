@@ -1313,9 +1313,9 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
               <option value={4}>Épais</option>
             </select>
             <select value={lineStyle} onChange={e => setLineStyle(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-              <option value="simple">Trait simple</option>
-              <option value="pointille">Pointillé</option>
-              <option value="zigzag">Zigzag</option>
+              <option value="simple">Déplacement</option>
+              <option value="pointille">Passe</option>
+              <option value="zigzag">Dribble</option>
             </select>
             <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
               <input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche
