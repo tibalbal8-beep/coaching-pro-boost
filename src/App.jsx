@@ -1023,20 +1023,44 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
     }
   };
 
+  const parseInline = (text) => {
+    const segs = [];
+    const re = /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*([^*]+?)\*)/g;
+    let last = 0, m;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) segs.push({ text: text.slice(last, m.index), b: false, i: false });
+      if (m[2]) segs.push({ text: m[2], b: true, i: true });
+      else if (m[3]) segs.push({ text: m[3], b: true, i: false });
+      else segs.push({ text: m[4], b: false, i: true });
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) segs.push({ text: text.slice(last), b: false, i: false });
+    return segs.length ? segs : [{ text, b: false, i: false }];
+  };
+
+  const segFont = (t, seg) => `${(t.italic || seg.i) ? "italic " : ""}${(t.bold || seg.b) ? "bold " : ""}${t.size}px sans-serif`;
+
   const drawTextElement = (ctx, t) => {
-    const fontStr = `${t.italic ? "italic " : ""}${t.bold ? "bold " : ""}${t.size}px sans-serif`;
-    ctx.font = fontStr;
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     const lineHeight = t.size * 1.25;
     const lines = t.value.split("\n");
     if (t.highlight) {
-      const maxW = Math.max(...lines.map(l => ctx.measureText(l).width));
+      const maxW = Math.max(...lines.map(line => {
+        return parseInline(line).reduce((w, seg) => { ctx.font = segFont(t, seg); return w + ctx.measureText(seg.text).width; }, 0);
+      }));
       ctx.fillStyle = "rgba(255,230,0,0.55)";
       ctx.fillRect(t.x - 2, t.y - 2, maxW + 4, lines.length * lineHeight + 4);
     }
     ctx.fillStyle = t.color;
-    lines.forEach((line, i) => ctx.fillText(line, t.x, t.y + i * lineHeight));
+    lines.forEach((line, li) => {
+      let xOff = 0;
+      parseInline(line).forEach(seg => {
+        ctx.font = segFont(t, seg);
+        ctx.fillText(seg.text, t.x + xOff, t.y + li * lineHeight);
+        xOff += ctx.measureText(seg.text).width;
+      });
+    });
   };
 
   const redraw = () => {
@@ -1290,28 +1314,48 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
         />
-        {pendingText && (
-          <div style={{ position: "absolute", left: pendingText.screenX, top: pendingText.screenY - textSize * 0.7, display: "flex", alignItems: "flex-end", gap: 4 }}>
+        {pendingText && (() => {
+          const taRef = React.createRef();
+          const wrap = (marker) => {
+            const ta = taRef.current;
+            if (!ta) return;
+            const s = ta.selectionStart, e = ta.selectionEnd;
+            const val = pendingText.value;
+            const selected = val.slice(s, e);
+            const newVal = val.slice(0, s) + marker + selected + marker + val.slice(e);
+            setPendingText({ ...pendingText, value: newVal });
+            setTimeout(() => { ta.focus(); ta.setSelectionRange(s + marker.length, e + marker.length); }, 0);
+          };
+          return (
+          <div style={{ position: "absolute", left: pendingText.screenX, top: pendingText.screenY - textSize * 0.7 }} onPointerDown={e => e.stopPropagation()}>
+            <div style={{ display: "flex", gap: 3, marginBottom: 3 }}>
+              <button onPointerDown={e => { e.preventDefault(); wrap("**"); }} style={{ fontSize: 11, fontWeight: "bold", background: "white", border: "1px solid #ddd", borderRadius: 3, padding: "1px 6px", cursor: "pointer" }}>G</button>
+              <button onPointerDown={e => { e.preventDefault(); wrap("*"); }} style={{ fontSize: 11, fontStyle: "italic", background: "white", border: "1px solid #ddd", borderRadius: 3, padding: "1px 6px", cursor: "pointer" }}>I</button>
+              <span style={{ fontSize: 9, color: "#aaa", alignSelf: "center", marginLeft: 2 }}>Sélectionner puis G ou I</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 4 }}>
             <textarea
+              ref={taRef}
               autoFocus
               rows={Math.max(1, pendingText.value.split("\n").length)}
               value={pendingText.value}
               onChange={e => setPendingText({ ...pendingText, value: e.target.value })}
               onKeyDown={e => { if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); commitPendingText(); } if (e.key === "Escape") setPendingText(null); }}
-              onPointerDown={e => e.stopPropagation()}
               style={{
                 fontSize: textSize, color,
                 fontWeight: textBold ? "bold" : "normal",
                 fontStyle: textItalic ? "italic" : "normal",
                 background: textHighlight ? "rgba(255,230,0,0.7)" : "rgba(255,255,255,0.9)",
-                border: "1px dashed #FF6B35", outline: "none", padding: "2px 4px", minWidth: 100,
+                border: "1px dashed #FF6B35", outline: "none", padding: "2px 4px", minWidth: 120,
                 resize: "both", lineHeight: 1.25, fontFamily: "sans-serif", borderRadius: 3,
               }}
             />
-            <button onClick={commitPendingText} onPointerDown={e => e.stopPropagation()}
-              className="text-xs bg-[#FF6B35] text-white rounded px-2 py-1 mb-0.5">OK</button>
+            <button onClick={commitPendingText}
+              style={{ fontSize: 11, background: "#FF6B35", color: "white", border: "none", borderRadius: 4, padding: "3px 8px", cursor: "pointer", marginBottom: 2 }}>OK</button>
+            </div>
           </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* Notes structurées */}
