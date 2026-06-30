@@ -580,10 +580,10 @@ function CourtDiagram({ players = [], paths = [], screens = [], width = 440, hei
               <text x={pl.x} y={pl.y + 5} textAnchor="middle" fontSize="13" fontWeight="700" fill="#1B2A4A">{pl.label}</text>
             </>
           ) : pl.role === "defender" ? (
-            <g>
-              <circle cx={pl.x} cy={pl.y} r="13" fill="#e8e6e1" stroke="#666" strokeWidth="1.8" />
-              <line x1={pl.x - 6} y1={pl.y - 6} x2={pl.x + 6} y2={pl.y + 6} stroke="#444" strokeWidth="2" strokeLinecap="round" />
-              <line x1={pl.x + 6} y1={pl.y - 6} x2={pl.x - 6} y2={pl.y + 6} stroke="#444" strokeWidth="2" strokeLinecap="round" />
+            <g transform={`translate(${pl.x},${pl.y})`}>
+              <path d="M -10 -4 C -18 -10 -26 -14 -28 -10 C -30 -6 -28 2 -26 6 C -22 10 -14 8 -10 4 Z" fill="#1B2A4A"/>
+              <circle cx="0" cy="0" r="11" fill="#1B2A4A"/>
+              <text x="0" y="4" textAnchor="middle" fontSize="10" fontWeight="700" fill="white">{pl.label}</text>
             </g>
           ) : (
             <text x={pl.x} y={pl.y + 5} textAnchor="middle" fontSize="14" fontWeight="700" fill="#1B2A4A">{pl.label}</text>
@@ -728,7 +728,7 @@ function diagramToSvgString(diagram, width = 320, height = 305) {
     if (pl.hasBall) {
       s += `<circle cx="${pl.x}" cy="${pl.y}" r="13" fill="white" stroke="#444441" stroke-width="1.6"/><text x="${pl.x}" y="${pl.y + 5}" text-anchor="middle" font-size="13" font-weight="700" fill="#1B2A4A">${pl.label}</text>`;
     } else if (pl.role === "defender") {
-      s += `<circle cx="${pl.x}" cy="${pl.y}" r="13" fill="#e8e6e1" stroke="#666" stroke-width="1.8"/><line x1="${pl.x-6}" y1="${pl.y-6}" x2="${pl.x+6}" y2="${pl.y+6}" stroke="#444" stroke-width="2" stroke-linecap="round"/><line x1="${pl.x+6}" y1="${pl.y-6}" x2="${pl.x-6}" y2="${pl.y+6}" stroke="#444" stroke-width="2" stroke-linecap="round"/>`;
+      s += `<g transform="translate(${pl.x},${pl.y})"><path d="M -10 -4 C -18 -10 -26 -14 -28 -10 C -30 -6 -28 2 -26 6 C -22 10 -14 8 -10 4 Z" fill="#1B2A4A"/><circle cx="0" cy="0" r="11" fill="#1B2A4A"/><text x="0" y="4" text-anchor="middle" font-size="10" font-weight="700" fill="white">${pl.label}</text></g>`;
     } else {
       s += `<text x="${pl.x}" y="${pl.y + 5}" text-anchor="middle" font-size="14" font-weight="700" fill="#1B2A4A">${pl.label}</text>`;
     }
@@ -1080,24 +1080,28 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
         ctx.stroke();
       });
     } else if (t.role === "defender") {
-      const r = 15;
-      // cercle gris
+      ctx.save();
+      ctx.translate(t.x, t.y);
+      ctx.fillStyle = "#1B2A4A";
+      // tube du sifflet
       ctx.beginPath();
-      ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = "#e8e6e1";
+      ctx.moveTo(-10, -4);
+      ctx.bezierCurveTo(-18, -10, -26, -14, -28, -10);
+      ctx.bezierCurveTo(-30, -6, -28, 2, -26, 6);
+      ctx.bezierCurveTo(-22, 10, -14, 8, -10, 4);
+      ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = "#666";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      // X à l'intérieur
-      const m = r * 0.48;
+      // corps du sifflet
       ctx.beginPath();
-      ctx.moveTo(t.x - m, t.y - m); ctx.lineTo(t.x + m, t.y + m);
-      ctx.moveTo(t.x + m, t.y - m); ctx.lineTo(t.x - m, t.y + m);
-      ctx.strokeStyle = "#444";
-      ctx.lineWidth = 2.2;
-      ctx.lineCap = "round";
-      ctx.stroke();
+      ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      ctx.fill();
+      // label
+      ctx.fillStyle = "white";
+      ctx.font = "bold 11px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(t.label || "D", 0, 1);
+      ctx.restore();
     } else if (t.hasBall) {
       ctx.beginPath();
       ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
@@ -2118,10 +2122,10 @@ function CourtEditor({ value, onChange }) {
             <g key={i} data-el="player" style={{ cursor: "pointer" }}
               onClick={e => handleElClick(e, "player", i)}>
               {pl.role === "defender" ? (
-                <g>
-                  <circle cx={pl.x} cy={pl.y} r="14" fill="#e8e6e1" stroke="#666" strokeWidth="2" />
-                  <line x1={pl.x - 7} y1={pl.y - 7} x2={pl.x + 7} y2={pl.y + 7} stroke="#444" strokeWidth="2.2" strokeLinecap="round" />
-                  <line x1={pl.x + 7} y1={pl.y - 7} x2={pl.x - 7} y2={pl.y + 7} stroke="#444" strokeWidth="2.2" strokeLinecap="round" />
+                <g transform={`translate(${pl.x},${pl.y})`}>
+                  <path d="M -10 -4 C -18 -10 -26 -14 -28 -10 C -30 -6 -28 2 -26 6 C -22 10 -14 8 -10 4 Z" fill="#1B2A4A"/>
+                  <circle cx="0" cy="0" r="11" fill="#1B2A4A"/>
+                  <text x="0" y="4" textAnchor="middle" fontSize="10" fontWeight="700" fill="white">{pl.label}</text>
                 </g>
               ) : pl.hasBall ? (
                 <>
