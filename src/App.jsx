@@ -353,7 +353,7 @@ function FileDrop({ file, onChange }) {
     <div>
       <input ref={inputRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
       {!file ? (
-        <button type="button" onClick={() => inputRef.current.click()}
+        <button type="button" data-tour="exercise-photo" onClick={() => inputRef.current.click()}
           className="w-full border-2 border-dashed border-[#1B2A4A]/30 rounded-lg py-6 flex flex-col items-center gap-2 text-[#1B2A4A]/60 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
           <Upload size={20} /><span className="text-sm">Schéma annoté (PDF ou photo)</span>
         </button>
@@ -2515,6 +2515,161 @@ function OnboardingModal({ onDone }) {
   );
 }
 
+const TOUR_STEPS = [
+  {
+    tourId: "add-exercise",
+    title: "① Créer un exercice",
+    text: "Appuie sur ce bouton orange pour créer ton premier exercice : titre, thèmes, durée, objectif...",
+    navigateTo: "library",
+    openForm: false,
+  },
+  {
+    tourId: "exercise-photo",
+    title: "② Ajouter une photo",
+    text: "Dans la fiche exercice, appuie ici pour importer une photo ou un PDF depuis ta pellicule. Tu pourras rogner l'image après l'import.",
+    navigateTo: "library",
+    openForm: true,
+  },
+  {
+    tourId: "new-session",
+    title: "③ Créer une séance",
+    text: "Dans l'onglet Séances, crée une nouvelle séance et ajoute-y tes exercices depuis la bibliothèque.",
+    navigateTo: "sessions",
+    openForm: false,
+  },
+  {
+    tourId: "session-draw",
+    title: "④ Dessiner une fiche",
+    text: "Ce bouton ouvre l'éditeur de dessin. Sélectionne un gabarit et annote-le au stylo Apple Pencil.",
+    navigateTo: "sessions",
+    openForm: false,
+  },
+];
+
+function GuidedTour({ onDone, onNavigate, onOpenForm, onCloseForm }) {
+  const [step, setStep] = useState(0);
+  const [rect, setRect] = useState(null);
+  const s = TOUR_STEPS[step];
+  const isLast = step === TOUR_STEPS.length - 1;
+
+  const findTarget = useCallback((tourId) => {
+    const el = document.querySelector(`[data-tour="${tourId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => {
+        const r = el.getBoundingClientRect();
+        setRect({ top: r.top, left: r.left, right: r.right, bottom: r.bottom, width: r.width, height: r.height });
+      }, 250);
+    } else {
+      setTimeout(() => {
+        const el2 = document.querySelector(`[data-tour="${tourId}"]`);
+        if (el2) { const r = el2.getBoundingClientRect(); setRect({ top: r.top, left: r.left, right: r.right, bottom: r.bottom, width: r.width, height: r.height }); }
+      }, 600);
+    }
+  }, []);
+
+  useEffect(() => {
+    setRect(null);
+    onNavigate(s.navigateTo);
+    if (s.openForm) { onOpenForm(); } else { onCloseForm(); }
+    setTimeout(() => findTarget(s.tourId), 350);
+  }, [step]);
+
+  const next = () => { if (isLast) onDone(); else setStep(step + 1); };
+
+  const ww = typeof window !== "undefined" ? window.innerWidth : 400;
+  const wh = typeof window !== "undefined" ? window.innerHeight : 800;
+  const pad = 10;
+
+  if (!rect) {
+    return (
+      <div className="fixed inset-0 z-[490] bg-black/55 flex items-end justify-center pb-24 pointer-events-none">
+        <div className="bg-white rounded-2xl px-6 py-4 text-sm text-[#1B2A4A]/50 shadow-xl pointer-events-auto">
+          Préparation de l'étape…
+        </div>
+      </div>
+    );
+  }
+
+  const { top, left, bottom, right, width, height } = rect;
+  const bubbleAbove = bottom > wh * 0.55;
+  const bubbleMidX = Math.min(Math.max(left + width / 2, 150), ww - 150);
+  const bubbleW = Math.min(300, ww - 32);
+  const bubbleLeft = Math.max(16, Math.min(bubbleMidX - bubbleW / 2, ww - bubbleW - 16));
+  const arrowPercent = Math.min(Math.max(((bubbleMidX - bubbleLeft) / bubbleW) * 100, 15), 85);
+
+  return (
+    <div className="fixed inset-0 z-[490]" style={{ pointerEvents: "none" }}>
+      {/* 4 overlay quadrants */}
+      {[
+        { style: { top: 0, left: 0, right: 0, height: Math.max(0, top - pad) } },
+        { style: { top: bottom + pad, left: 0, right: 0, bottom: 0 } },
+        { style: { top: top - pad, left: 0, width: Math.max(0, left - pad), height: height + 2 * pad } },
+        { style: { top: top - pad, left: right + pad, right: 0, height: height + 2 * pad } },
+      ].map((q, i) => (
+        <div key={i} style={{ position: "fixed", background: "rgba(0,0,0,0.62)", pointerEvents: "auto", ...q.style }} onClick={next} />
+      ))}
+
+      {/* Highlight ring */}
+      <div style={{
+        position: "fixed", top: top - pad, left: left - pad,
+        width: width + 2 * pad, height: height + 2 * pad,
+        border: "2.5px solid #FF6B35", borderRadius: 14,
+        boxShadow: "0 0 0 4px rgba(255,107,53,0.2)",
+        pointerEvents: "none",
+      }} />
+
+      {/* Bubble */}
+      <div style={{
+        position: "fixed",
+        ...(bubbleAbove ? { bottom: wh - top + pad + 14 } : { top: bottom + pad + 14 }),
+        left: bubbleLeft,
+        width: bubbleW,
+        background: "white",
+        borderRadius: 20,
+        padding: "18px 20px 14px",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+        zIndex: 491,
+        pointerEvents: "auto",
+      }}>
+        {/* Arrow */}
+        <div style={{
+          position: "absolute",
+          [bubbleAbove ? "bottom" : "top"]: -8,
+          left: `${arrowPercent}%`,
+          transform: "translateX(-50%) rotate(45deg)",
+          width: 16, height: 16,
+          background: "white",
+          borderRadius: 3,
+          boxShadow: bubbleAbove ? "3px 3px 6px rgba(0,0,0,0.12)" : "-3px -3px 6px rgba(0,0,0,0.08)",
+        }} />
+
+        <h3 className="font-bold text-[#1B2A4A] text-sm mb-1.5" style={{ fontFamily: "Oswald, sans-serif" }}>{s.title}</h3>
+        <p className="text-sm text-[#1B2A4A]/70 leading-relaxed mb-4">{s.text}</p>
+
+        <div className="flex items-center justify-between">
+          <div className="flex gap-1.5">
+            {TOUR_STEPS.map((_, i) => (
+              <div key={i} className="rounded-full transition-all duration-200" style={{
+                width: i === step ? 18 : 7, height: 7,
+                background: i === step ? "#FF6B35" : "#1B2A4A22",
+              }} />
+            ))}
+          </div>
+          <div className="flex gap-2 items-center">
+            <button onClick={onDone} className="text-xs text-[#1B2A4A]/35 hover:text-[#1B2A4A]/60 py-1">Terminer</button>
+            <button onClick={next}
+              className="px-4 py-2 text-white text-sm font-semibold rounded-xl active:opacity-80"
+              style={{ background: "#FF6B35" }}>
+              {isLast ? "C'est compris !" : "Suivant →"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CoachingProBoost({ session }) {
   const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded } = useStore();
   const toast = useToast();
@@ -2583,7 +2738,13 @@ function CoachingProBoost({ session }) {
 
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem("cpb_onboarded"));
-  const finishOnboarding = () => { localStorage.setItem("cpb_onboarded", "1"); setShowOnboarding(false); };
+  const [showTour, setShowTour] = useState(false);
+  const finishOnboarding = () => {
+    localStorage.setItem("cpb_onboarded", "1");
+    setShowOnboarding(false);
+    if (!localStorage.getItem("cpb_tour_done")) setShowTour(true);
+  };
+  const finishTour = () => { localStorage.setItem("cpb_tour_done", "1"); setShowTour(false); };
 
   const newSession = (teamId) => {
     const s = { id: uid(), titre: "Nouvelle séance", date: new Date().toISOString().slice(0, 10), exerciseIds: [], playIds: [], teamId: teamId || null };
@@ -2812,6 +2973,14 @@ function CoachingProBoost({ session }) {
     <div className="min-h-screen bg-[#F2EDE4]" style={{ fontFamily: "Inter, sans-serif" }}>
       <style>{`@media print { .no-print { display: none !important; } body { background: white; } }`}</style>
       {showOnboarding && <OnboardingModal onDone={finishOnboarding} />}
+      {showTour && !showOnboarding && (
+        <GuidedTour
+          onDone={finishTour}
+          onNavigate={(v) => setViewPersist(v)}
+          onOpenForm={() => { setEditing(null); setShowForm(true); }}
+          onCloseForm={() => setShowForm(false)}
+        />
+      )}
 
       <header className="border-b border-[#1B2A4A]/10 px-6 py-4 flex items-center gap-3 no-print">
         <button onClick={() => setSidebarOpen(true)} className="text-[#1B2A4A] p-1 -ml-1" aria-label="Ouvrir le menu"><Menu size={22} /></button>
@@ -2886,7 +3055,7 @@ function CoachingProBoost({ session }) {
                 <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>BIBLIOTHÈQUE D'EXERCICES</h2>
                 <p className="text-sm text-[#1B2A4A]/50">{exercises.length} exercice{exercises.length !== 1 ? "s" : ""} enregistré{exercises.length !== 1 ? "s" : ""}</p>
               </div>
-              <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvel exercice</button>
+              <button data-tour="add-exercise" onClick={() => setShowForm(true)} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvel exercice</button>
             </div>
 
             {addBanner && (
@@ -3190,7 +3359,7 @@ function CoachingProBoost({ session }) {
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>SÉANCES</h2>
               <div className="flex gap-2 flex-wrap justify-end">
-                <button onClick={() => setView("draw")} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 text-[#1B2A4A] px-3 py-2 rounded-md text-sm font-medium hover:bg-[#1B2A4A]/5"><Pencil size={16} /> Dessiner</button>
+                <button data-tour="session-draw" onClick={() => setView("draw")} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 text-[#1B2A4A] px-3 py-2 rounded-md text-sm font-medium hover:bg-[#1B2A4A]/5"><Pencil size={16} /> Dessiner</button>
                 {newTeamOpen ? (
                   <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
                     <input autoFocus value={newTeamName} onChange={e => setNewTeamName(e.target.value)}
@@ -3204,7 +3373,7 @@ function CoachingProBoost({ session }) {
                 ) : (
                   <button onClick={() => setNewTeamOpen(true)} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 text-[#1B2A4A] px-3 py-2 rounded-md text-sm font-medium hover:bg-[#1B2A4A]/5"><Users size={16} /> Nouvelle équipe</button>
                 )}
-                <button onClick={handleNewSession} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvelle séance</button>
+                <button data-tour="new-session" onClick={handleNewSession} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvelle séance</button>
               </div>
             </div>
 
