@@ -2147,6 +2147,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
 
 function CoachingProBoost({ session }) {
   const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, loaded } = useStore();
+  const toast = useToast();
   const team = teams.find(t => t.id === activeTeamId) || teams[0] || { nom: "", niveau: "", jours: [], nbJoueurs: 0 };
   const updateTeam = (patch) => {
     if (!team.id) {
@@ -2218,7 +2219,6 @@ function CoachingProBoost({ session }) {
     setTeamPickerOpen(true);
   };
 
-  const toast = useToast();
   const updateSession = (next) => { saveSessions(sessions.map(s => s.id === next.id ? next : s)); setActiveSession(next); };
   const addToSession = (exId) => {
     if (!activeSession || activeSession.exerciseIds.includes(exId)) return;
