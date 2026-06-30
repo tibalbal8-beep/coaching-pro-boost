@@ -832,7 +832,21 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
   const [tool, setTool] = useState("pen"); // pen | player | text | select
   const draggingRef = useRef(null); // { el, startX, startY, moved }
   const [textSize, setTextSize] = useState(16);
+  const [textBold, setTextBold] = useState(false);
+  const [textItalic, setTextItalic] = useState(false);
+  const [textHighlight, setTextHighlight] = useState(false);
   const [pendingText, setPendingText] = useState(null); // { x, y, screenX, screenY, value }
+  const [noteFields, setNoteFields] = useState([
+    { id: "obj", label: "Objectif", value: "" },
+    { id: "cons", label: "Consignes", value: "" },
+    { id: "var", label: "Variantes", value: "" },
+    { id: "pts", label: "Points clés", value: "" },
+  ]);
+  const [showNotes, setShowNotes] = useState(false);
+  const updateNoteField = (id, value) => setNoteFields(f => f.map(x => x.id === id ? { ...x, value } : x));
+  const addNoteField = () => setNoteFields(f => [...f, { id: uid(), label: "Note", value: "" }]);
+  const removeNoteField = (id) => setNoteFields(f => f.filter(x => x.id !== id));
+  const renameNoteField = (id, label) => setNoteFields(f => f.map(x => x.id === id ? { ...x, label } : x));
   const [playerLabel, setPlayerLabel] = useState("1");
   const [playerHasBall, setPlayerHasBall] = useState(false);
   const [playerIsDefender, setPlayerIsDefender] = useState(false);
@@ -1010,12 +1024,19 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
   };
 
   const drawTextElement = (ctx, t) => {
-    ctx.font = `${t.bold ? "bold " : ""}${t.size}px sans-serif`;
-    ctx.fillStyle = t.color;
+    const fontStr = `${t.italic ? "italic " : ""}${t.bold ? "bold " : ""}${t.size}px sans-serif`;
+    ctx.font = fontStr;
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     const lineHeight = t.size * 1.25;
-    t.value.split("\n").forEach((line, i) => ctx.fillText(line, t.x, t.y + i * lineHeight));
+    const lines = t.value.split("\n");
+    if (t.highlight) {
+      const maxW = Math.max(...lines.map(l => ctx.measureText(l).width));
+      ctx.fillStyle = "rgba(255,230,0,0.55)";
+      ctx.fillRect(t.x - 2, t.y - 2, maxW + 4, lines.length * lineHeight + 4);
+    }
+    ctx.fillStyle = t.color;
+    lines.forEach((line, i) => ctx.fillText(line, t.x, t.y + i * lineHeight));
   };
 
   const redraw = () => {
@@ -1154,7 +1175,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
   const commitPendingText = () => {
     setPendingText(current => {
       if (current && current.value.trim()) {
-        elementsRef.current.push({ type: "text", x: current.x, y: current.y, value: current.value, color, size: textSize });
+        elementsRef.current.push({ type: "text", x: current.x, y: current.y, value: current.value, color, size: textSize, bold: textBold, italic: textItalic, highlight: textHighlight });
         redraw();
       }
       return null;
@@ -1208,14 +1229,19 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
           </>
         ) : tool === "text" ? (
           <>
-            {["#1B2A4A", "#D62828", "#2563EB"].map(c => (
-              <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />
+            {["#1B2A4A", "#D62828", "#2563EB", "#16a34a", "#FF6B35"].map(c => (
+              <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2 flex-shrink-0" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />
             ))}
             <select value={textSize} onChange={e => setTextSize(Number(e.target.value))} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-              <option value={12}>Petit</option>
-              <option value={16}>Moyen</option>
-              <option value={22}>Grand</option>
+              <option value={10}>XS</option>
+              <option value={14}>Petit</option>
+              <option value={18}>Moyen</option>
+              <option value={24}>Grand</option>
+              <option value={32}>Titre</option>
             </select>
+            <button onClick={() => setTextBold(b => !b)} className={`px-2.5 py-1 rounded text-sm font-bold border transition-colors ${textBold ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A]"}`}>G</button>
+            <button onClick={() => setTextItalic(b => !b)} className={`px-2.5 py-1 rounded text-sm italic border transition-colors ${textItalic ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A]"}`}>I</button>
+            <button onClick={() => setTextHighlight(b => !b)} title="Surligner" className={`px-2.5 py-1 rounded text-sm border transition-colors ${textHighlight ? "bg-yellow-300 border-yellow-400 text-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A]"}`} style={{ background: textHighlight ? "rgba(255,230,0,0.7)" : undefined }}>🖊</button>
             <span className="text-xs text-[#1B2A4A]/40">Touche le terrain pour écrire</span>
           </>
         ) : (
@@ -1274,13 +1300,51 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
               onKeyDown={e => { if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); commitPendingText(); } if (e.key === "Escape") setPendingText(null); }}
               onPointerDown={e => e.stopPropagation()}
               style={{
-                fontSize: textSize, color, background: "rgba(255,255,255,0.85)",
-                border: "1px dashed #FF6B35", outline: "none", padding: "1px 3px", minWidth: 80,
-                resize: "both", lineHeight: 1.25, fontFamily: "sans-serif",
+                fontSize: textSize, color,
+                fontWeight: textBold ? "bold" : "normal",
+                fontStyle: textItalic ? "italic" : "normal",
+                background: textHighlight ? "rgba(255,230,0,0.7)" : "rgba(255,255,255,0.9)",
+                border: "1px dashed #FF6B35", outline: "none", padding: "2px 4px", minWidth: 100,
+                resize: "both", lineHeight: 1.25, fontFamily: "sans-serif", borderRadius: 3,
               }}
             />
             <button onClick={commitPendingText} onPointerDown={e => e.stopPropagation()}
               className="text-xs bg-[#FF6B35] text-white rounded px-2 py-1 mb-0.5">OK</button>
+          </div>
+        )}
+      </div>
+
+      {/* Notes structurées */}
+      <div className="mb-4 border border-[#1B2A4A]/15 rounded-lg bg-white/60 overflow-hidden">
+        <button onClick={() => setShowNotes(n => !n)}
+          className="w-full flex items-center justify-between px-4 py-2.5 text-sm font-semibold text-[#1B2A4A] hover:bg-[#1B2A4A]/5 transition-colors">
+          <span>📝 Notes de séance</span>
+          <span className="text-[#1B2A4A]/40 text-xs">{showNotes ? "Masquer" : "Afficher"}</span>
+        </button>
+        {showNotes && (
+          <div className="px-4 pb-4 space-y-3 border-t border-[#1B2A4A]/10 pt-3">
+            {noteFields.map((f) => (
+              <div key={f.id}>
+                <div className="flex items-center gap-2 mb-1">
+                  <input value={f.label} onChange={e => renameNoteField(f.id, e.target.value)}
+                    className="text-xs font-semibold text-[#1B2A4A]/60 uppercase tracking-wide bg-transparent border-none outline-none w-28 cursor-pointer"
+                    onFocus={e => e.target.select()} />
+                  <button onClick={() => removeNoteField(f.id)} className="text-[#1B2A4A]/20 hover:text-red-500 ml-auto"><X size={12} /></button>
+                </div>
+                <div className="relative">
+                  <textarea value={f.value} onChange={e => updateNoteField(f.id, e.target.value)}
+                    placeholder={`${f.label}...`} rows={2}
+                    className="w-full border border-[#1B2A4A]/15 rounded-md px-3 py-2 pr-9 text-sm bg-white/80 resize-y focus:outline-none focus:border-[#FF6B35]/50" />
+                  <div className="absolute right-1 top-1">
+                    <DictateButton onResult={t => updateNoteField(f.id, f.value ? f.value + " " + t : t)} />
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button onClick={addNoteField}
+              className="flex items-center gap-1 text-xs text-[#FF6B35] hover:underline font-medium mt-1">
+              <Plus size={13} /> Ajouter un champ
+            </button>
           </div>
         )}
       </div>
