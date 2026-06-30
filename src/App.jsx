@@ -838,6 +838,14 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
   const [playerIsDefender, setPlayerIsDefender] = useState(false);
   const [dims, setDims] = useState({ width: 900, height: 1273 });
   const [loadingTemplate, setLoadingTemplate] = useState(false);
+  const DEFAULT_GABARITS = [
+    { name: "Gabarit 1", dataUrl: null },
+    { name: "Gabarit 2", dataUrl: null },
+    { name: "Gabarit 3", dataUrl: null },
+  ];
+  const [gabarits, setGabarits] = useState(DEFAULT_GABARITS);
+  const [activeGab, setActiveGab] = useState(0);
+  const [editingGabName, setEditingGabName] = useState(null); // index being renamed
 
   const loadBackground = (src) => {
     const img = new Image();
@@ -852,13 +860,27 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
   useEffect(() => {
     (async () => {
       try {
-        const custom = await storage.get("sheetTemplate");
-        loadBackground(custom ? custom.value : DEFAULT_SHEET_TEMPLATE);
+        const stored = await storage.get("sheetGabarits");
+        const loaded = stored ? JSON.parse(stored.value) : DEFAULT_GABARITS;
+        const merged = DEFAULT_GABARITS.map((d, i) => loaded[i] || d);
+        setGabarits(merged);
+        loadBackground(merged[0].dataUrl || DEFAULT_SHEET_TEMPLATE);
       } catch {
         loadBackground(DEFAULT_SHEET_TEMPLATE);
       }
     })();
   }, []);
+
+  const saveGabarits = async (next) => {
+    setGabarits(next);
+    await storage.set("sheetGabarits", JSON.stringify(next));
+  };
+
+  const switchGabarit = (idx) => {
+    setActiveGab(idx);
+    elementsRef.current = [];
+    loadBackground(gabarits[idx].dataUrl || DEFAULT_SHEET_TEMPLATE);
+  };
 
   const handleTemplateUpload = async (file) => {
     if (!file) return;
@@ -872,7 +894,8 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
       } else {
         dataUrl = await readImageAsJpeg(file, 1400, 0.9);
       }
-      await storage.set("sheetTemplate", dataUrl);
+      const next = gabarits.map((g, i) => i === activeGab ? { ...g, dataUrl } : g);
+      await saveGabarits(next);
       elementsRef.current = [];
       loadBackground(dataUrl);
     } catch (e) {
@@ -882,10 +905,17 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
     setLoadingTemplate(false);
   };
 
-  const resetToDefaultTemplate = async () => {
-    try { await storage.delete("sheetTemplate"); } catch {}
+  const resetCurrentGabarit = async () => {
+    const next = gabarits.map((g, i) => i === activeGab ? { ...g, dataUrl: null } : g);
+    await saveGabarits(next);
     elementsRef.current = [];
     loadBackground(DEFAULT_SHEET_TEMPLATE);
+  };
+
+  const renameGabarit = (idx, name) => {
+    const next = gabarits.map((g, i) => i === idx ? { ...g, name } : g);
+    saveGabarits(next);
+    setEditingGabName(null);
   };
 
   const zigzagify = (points, amplitude = 7, step = 12) => {
@@ -1193,11 +1223,34 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
         )}
         <button onClick={undo} className="px-3 py-1.5 rounded-md text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5 ml-auto">Annuler</button>
         <button onClick={clearAll} className="px-3 py-1.5 rounded-md text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5">Effacer tout</button>
-        <input ref={templateInputRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={e => handleTemplateUpload(e.target.files?.[0])} />
-        <button onClick={() => templateInputRef.current.click()} disabled={loadingTemplate} className="px-3 py-1.5 rounded-md text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5 disabled:opacity-50">
-          {loadingTemplate ? "Chargement..." : "Changer de gabarit"}
-        </button>
-        <button onClick={resetToDefaultTemplate} className="px-3 py-1.5 rounded-md text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">Gabarit par défaut</button>
+        <input ref={templateInputRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={e => { handleTemplateUpload(e.target.files?.[0]); e.target.value = ""; }} />
+        <div className="flex flex-col gap-1 ml-auto">
+          <div className="flex items-center gap-1">
+            {gabarits.map((g, i) => (
+              <button key={i} onClick={() => switchGabarit(i)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${activeGab === i ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A] hover:border-[#1B2A4A]/50"}`}>
+                {g.dataUrl ? "●" : "○"} {g.name}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            {editingGabName === activeGab ? (
+              <input autoFocus defaultValue={gabarits[activeGab].name}
+                className="border border-[#FF6B35] rounded px-2 py-0.5 text-xs w-28 outline-none"
+                onBlur={e => renameGabarit(activeGab, e.target.value || gabarits[activeGab].name)}
+                onKeyDown={e => { if (e.key === "Enter") renameGabarit(activeGab, e.target.value || gabarits[activeGab].name); if (e.key === "Escape") setEditingGabName(null); }} />
+            ) : (
+              <button onClick={() => setEditingGabName(activeGab)} className="text-xs text-[#1B2A4A]/40 hover:text-[#1B2A4A] underline">Renommer</button>
+            )}
+            <button onClick={() => templateInputRef.current.click()} disabled={loadingTemplate}
+              className="text-xs text-[#1B2A4A]/40 hover:text-[#1B2A4A] underline disabled:opacity-50">
+              {loadingTemplate ? "Chargement…" : "Changer l'image"}
+            </button>
+            {gabarits[activeGab].dataUrl && (
+              <button onClick={resetCurrentGabarit} className="text-xs text-[#1B2A4A]/30 hover:text-red-500 underline">Réinitialiser</button>
+            )}
+          </div>
+        </div>
       </div>
 
       <div ref={wrapRef} className="relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white mb-4" style={{ touchAction: "none" }}>
