@@ -1550,10 +1550,9 @@ function usePlayImages(play) {
     (async () => {
       const loaded = await Promise.all(play.images.map(async (img) => {
         if (img.file?.data) return { ...img, data: img.file.data };
-        if (!img.hasFile) return { ...img, data: null };
         try {
           const r = await storage.get(`playimg:${play.id}:${img.id}`);
-          if (r && active) { const parsed = JSON.parse(r.value); return { ...img, data: parsed.data || null }; }
+          if (r && active) { const parsed = JSON.parse(r.value); return { ...img, data: parsed.data || null, hasFile: true }; }
         } catch {}
         return { ...img, data: null };
       }));
