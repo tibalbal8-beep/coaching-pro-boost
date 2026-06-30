@@ -577,7 +577,11 @@ function CourtDiagram({ players = [], paths = [], screens = [], width = 440, hei
               <text x={pl.x} y={pl.y + 5} textAnchor="middle" fontSize="13" fontWeight="700" fill="#1B2A4A">{pl.label}</text>
             </>
           ) : pl.role === "defender" ? (
-            <text x={pl.x} y={pl.y + 5} textAnchor="middle" fontSize="14" fontWeight="700" fill="#888780">{pl.label || "X"}</text>
+            <g>
+              <circle cx={pl.x} cy={pl.y} r="13" fill="#e8e6e1" stroke="#666" strokeWidth="1.8" />
+              <line x1={pl.x - 6} y1={pl.y - 6} x2={pl.x + 6} y2={pl.y + 6} stroke="#444" strokeWidth="2" strokeLinecap="round" />
+              <line x1={pl.x + 6} y1={pl.y - 6} x2={pl.x - 6} y2={pl.y + 6} stroke="#444" strokeWidth="2" strokeLinecap="round" />
+            </g>
           ) : (
             <text x={pl.x} y={pl.y + 5} textAnchor="middle" fontSize="14" fontWeight="700" fill="#1B2A4A">{pl.label}</text>
           )}
@@ -721,7 +725,7 @@ function diagramToSvgString(diagram, width = 320, height = 305) {
     if (pl.hasBall) {
       s += `<circle cx="${pl.x}" cy="${pl.y}" r="13" fill="white" stroke="#444441" stroke-width="1.6"/><text x="${pl.x}" y="${pl.y + 5}" text-anchor="middle" font-size="13" font-weight="700" fill="#1B2A4A">${pl.label}</text>`;
     } else if (pl.role === "defender") {
-      s += `<text x="${pl.x}" y="${pl.y + 5}" text-anchor="middle" font-size="14" font-weight="700" fill="#888780">${pl.label || "X"}</text>`;
+      s += `<circle cx="${pl.x}" cy="${pl.y}" r="13" fill="#e8e6e1" stroke="#666" stroke-width="1.8"/><line x1="${pl.x-6}" y1="${pl.y-6}" x2="${pl.x+6}" y2="${pl.y+6}" stroke="#444" stroke-width="2" stroke-linecap="round"/><line x1="${pl.x+6}" y1="${pl.y-6}" x2="${pl.x-6}" y2="${pl.y+6}" stroke="#444" stroke-width="2" stroke-linecap="round"/>`;
     } else {
       s += `<text x="${pl.x}" y="${pl.y + 5}" text-anchor="middle" font-size="14" font-weight="700" fill="#1B2A4A">${pl.label}</text>`;
     }
@@ -1073,11 +1077,24 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
         ctx.stroke();
       });
     } else if (t.role === "defender") {
-      ctx.font = "bold 18px sans-serif";
-      ctx.fillStyle = "#888780";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(t.label, t.x, t.y);
+      const r = 15;
+      // cercle gris
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = "#e8e6e1";
+      ctx.fill();
+      ctx.strokeStyle = "#666";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // X à l'intérieur
+      const m = r * 0.48;
+      ctx.beginPath();
+      ctx.moveTo(t.x - m, t.y - m); ctx.lineTo(t.x + m, t.y + m);
+      ctx.moveTo(t.x + m, t.y - m); ctx.lineTo(t.x - m, t.y + m);
+      ctx.strokeStyle = "#444";
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = "round";
+      ctx.stroke();
     } else if (t.hasBall) {
       ctx.beginPath();
       ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
@@ -2098,7 +2115,11 @@ function CourtEditor({ value, onChange }) {
             <g key={i} data-el="player" style={{ cursor: "pointer" }}
               onClick={e => handleElClick(e, "player", i)}>
               {pl.role === "defender" ? (
-                <text x={pl.x} y={pl.y + 5} textAnchor="middle" fontSize="16" fontWeight="700" fill="#888780">{pl.label}</text>
+                <g>
+                  <circle cx={pl.x} cy={pl.y} r="14" fill="#e8e6e1" stroke="#666" strokeWidth="2" />
+                  <line x1={pl.x - 7} y1={pl.y - 7} x2={pl.x + 7} y2={pl.y + 7} stroke="#444" strokeWidth="2.2" strokeLinecap="round" />
+                  <line x1={pl.x + 7} y1={pl.y - 7} x2={pl.x - 7} y2={pl.y + 7} stroke="#444" strokeWidth="2.2" strokeLinecap="round" />
+                </g>
               ) : pl.hasBall ? (
                 <>
                   <circle cx={pl.x} cy={pl.y} r="14" fill="white" stroke="#1B2A4A" strokeWidth="2" />
