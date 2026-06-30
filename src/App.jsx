@@ -104,9 +104,11 @@ function useStore() {
     }
     const stripped = next.map(play => ({
       ...play,
-      images: (play.images || []).map(({ file, ...imgRest }) => ({
-        ...imgRest, hasFile: !!file, fileName: file?.name, fileType: file?.type,
-      })),
+      images: (play.images || []).map((img) => {
+        const { file, ...imgRest } = img;
+        if (!file) return imgRest; // existing image: keep hasFile/fileName/fileType intact
+        return { ...imgRest, hasFile: true, fileName: file.name, fileType: file.type };
+      }),
     }));
     setPlays(next);
     persist("plays", JSON.stringify(stripped));
