@@ -2425,6 +2425,96 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
   );
 }
 
+const ONBOARDING_STEPS = [
+  {
+    icon: "🏀",
+    title: "Bienvenue sur\nCoaching Pro Boost",
+    desc: "Votre assistant d'entraînement basket. Retrouvez tous vos outils de coach en un seul endroit, accessible depuis votre iPad.",
+    color: "#1B2A4A",
+  },
+  {
+    icon: "📚",
+    title: "Bibliothèque d'exercices",
+    desc: "Créez, filtrez et organisez vos exercices par thème, format ou niveau. Ajoutez des photos, des schémas tactiques et des notes.",
+    color: "#FF6B35",
+  },
+  {
+    icon: "📋",
+    title: "Séances",
+    desc: "Composez vos séances en glissant des exercices depuis la bibliothèque. Exportez en PDF pour l'imprimer ou le partager.",
+    color: "#1B2A4A",
+  },
+  {
+    icon: "♟️",
+    title: "Play Book",
+    desc: "Dessinez vos systèmes offensifs et défensifs sur un terrain interactif. Placez les joueurs, tracez les déplacements et les passes.",
+    color: "#FF6B35",
+  },
+  {
+    icon: "✏️",
+    title: "Dessiner une fiche",
+    desc: "Annotez vos gabarits personnalisés avec le stylo Apple Pencil. Texte, schémas, pictogrammes d'équipement — tout y est.",
+    color: "#1B2A4A",
+  },
+  {
+    icon: "🚀",
+    title: "Tout est prêt !",
+    desc: "Commencez par créer votre première équipe et votre premier exercice. Bonne saison !",
+    color: "#FF6B35",
+  },
+];
+
+function OnboardingModal({ onDone }) {
+  const [step, setStep] = useState(0);
+  const s = ONBOARDING_STEPS[step];
+  const isLast = step === ONBOARDING_STEPS.length - 1;
+
+  const next = () => { if (isLast) onDone(); else setStep(step + 1); };
+  const skip = () => onDone();
+
+  return (
+    <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
+      <div className="bg-[#F2EDE4] rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+        {/* top color bar */}
+        <div className="h-2" style={{ background: s.color }} />
+
+        {/* content */}
+        <div className="px-8 pt-10 pb-6 flex flex-col items-center text-center">
+          <div className="text-6xl mb-6 leading-none select-none">{s.icon}</div>
+          <h2 className="font-bold text-[#1B2A4A] text-xl mb-3 leading-snug whitespace-pre-line" style={{ fontFamily: "Oswald, sans-serif" }}>
+            {s.title}
+          </h2>
+          <p className="text-[#1B2A4A]/70 text-sm leading-relaxed">{s.desc}</p>
+        </div>
+
+        {/* dots */}
+        <div className="flex justify-center gap-1.5 pb-6">
+          {ONBOARDING_STEPS.map((_, i) => (
+            <button key={i} onClick={() => setStep(i)}
+              className="rounded-full transition-all"
+              style={{ width: i === step ? 20 : 8, height: 8, background: i === step ? s.color : "#1B2A4A22" }}
+            />
+          ))}
+        </div>
+
+        {/* buttons */}
+        <div className="px-8 pb-8 flex flex-col gap-3">
+          <button onClick={next}
+            className="w-full py-3 rounded-2xl text-white font-semibold text-sm transition-opacity active:opacity-80"
+            style={{ background: s.color }}>
+            {isLast ? "C'est parti !" : "Suivant"}
+          </button>
+          {!isLast && (
+            <button onClick={skip} className="text-xs text-[#1B2A4A]/40 hover:text-[#1B2A4A]/60 py-1">
+              Passer l'introduction
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CoachingProBoost({ session }) {
   const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded } = useStore();
   const toast = useToast();
@@ -2492,6 +2582,8 @@ function CoachingProBoost({ session }) {
   };
 
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem("cpb_onboarded"));
+  const finishOnboarding = () => { localStorage.setItem("cpb_onboarded", "1"); setShowOnboarding(false); };
 
   const newSession = (teamId) => {
     const s = { id: uid(), titre: "Nouvelle séance", date: new Date().toISOString().slice(0, 10), exerciseIds: [], playIds: [], teamId: teamId || null };
@@ -2719,6 +2811,7 @@ function CoachingProBoost({ session }) {
   return (
     <div className="min-h-screen bg-[#F2EDE4]" style={{ fontFamily: "Inter, sans-serif" }}>
       <style>{`@media print { .no-print { display: none !important; } body { background: white; } }`}</style>
+      {showOnboarding && <OnboardingModal onDone={finishOnboarding} />}
 
       <header className="border-b border-[#1B2A4A]/10 px-6 py-4 flex items-center gap-3 no-print">
         <button onClick={() => setSidebarOpen(true)} className="text-[#1B2A4A] p-1 -ml-1" aria-label="Ouvrir le menu"><Menu size={22} /></button>
