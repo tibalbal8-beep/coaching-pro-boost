@@ -1,6 +1,30 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen } from "lucide-react";
 import { storage, supabase } from "./storage";
+
+const ToastCtx = createContext(null);
+function useToast() { return useContext(ToastCtx); }
+function ToastProvider({ children }) {
+  const [toasts, setToasts] = useState([]);
+  const show = useCallback((msg, duration = 2200) => {
+    const id = Math.random().toString(36).slice(2);
+    setToasts(t => [...t, { id, msg }]);
+    setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), duration);
+  }, []);
+  return (
+    <ToastCtx.Provider value={show}>
+      {children}
+      <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[999] flex flex-col gap-2 items-center pointer-events-none">
+        {toasts.map(t => (
+          <div key={t.id} className="bg-[#1B2A4A] text-white text-sm px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 animate-fade-in-up">
+            <Check size={14} className="text-green-400 flex-shrink-0" />
+            {t.msg}
+          </div>
+        ))}
+      </div>
+    </ToastCtx.Provider>
+  );
+}
 
 const DEFAULT_THEMES = ["Démarquage","Pick and Roll","Pick non porteur","Transition","Défense individuelle","Défense collective","Aide défensive","Rotation défensive","Contre","Interception","Prise en charge","Tir","Tir en course","Finition","Rebond","Rebond offensif","Rebond défensif","Jeu sans ballon","Sortie de balle","Passe","Dribble","Pivot","Fixation","Jeu intérieur","Spacing","Attaque de zone","Défense de zone"];
 const PHASES = ["Échauffement","Préparation physique","Technique individuelle","Pré-collectif","Collectif","Fin de séance","Autre"];
@@ -2000,10 +2024,12 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
     reader.readAsDataURL(f);
   };
 
+  const toast = useToast();
   const handleCropResult = (dataUrl) => {
     const newImg = { id: uid(), file: { name: "crop.jpg", type: "image/jpeg", data: dataUrl }, annotation: "" };
     setImages(prev => [...prev, newImg]);
     setCropCount(c => c + 1);
+    toast?.("Photo rognée ajoutée ✓");
   };
 
   const addTag = (tag) => {
@@ -2190,8 +2216,14 @@ function CoachingProBoost({ session }) {
     setTeamPickerOpen(true);
   };
 
+  const toast = useToast();
   const updateSession = (next) => { saveSessions(sessions.map(s => s.id === next.id ? next : s)); setActiveSession(next); };
-  const addToSession = (exId) => { if (!activeSession || activeSession.exerciseIds.includes(exId)) return; updateSession({ ...activeSession, exerciseIds: [...activeSession.exerciseIds, exId] }); };
+  const addToSession = (exId) => {
+    if (!activeSession || activeSession.exerciseIds.includes(exId)) return;
+    updateSession({ ...activeSession, exerciseIds: [...activeSession.exerciseIds, exId] });
+    const ex = exercises.find(e => e.id === exId);
+    toast?.(ex?.titre ? `"${ex.titre}" ajouté à la séance` : "Exercice ajouté à la séance");
+  };
   const totalDuree = (s) => s.exerciseIds.reduce((sum, id) => sum + (exercises.find(e => e.id === id)?.duree || 0), 0);
 
   const [addBanner, setAddBanner] = useState(null); // { sessionId, sessionTitre, count }
@@ -3030,5 +3062,5 @@ export default function App() {
     );
   }
   if (!session) return <AuthScreen />;
-  return <CoachingProBoost key={session.user.id} session={session} />;
+  return <ToastProvider><CoachingProBoost key={session.user.id} session={session} /></ToastProvider>;
 }
