@@ -3588,14 +3588,47 @@ function CoachingProBoost({ session }) {
               <button onClick={() => setViewPersist("sessions")} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Retour aux séances</button>
               <button onClick={() => downloadSessionHTML(activeSession, exercises, { clubLogo, sessionPhoto: currentSessionPhoto })} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Imprimer la séance</button>
             </div>
-            <div className="flex items-start gap-4 mb-1">
+            <div className="flex items-start gap-4 mb-4">
               {clubLogo && <img src={clubLogo} alt="Logo club" className="w-16 h-16 object-contain flex-shrink-0 rounded" />}
               <div className="flex-1 min-w-0">
-                <input value={activeSession.titre} onChange={e => updateSession({ ...activeSession, titre: e.target.value })} className="text-2xl font-bold text-[#1B2A4A] bg-transparent border-b-2 border-transparent focus:border-[#FF6B35] outline-none w-full" style={{ fontFamily: "Oswald, sans-serif" }} />
-                <input type="date" value={activeSession.date} onChange={e => updateSession({ ...activeSession, date: e.target.value })} className="text-sm text-[#1B2A4A]/60 bg-transparent outline-none mt-1" />
+                <input value={activeSession.titre} onChange={e => updateSession({ ...activeSession, titre: e.target.value })}
+                  className="text-2xl font-bold text-[#1B2A4A] bg-transparent border-b-2 border-transparent focus:border-[#FF6B35] outline-none w-full mb-3"
+                  style={{ fontFamily: "Oswald, sans-serif" }} />
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/40 mb-1">Date</div>
+                    <input type="date" value={activeSession.date}
+                      onChange={e => updateSession({ ...activeSession, date: e.target.value })}
+                      className="w-full text-sm text-[#1B2A4A] bg-white/60 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 outline-none focus:border-[#FF6B35]" />
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/40 mb-1">Équipe</div>
+                    <select value={activeSession.teamId || ""}
+                      onChange={e => updateSession({ ...activeSession, teamId: e.target.value || null })}
+                      className="w-full text-sm text-[#1B2A4A] bg-white/60 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 outline-none focus:border-[#FF6B35]">
+                      <option value="">Sans équipe</option>
+                      {teams.map(t => <option key={t.id} value={t.id}>{t.nom}{t.niveau ? ` (${t.niveau})` : ""}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/40 mb-1">Lieu</div>
+                    <input value={activeSession.lieu || ""}
+                      onChange={e => updateSession({ ...activeSession, lieu: e.target.value })}
+                      placeholder="Gymnase, salle..."
+                      className="w-full text-sm text-[#1B2A4A] bg-white/60 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 outline-none focus:border-[#FF6B35]" />
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/40 mb-1">
+                      Joueurs présents{teams.find(t => t.id === activeSession.teamId)?.nbJoueurs ? ` / ${teams.find(t => t.id === activeSession.teamId).nbJoueurs}` : ""}
+                    </div>
+                    <input type="number" min={0} value={activeSession.presents ?? ""}
+                      placeholder="—"
+                      onChange={e => updateSession({ ...activeSession, presents: e.target.value === "" ? null : Number(e.target.value) })}
+                      className="w-full text-sm text-[#1B2A4A] bg-white/60 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 outline-none focus:border-[#FF6B35]" />
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="mb-3" />
             <div className="mb-6 no-print">
               <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Thèmes de la séance</div>
               <div className="flex flex-wrap gap-1.5">
@@ -3609,18 +3642,6 @@ function CoachingProBoost({ session }) {
               </div>
             </div>
             <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/40 mb-2 no-print">Durée totale : {totalDuree(activeSession)} min</div>
-
-            {team.nbJoueurs > 0 && (
-              <div className="mb-6 no-print">
-                <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Présents à cette séance</div>
-                <div className="flex items-center gap-2">
-                  <input type="number" min={0} max={team.nbJoueurs} value={activeSession.presents ?? ""} placeholder="—"
-                    onChange={e => updateSession({ ...activeSession, presents: Number(e.target.value) })}
-                    className="w-20 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
-                  <span className="text-sm text-[#1B2A4A]/50">/ {team.nbJoueurs}</span>
-                </div>
-              </div>
-            )}
 
             {/* Photo de séance */}
             <div className="mb-6 no-print">
