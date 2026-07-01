@@ -620,7 +620,6 @@ function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage 
   return (
     <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-4 relative group hover:shadow-md transition-shadow" onClick={onClick}>
       <div className="flex items-start justify-between mb-2 cursor-pointer">
-        <span className="font-mono text-[10px] text-[#FF6B35] tracking-widest">SET {String(index + 1).padStart(2, "0")}</span>
         {onRemove && (
           confirmDel ? (
             <span className="flex items-center gap-1 text-[10px]" onClick={e => e.stopPropagation()}>
@@ -2737,6 +2736,8 @@ function CoachingProBoost({ session }) {
   };
 
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
+  const [viewSessionPhotoFull, setViewSessionPhotoFull] = useState(false);
+  const [viewingSessionExercise, setViewingSessionExercise] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem("cpb_onboarded"));
   const [showTour, setShowTour] = useState(false);
   const finishOnboarding = () => {
@@ -3507,9 +3508,7 @@ function CoachingProBoost({ session }) {
               </div>
             )}
 
-            <div className="mb-6 no-print">
-              <RatingBlock avis={activeSession.avis || []} onAdd={(a) => updateSession({ ...activeSession, avis: [...(activeSession.avis || []), a] })} />
-            </div>
+            {/* Photo de séance */}
             <div className="mb-6 no-print">
               <input ref={sessionPhotoInputRef} type="file" accept="image/*" className="hidden" onChange={handleSessionPhotoFile} />
               {currentSessionPhoto ? (
@@ -3527,7 +3526,8 @@ function CoachingProBoost({ session }) {
                       </button>
                     </div>
                   </div>
-                  <img src={currentSessionPhoto} alt="" className="w-full rounded-lg border border-[#1B2A4A]/10 object-contain max-h-80" />
+                  <img src={currentSessionPhoto} alt="" onClick={() => setViewSessionPhotoFull(true)}
+                    className="w-full rounded-lg border border-[#1B2A4A]/10 object-contain max-h-80 cursor-zoom-in" />
                 </div>
               ) : (
                 <button onClick={() => sessionPhotoInputRef.current.click()}
@@ -3537,38 +3537,49 @@ function CoachingProBoost({ session }) {
               )}
             </div>
 
+            {/* Liste exercices */}
             <div className="space-y-2 mb-8">
               {activeSession.exerciseIds.length === 0 && <p className="text-[#1B2A4A]/40 text-sm">Ajoute des exercices depuis la bibliothèque ci-dessous.</p>}
-              {activeSession.exerciseIds.map((id, i) => {
+              {activeSession.exerciseIds.map((id) => {
                 const ex = exercises.find(e => e.id === id);
                 if (!ex) return null;
                 return (
-                  <div key={id} className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-xs text-[#FF6B35] w-12">SET {String(i + 1).padStart(2, "0")}</span>
-                      <div><div className="font-medium text-[#1B2A4A]">{ex.titre}</div><div className="text-xs text-[#1B2A4A]/50">{ex.duree} min · {ex.format} · {ex.themes?.join(", ")}</div></div>
+                  <div key={id} className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3 flex items-center justify-between cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => setViewingSessionExercise(ex)}>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-[#1B2A4A] truncate">{ex.titre}</div>
+                      <div className="text-xs text-[#1B2A4A]/50">{ex.duree} min · {ex.format}{ex.themes?.length ? " · " + ex.themes.slice(0, 2).join(", ") : ""}</div>
                     </div>
-                    <button onClick={() => updateSession({ ...activeSession, exerciseIds: activeSession.exerciseIds.filter(x => x !== id) })} className="text-[#1B2A4A]/40 hover:text-red-600 no-print"><X size={16} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); updateSession({ ...activeSession, exerciseIds: activeSession.exerciseIds.filter(x => x !== id) }); }}
+                      className="text-[#1B2A4A]/40 hover:text-red-600 no-print ml-3 flex-shrink-0"><X size={16} /></button>
                   </div>
                 );
               })}
             </div>
-            <div className="no-print">
+
+            {/* Suggestions */}
+            <div className="no-print mb-8">
               {(() => {
                 const sessionThemes = activeSession.themes || [];
                 const notInSession = exercises.filter(e => !activeSession.exerciseIds.includes(e.id));
                 const suggested = sessionThemes.length > 0
-                  ? notInSession.filter(e => (e.themes || []).some(t => sessionThemes.includes(t))).slice(0, 5)
-                  : notInSession.slice(0, 5);
+                  ? notInSession.filter(e => (e.themes || []).some(t => sessionThemes.includes(t))).slice(0, 8)
+                  : notInSession.slice(0, 8);
                 return (
                   <>
-                    <h3 className="text-sm font-semibold text-[#1B2A4A]/60 uppercase tracking-wide mb-1">Suggestions</h3>
-                    {sessionThemes.length > 0 && <p className="text-xs text-[#1B2A4A]/40 mb-3">Exercices avec les mêmes thèmes que cette séance</p>}
+                    <h3 className="text-sm font-semibold text-[#1B2A4A]/60 uppercase tracking-wide mb-2">Suggestions</h3>
                     {suggested.length === 0 ? (
-                      <p className="text-xs text-[#1B2A4A]/40 mb-3">Aucune suggestion — tous les exercices sont déjà dans la séance.</p>
+                      <p className="text-xs text-[#1B2A4A]/40">Aucune suggestion — tous les exercices sont déjà dans la séance.</p>
                     ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {suggested.map((ex, i) => <ExerciseCard key={ex.id} ex={ex} index={i} onClick={() => addToSession(ex.id)} />)}
+                      <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+                        {suggested.map(ex => (
+                          <div key={ex.id} onClick={() => addToSession(ex.id)}
+                            className="flex-shrink-0 w-40 border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3 cursor-pointer hover:shadow-md hover:border-[#FF6B35]/40 transition-all">
+                            <div className="font-medium text-[#1B2A4A] text-sm leading-tight mb-1 line-clamp-2">{ex.titre}</div>
+                            <div className="text-xs text-[#1B2A4A]/50">{ex.duree} min · {ex.format}</div>
+                            {ex.themes?.[0] && <div className="text-[10px] text-[#FF6B35] mt-1 truncate">{ex.themes[0]}</div>}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </>
@@ -3576,42 +3587,90 @@ function CoachingProBoost({ session }) {
               })()}
             </div>
 
+            {/* Plays */}
             {plays.length > 0 && (
-              <div className="mt-8">
-                <div className="space-y-2 mb-4">
-                  {(activeSession.playIds || []).length > 0 && (
-                    <>
-                      <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/40 mb-2">Plays de la séance</div>
-                      {(activeSession.playIds || []).map(id => {
-                        const play = plays.find(p => p.id === id);
-                        if (!play) return null;
-                        return (
-                          <div key={id} className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3 flex items-center justify-between">
-                            <div>
-                              <div className="font-medium text-[#1B2A4A]">{play.titre}</div>
-                              <div className="text-xs font-medium mt-0.5" style={{ color: "#FF6B35" }}>{play.type}</div>
-                              {play.description && <div className="text-xs text-[#1B2A4A]/50 mt-0.5">{play.description}</div>}
-                            </div>
-                            <button onClick={() => updateSession({ ...activeSession, playIds: (activeSession.playIds || []).filter(x => x !== id) })}
-                              className="text-[#1B2A4A]/40 hover:text-red-600 no-print ml-2"><X size={16} /></button>
+              <div className="no-print mb-8">
+                {(activeSession.playIds || []).length > 0 && (
+                  <div className="space-y-2 mb-4">
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/40 mb-2">Plays de la séance</div>
+                    {(activeSession.playIds || []).map(id => {
+                      const play = plays.find(p => p.id === id);
+                      if (!play) return null;
+                      return (
+                        <div key={id} className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3 flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-[#1B2A4A] truncate">{play.titre}</div>
+                            <div className="text-xs font-medium mt-0.5" style={{ color: "#FF6B35" }}>{play.type}</div>
                           </div>
-                        );
-                      })}
-                    </>
-                  )}
-                </div>
-                <div className="no-print">
-                  <h3 className="text-sm font-semibold text-[#1B2A4A]/60 uppercase tracking-wide mb-3">Ajouter depuis le Play Book</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {plays.filter(p => !(activeSession.playIds || []).includes(p.id)).map(play => (
-                      <PlayCard key={play.id} play={play}
-                        onView={() => setViewingPlay(play)}
-                        onAddToSession={() => updateSession({ ...activeSession, playIds: [...(activeSession.playIds || []), play.id] })} />
-                    ))}
+                          <button onClick={() => updateSession({ ...activeSession, playIds: (activeSession.playIds || []).filter(x => x !== id) })}
+                            className="text-[#1B2A4A]/40 hover:text-red-600 no-print ml-2 flex-shrink-0"><X size={16} /></button>
+                        </div>
+                      );
+                    })}
                   </div>
+                )}
+                <h3 className="text-sm font-semibold text-[#1B2A4A]/60 uppercase tracking-wide mb-2">Ajouter depuis le Play Book</h3>
+                <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+                  {plays.filter(p => !(activeSession.playIds || []).includes(p.id)).map(play => (
+                    <div key={play.id} onClick={() => updateSession({ ...activeSession, playIds: [...(activeSession.playIds || []), play.id] })}
+                      className="flex-shrink-0 w-40 border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3 cursor-pointer hover:shadow-md hover:border-[#FF6B35]/40 transition-all">
+                      <div className="font-medium text-[#1B2A4A] text-sm leading-tight mb-1 line-clamp-2">{play.titre}</div>
+                      <div className="text-xs font-medium" style={{ color: "#FF6B35" }}>{play.type}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
+
+            {/* Avis en bas */}
+            <div className="mb-6 no-print">
+              <RatingBlock avis={activeSession.avis || []} onAdd={(a) => updateSession({ ...activeSession, avis: [...(activeSession.avis || []), a] })} />
+            </div>
+          </div>
+        )}
+
+        {/* Fullscreen photo séance */}
+        {viewSessionPhotoFull && currentSessionPhoto && (
+          <div className="fixed inset-0 z-[300] bg-black/90 flex items-center justify-center" onClick={() => setViewSessionPhotoFull(false)}>
+            <img src={currentSessionPhoto} alt="" className="max-w-full max-h-full object-contain" />
+            <button onClick={() => setViewSessionPhotoFull(false)}
+              className="absolute top-4 right-4 text-white/70 hover:text-white bg-black/30 rounded-full p-2"><X size={22} /></button>
+          </div>
+        )}
+
+        {/* Visualiseur exercice depuis séance */}
+        {viewingSessionExercise && (
+          <div className="fixed inset-0 z-[300] bg-black/70 flex items-center justify-center p-4" onClick={() => setViewingSessionExercise(null)}>
+            <div className="bg-[#F2EDE4] rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-5 border-b border-[#1B2A4A]/10">
+                <h2 className="font-bold text-[#1B2A4A] text-lg leading-tight" style={{ fontFamily: "Oswald, sans-serif" }}>{viewingSessionExercise.titre}</h2>
+                <button onClick={() => setViewingSessionExercise(null)} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A] ml-3 flex-shrink-0"><X size={20} /></button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="flex flex-wrap gap-2 text-xs text-[#1B2A4A]/60">
+                  <span className="flex items-center gap-1"><Clock size={12} />{viewingSessionExercise.duree} min</span>
+                  <span>{viewingSessionExercise.format}</span>
+                  <span>{viewingSessionExercise.niveau}</span>
+                  {viewingSessionExercise.categorie && <span className="px-2 py-0.5 rounded bg-[#1B2A4A]/8">{viewingSessionExercise.categorie}</span>}
+                </div>
+                {viewingSessionExercise.themes?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {viewingSessionExercise.themes.map(t => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35]">{t}</span>)}
+                  </div>
+                )}
+                {viewingSessionExercise.diagram ? (
+                  <CourtDiagram players={viewingSessionExercise.diagram.players} paths={viewingSessionExercise.diagram.paths} screens={viewingSessionExercise.diagram.screens} />
+                ) : viewingSessionExercise.file ? (
+                  <ExerciseFormImagePreview ex={viewingSessionExercise} />
+                ) : null}
+                {viewingSessionExercise.objectif && (
+                  <div><div className="text-xs uppercase tracking-wide text-[#1B2A4A]/40 mb-1">Objectif</div><p className="text-sm text-[#1B2A4A]">{viewingSessionExercise.objectif}</p></div>
+                )}
+                {viewingSessionExercise.notes && (
+                  <div><div className="text-xs uppercase tracking-wide text-[#1B2A4A]/40 mb-1">Consignes</div><p className="text-sm text-[#1B2A4A] whitespace-pre-wrap">{viewingSessionExercise.notes}</p></div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
