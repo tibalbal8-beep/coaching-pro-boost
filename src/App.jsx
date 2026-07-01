@@ -112,7 +112,17 @@ function useStore() {
         return { ...imgRest, hasFile: true, fileName: file.name, fileType: file.type };
       }),
     }));
-    setPlays(next);
+    // Enrichir next avec fileType/fileName/hasFile pour que l'affichage immédiat fonctionne
+    const nextWithMeta = next.map(play => ({
+      ...play,
+      images: (play.images || []).map(img => ({
+        ...img,
+        fileType: img.fileType || img.file?.type,
+        fileName: img.fileName || img.file?.name,
+        hasFile: img.hasFile || !!img.file?.data,
+      })),
+    }));
+    setPlays(nextWithMeta);
     persist("plays", JSON.stringify(stripped));
   };
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
