@@ -746,13 +746,15 @@ function diagramToSvgString(diagram, width = 320, height = 305) {
   return s;
 }
 
-function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto } = {}) {
+function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = [] } = {}) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const total = session.exerciseIds.reduce((sum, id) => sum + (exercises.find(e => e.id === id)?.duree || 0), 0);
   const h = Math.floor(total / 60), m = total % 60;
   const totalStr = h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`;
   const d = new Date(session.date);
   const dateStr = isNaN(d) ? esc(session.date) : d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const team = teams.find(t => t.id === session.teamId);
+  const teamStr = team ? `${team.nom}${team.niveau ? ` · ${team.niveau}` : ""}` : null;
   const sessionExos = session.exerciseIds.map(id => exercises.find(e => e.id === id)).filter(Boolean);
   const allThemes = [...new Set(sessionExos.flatMap(e => e.themes || []))];
 
@@ -808,6 +810,8 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto } = {}) {
     .header-info{flex:1}
     .header-info h1{font-family:'Oswald',sans-serif;font-size:26px;letter-spacing:.5px;line-height:1.1}
     .header-date{font-size:12px;color:rgba(255,255,255,.65);margin-top:4px;text-transform:capitalize}
+    .header-meta{display:flex;flex-wrap:wrap;gap:12px;margin-top:6px}
+    .header-meta span{font-size:11px;color:rgba(255,255,255,.75);background:rgba(255,255,255,.12);border-radius:20px;padding:2px 10px}
 
     /* ── STATS BAR ── */
     .stats-bar{background:#FF6B35;display:flex;padding:12px 28px;gap:0}
@@ -863,6 +867,10 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto } = {}) {
     <div class="header-info">
       <h1>${esc(session.titre)}</h1>
       <div class="header-date">${dateStr}</div>
+      <div class="header-meta">
+        ${teamStr ? `<span>🏀 ${esc(teamStr)}</span>` : ""}
+        ${session.lieu ? `<span>📍 ${esc(session.lieu)}</span>` : ""}
+      </div>
     </div>
   </div>
 
@@ -870,7 +878,7 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto } = {}) {
     <div class="stat"><div class="stat-val">${sessionExos.length}</div><div class="stat-lbl">Exercices</div></div>
     <div class="stat"><div class="stat-val">${totalStr}</div><div class="stat-lbl">Durée totale</div></div>
     ${allThemes.length ? `<div class="stat"><div class="stat-val">${allThemes.length}</div><div class="stat-lbl">Thèmes</div></div>` : ""}
-    ${session.presents != null ? `<div class="stat"><div class="stat-val">${session.presents}</div><div class="stat-lbl">Présents</div></div>` : ""}
+    ${session.presents != null ? `<div class="stat"><div class="stat-val">${session.presents}${team?.nbJoueurs ? `<span style="font-size:14px;font-weight:400;color:#1B2A4A60"> / ${team.nbJoueurs}</span>` : ""}</div><div class="stat-lbl">Joueurs présents</div></div>` : ""}
   </div>
 
   ${allThemes.length ? `<div class="themes-bar">${allThemes.map(t => `<span class="theme-tag">${esc(t)}</span>`).join("")}</div>` : ""}
@@ -3586,7 +3594,7 @@ function CoachingProBoost({ session }) {
           <div>
             <div className="flex items-center justify-between mb-5 no-print">
               <button onClick={() => setViewPersist("sessions")} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Retour aux séances</button>
-              <button onClick={() => downloadSessionHTML(activeSession, exercises, { clubLogo, sessionPhoto: currentSessionPhoto })} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Imprimer la séance</button>
+              <button onClick={() => downloadSessionHTML(activeSession, exercises, { clubLogo, sessionPhoto: currentSessionPhoto, teams })} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Imprimer la séance</button>
             </div>
             <div className="flex items-start gap-4 mb-4">
               {clubLogo && <img src={clubLogo} alt="Logo club" className="w-16 h-16 object-contain flex-shrink-0 rounded" />}
