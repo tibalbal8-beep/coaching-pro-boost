@@ -2984,7 +2984,7 @@ function CoachingProBoost({ session }) {
 
       <header className="border-b border-[#1B2A4A]/10 px-6 py-4 flex items-center gap-3 no-print">
         <button onClick={() => setSidebarOpen(true)} className="text-[#1B2A4A] p-1 -ml-1" aria-label="Ouvrir le menu"><Menu size={22} /></button>
-        <div className="w-8 h-8 rounded-full bg-[#1B2A4A] flex items-center justify-center"><div className="w-3 h-3 rounded-full border-2 border-[#FF6B35]" /></div>
+        <img src="/logo-icon.png" alt="CPB" className="w-9 h-9 rounded-xl object-contain" />
         <h1 className="font-bold text-[#1B2A4A] tracking-tight" style={{ fontFamily: "Oswald, sans-serif" }}>COACHING PRO BOOST</h1>
       </header>
 

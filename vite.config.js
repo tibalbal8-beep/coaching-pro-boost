@@ -7,17 +7,17 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg"],
+      includeAssets: ["favicon.png", "icon-192.png", "icon-512.png", "logo-icon.png", "logo-full.png"],
       manifest: {
         name: "Coaching Pro Boost",
-        short_name: "Pro Boost",
+        short_name: "CPB",
         description: "Bibliothèque d'exercices et séances de basket",
         theme_color: "#1B2A4A",
-        background_color: "#F2EDE4",
+        background_color: "#1B2A4A",
         display: "standalone",
         icons: [
-          { src: "icon-192.png", sizes: "192x192", type: "image/png" },
-          { src: "icon-512.png", sizes: "512x512", type: "image/png" },
+          { src: "icon-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
+          { src: "icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
         ],
       },
     }),
