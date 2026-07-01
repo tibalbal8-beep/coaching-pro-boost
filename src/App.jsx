@@ -715,7 +715,7 @@ function diagramToSvgString(diagram, width = 320, height = 305) {
     }
     return d;
   };
-  let s = `<svg viewBox="0 0 ${width} ${height}" width="100%" style="background:rgba(255,255,255,0.4);border-radius:6px">`;
+  let s = `<svg viewBox="0 0 ${width} ${height}" width="100%" style="background:#f8f6f0;border-radius:6px">`;
   s += `<defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#444441" stroke-width="1.5"/></marker></defs>`;
   s += `<rect x="1" y="1" width="${width - 2}" height="${height - 2}" fill="none" stroke="#444441" stroke-width="1"/>`;
   s += `<path d="M ${cx - tpR} ${keyY} L ${cx - tpR} ${height} M ${cx + tpR} ${keyY} L ${cx + tpR} ${height}" fill="none" stroke="#444441" stroke-width="1"/>`;
@@ -757,21 +757,30 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto } = {}) {
   const allThemes = [...new Set(sessionExos.flatMap(e => e.themes || []))];
 
   const blocks = sessionExos.map((ex, i) => {
-    const hasVisual = !!(ex.diagram || (ex.file?.data && ex.file?.type?.startsWith("image/")));
-    const visualHtml = ex.diagram
-      ? `<div class="visual-wrap">${diagramToSvgString(ex.diagram, 380, 362)}</div>`
-      : ex.file?.data && ex.file?.type?.startsWith("image/")
-        ? `<div class="visual-wrap"><img src="${ex.file.data}" alt="" /></div>`
-        : "";
+    const hasDiagram = !!ex.diagram;
+    const hasPhoto = !!(ex.file?.data && ex.file?.type?.startsWith("image/"));
+    const hasVisual = hasDiagram || hasPhoto;
+
+    let visualHtml = "";
+    if (hasDiagram) {
+      // IDs uniques par exercice pour éviter les conflits entre plusieurs schémas
+      const raw = diagramToSvgString(ex.diagram, 420, 400);
+      visualHtml = raw
+        .replace(/id="a"/g, `id="marr${i}"`)
+        .replace(/url\(#a\)/g, `url(#marr${i})`);
+    } else if (hasPhoto) {
+      visualHtml = `<img src="${ex.file.data}" alt="" style="width:100%;height:auto;display:block;border-radius:6px;border:1px solid #1B2A4A15" />`;
+    }
+
     return `
     <div class="exo">
       <div class="exo-header">
         <span class="exo-num">${String(i + 1).padStart(2, "0")}</span>
         <span class="exo-title">${esc(ex.titre)}</span>
-        <span class="exo-meta">${esc(ex.duree)} min &nbsp;·&nbsp; ${esc(ex.format)} &nbsp;·&nbsp; ${esc(ex.niveau)}${ex.categorie ? " &nbsp;·&nbsp; " + esc(ex.categorie) : ""}</span>
+        <span class="exo-meta">${esc(ex.duree)} min · ${esc(ex.format)} · ${esc(ex.niveau)}${ex.categorie ? " · " + esc(ex.categorie) : ""}</span>
       </div>
       <div class="exo-body${hasVisual ? "" : " no-visual"}">
-        ${hasVisual ? `<div class="exo-visual">${visualHtml}</div>` : ""}
+        ${hasVisual ? `<div class="exo-visual"><div class="visual-inner">${visualHtml}</div></div>` : ""}
         <div class="exo-text">
           ${ex.themes?.length ? `<div class="tags">${ex.themes.map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
           ${ex.objectif ? `<div class="field"><div class="field-label">Objectif</div><p class="field-val">${esc(ex.objectif)}</p></div>` : ""}
@@ -825,12 +834,13 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto } = {}) {
     .exo-title{font-family:'Oswald',sans-serif;font-size:15px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .exo-meta{font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;flex-shrink:0}
 
-    .exo-body{display:grid;grid-template-columns:1fr 1fr}
-    .exo-body.no-visual{grid-template-columns:1fr}
-    .exo-visual{padding:14px;border-right:1px solid #1B2A4A12;background:#fafafa;display:flex;align-items:center;justify-content:center}
-    .visual-wrap{width:100%}
-    .visual-wrap svg,.visual-wrap img{width:100%;height:auto;display:block;border-radius:6px}
-    .exo-text{padding:14px;display:flex;flex-direction:column;gap:10px}
+    .exo-body{display:grid;grid-template-columns:56% 44%;min-height:200px}
+    .exo-body.no-visual{grid-template-columns:1fr;min-height:unset}
+    .exo-visual{padding:12px;border-right:2px solid #1B2A4A12;background:#eef2f7;display:flex;align-items:center;justify-content:center}
+    .visual-inner{width:100%;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+    .visual-inner svg{width:100%;height:auto;display:block;background:#f8f6f0}
+    .visual-inner img{width:100%;height:auto;display:block}
+    .exo-text{padding:16px;display:flex;flex-direction:column;gap:12px}
 
     .tags{display:flex;flex-wrap:wrap;gap:4px}
     .tags span{font-size:10px;background:#FF6B3520;color:#FF6B35;border-radius:10px;padding:2px 8px;font-weight:600}
