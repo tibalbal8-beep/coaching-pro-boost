@@ -882,8 +882,24 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto } = {}) {
 </body></html>`;
 }
 
-function downloadSessionHTML(session, exercises, opts) {
-  const html = buildSessionHTML(session, exercises, opts);
+async function downloadSessionHTML(session, exercises, opts) {
+  // Les images sont stockées séparément sous file:{id} — on les pré-charge toutes
+  const sessionExos = session.exerciseIds.map(id => exercises.find(e => e.id === id)).filter(Boolean);
+  const enriched = await Promise.all(sessionExos.map(async (ex) => {
+    if (!ex.file) return ex;
+    if (ex.file.data) return ex; // déjà en mémoire
+    try {
+      const r = await storage.get(`file:${ex.id}`);
+      if (r) {
+        const parsed = JSON.parse(r.value);
+        return { ...ex, file: { ...ex.file, data: parsed.data } };
+      }
+    } catch {}
+    return ex;
+  }));
+  // Reconstruire la liste complète avec les exercices enrichis
+  const exercisesEnriched = exercises.map(ex => enriched.find(e => e.id === ex.id) || ex);
+  const html = buildSessionHTML(session, exercisesEnriched, opts);
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -3570,7 +3586,7 @@ function CoachingProBoost({ session }) {
           <div>
             <div className="flex items-center justify-between mb-5 no-print">
               <button onClick={() => setViewPersist("sessions")} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Retour aux séances</button>
-              <button onClick={() => downloadSessionHTML(activeSession, exercises, { clubLogo, sessionPhoto: currentSessionPhoto })} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Télécharger pour impression</button>
+              <button onClick={() => downloadSessionHTML(activeSession, exercises, { clubLogo, sessionPhoto: currentSessionPhoto })} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Imprimer la séance</button>
             </div>
             <div className="flex items-start gap-4 mb-1">
               {clubLogo && <img src={clubLogo} alt="Logo club" className="w-16 h-16 object-contain flex-shrink-0 rounded" />}
