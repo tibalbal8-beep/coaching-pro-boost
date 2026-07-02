@@ -484,11 +484,11 @@ function ExerciseForm({ themes, onSave, onCancel, initial }) {
   return (
     <div className="flex flex-col lg:flex-row gap-6 items-start">
       {initial?.diagram ? (
-        <div className="w-full lg:w-72 flex-shrink-0 sticky top-4">
+        <div className="w-full lg:w-72 flex-shrink-0">
           <CourtDiagram players={initial.diagram.players} paths={initial.diagram.paths} screens={initial.diagram.screens} />
         </div>
       ) : initial?.id && initial?.file ? (
-        <div className="w-full lg:w-72 flex-shrink-0 sticky top-4">
+        <div className="w-full lg:w-72 flex-shrink-0">
           <ExerciseFormImagePreview ex={initial} />
         </div>
       ) : null}
