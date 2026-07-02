@@ -482,17 +482,8 @@ function ExerciseForm({ themes, onSave, onCancel, initial }) {
   const toggle = (arr, setArr, v) => setArr(arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
 
   return (
-    <div className="flex flex-col lg:flex-row gap-6 items-start">
-      {initial?.diagram ? (
-        <div className="w-full lg:w-72 flex-shrink-0">
-          <CourtDiagram players={initial.diagram.players} paths={initial.diagram.paths} screens={initial.diagram.screens} />
-        </div>
-      ) : initial?.id && initial?.file ? (
-        <div className="w-full lg:w-72 flex-shrink-0">
-          <ExerciseFormImagePreview ex={initial} />
-        </div>
-      ) : null}
-      <div className="flex-1 space-y-4 min-w-0">
+    <div className="flex flex-col gap-6">
+      <div className="space-y-4">
       <input value={titre} onChange={e => setTitre(e.target.value)} placeholder="Titre de l'exercice"
         className="w-full text-lg font-semibold bg-transparent border-b-2 border-[#1B2A4A]/20 focus:border-[#FF6B35] outline-none pb-1 text-[#1B2A4A]" />
       <div>
@@ -548,6 +539,15 @@ function ExerciseForm({ themes, onSave, onCancel, initial }) {
         >Enregistrer</button>
       </div>
       </div>
+      {initial?.diagram ? (
+        <div className="w-full max-w-sm mx-auto">
+          <CourtDiagram players={initial.diagram.players} paths={initial.diagram.paths} screens={initial.diagram.screens} />
+        </div>
+      ) : initial?.id && initial?.file ? (
+        <div className="w-full max-w-sm mx-auto">
+          <ExerciseFormImagePreview ex={initial} />
+        </div>
+      ) : null}
     </div>
   );
 }
