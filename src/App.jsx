@@ -69,7 +69,22 @@ function useStore() {
       try { const tm = await storage.get("teams"); if (tm) setTeams(JSON.parse(tm.value)); } catch {}
       try { const at = await storage.get("activeTeamId"); if (at) setActiveTeamId(JSON.parse(at.value)); } catch {}
       try { const pl = await storage.get("players"); setPlayers(pl ? JSON.parse(pl.value) : []); } catch {}
-      try { const pb = await storage.get("plays"); setPlays(pb ? JSON.parse(pb.value) : []); } catch {}
+      try {
+        const pb = await storage.get("plays");
+        if (pb) {
+          setPlays(JSON.parse(pb.value));
+        } else {
+          const seed = Array.from({ length: 7 }, (_, i) => ({
+            id: `seed-play-${i + 1}`,
+            nom: `Système ${i + 1}`,
+            description: "",
+            tags: [],
+            images: [],
+          }));
+          setPlays(seed);
+          persist("plays", JSON.stringify(seed));
+        }
+      } catch {}
       try { const pt = await storage.get("playTags"); setPlayTags(pt ? JSON.parse(pt.value) : []); } catch {}
       try { const cl = await storage.get("clubLogo"); if (cl) setClubLogo(cl.value); } catch {}
       setLoaded(true);
