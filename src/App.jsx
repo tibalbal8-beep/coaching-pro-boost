@@ -58,7 +58,22 @@ function useSubscription(userId) {
   return { isPremium, loadingPremium };
 }
 
+async function startCheckout(userId) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await supabase.functions.invoke("create-checkout-session", {
+    body: {
+      priceId: import.meta.env.VITE_STRIPE_PRICE_ID,
+      successUrl: window.location.origin + "?premium=success",
+      cancelUrl: window.location.origin + "?premium=cancel",
+    },
+    headers: { Authorization: `Bearer ${session?.access_token}` },
+  });
+  if (res.data?.url) window.location.href = res.data.url;
+  else alert("Erreur lors de la redirection vers le paiement.");
+}
+
 function PaywallModal({ onClose, reason }) {
+  const [loading, setLoading] = useState(false);
   return (
     <div className="fixed inset-0 z-[600] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
       <div className="bg-[#F2EDE4] rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
@@ -82,10 +97,11 @@ function PaywallModal({ onClose, reason }) {
             <span className="text-[#1B2A4A]/50 text-sm"> / mois</span>
           </div>
           <button
-            onClick={() => { alert("Paiement Stripe bientôt disponible — clés à configurer."); }}
-            className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors"
+            disabled={loading}
+            onClick={async () => { setLoading(true); await startCheckout(); setLoading(false); }}
+            className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
             style={{ fontFamily: "Oswald, sans-serif" }}
-          >S'ABONNER MAINTENANT</button>
+          >{loading ? <><Loader2 size={16} className="animate-spin" /> Chargement...</> : "S'ABONNER MAINTENANT"}</button>
           <button onClick={onClose} className="w-full text-center text-xs text-[#1B2A4A]/40 mt-3 hover:text-[#1B2A4A]/60">Continuer en version gratuite</button>
         </div>
       </div>
