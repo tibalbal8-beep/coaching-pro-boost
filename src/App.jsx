@@ -74,13 +74,15 @@ function useStore() {
         if (pb) {
           setPlays(JSON.parse(pb.value));
         } else {
-          const seed = Array.from({ length: 7 }, (_, i) => ({
-            id: `seed-play-${i + 1}`,
-            nom: `Système ${i + 1}`,
-            description: "",
-            tags: [],
-            images: [],
-          }));
+          const seed = [
+            { id: "seed-play-1", nom: "Système 1", type: "Système offensif", description: "", tags: ["diamant", "flare pick", "pick isolé"], images: [] },
+            { id: "seed-play-2", nom: "Système 2", type: "Système offensif", description: "", tags: ["Stagger", "pick isolé"], images: [] },
+            { id: "seed-play-3", nom: "Système 3", type: "Système offensif", description: "", tags: ["Iverson", "Down pick"], images: [] },
+            { id: "seed-play-4", nom: "Système 4", type: "Système offensif", description: "", tags: ["horn", "cross pick", "shuffle"], images: [] },
+            { id: "seed-play-5", nom: "Système 5", type: "Système offensif", description: "", tags: ["Pick the picker", "cross pick"], images: [] },
+            { id: "seed-play-6", nom: "Système 6", type: "Système offensif", description: "", tags: ["flare pick", "Down pick", "Stagger", "Step up screen"], images: [] },
+            { id: "seed-play-7", nom: "Système 7", type: "Système offensif", description: "", tags: [], images: [] },
+          ];
           setPlays(seed);
           persist("plays", JSON.stringify(seed));
         }
