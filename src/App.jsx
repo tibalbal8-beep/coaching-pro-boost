@@ -36,6 +36,63 @@ const JOURS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
+const FREE_MAX_EXERCISES = 3;
+const FREE_MAX_SESSIONS = 2;
+
+function useSubscription(userId) {
+  const [isPremium, setIsPremium] = useState(false);
+  const [loadingPremium, setLoadingPremium] = useState(true);
+
+  useEffect(() => {
+    if (!userId) return;
+    supabase.from("profiles").select("is_premium, premium_until").eq("id", userId).maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          const active = data.is_premium && (!data.premium_until || new Date(data.premium_until) > new Date());
+          setIsPremium(active);
+        }
+        setLoadingPremium(false);
+      });
+  }, [userId]);
+
+  return { isPremium, loadingPremium };
+}
+
+function PaywallModal({ onClose, reason }) {
+  return (
+    <div className="fixed inset-0 z-[600] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
+      <div className="bg-[#F2EDE4] rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
+        <div className="bg-[#1B2A4A] px-6 py-5 text-center">
+          <div className="text-3xl mb-2">🏀</div>
+          <div className="text-white font-bold text-xl" style={{ fontFamily: "Oswald, sans-serif" }}>COACHING PRO BOOST</div>
+          <div className="text-white/60 text-sm mt-1">Version Premium</div>
+        </div>
+        <div className="px-6 py-5">
+          <p className="text-[#1B2A4A] font-medium text-center mb-4">{reason}</p>
+          <div className="bg-white rounded-2xl p-4 mb-4 space-y-2">
+            {["Exercices illimités", "Séances illimitées", "Play Book complet", "Impression PDF", "Statistiques avancées"].map(f => (
+              <div key={f} className="flex items-center gap-2 text-sm text-[#1B2A4A]">
+                <Check size={15} className="text-[#FF6B35] flex-shrink-0" />
+                {f}
+              </div>
+            ))}
+          </div>
+          <div className="text-center mb-4">
+            <span className="text-3xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>1,99€</span>
+            <span className="text-[#1B2A4A]/50 text-sm"> / mois</span>
+          </div>
+          <button
+            onClick={() => { alert("Paiement Stripe bientôt disponible — clés à configurer."); }}
+            className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors"
+            style={{ fontFamily: "Oswald, sans-serif" }}
+          >S'ABONNER MAINTENANT</button>
+          <button onClick={onClose} className="w-full text-center text-xs text-[#1B2A4A]/40 mt-3 hover:text-[#1B2A4A]/60">Continuer en version gratuite</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const MOIS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 
 function getSeason(dateStr) {
@@ -2825,6 +2882,8 @@ function GuidedTour({ onDone, onNavigate, onOpenForm, onCloseForm }) {
 
 function CoachingProBoost({ session }) {
   const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded } = useStore();
+  const { isPremium } = useSubscription(session?.user?.id);
+  const [paywallReason, setPaywallReason] = useState(null);
   const toast = useToast();
   const team = teams.find(t => t.id === activeTeamId) || teams[0] || { nom: "", niveau: "", jours: [], nbJoueurs: 0 };
   const updateTeam = (patch) => {
@@ -2885,6 +2944,10 @@ function CoachingProBoost({ session }) {
   const upsertExercise = (ex) => {
     const { _staySaved, ...clean } = ex;
     const exists = exercises.some(e => e.id === clean.id);
+    if (!exists && !isPremium && exercises.length >= FREE_MAX_EXERCISES) {
+      setPaywallReason(`La version gratuite est limitée à ${FREE_MAX_EXERCISES} exercices. Passez en Premium pour en créer autant que vous voulez.`);
+      return;
+    }
     saveExercises(exists ? exercises.map(e => e.id === clean.id ? clean : e) : [...exercises, clean]);
     if (_staySaved) { setEditing(clean); } else { setShowForm(false); setEditing(null); }
   };
@@ -2902,6 +2965,10 @@ function CoachingProBoost({ session }) {
   const finishTour = () => { localStorage.setItem("cpb_tour_done", "1"); setShowTour(false); };
 
   const newSession = (teamId) => {
+    if (!isPremium && sessions.length >= FREE_MAX_SESSIONS) {
+      setPaywallReason(`La version gratuite est limitée à ${FREE_MAX_SESSIONS} séances. Passez en Premium pour en créer autant que vous voulez.`);
+      return;
+    }
     const s = { id: uid(), titre: "Nouvelle séance", date: new Date().toISOString().slice(0, 10), exerciseIds: [], playIds: [], teamId: teamId || null };
     saveSessions([...sessions, s]); setActiveSession(s); setView("session");
   };
@@ -3127,6 +3194,7 @@ function CoachingProBoost({ session }) {
   return (
     <div className="min-h-screen bg-[#F2EDE4]" style={{ fontFamily: "Inter, sans-serif" }}>
       <style>{`@media print { .no-print { display: none !important; } body { background: white; } }`}</style>
+      {paywallReason && <PaywallModal reason={paywallReason} onClose={() => setPaywallReason(null)} />}
       {showOnboarding && <OnboardingModal onDone={finishOnboarding} />}
       {showTour && !showOnboarding && (
         <GuidedTour
@@ -3274,10 +3342,17 @@ function CoachingProBoost({ session }) {
                 <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>PLAY BOOK</h2>
                 <p className="text-sm text-[#1B2A4A]/50">{plays.length} play{plays.length !== 1 ? "s" : ""} enregistré{plays.length !== 1 ? "s" : ""}</p>
               </div>
-              <button onClick={() => { setEditingPlay(null); setPlaybookForm(true); }}
-                className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]">
-                <Plus size={16} /> Nouveau play
-              </button>
+              {isPremium ? (
+                <button onClick={() => { setEditingPlay(null); setPlaybookForm(true); }}
+                  className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]">
+                  <Plus size={16} /> Nouveau play
+                </button>
+              ) : (
+                <button onClick={() => setPaywallReason("Le Play Book est en lecture seule en version gratuite. Passez en Premium pour créer et modifier vos plays.")}
+                  className="flex items-center gap-1.5 border border-[#FF6B35] text-[#FF6B35] px-4 py-2 rounded-md text-sm font-medium hover:bg-[#FF6B35]/5">
+                  🔒 Premium
+                </button>
+              )}
             </div>
             <div className="space-y-2 mb-5">
               <div className="flex flex-wrap gap-1.5 items-center">
@@ -3312,8 +3387,8 @@ function CoachingProBoost({ session }) {
                 ).map(play => (
                   <PlayCard key={play.id} play={play}
                     onView={() => setViewingPlay(play)}
-                    onEdit={() => { setEditingPlay(play); setPlaybookForm(true); }}
-                    onRemove={() => savePlays(plays.filter(p => p.id !== play.id))} />
+                    onEdit={isPremium ? () => { setEditingPlay(play); setPlaybookForm(true); } : () => setPaywallReason("Modifiez vos plays en passant en Premium.")}
+                    onRemove={isPremium ? () => savePlays(plays.filter(p => p.id !== play.id)) : () => setPaywallReason("Supprimez vos plays en passant en Premium.")} />
                 ))}
               </div>
             )}
