@@ -541,7 +541,7 @@ function ExerciseFormImagePreview({ ex }) {
   return <img src={fileImage} alt="" className="w-full rounded-lg border border-[#1B2A4A]/15" />;
 }
 
-function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert }) {
+function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes }) {
   const [titre, setTitre] = useState(initial?.titre || "");
   const [sel, setSel] = useState(initial?.themes || []);
   const [phases, setPhases] = useState(initial?.phases || []);
@@ -552,8 +552,17 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert }) {
   const [objectif, setObjectif] = useState(initial?.objectif || "");
   const [notes, setNotes] = useState(initial?.notes || "");
   const [file, setFile] = useState(initial?.file || null);
+  const [newTheme, setNewTheme] = useState("");
 
   const toggle = (arr, setArr, v) => setArr(arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
+
+  const addTheme = () => {
+    const t = newTheme.trim();
+    if (!t) return;
+    if (!themes.includes(t) && saveThemes) saveThemes([...themes, t]);
+    if (!sel.includes(t)) setSel(prev => [...prev, t]);
+    setNewTheme("");
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -562,7 +571,13 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert }) {
         className="w-full text-lg font-semibold bg-transparent border-b-2 border-[#1B2A4A]/20 focus:border-[#FF6B35] outline-none pb-1 text-[#1B2A4A]" />
       <div>
         <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Thèmes tactiques</div>
-        <div className="flex flex-wrap gap-1.5">{themes.map(t => <Tag key={t} active={sel.includes(t)} onClick={() => toggle(sel, setSel, t)} color="orange">{t}</Tag>)}</div>
+        <div className="flex flex-wrap gap-1.5 mb-2">{themes.map(t => <Tag key={t} active={sel.includes(t)} onClick={() => toggle(sel, setSel, t)} color="orange">{t}</Tag>)}</div>
+        <div className="flex gap-2">
+          <input value={newTheme} onChange={e => setNewTheme(e.target.value)} onKeyDown={e => e.key === "Enter" && addTheme()}
+            placeholder="+ Nouveau thème..."
+            className="flex-1 text-xs border border-[#1B2A4A]/20 rounded-full px-3 py-1.5 focus:outline-none focus:border-[#FF6B35]" />
+          {newTheme.trim() && <button onClick={addTheme} className="text-xs px-3 py-1.5 bg-[#FF6B35]/10 text-[#FF6B35] rounded-full font-medium hover:bg-[#FF6B35]/20">Ajouter</button>}
+        </div>
       </div>
       <div>
         <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Phase de séance</div>
@@ -3445,7 +3460,7 @@ function CoachingProBoost({ session }) {
         {view === "library" && showForm && (
           <div className="max-w-xl">
             <h2 className="text-xl font-bold text-[#1B2A4A] mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>{editing ? "MODIFIER L'EXERCICE" : "NOUVEL EXERCICE"}</h2>
-            <ExerciseForm themes={themes} initial={editing} onSave={upsertExercise} onCancel={() => { setShowForm(false); setEditing(null); }} cpbAlert={cpbAlert} />
+            <ExerciseForm themes={themes} saveThemes={saveThemes} initial={editing} onSave={upsertExercise} onCancel={() => { setShowForm(false); setEditing(null); }} cpbAlert={cpbAlert} />
           </div>
         )}
 
