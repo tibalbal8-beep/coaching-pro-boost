@@ -2,6 +2,35 @@
 import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen } from "lucide-react";
 import { storage, supabase } from "./storage";
 
+const AlertCtx = createContext(null);
+function useAlert() { return useContext(AlertCtx); }
+function AlertProvider({ children }) {
+  const [modal, setModal] = useState(null);
+  const show = useCallback((msg) => new Promise(resolve => setModal({ msg, resolve })), []);
+  const close = () => { modal?.resolve(); setModal(null); };
+  return (
+    <AlertCtx.Provider value={show}>
+      {children}
+      {modal && (
+        <div className="fixed inset-0 z-[900] bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden">
+            <div className="bg-[#1B2A4A] px-5 py-4 flex items-center gap-3">
+              <img src="/logo-icon.png" alt="CPB" className="w-8 h-8 rounded-lg object-contain flex-shrink-0" />
+              <span className="text-white font-bold text-sm" style={{ fontFamily: "Oswald, sans-serif" }}>COACHING PRO BOOST</span>
+            </div>
+            <div className="px-5 py-5">
+              <p className="text-[#1B2A4A] text-sm leading-relaxed mb-5">{modal.msg}</p>
+              <button onClick={close}
+                className="w-full bg-[#FF6B35] text-white font-semibold py-2.5 rounded-xl text-sm hover:bg-[#e85a28] transition-colors"
+                style={{ fontFamily: "Oswald, sans-serif" }}>OK</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </AlertCtx.Provider>
+  );
+}
+
 const ToastCtx = createContext(null);
 function useToast() { return useContext(ToastCtx); }
 function ToastProvider({ children }) {
@@ -69,11 +98,12 @@ async function startCheckout(userId) {
     headers: { Authorization: `Bearer ${session?.access_token}` },
   });
   if (res.data?.url) window.location.href = res.data.url;
-  else alert("Erreur lors de la redirection vers le paiement.");
+  else throw new Error("Erreur lors de la redirection vers le paiement.");
 }
 
 function PaywallModal({ onClose, reason }) {
   const [loading, setLoading] = useState(false);
+  const cpbAlert = useAlert();
   return (
     <div className="fixed inset-0 z-[600] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
       <div className="bg-[#F2EDE4] rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
@@ -98,7 +128,7 @@ function PaywallModal({ onClose, reason }) {
           </div>
           <button
             disabled={loading}
-            onClick={async () => { setLoading(true); await startCheckout(); setLoading(false); }}
+            onClick={async () => { setLoading(true); try { await startCheckout(); } catch(e) { await cpbAlert(e.message); } setLoading(false); }}
             className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
             style={{ fontFamily: "Oswald, sans-serif" }}
           >{loading ? <><Loader2 size={16} className="animate-spin" /> Chargement...</> : "S'ABONNER MAINTENANT"}</button>
@@ -455,11 +485,11 @@ function DictateButton({ onResult }) {
   );
 }
 
-function FileDrop({ file, onChange }) {
+function FileDrop({ file, onChange, cpbAlert }) {
   const inputRef = useRef();
   const handleFile = (f) => {
     if (!f) return;
-    if (f.size > 4.5 * 1024 * 1024) { alert("Fichier trop lourd (max ~4.5 Mo). Compresse l'image ou le PDF."); return; }
+    if (f.size > 4.5 * 1024 * 1024) { cpbAlert?.("Fichier trop lourd (max ~4.5 Mo). Compresse l'image ou le PDF."); return; }
     const reader = new FileReader();
     reader.onload = () => onChange({ name: f.name, type: f.type, data: reader.result });
     reader.readAsDataURL(f);
@@ -540,7 +570,7 @@ function ExerciseFormImagePreview({ ex }) {
   return <img src={fileImage} alt="" className="w-full rounded-lg border border-[#1B2A4A]/15" />;
 }
 
-function ExerciseForm({ themes, onSave, onCancel, initial }) {
+function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert }) {
   const [titre, setTitre] = useState(initial?.titre || "");
   const [sel, setSel] = useState(initial?.themes || []);
   const [phases, setPhases] = useState(initial?.phases || []);
@@ -596,7 +626,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial }) {
         <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Consignes, variantes, points clés..." rows={3} className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 pr-9 text-sm bg-white/60" />
         <div className="absolute right-1 top-1"><DictateButton onResult={(t) => setNotes(prev => prev ? prev + " " + t : t)} /></div>
       </div>
-      <FileDrop file={file} onChange={setFile} />
+      <FileDrop file={file} onChange={setFile} cpbAlert={cpbAlert} />
       {initial?.id && (
         <RatingBlock avis={initial.avis || []} label="Noter cet exercice"
           onAdd={(a) => onSave({ id: initial.id, titre, themes: sel, phases, format, niveau, categorie, duree, objectif, notes, file, diagram: initial?.diagram, avis: [...(initial.avis || []), a], createdAt: initial.createdAt, _staySaved: true })} />
@@ -605,7 +635,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial }) {
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
         <button
           onClick={() => {
-            if (!titre.trim()) { alert("Donne un titre à l'exercice."); return; }
+            if (!titre.trim()) { cpbAlert?.("Donne un titre à l'exercice."); return; }
             onSave({ id: initial?.id || uid(), titre, themes: sel, phases, format, niveau, categorie, duree, objectif, notes, file, diagram: initial?.diagram, avis: initial?.avis, createdAt: initial?.createdAt || new Date().toISOString() });
           }}
           className="px-5 py-2 text-sm font-medium rounded-md bg-[#FF6B35] text-white hover:bg-[#e85a28]"
@@ -1135,7 +1165,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
     try {
       let dataUrl;
       if (file.type === "application/pdf") {
-        if (!window.pdfjsLib) { alert("Le lecteur PDF n'est pas prêt, réessaie dans une seconde."); setLoadingTemplate(false); return; }
+        if (!window.pdfjsLib) { window.alert("Le lecteur PDF n'est pas prêt, réessaie dans une seconde."); setLoadingTemplate(false); return; }
         const pages = await renderPdfPages(file, 1);
         dataUrl = pages[0];
       } else {
@@ -1147,7 +1177,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
       loadBackground(dataUrl);
     } catch (e) {
       console.error(e);
-      alert("Impossible de charger ce fichier comme gabarit.");
+      window.alert("Impossible de charger ce fichier comme gabarit.");
     }
     setLoadingTemplate(false);
   };
@@ -2539,7 +2569,7 @@ function PlayImageSlot({ img, playId, onChange, onRemove }) {
 
   const handleFile = (f) => {
     if (!f) return;
-    if (f.size > 4.5 * 1024 * 1024) { alert("Fichier trop lourd (max ~4.5 Mo)."); return; }
+    if (f.size > 4.5 * 1024 * 1024) { cpbAlert("Fichier trop lourd (max ~4.5 Mo)."); return; }
     const reader = new FileReader();
     reader.onload = () => {
       const file = { name: f.name, type: f.type, data: reader.result };
@@ -2715,7 +2745,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
       <div className="flex justify-end gap-2 pt-2">
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
         <button onClick={() => {
-          if (!titre.trim()) { alert("Donne un titre au play."); return; }
+          if (!titre.trim()) { cpbAlert?.("Donne un titre au play."); return; }
           onSave({ id: initial?.id || uid(), titre, type, description, notes, tags: selectedTags, images, diagram: showDiagram ? diagram : null, createdAt: initial?.createdAt || new Date().toISOString() });
         }} className="px-5 py-2 text-sm font-medium rounded-md bg-[#FF6B35] text-white hover:bg-[#e85a28]">Enregistrer</button>
       </div>
@@ -2971,6 +3001,7 @@ function GuidedTour({ onDone, onNavigate, onOpenForm, onCloseForm }) {
 function CoachingProBoost({ session }) {
   const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded } = useStore();
   const { isPremium } = useSubscription(session?.user?.id);
+  const cpbAlert = useAlert();
   const [paywallReason, setPaywallReason] = useState(null);
   const toast = useToast();
   const team = teams.find(t => t.id === activeTeamId) || teams[0] || { nom: "", niveau: "", jours: [], nbJoueurs: 0 };
@@ -3231,14 +3262,14 @@ function CoachingProBoost({ session }) {
     } catch (e) {
       console.error(e);
       setDrawProcessing(false);
-      alert("L'analyse a échoué — réessaie.");
+      cpbAlert("L'analyse a échoué — réessaie.");
     }
   };
 
   const handleImportFiles = async (fileList) => {
     const files = Array.from(fileList || []);
     if (files.length === 0) return;
-    if (files.some(f => f.type === "application/pdf") && !pdfReady) { alert("Le lecteur PDF n'est pas encore prêt, réessaie dans une seconde."); return; }
+    if (files.some(f => f.type === "application/pdf") && !pdfReady) { cpbAlert("Le lecteur PDF n'est pas encore prêt, réessaie dans une seconde."); return; }
     setImporting({ status: "rendering", progress: 0, total: 0 });
     try {
       let pageImages = [];
@@ -3249,7 +3280,7 @@ function CoachingProBoost({ session }) {
           pageImages.push(await readImageAsJpeg(f));
         }
       }
-      if (pageImages.length === 0) { setImporting(null); alert("Aucun PDF ou photo valide n'a été trouvé."); return; }
+      if (pageImages.length === 0) { setImporting(null); cpbAlert("Aucun PDF ou photo valide n'a été trouvé."); return; }
       setImporting({ status: "extracting", progress: 0, total: pageImages.length });
       const results = [];
       for (let i = 0; i < pageImages.length; i++) {
@@ -3264,7 +3295,7 @@ function CoachingProBoost({ session }) {
     } catch (e) {
       console.error(e);
       setImporting(null);
-      alert("L'import a échoué — vérifie que les fichiers sont bien lisibles (PDF ou photo).");
+      cpbAlert("L'import a échoué — vérifie que les fichiers sont bien lisibles (PDF ou photo).");
     }
   };
 
@@ -3419,7 +3450,7 @@ function CoachingProBoost({ session }) {
         {view === "library" && showForm && (
           <div className="max-w-xl">
             <h2 className="text-xl font-bold text-[#1B2A4A] mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>{editing ? "MODIFIER L'EXERCICE" : "NOUVEL EXERCICE"}</h2>
-            <ExerciseForm themes={themes} initial={editing} onSave={upsertExercise} onCancel={() => { setShowForm(false); setEditing(null); }} />
+            <ExerciseForm themes={themes} initial={editing} onSave={upsertExercise} onCancel={() => { setShowForm(false); setEditing(null); }} cpbAlert={cpbAlert} />
           </div>
         )}
 
@@ -4036,6 +4067,6 @@ export default function App() {
     );
   }
   if (!session) return <AuthScreen />;
-  return <ToastProvider><CoachingProBoost key={session.user.id} session={session} /></ToastProvider>;
+  return <AlertProvider><ToastProvider><CoachingProBoost key={session.user.id} session={session} /></ToastProvider></AlertProvider>;
 }
 
