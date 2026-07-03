@@ -42,6 +42,7 @@ export default async function handler(req, res) {
         success_url: successUrl,
         cancel_url: cancelUrl,
         locale: "fr",
+        allow_promotion_codes: "true",
       }),
     });
 
