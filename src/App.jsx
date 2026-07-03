@@ -1818,6 +1818,18 @@ function QuickCropForm({ dataUrl, themes, onSave, onCancel }) {
   const [titre, setTitre] = useState("");
   const [duree, setDuree] = useState(10);
   const [selectedThemes, setSelectedThemes] = useState([]);
+  const [newTheme, setNewTheme] = useState("");
+  const [extraThemes, setExtraThemes] = useState([]);
+
+  const addTheme = () => {
+    const t = newTheme.trim();
+    if (!t || selectedThemes.includes(t) || themes.includes(t)) return;
+    setExtraThemes(prev => prev.includes(t) ? prev : [...prev, t]);
+    setSelectedThemes(prev => [...prev, t]);
+    setNewTheme("");
+  };
+
+  const allThemes = [...themes, ...extraThemes.filter(t => !themes.includes(t))];
 
   return (
     <div className="fixed inset-0 z-[300] bg-black/70 flex items-end sm:items-center justify-center p-4">
@@ -1839,13 +1851,21 @@ function QuickCropForm({ dataUrl, themes, onSave, onCancel }) {
         </div>
         <div>
           <label className="text-xs font-medium text-[#1B2A4A]/60 uppercase tracking-wide mb-2 block">Thèmes</label>
-          <div className="flex flex-wrap gap-1.5">
-            {themes.map(t => <Tag key={t} active={selectedThemes.includes(t)} onClick={() => setSelectedThemes(s => s.includes(t) ? s.filter(x => x !== t) : [...s, t])}>{t}</Tag>)}
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {allThemes.map(t => <Tag key={t} active={selectedThemes.includes(t)} onClick={() => setSelectedThemes(s => s.includes(t) ? s.filter(x => x !== t) : [...s, t])}>{t}</Tag>)}
           </div>
+          <div className="flex gap-2 mt-2">
+            <input value={newTheme} onChange={e => setNewTheme(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && addTheme()}
+              placeholder="+ Ajouter un thème..."
+              className="flex-1 border border-[#1B2A4A]/20 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#FF6B35]" />
+            <button onClick={addTheme} className="px-3 py-2 bg-[#FF6B35]/10 text-[#FF6B35] rounded-lg text-sm font-medium hover:bg-[#FF6B35]/20">Ajouter</button>
+          </div>
+          {extraThemes.length > 0 && <p className="text-xs text-[#1B2A4A]/40 mt-1">Ces thèmes seront ajoutés à ta bibliothèque.</p>}
         </div>
         <div className="flex gap-3 pt-1">
           <button onClick={onCancel} className="flex-1 border border-[#1B2A4A]/20 rounded-lg py-3 text-sm font-medium text-[#1B2A4A]/60">Annuler</button>
-          <button onClick={() => onSave(titre || "Exercice rogné", duree, selectedThemes)}
+          <button onClick={() => onSave(titre || "Exercice rogné", duree, selectedThemes, extraThemes)}
             className="flex-1 text-white rounded-lg py-3 text-sm font-semibold" style={{ backgroundColor: "#FF6B35" }}>
             Ajouter à la séance
           </button>
@@ -3192,7 +3212,11 @@ function CoachingProBoost({ session }) {
     setViewPersist("library");
   };
 
-  const handleQuickCropSave = (titre, duree, selectedThemes) => {
+  const handleQuickCropSave = (titre, duree, selectedThemes, extraThemes = []) => {
+    if (extraThemes.length > 0) {
+      const newThemes = extraThemes.filter(t => !themes.includes(t));
+      if (newThemes.length > 0) saveThemes([...themes, ...newThemes]);
+    }
     const ex = {
       id: uid(), titre,
       themes: selectedThemes, phases: [], format: FORMATS[0], niveau: NIVEAUX[1], categorie: "",
@@ -3984,7 +4008,13 @@ function CoachingProBoost({ session }) {
             <div className="bg-[#F2EDE4] rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-5 border-b border-[#1B2A4A]/10">
                 <h2 className="font-bold text-[#1B2A4A] text-lg leading-tight" style={{ fontFamily: "Oswald, sans-serif" }}>{viewingSessionExercise.titre}</h2>
-                <button onClick={() => setViewingSessionExercise(null)} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A] ml-3 flex-shrink-0"><X size={20} /></button>
+                <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                  <button onClick={() => { setEditing(viewingSessionExercise); setShowForm(true); setViewingSessionExercise(null); setViewPersist("library"); }}
+                    className="flex items-center gap-1 text-xs text-[#FF6B35] border border-[#FF6B35]/30 px-2.5 py-1 rounded-lg hover:bg-[#FF6B35]/5">
+                    <Pencil size={12} /> Modifier
+                  </button>
+                  <button onClick={() => setViewingSessionExercise(null)} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={20} /></button>
+                </div>
               </div>
               <div className="p-5 space-y-4">
                 <div className="flex flex-wrap gap-2 text-xs text-[#1B2A4A]/60">
