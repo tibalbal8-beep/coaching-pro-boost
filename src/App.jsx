@@ -3060,7 +3060,30 @@ function CoachingProBoost({ session }) {
     const saved = localStorage.getItem("cpb_view");
     return ["library","sessions","stats","playbook","profile"].includes(saved) ? saved : "library";
   });
-  const setViewPersist = (v) => { setView(v); localStorage.setItem("cpb_view", v); };
+  const setViewPersist = (v) => {
+    setView(v);
+    localStorage.setItem("cpb_view", v);
+    history.pushState({ view: v }, "", "#" + v);
+  };
+
+  useEffect(() => {
+    // Initialise l'état history sans redirection
+    if (!history.state?.view) history.replaceState({ view }, "", "#" + view);
+    const onPop = (e) => {
+      const v = e.state?.view;
+      if (v === "session" && activeSessionRef.current) {
+        setView("session");
+      } else if (v && ["library","sessions","stats","playbook","profile"].includes(v)) {
+        setView(v);
+        localStorage.setItem("cpb_view", v);
+      } else {
+        // Pas d'état connu → repousse une entrée pour éviter de quitter
+        history.pushState({ view }, "", "#" + view);
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [filterTheme, setFilterTheme] = useState([]);
@@ -3074,6 +3097,8 @@ function CoachingProBoost({ session }) {
   const [filterPlayType, setFilterPlayType] = useState([]);
   const [filterPlayTags, setFilterPlayTags] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
+  const activeSessionRef = useRef(null);
+  useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
   const [newThemeInput, setNewThemeInput] = useState("");
   const [newTeamOpen, setNewTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
@@ -3120,7 +3145,7 @@ function CoachingProBoost({ session }) {
       return;
     }
     const s = { id: uid(), titre: "Nouvelle séance", date: new Date().toISOString().slice(0, 10), exerciseIds: [], playIds: [], teamId: teamId || null };
-    saveSessions([...sessions, s]); setActiveSession(s); setView("session");
+    saveSessions([...sessions, s]); setActiveSession(s); setView("session"); history.pushState({ view: "session" }, "", "#session");
   };
 
   const handleNewSession = () => {
@@ -3440,7 +3465,7 @@ function CoachingProBoost({ session }) {
               <div className="mb-5 border border-[#FF6B35]/30 bg-[#FF6B35]/8 rounded-lg p-3 flex items-center justify-between text-sm text-[#1B2A4A]">
                 <span>Ajouté à <strong>{addBanner.sessionTitre}</strong> ({addBanner.count} exercice{addBanner.count !== 1 ? "s" : ""})</span>
                 <div className="flex items-center gap-3">
-                  <button onClick={() => { const s = sessions.find(x => x.id === addBanner.sessionId); if (s) { setActiveSession(s); setView("session"); } }} className="font-medium text-[#FF6B35] hover:underline">Voir la séance →</button>
+                  <button onClick={() => { const s = sessions.find(x => x.id === addBanner.sessionId); if (s) { setActiveSession(s); setView("session"); history.pushState({ view: "session" }, "", "#session"); } }} className="font-medium text-[#FF6B35] hover:underline">Voir la séance →</button>
                   <button onClick={() => setAddBanner(null)} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={14} /></button>
                 </div>
               </div>
@@ -3814,7 +3839,7 @@ function CoachingProBoost({ session }) {
                             <div className="space-y-1.5">
                               {Object.entries(mGroups).map(([month, mSessions]) => (
                                 <MonthRow key={month} month={month} monthSessions={mSessions} totalDuree={totalDuree}
-                                  onOpen={(s) => { setActiveSession(s); setView("session"); }}
+                                  onOpen={(s) => { setActiveSession(s); setView("session"); history.pushState({ view: "session" }, "", "#session"); }}
                                   onRename={(s, titre) => saveSessions(sessions.map(x => x.id === s.id ? { ...x, titre } : x))}
                                   onDelete={(s) => saveSessions(sessions.filter(x => x.id !== s.id))} />
                               ))}
