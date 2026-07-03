@@ -3292,7 +3292,7 @@ function CoachingProBoost({ session }) {
   const pdfReady = usePdfJs();
   const [view, setView] = useState(() => {
     const saved = localStorage.getItem("cpb_view");
-    return ["library","sessions","stats","playbook","profile"].includes(saved) ? saved : "library";
+    return ["library","sessions","stats","playbook","account"].includes(saved) ? saved : "library";
   });
   const setViewPersist = (v) => {
     setView(v);
@@ -3307,7 +3307,7 @@ function CoachingProBoost({ session }) {
       const v = e.state?.view;
       if (v === "session" && activeSessionRef.current) {
         setView("session");
-      } else if (v && ["library","sessions","stats","playbook","profile"].includes(v)) {
+      } else if (v && ["library","sessions","stats","playbook","account"].includes(v)) {
         setView(v);
         localStorage.setItem("cpb_view", v);
       } else {
@@ -3644,6 +3644,7 @@ function CoachingProBoost({ session }) {
               { key: "library", label: "Bibliothèque", icon: Library },
               { key: "playbook", label: "Play Book", icon: BookOpen },
               { key: "stats", label: "Stats", icon: BarChart3 },
+              { key: "account", label: "Mon compte", icon: Users },
             ].map(item => {
               const active = view === item.key || view === item.alsoActive;
               const Icon = item.icon;
@@ -3980,40 +3981,75 @@ function CoachingProBoost({ session }) {
               </>
             )}
 
-            {/* Mon compte */}
-            <div className="mt-8 border-t border-[#1B2A4A]/10 pt-6">
-              <h3 className="text-sm font-semibold text-[#1B2A4A]/70 uppercase tracking-wide mb-4">Mon compte</h3>
-              <div className="bg-white/70 rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#1B2A4A]/60">Email</span>
-                  <span className="text-sm text-[#1B2A4A] font-medium">{session?.user?.email}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#1B2A4A]/60">Abonnement</span>
-                  {isPremium ? (
-                    <span className="text-xs font-bold text-[#FF6B35] bg-[#FF6B35]/10 px-2.5 py-1 rounded-full">✓ PREMIUM ACTIF</span>
-                  ) : (
-                    <span className="text-xs font-bold text-[#1B2A4A]/40 bg-[#1B2A4A]/8 px-2.5 py-1 rounded-full">GRATUIT</span>
-                  )}
-                </div>
-                {isPremium ? (
-                  <button onClick={async () => { try { await openBillingPortal(); } catch(e) { await cpbAlert(e.message); } }}
-                    className="w-full border border-[#1B2A4A]/20 text-[#1B2A4A] rounded-xl py-2.5 text-sm font-medium hover:bg-[#1B2A4A]/5 transition-colors">
-                    Gérer mon abonnement →
-                  </button>
-                ) : (
-                  <button onClick={() => setPaywallReason("Passez en Premium pour accéder à toutes les fonctionnalités.")}
-                    className="w-full bg-[#FF6B35] text-white rounded-xl py-2.5 text-sm font-bold hover:bg-[#e85a28] transition-colors"
-                    style={{ fontFamily: "Oswald, sans-serif" }}>
-                    PASSER EN PREMIUM
-                  </button>
-                )}
-                <button onClick={() => supabase.auth.signOut()}
-                  className="w-full text-center text-xs text-[#1B2A4A]/40 hover:text-red-500 transition-colors pt-1">
-                  Se déconnecter
-                </button>
+          </div>
+        )}
+
+        {view === "account" && (
+          <div className="max-w-md">
+            <h2 className="text-2xl font-bold text-[#1B2A4A] mb-6" style={{ fontFamily: "Oswald, sans-serif" }}>MON COMPTE</h2>
+
+            {/* Statut abonnement */}
+            <div className={`rounded-2xl p-5 mb-4 ${isPremium ? "bg-[#FF6B35]" : "bg-[#1B2A4A]"}`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-white/70 text-xs uppercase tracking-wide">Abonnement</span>
+                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${isPremium ? "bg-white/20 text-white" : "bg-white/10 text-white/60"}`}>
+                  {isPremium ? "✓ PREMIUM" : "GRATUIT"}
+                </span>
+              </div>
+              <div className="text-white font-bold text-lg" style={{ fontFamily: "Oswald, sans-serif" }}>
+                {isPremium ? "Accès illimité activé" : "Version limitée"}
+              </div>
+              <div className="text-white/60 text-xs mt-1">
+                {isPremium ? "Merci pour ton soutien !" : `${exercises.length}/${FREE_MAX_EXERCISES} exercices · ${sessions.length}/${FREE_MAX_SESSIONS} séances`}
               </div>
             </div>
+
+            {/* Actions abonnement */}
+            <div className="bg-white/70 rounded-2xl overflow-hidden mb-4">
+              {isPremium ? (
+                <>
+                  <button onClick={async () => { try { await openBillingPortal(); } catch(e) { await cpbAlert(e.message); } }}
+                    className="w-full flex items-center justify-between px-5 py-4 text-sm text-[#1B2A4A] font-medium hover:bg-[#1B2A4A]/5 transition-colors border-b border-[#1B2A4A]/8">
+                    <span>Gérer mon abonnement</span>
+                    <ChevronRight size={16} className="text-[#1B2A4A]/40" />
+                  </button>
+                  <button onClick={async () => { try { await openBillingPortal(); } catch(e) { await cpbAlert(e.message); } }}
+                    className="w-full flex items-center justify-between px-5 py-4 text-sm text-[#1B2A4A] font-medium hover:bg-[#1B2A4A]/5 transition-colors border-b border-[#1B2A4A]/8">
+                    <span>Mes factures</span>
+                    <ChevronRight size={16} className="text-[#1B2A4A]/40" />
+                  </button>
+                  <button onClick={async () => { try { await openBillingPortal(); } catch(e) { await cpbAlert(e.message); } }}
+                    className="w-full flex items-center justify-between px-5 py-4 text-sm text-red-500 font-medium hover:bg-red-50 transition-colors">
+                    <span>Résilier mon abonnement</span>
+                    <ChevronRight size={16} className="text-red-400" />
+                  </button>
+                </>
+              ) : (
+                <button onClick={() => setPaywallReason("Passez en Premium pour accéder à toutes les fonctionnalités.")}
+                  className="w-full flex items-center justify-between px-5 py-4 text-sm text-[#FF6B35] font-bold hover:bg-[#FF6B35]/5 transition-colors">
+                  <span>Passer en Premium — 4,99€/mois</span>
+                  <ChevronRight size={16} />
+                </button>
+              )}
+            </div>
+
+            {/* Infos compte */}
+            <div className="bg-white/70 rounded-2xl overflow-hidden mb-4">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#1B2A4A]/8">
+                <span className="text-sm text-[#1B2A4A]/50">Email</span>
+                <span className="text-sm text-[#1B2A4A] font-medium truncate max-w-[200px]">{session?.user?.email}</span>
+              </div>
+              <div className="flex items-center justify-between px-5 py-4">
+                <span className="text-sm text-[#1B2A4A]/50">Exercices créés</span>
+                <span className="text-sm text-[#1B2A4A] font-medium">{exercises.length}</span>
+              </div>
+            </div>
+
+            {/* Déconnexion */}
+            <button onClick={() => supabase.auth.signOut()}
+              className="w-full flex items-center justify-center gap-2 border border-red-200 text-red-500 rounded-2xl py-3.5 text-sm font-medium hover:bg-red-50 transition-colors">
+              <LogOut size={16} /> Se déconnecter
+            </button>
           </div>
         )}
 
