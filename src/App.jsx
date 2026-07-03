@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
-import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen } from "lucide-react";
+import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera } from "lucide-react";
 import { storage, supabase } from "./storage";
 
 const AlertCtx = createContext(null);
@@ -458,6 +458,7 @@ function DictateButton({ onResult }) {
 
 function FileDrop({ file, onChange, cpbAlert }) {
   const inputRef = useRef();
+  const cameraRef = useRef();
   const handleFile = (f) => {
     if (!f) return;
     if (f.size > 4.5 * 1024 * 1024) { cpbAlert?.("Fichier trop lourd (max ~4.5 Mo). Compresse l'image ou le PDF."); return; }
@@ -468,11 +469,18 @@ function FileDrop({ file, onChange, cpbAlert }) {
   return (
     <div>
       <input ref={inputRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
       {!file ? (
-        <button type="button" data-tour="exercise-photo" onClick={() => inputRef.current.click()}
-          className="w-full border-2 border-dashed border-[#1B2A4A]/30 rounded-lg py-6 flex flex-col items-center gap-2 text-[#1B2A4A]/60 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
-          <Upload size={20} /><span className="text-sm">Schéma annoté (PDF ou photo)</span>
-        </button>
+        <div className="grid grid-cols-2 gap-2" data-tour="exercise-photo">
+          <button type="button" onClick={() => cameraRef.current.click()}
+            className="border-2 border-dashed border-[#1B2A4A]/30 rounded-lg py-5 flex flex-col items-center gap-2 text-[#1B2A4A]/60 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
+            <Camera size={20} /><span className="text-xs">Prendre une photo</span>
+          </button>
+          <button type="button" onClick={() => inputRef.current.click()}
+            className="border-2 border-dashed border-[#1B2A4A]/30 rounded-lg py-5 flex flex-col items-center gap-2 text-[#1B2A4A]/60 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
+            <Upload size={20} /><span className="text-xs">Galerie / PDF</span>
+          </button>
+        </div>
       ) : (
         <div className="flex items-center justify-between border border-[#1B2A4A]/20 rounded-lg px-3 py-2 bg-white/60">
           <div className="flex items-center gap-2 text-sm text-[#1B2A4A]">
