@@ -3667,7 +3667,7 @@ function CoachingProBoost({ session }) {
             </div>
           </div>
         </div>
-      )}}
+      )}
       {showOnboarding && <OnboardingModal onDone={finishOnboarding} />}
       {showTour && !showOnboarding && (
         <GuidedTour
