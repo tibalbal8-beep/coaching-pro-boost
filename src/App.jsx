@@ -826,6 +826,32 @@ function useFileImage(ex) {
   return data;
 }
 
+function FilterAccordion({ label, activeCount, borderTop, children }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={borderTop ? "border-t border-[#1B2A4A]/8" : ""}>
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#1B2A4A]/4 transition-colors">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-[#1B2A4A]">{label}</span>
+          {activeCount > 0 && (
+            <span className="text-[10px] font-bold bg-[#FF6B35] text-white rounded-full px-1.5 py-0.5 leading-none">{activeCount}</span>
+          )}
+        </div>
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+          className={`text-[#1B2A4A]/40 transition-transform duration-200 ${open ? "rotate-180" : ""}`}>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && (
+        <div className="px-4 pb-3 flex flex-wrap gap-1.5">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage }) {
   const fileImage = useFileImage(ex);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -3764,28 +3790,50 @@ function CoachingProBoost({ session }) {
                 </div>
               </div>
             )}
-            <div className="space-y-2 mb-6">
-              <div className="flex flex-wrap gap-1.5 items-center">
-                <span className="text-xs text-[#1B2A4A]/40 mr-1">Thème :</span>
-                {themes.map(t => <Tag key={t} active={filterTheme.includes(t)} onClick={() => toggleFilter(filterTheme, setFilterTheme, t)} color="orange">{t}</Tag>)}
-                <div className="flex items-center gap-1 ml-2">
-                  <input value={newThemeInput} onChange={e => setNewThemeInput(e.target.value)} placeholder="+ ajouter un thème" className="text-xs border border-[#1B2A4A]/20 rounded-full px-2 py-1 w-32 bg-white/60"
-                    onKeyDown={e => { if (e.key === "Enter" && newThemeInput.trim()) { saveThemes([...themes, newThemeInput.trim()]); setNewThemeInput(""); } }} />
+            {(() => {
+              const anyFilter = filterTheme.length + filterFormat.length + filterPhase.length + filterCategorie.length > 0;
+              const filterSections = [
+                {
+                  key: "theme", label: "Thème", active: filterTheme.length,
+                  content: (
+                    <>
+                      {themes.map(t => <Tag key={t} active={filterTheme.includes(t)} onClick={() => toggleFilter(filterTheme, setFilterTheme, t)} color="orange">{t}</Tag>)}
+                      <input value={newThemeInput} onChange={e => setNewThemeInput(e.target.value)} placeholder="+ nouveau thème" className="text-xs border border-[#1B2A4A]/20 rounded-full px-2 py-1 w-28 bg-white/60"
+                        onKeyDown={e => { if (e.key === "Enter" && newThemeInput.trim()) { saveThemes([...themes, newThemeInput.trim()]); setNewThemeInput(""); } }} />
+                    </>
+                  )
+                },
+                {
+                  key: "format", label: "Opposition", active: filterFormat.length,
+                  content: FORMATS.map(f => <Tag key={f} active={filterFormat.includes(f)} onClick={() => toggleFilter(filterFormat, setFilterFormat, f)}>{f}</Tag>)
+                },
+                {
+                  key: "phase", label: "Phase", active: filterPhase.length,
+                  content: PHASES.map(p => <Tag key={p} active={filterPhase.includes(p)} onClick={() => toggleFilter(filterPhase, setFilterPhase, p)}>{p}</Tag>)
+                },
+                {
+                  key: "categorie", label: "Catégorie", active: filterCategorie.length,
+                  content: CATEGORIES.map(c => <Tag key={c} active={filterCategorie.includes(c)} onClick={() => toggleFilter(filterCategorie, setFilterCategorie, c)}>{c}</Tag>)
+                },
+              ];
+              return (
+                <div className="mb-5 rounded-2xl overflow-hidden border border-[#1B2A4A]/10 bg-white/60">
+                  {filterSections.map((sec, idx) => (
+                    <FilterAccordion key={sec.key} label={sec.label} activeCount={sec.active} borderTop={idx > 0}>
+                      {sec.content}
+                    </FilterAccordion>
+                  ))}
+                  {anyFilter && (
+                    <div className="px-4 py-2 border-t border-[#1B2A4A]/8 flex justify-end">
+                      <button onClick={() => { setFilterTheme([]); setFilterFormat([]); setFilterPhase([]); setFilterCategorie([]); }}
+                        className="text-xs text-[#FF6B35] font-medium hover:underline">
+                        Effacer tous les filtres
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div className="flex flex-wrap gap-1.5 items-center">
-                <span className="text-xs text-[#1B2A4A]/40 mr-1">Opposition :</span>
-                {FORMATS.map(f => <Tag key={f} active={filterFormat.includes(f)} onClick={() => toggleFilter(filterFormat, setFilterFormat, f)}>{f}</Tag>)}
-              </div>
-              <div className="flex flex-wrap gap-1.5 items-center">
-                <span className="text-xs text-[#1B2A4A]/40 mr-1">Phase :</span>
-                {PHASES.map(p => <Tag key={p} active={filterPhase.includes(p)} onClick={() => toggleFilter(filterPhase, setFilterPhase, p)}>{p}</Tag>)}
-              </div>
-              <div className="flex flex-wrap gap-1.5 items-center">
-                <span className="text-xs text-[#1B2A4A]/40 mr-1">Catégorie :</span>
-                {CATEGORIES.map(c => <Tag key={c} active={filterCategorie.includes(c)} onClick={() => toggleFilter(filterCategorie, setFilterCategorie, c)}>{c}</Tag>)}
-              </div>
-            </div>
+              );
+            })()}
             {filtered.length === 0 ? (
               <div className="text-center py-16 text-[#1B2A4A]/40"><p>Aucun exercice ne correspond.</p></div>
             ) : (
