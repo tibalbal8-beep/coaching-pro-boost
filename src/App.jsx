@@ -3400,9 +3400,9 @@ function CoachingProBoost({ session }) {
               <button onClick={() => setSidebarOpen(false)} className="text-[#1B2A4A]/50 hover:text-[#1B2A4A] p-1"><X size={22} /></button>
             </div>
             {[
+              { key: "sessions", label: "Séances", icon: ListPlus, alsoActive: "session" },
               { key: "library", label: "Bibliothèque", icon: Library },
               { key: "playbook", label: "Play Book", icon: BookOpen },
-              { key: "sessions", label: "Séances", icon: ListPlus, alsoActive: "session" },
               { key: "stats", label: "Stats", icon: BarChart3 },
             ].map(item => {
               const active = view === item.key || view === item.alsoActive;
