@@ -88,26 +88,55 @@ function useSubscription(userId) {
 }
 
 async function startCheckout(priceId) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const res = await supabase.functions.invoke("create-checkout-session", {
-    body: {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Non connecté.");
+
+  // Récupère le stripe_customer_id existant
+  const { data: profile } = await supabase.from("profiles")
+    .select("stripe_customer_id").eq("id", user.id).maybeSingle();
+
+  const res = await fetch("/api/create-checkout-session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
       priceId,
       successUrl: window.location.origin + "?premium=success",
       cancelUrl: window.location.origin + "?premium=cancel",
-    },
-    headers: { Authorization: `Bearer ${session?.access_token}` },
+      userId: user.id,
+      userEmail: user.email,
+      customerId: profile?.stripe_customer_id || null,
+    }),
   });
-  if (res.data?.url) window.location.href = res.data.url;
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+
+  // Sauvegarde le customerId si nouveau
+  if (data.customerId && !profile?.stripe_customer_id) {
+    await supabase.from("profiles").update({ stripe_customer_id: data.customerId }).eq("id", user.id);
+  }
+
+  if (data.url) window.location.href = data.url;
   else throw new Error("Erreur lors de la redirection vers le paiement.");
 }
 
 async function openBillingPortal() {
-  const { data: { session } } = await supabase.auth.getSession();
-  const res = await supabase.functions.invoke("create-portal-session", {
-    body: { returnUrl: window.location.origin },
-    headers: { Authorization: `Bearer ${session?.access_token}` },
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Non connecté.");
+
+  const { data: profile } = await supabase.from("profiles")
+    .select("stripe_customer_id").eq("id", user.id).maybeSingle();
+
+  const res = await fetch("/api/create-portal-session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customerId: profile?.stripe_customer_id,
+      returnUrl: window.location.origin,
+    }),
   });
-  if (res.data?.url) window.location.href = res.data.url;
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  if (data.url) window.location.href = data.url;
   else throw new Error("Impossible d'ouvrir le portail client.");
 }
 
