@@ -1898,6 +1898,196 @@ function QuickCropForm({ dataUrl, themes, onSave, onCancel }) {
   );
 }
 
+// ── Perspective correction (homography) ──────────────────────────────────────
+function gaussSolve(A, b) {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let c = 0; c < n; c++) {
+    let mx = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[mx][c])) mx = r;
+    [M[c], M[mx]] = [M[mx], M[c]];
+    for (let r = c + 1; r < n; r++) {
+      const f = M[r][c] / M[c][c];
+      for (let j = c; j <= n; j++) M[r][j] -= f * M[c][j];
+    }
+  }
+  const x = new Array(n).fill(0);
+  for (let i = n - 1; i >= 0; i--) {
+    x[i] = M[i][n] / M[i][i];
+    for (let j = 0; j < i; j++) M[j][n] -= M[j][i] * x[i];
+  }
+  return x;
+}
+
+function buildHomography(src4, dst4) {
+  const A = [], b = [];
+  for (let i = 0; i < 4; i++) {
+    const { x: sx, y: sy } = src4[i], { x: dx, y: dy } = dst4[i];
+    A.push([sx, sy, 1, 0, 0, 0, -dx*sx, -dx*sy]); b.push(dx);
+    A.push([0, 0, 0, sx, sy, 1, -dy*sx, -dy*sy]); b.push(dy);
+  }
+  const h = gaussSolve(A, b);
+  return [h[0],h[1],h[2],h[3],h[4],h[5],h[6],h[7],1];
+}
+
+function dist2pts(a, b) { return Math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2); }
+
+function warpPerspective(imgEl, corners) {
+  const naturalW = imgEl.naturalWidth, naturalH = imgEl.naturalHeight;
+  const maxW = 1800;
+  const scale = Math.min(1, maxW / Math.max(naturalW, naturalH));
+  const sw = Math.round(naturalW * scale), sh = Math.round(naturalH * scale);
+  const sc = corners.map(p => ({ x: p.x * scale, y: p.y * scale }));
+  const outW = Math.round((dist2pts(sc[0],sc[1]) + dist2pts(sc[3],sc[2])) / 2);
+  const outH = Math.round((dist2pts(sc[0],sc[3]) + dist2pts(sc[1],sc[2])) / 2);
+
+  const srcCanvas = document.createElement('canvas');
+  srcCanvas.width = sw; srcCanvas.height = sh;
+  srcCanvas.getContext('2d').drawImage(imgEl, 0, 0, sw, sh);
+  const srcData = srcCanvas.getContext('2d').getImageData(0, 0, sw, sh).data;
+
+  const dstPts = [{ x:0,y:0 },{ x:outW,y:0 },{ x:outW,y:outH },{ x:0,y:outH }];
+  const H = buildHomography(dstPts, sc);
+  const [h0,h1,h2,h3,h4,h5,h6,h7,h8] = H;
+
+  const dstCanvas = document.createElement('canvas');
+  dstCanvas.width = outW; dstCanvas.height = outH;
+  const dstCtx = dstCanvas.getContext('2d');
+  const dstImg = dstCtx.createImageData(outW, outH);
+  const d = dstImg.data;
+
+  for (let dy = 0; dy < outH; dy++) {
+    for (let dx = 0; dx < outW; dx++) {
+      const w = h6*dx + h7*dy + h8;
+      const sx = (h0*dx + h1*dy + h2) / w;
+      const sy = (h3*dx + h4*dy + h5) / w;
+      const x0 = Math.floor(sx), y0 = Math.floor(sy);
+      const x1 = x0+1, y1 = y0+1;
+      if (x0 < 0 || y0 < 0 || x1 >= sw || y1 >= sh) continue;
+      const fx = sx-x0, fy = sy-y0;
+      const i = (dy*outW+dx)*4;
+      for (let c = 0; c < 3; c++) {
+        const tl = srcData[(y0*sw+x0)*4+c], tr = srcData[(y0*sw+x1)*4+c];
+        const bl = srcData[(y1*sw+x0)*4+c], br = srcData[(y1*sw+x1)*4+c];
+        d[i+c] = Math.round(tl*(1-fx)*(1-fy) + tr*fx*(1-fy) + bl*(1-fx)*fy + br*fx*fy);
+      }
+      d[i+3] = 255;
+    }
+  }
+  dstCtx.putImageData(dstImg, 0, 0);
+  return dstCanvas.toDataURL('image/jpeg', 0.9);
+}
+
+function PerspectiveCorrectionView({ imageData, onConfirm, onSkip }) {
+  const containerRef = useRef();
+  const imgRef = useRef();
+  const [imgSize, setImgSize] = useState(null);
+  const [corners, setCorners] = useState(null); // [TL, TR, BR, BL] image coords
+  const [dragging, setDragging] = useState(null);
+  const [processing, setProcessing] = useState(false);
+
+  const onImgLoad = () => {
+    const img = imgRef.current;
+    const w = img.naturalWidth, h = img.naturalHeight;
+    setImgSize({ w, h });
+    const m = Math.min(w, h) * 0.08;
+    setCorners([{ x:m, y:m },{ x:w-m, y:m },{ x:w-m, y:h-m },{ x:m, y:h-m }]);
+  };
+
+  const getLayout = useCallback(() => {
+    if (!containerRef.current || !imgSize) return null;
+    const cw = containerRef.current.clientWidth, ch = containerRef.current.clientHeight;
+    const scale = Math.min(cw / imgSize.w, ch / imgSize.h);
+    const dw = imgSize.w * scale, dh = imgSize.h * scale;
+    return { scale, dw, dh, ox: (cw-dw)/2, oy: (ch-dh)/2 };
+  }, [imgSize]);
+
+  const layout = getLayout();
+  const toDisp = (p, l) => ({ x: p.x*l.scale+l.ox, y: p.y*l.scale+l.oy });
+  const toImg = (x, y, l) => ({
+    x: Math.max(0, Math.min(imgSize.w, (x-l.ox)/l.scale)),
+    y: Math.max(0, Math.min(imgSize.h, (y-l.oy)/l.scale)),
+  });
+
+  const onPointerMove = useCallback((e) => {
+    if (dragging === null || !layout) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const pt = toImg(e.clientX - rect.left, e.clientY - rect.top, layout);
+    setCorners(prev => prev.map((c, i) => i === dragging ? pt : c));
+  }, [dragging, layout, imgSize]);
+
+  const handleConfirm = async () => {
+    setProcessing(true);
+    await new Promise(r => setTimeout(r, 30));
+    try { onConfirm(warpPerspective(imgRef.current, corners)); }
+    finally { setProcessing(false); }
+  };
+
+  const COLORS = ["#FF6B35","#22c55e","#3b82f6","#a855f7"];
+
+  return (
+    <div className="fixed inset-0 z-[400] bg-black flex flex-col">
+      <div className="flex items-center justify-between px-4 py-3 bg-[#1B2A4A]">
+        <div>
+          <div className="text-white font-bold text-sm" style={{ fontFamily:"Oswald,sans-serif" }}>REDRESSER LA PHOTO</div>
+          <div className="text-white/50 text-xs">Glisse les 4 coins sur les bords de ta feuille</div>
+        </div>
+        <button onClick={onSkip} className="text-white/50 text-xs border border-white/20 rounded-lg px-3 py-1.5 hover:text-white">Passer</button>
+      </div>
+
+      <div ref={containerRef} className="flex-1 relative overflow-hidden"
+        style={{ touchAction: "none" }}
+        onPointerMove={onPointerMove}
+        onPointerUp={() => setDragging(null)}>
+        <img ref={imgRef} src={imageData} onLoad={onImgLoad} alt=""
+          draggable={false}
+          style={layout ? { position:"absolute", left:layout.ox, top:layout.oy, width:layout.dw, height:layout.dh, userSelect:"none", pointerEvents:"none" } : { opacity:0 }} />
+
+        {layout && corners && (
+          <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", pointerEvents:"none" }}>
+            <polygon
+              points={corners.map(p => { const d=toDisp(p,layout); return `${d.x},${d.y}`; }).join(" ")}
+              fill="rgba(255,107,53,0.12)" stroke="#FF6B35" strokeWidth="2" strokeDasharray="8 4" />
+            {corners.map((p, i) => {
+              const d = toDisp(p, layout);
+              return <line key={i}
+                x1={toDisp(corners[i],layout).x} y1={toDisp(corners[i],layout).y}
+                x2={toDisp(corners[(i+1)%4],layout).x} y2={toDisp(corners[(i+1)%4],layout).y}
+                stroke={COLORS[i]} strokeWidth="2" opacity="0.6" />;
+            })}
+          </svg>
+        )}
+
+        {layout && corners && corners.map((p, i) => {
+          const d = toDisp(p, layout);
+          return (
+            <div key={i}
+              onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); setDragging(i); }}
+              style={{ position:"absolute", left:d.x-24, top:d.y-24, width:48, height:48,
+                display:"flex", alignItems:"center", justifyContent:"center",
+                cursor:"grab", touchAction:"none" }}>
+              <div style={{ width:28, height:28, borderRadius:"50%",
+                background:COLORS[i], border:"3px solid white",
+                boxShadow:"0 2px 10px rgba(0,0,0,0.6)" }} />
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="px-4 py-4 bg-[#1B2A4A] flex gap-3">
+        <button onClick={onSkip} className="flex-1 border border-white/20 text-white/60 rounded-xl py-3 text-sm">
+          Sans correction
+        </button>
+        <button onClick={handleConfirm} disabled={processing || !corners}
+          className="flex-1 bg-[#FF6B35] text-white rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
+          {processing ? <><Loader2 size={15} className="animate-spin" /> Traitement…</> : "✓ Redresser"}
+        </button>
+      </div>
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function CropPhotoView({ imageData, onCancel, onCrop, multiMode = false, cropCount = 0 }) {
   const canvasRef = useRef();
   const imgRef = useRef(null);
@@ -3234,6 +3424,7 @@ function CoachingProBoost({ session }) {
   const [cropContext, setCropContext] = useState("library"); // "library" | "session"
   const [quickCropData, setQuickCropData] = useState(null);
   const [currentSessionPhoto, setCurrentSessionPhoto] = useState(null);
+  const [pendingPerspectivePhoto, setPendingPerspectivePhoto] = useState(null);
   const sessionPhotoInputRef = useRef();
   const sessionCameraRef = useRef();
 
@@ -3250,10 +3441,15 @@ function CoachingProBoost({ session }) {
   const handleSessionPhotoFile = async (e) => {
     const f = e.target.files?.[0];
     if (!f || !activeSession) return;
-    const dataUrl = await readImageAsJpeg(f, 2000, 0.8);
+    const dataUrl = await readImageAsJpeg(f, 2000, 0.85);
+    setPendingPerspectivePhoto(dataUrl);
+    e.target.value = "";
+  };
+
+  const confirmSessionPhoto = async (dataUrl) => {
+    setPendingPerspectivePhoto(null);
     setCurrentSessionPhoto(dataUrl);
     await storage.set(`sessionPhoto:${activeSession.id}`, JSON.stringify(dataUrl));
-    e.target.value = "";
   };
 
   const deleteSessionPhoto = async () => {
@@ -3740,6 +3936,13 @@ function CoachingProBoost({ session }) {
               </>
             )}
           </div>
+        )}
+
+        {pendingPerspectivePhoto && (
+          <PerspectiveCorrectionView
+            imageData={pendingPerspectivePhoto}
+            onConfirm={confirmSessionPhoto}
+            onSkip={() => confirmSessionPhoto(pendingPerspectivePhoto)} />
         )}
 
         {view === "crop" && cropImage && (
