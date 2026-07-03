@@ -4100,9 +4100,19 @@ function CoachingProBoost({ session }) {
 
             {/* Déconnexion */}
             <button onClick={() => supabase.auth.signOut()}
-              className="w-full flex items-center justify-center gap-2 border border-red-200 text-red-500 rounded-2xl py-3.5 text-sm font-medium hover:bg-red-50 transition-colors">
+              className="w-full flex items-center justify-center gap-2 border border-red-200 text-red-500 rounded-2xl py-3.5 text-sm font-medium hover:bg-red-50 transition-colors mb-4">
               <LogOut size={16} /> Se déconnecter
             </button>
+
+            {/* Mentions légales */}
+            <div className="text-center">
+              <a href="/mentions-legales.html" target="_blank" rel="noopener noreferrer"
+                className="text-xs text-[#1B2A4A]/40 hover:text-[#1B2A4A]/70 underline transition-colors">
+                Mentions légales &amp; CGU
+              </a>
+              <span className="text-xs text-[#1B2A4A]/20 mx-2">·</span>
+              <span className="text-xs text-[#1B2A4A]/30">v1.0</span>
+            </div>
           </div>
         )}
 
