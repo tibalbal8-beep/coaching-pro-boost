@@ -164,23 +164,8 @@ function useStore() {
     (async () => {
       try {
         const ex = await storage.get("exercises");
-        if (ex) {
-          const list = JSON.parse(ex.value);
-          setExercises(list.map(e => e.hasFile ? { ...e, file: { name: e.fileName, type: e.fileType, data: null } } : e));
-        } else {
-          const seedEx = [
-            { id: "seed-ex-1", titre: "Exercice 1", duree: 15, format: "6c0", niveau: "Intermédiaire", categorie: "Passe", themes: ["circulation", "lecture de jeu"], objectif: "Améliorer la circulation de balle et la lecture du jeu à 6 joueurs", notes: "" },
-            { id: "seed-ex-2", titre: "Exercice 2", duree: 10, format: "1c1", niveau: "Intermédiaire", categorie: "Attaque", themes: ["dribble", "pénétration"], objectif: "Travail du 1c1 demi-terrain avec défenseur", notes: "" },
-            { id: "seed-ex-3", titre: "Exercice 3", duree: 10, format: "1c0", niveau: "Intermédiaire", categorie: "Dribble", themes: ["dribble", "vitesse", "changement de direction"], objectif: "Développer le dribble plein terrain avec cônes et passe en sortie", notes: "" },
-            { id: "seed-ex-4", titre: "Exercice 4", duree: 10, format: "2c0", niveau: "Débutant", categorie: "Transition", themes: ["transition", "passe", "finition"], objectif: "Enchaîner une transition offensive à 2 joueurs plein terrain", notes: "" },
-            { id: "seed-ex-5", titre: "Exercice 5", duree: 10, format: "1c0", niveau: "Intermédiaire", categorie: "Dribble", themes: ["dribble", "cônes", "vitesse"], objectif: "Circuit de dribble plein terrain avec cônes", notes: "" },
-            { id: "seed-ex-6", titre: "Exercice 6", duree: 10, format: "1c1", niveau: "Avancé", categorie: "Attaque", themes: ["isolation", "drive", "tir"], objectif: "Travail de l'isolation 1c1 avec drive vers le panier", notes: "" },
-            { id: "seed-ex-7", titre: "Exercice 7", duree: 10, format: "1c1", niveau: "Intermédiaire", categorie: "Poste", themes: ["jeu de poste", "dos au panier"], objectif: "Jeu de poste bas avec défenseur", notes: "" },
-            { id: "seed-ex-8", titre: "Exercice 8", duree: 10, format: "2c0", niveau: "Débutant", categorie: "Poste", themes: ["jeu de poste", "tir", "passe intérieure"], objectif: "Jeu de poste et tir sans défenseur", notes: "" },
-          ];
-          setExercises(seedEx);
-          persist("exercises", JSON.stringify(seedEx));
-        }
+        const list = ex ? JSON.parse(ex.value) : [];
+        setExercises(list.map(e => e.hasFile ? { ...e, file: { name: e.fileName, type: e.fileType, data: null } } : e));
       } catch {}
       try { const se = await storage.get("sessions"); setSessions(se ? JSON.parse(se.value) : []); } catch {}
       try { const th = await storage.get("themes"); setThemes(th ? JSON.parse(th.value) : DEFAULT_THEMES); } catch {}
@@ -189,21 +174,7 @@ function useStore() {
       try { const pl = await storage.get("players"); setPlayers(pl ? JSON.parse(pl.value) : []); } catch {}
       try {
         const pb = await storage.get("plays");
-        if (pb) {
-          setPlays(JSON.parse(pb.value));
-        } else {
-          const seed = [
-            { id: "seed-play-1", nom: "Système 1", type: "Système offensif", description: "", tags: ["diamant", "flare pick", "pick isolé"], images: [] },
-            { id: "seed-play-2", nom: "Système 2", type: "Système offensif", description: "", tags: ["Stagger", "pick isolé"], images: [] },
-            { id: "seed-play-3", nom: "Système 3", type: "Système offensif", description: "", tags: ["Iverson", "Down pick"], images: [] },
-            { id: "seed-play-4", nom: "Système 4", type: "Système offensif", description: "", tags: ["horn", "cross pick", "shuffle"], images: [] },
-            { id: "seed-play-5", nom: "Système 5", type: "Système offensif", description: "", tags: ["Pick the picker", "cross pick"], images: [] },
-            { id: "seed-play-6", nom: "Système 6", type: "Système offensif", description: "", tags: ["flare pick", "Down pick", "Stagger", "Step up screen"], images: [] },
-            { id: "seed-play-7", nom: "Système 7", type: "Système offensif", description: "", tags: [], images: [] },
-          ];
-          setPlays(seed);
-          persist("plays", JSON.stringify(seed));
-        }
+        setPlays(pb ? JSON.parse(pb.value) : []);
       } catch {}
       try { const pt = await storage.get("playTags"); setPlayTags(pt ? JSON.parse(pt.value) : []); } catch {}
       try { const cl = await storage.get("clubLogo"); if (cl) setClubLogo(cl.value); } catch {}
