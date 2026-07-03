@@ -3210,6 +3210,7 @@ function CoachingProBoost({ session }) {
   const [quickCropData, setQuickCropData] = useState(null);
   const [currentSessionPhoto, setCurrentSessionPhoto] = useState(null);
   const sessionPhotoInputRef = useRef();
+  const sessionCameraRef = useRef();
 
   useEffect(() => {
     if (!activeSession) { setCurrentSessionPhoto(null); return; }
@@ -3915,6 +3916,7 @@ function CoachingProBoost({ session }) {
             {/* Photo de séance */}
             <div className="mb-6 no-print">
               <input ref={sessionPhotoInputRef} type="file" accept="image/*" className="hidden" onChange={handleSessionPhotoFile} />
+              <input ref={sessionCameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleSessionPhotoFile} />
               {currentSessionPhoto ? (
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -3934,10 +3936,16 @@ function CoachingProBoost({ session }) {
                     className="w-full rounded-lg border border-[#1B2A4A]/10 object-contain max-h-80 cursor-zoom-in" />
                 </div>
               ) : (
-                <button onClick={() => sessionPhotoInputRef.current.click()}
-                  className="w-full border-2 border-dashed border-[#1B2A4A]/20 rounded-lg py-4 flex items-center justify-center gap-2 text-sm text-[#1B2A4A]/50 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
-                  <ImageIcon size={18} /> Ajouter une photo de séance
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => sessionCameraRef.current.click()}
+                    className="border-2 border-dashed border-[#1B2A4A]/20 rounded-lg py-4 flex flex-col items-center justify-center gap-2 text-sm text-[#1B2A4A]/50 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
+                    <Camera size={18} /><span className="text-xs">Prendre une photo</span>
+                  </button>
+                  <button onClick={() => sessionPhotoInputRef.current.click()}
+                    className="border-2 border-dashed border-[#1B2A4A]/20 rounded-lg py-4 flex flex-col items-center justify-center gap-2 text-sm text-[#1B2A4A]/50 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
+                    <ImageIcon size={18} /><span className="text-xs">Galerie</span>
+                  </button>
+                </div>
               )}
             </div>
 
