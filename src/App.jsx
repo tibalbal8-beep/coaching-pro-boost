@@ -3298,6 +3298,11 @@ function CoachingProBoost({ session }) {
   const cpbAlert = useAlert();
   const [paywallReason, setPaywallReason] = useState(null);
   const toast = useToast();
+  const [premiumSuccess, setPremiumSuccess] = useState(() => {
+    const p = new URLSearchParams(window.location.search).get("premium");
+    if (p === "success") { window.history.replaceState({}, "", "/"); return true; }
+    return false;
+  });
   const team = teams.find(t => t.id === activeTeamId) || teams[0] || { nom: "", niveau: "", jours: [], nbJoueurs: 0 };
   const updateTeam = (patch) => {
     if (!team.id) {
@@ -3644,6 +3649,25 @@ function CoachingProBoost({ session }) {
     <div className="min-h-screen bg-[#F2EDE4]" style={{ fontFamily: "Inter, sans-serif" }}>
       <style>{`@media print { .no-print { display: none !important; } body { background: white; } }`}</style>
       {paywallReason && <PaywallModal reason={paywallReason} onClose={() => setPaywallReason(null)} />}
+      {premiumSuccess && (
+        <div className="fixed inset-0 z-[700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl text-center">
+            <div className="bg-[#FF6B35] px-6 py-8">
+              <div className="text-5xl mb-3">🏆</div>
+              <div className="text-white font-bold text-2xl" style={{ fontFamily: "Oswald, sans-serif" }}>BIENVENUE EN PREMIUM !</div>
+            </div>
+            <div className="px-6 py-6">
+              <p className="text-[#1B2A4A] text-sm mb-2 font-medium">Ton abonnement est actif.</p>
+              <p className="text-[#1B2A4A]/50 text-xs mb-6">Exercices illimités, séances illimitées, Play Book complet — tout est débloqué.</p>
+              <button onClick={() => { setPremiumSuccess(false); setViewPersist("account"); }}
+                className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors"
+                style={{ fontFamily: "Oswald, sans-serif" }}>
+                Accéder à mon compte
+              </button>
+            </div>
+          </div>
+        </div>
+      )}}
       {showOnboarding && <OnboardingModal onDone={finishOnboarding} />}
       {showTour && !showOnboarding && (
         <GuidedTour
