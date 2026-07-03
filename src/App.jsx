@@ -87,11 +87,11 @@ function useSubscription(userId) {
   return { isPremium, loadingPremium };
 }
 
-async function startCheckout(userId) {
+async function startCheckout(priceId) {
   const { data: { session } } = await supabase.auth.getSession();
   const res = await supabase.functions.invoke("create-checkout-session", {
     body: {
-      priceId: import.meta.env.VITE_STRIPE_PRICE_ID,
+      priceId,
       successUrl: window.location.origin + "?premium=success",
       cancelUrl: window.location.origin + "?premium=cancel",
     },
@@ -101,9 +101,24 @@ async function startCheckout(userId) {
   else throw new Error("Erreur lors de la redirection vers le paiement.");
 }
 
+async function openBillingPortal() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await supabase.functions.invoke("create-portal-session", {
+    body: { returnUrl: window.location.origin },
+    headers: { Authorization: `Bearer ${session?.access_token}` },
+  });
+  if (res.data?.url) window.location.href = res.data.url;
+  else throw new Error("Impossible d'ouvrir le portail client.");
+}
+
 function PaywallModal({ onClose, reason }) {
   const [loading, setLoading] = useState(false);
+  const [annual, setAnnual] = useState(false);
   const cpbAlert = useAlert();
+
+  const PRICE_MONTHLY = import.meta.env.VITE_STRIPE_PRICE_ID_MONTHLY;
+  const PRICE_ANNUAL = import.meta.env.VITE_STRIPE_PRICE_ID_ANNUAL;
+
   return (
     <div className="fixed inset-0 z-[600] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
       <div className="bg-[#F2EDE4] rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
@@ -117,21 +132,50 @@ function PaywallModal({ onClose, reason }) {
           <div className="bg-white rounded-2xl p-4 mb-4 space-y-2">
             {["Exercices illimités", "Séances illimitées", "Play Book complet", "Impression PDF", "Statistiques avancées"].map(f => (
               <div key={f} className="flex items-center gap-2 text-sm text-[#1B2A4A]">
-                <Check size={15} className="text-[#FF6B35] flex-shrink-0" />
-                {f}
+                <Check size={15} className="text-[#FF6B35] flex-shrink-0" />{f}
               </div>
             ))}
           </div>
-          <div className="text-center mb-4">
-            <span className="text-3xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>1,99€</span>
-            <span className="text-[#1B2A4A]/50 text-sm"> / mois</span>
+
+          <div className="flex items-center bg-white rounded-xl p-1 mb-4 gap-1">
+            <button onClick={() => setAnnual(false)}
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${!annual ? "bg-[#1B2A4A] text-white" : "text-[#1B2A4A]/50"}`}>
+              Mensuel
+            </button>
+            <button onClick={() => setAnnual(true)}
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors relative ${annual ? "bg-[#1B2A4A] text-white" : "text-[#1B2A4A]/50"}`}>
+              Annuel
+              <span className="absolute -top-2.5 -right-1 bg-[#FF6B35] text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">-33%</span>
+            </button>
           </div>
+
+          <div className="text-center mb-4">
+            {annual ? (
+              <>
+                <span className="text-3xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>39,99€</span>
+                <span className="text-[#1B2A4A]/50 text-sm"> / an</span>
+                <div className="text-xs text-[#FF6B35] mt-1 font-medium">soit 3,33€/mois — 2 mois offerts</div>
+              </>
+            ) : (
+              <>
+                <span className="text-3xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>4,99€</span>
+                <span className="text-[#1B2A4A]/50 text-sm"> / mois</span>
+              </>
+            )}
+          </div>
+
           <button
             disabled={loading}
-            onClick={async () => { setLoading(true); try { await startCheckout(); } catch(e) { await cpbAlert(e.message); } setLoading(false); }}
+            onClick={async () => {
+              setLoading(true);
+              try { await startCheckout(annual ? PRICE_ANNUAL : PRICE_MONTHLY); }
+              catch(e) { await cpbAlert(e.message); }
+              setLoading(false);
+            }}
             className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
-            style={{ fontFamily: "Oswald, sans-serif" }}
-          >{loading ? <><Loader2 size={16} className="animate-spin" /> Chargement...</> : "S'ABONNER MAINTENANT"}</button>
+            style={{ fontFamily: "Oswald, sans-serif" }}>
+            {loading ? <><Loader2 size={16} className="animate-spin" /> Chargement...</> : "S'ABONNER MAINTENANT"}
+          </button>
           <button onClick={onClose} className="w-full text-center text-xs text-[#1B2A4A]/40 mt-3 hover:text-[#1B2A4A]/60">Continuer en version gratuite</button>
         </div>
       </div>
@@ -3935,6 +3979,41 @@ function CoachingProBoost({ session }) {
                 )}
               </>
             )}
+
+            {/* Mon compte */}
+            <div className="mt-8 border-t border-[#1B2A4A]/10 pt-6">
+              <h3 className="text-sm font-semibold text-[#1B2A4A]/70 uppercase tracking-wide mb-4">Mon compte</h3>
+              <div className="bg-white/70 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-[#1B2A4A]/60">Email</span>
+                  <span className="text-sm text-[#1B2A4A] font-medium">{session?.user?.email}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-[#1B2A4A]/60">Abonnement</span>
+                  {isPremium ? (
+                    <span className="text-xs font-bold text-[#FF6B35] bg-[#FF6B35]/10 px-2.5 py-1 rounded-full">✓ PREMIUM ACTIF</span>
+                  ) : (
+                    <span className="text-xs font-bold text-[#1B2A4A]/40 bg-[#1B2A4A]/8 px-2.5 py-1 rounded-full">GRATUIT</span>
+                  )}
+                </div>
+                {isPremium ? (
+                  <button onClick={async () => { try { await openBillingPortal(); } catch(e) { await cpbAlert(e.message); } }}
+                    className="w-full border border-[#1B2A4A]/20 text-[#1B2A4A] rounded-xl py-2.5 text-sm font-medium hover:bg-[#1B2A4A]/5 transition-colors">
+                    Gérer mon abonnement →
+                  </button>
+                ) : (
+                  <button onClick={() => setPaywallReason("Passez en Premium pour accéder à toutes les fonctionnalités.")}
+                    className="w-full bg-[#FF6B35] text-white rounded-xl py-2.5 text-sm font-bold hover:bg-[#e85a28] transition-colors"
+                    style={{ fontFamily: "Oswald, sans-serif" }}>
+                    PASSER EN PREMIUM
+                  </button>
+                )}
+                <button onClick={() => supabase.auth.signOut()}
+                  className="w-full text-center text-xs text-[#1B2A4A]/40 hover:text-red-500 transition-colors pt-1">
+                  Se déconnecter
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
