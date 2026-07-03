@@ -1976,23 +1976,59 @@ function CropPhotoView({ imageData, onCancel, onCrop, multiMode = false, cropCou
   );
 }
 
+function EyeIcon({ open }) {
+  return open ? (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+  ) : (
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+    </svg>
+  );
+}
+
 function AuthScreen() {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
 
+  // Détecte le retour de confirmation email
+  useEffect(() => {
+    const hash = window.location.hash;
+    const params = new URLSearchParams(window.location.search);
+    if (hash.includes("access_token") || params.get("type") === "signup" || params.get("type") === "recovery") {
+      setMessage("✅ Email confirmé ! Vous pouvez maintenant vous connecter.");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    if (mode === "signup" && password !== confirm) {
+      setError("Les mots de passe ne correspondent pas.");
+      return;
+    }
     setLoading(true);
     try {
       if (mode === "signup") {
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
         setMessage("Compte créé ! Vérifie tes emails pour confirmer ton inscription, puis connecte-toi.");
+        setMode("login");
+      } else if (mode === "forgot") {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin + "?type=recovery",
+        });
+        if (error) throw error;
+        setMessage("Email de réinitialisation envoyé ! Vérifie ta boîte mail.");
         setMode("login");
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -2005,41 +2041,77 @@ function AuthScreen() {
     }
   };
 
+  const switchMode = (m) => { setMode(m); setError(null); setMessage(null); setPassword(""); setConfirm(""); };
+
   return (
     <div className="min-h-screen bg-[#F2EDE4] flex items-center justify-center p-4" style={{ fontFamily: "Inter, sans-serif" }}>
       <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
         <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 rounded-full bg-[#1B2A4A] flex items-center justify-center flex-shrink-0">
-            <div className="w-4 h-4 rounded-full border-2 border-[#FF6B35]" />
-          </div>
+          <img src="/logo-icon.png" alt="CPB" className="w-10 h-10 rounded-xl object-contain" />
           <h1 className="font-bold text-[#1B2A4A] text-xl leading-tight" style={{ fontFamily: "Oswald, sans-serif" }}>COACHING PRO BOOST</h1>
         </div>
-        <p className="text-sm text-[#1B2A4A]/60 mb-6 leading-relaxed">Centralisez vos exercices, construisez vos meilleures séances, partagez votre expertise avec vos collègues — et faites performer votre équipe toute la saison.</p>
-        <h2 className="text-lg font-semibold text-[#1B2A4A] mb-6">{mode === "login" ? "Connexion" : "Créer un compte"}</h2>
+        {mode !== "forgot" && <p className="text-sm text-[#1B2A4A]/60 mb-6 leading-relaxed">Centralisez vos exercices, construisez vos meilleures séances et faites performer votre équipe.</p>}
+        <h2 className="text-lg font-semibold text-[#1B2A4A] mb-6">
+          {mode === "login" ? "Connexion" : mode === "signup" ? "Créer un compte" : "Mot de passe oublié"}
+        </h2>
         {message && <div className="mb-4 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3">{message}</div>}
         {error && <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div>}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="text-xs font-medium text-[#1B2A4A]/60 uppercase tracking-wide">Email</label>
             <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
-              className="mt-1 w-full border border-[#1B2A4A]/20 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-[#2563EB]" />
+              className="mt-1 w-full border border-[#1B2A4A]/20 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-[#FF6B35]" />
           </div>
-          <div>
-            <label className="text-xs font-medium text-[#1B2A4A]/60 uppercase tracking-wide">Mot de passe</label>
-            <input type="password" required minLength={6} value={password} onChange={e => setPassword(e.target.value)}
-              className="mt-1 w-full border border-[#1B2A4A]/20 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-[#2563EB]" />
-            {mode === "signup" && <p className="text-xs text-[#1B2A4A]/40 mt-1">6 caractères minimum</p>}
-          </div>
+          {mode !== "forgot" && (
+            <div>
+              <label className="text-xs font-medium text-[#1B2A4A]/60 uppercase tracking-wide">Mot de passe</label>
+              <div className="relative mt-1">
+                <input type={showPwd ? "text" : "password"} required minLength={6} value={password} onChange={e => setPassword(e.target.value)}
+                  className="w-full border border-[#1B2A4A]/20 rounded-lg px-3 py-2.5 pr-10 text-sm bg-white focus:outline-none focus:border-[#FF6B35]" />
+                <button type="button" onClick={() => setShowPwd(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#1B2A4A]/40 hover:text-[#1B2A4A]">
+                  <EyeIcon open={showPwd} />
+                </button>
+              </div>
+              {mode === "signup" && <p className="text-xs text-[#1B2A4A]/40 mt-1">6 caractères minimum</p>}
+            </div>
+          )}
+          {mode === "signup" && (
+            <div>
+              <label className="text-xs font-medium text-[#1B2A4A]/60 uppercase tracking-wide">Confirmer le mot de passe</label>
+              <div className="relative mt-1">
+                <input type={showConfirm ? "text" : "password"} required value={confirm} onChange={e => setConfirm(e.target.value)}
+                  className="w-full border border-[#1B2A4A]/20 rounded-lg px-3 py-2.5 pr-10 text-sm bg-white focus:outline-none focus:border-[#FF6B35]" />
+                <button type="button" onClick={() => setShowConfirm(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#1B2A4A]/40 hover:text-[#1B2A4A]">
+                  <EyeIcon open={showConfirm} />
+                </button>
+              </div>
+            </div>
+          )}
           <button type="submit" disabled={loading}
             className="w-full bg-[#FF6B35] text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-[#e85a28] disabled:opacity-50 flex items-center justify-center gap-2">
             {loading && <Loader2 size={16} className="animate-spin" />}
-            {mode === "login" ? "Se connecter" : "S'inscrire"}
+            {mode === "login" ? "Se connecter" : mode === "signup" ? "S'inscrire" : "Envoyer le lien"}
           </button>
         </form>
-        <button onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(null); setMessage(null); }}
-          className="mt-4 w-full text-sm text-[#1B2A4A]/50 hover:text-[#2563EB] text-center transition-colors">
-          {mode === "login" ? "Pas encore de compte ? S'inscrire" : "Déjà un compte ? Se connecter"}
-        </button>
+        <div className="mt-4 space-y-2 text-center">
+          {mode === "login" && (
+            <>
+              <button onClick={() => switchMode("signup")} className="w-full text-sm text-[#1B2A4A]/50 hover:text-[#FF6B35] transition-colors">
+                Pas encore de compte ? S'inscrire
+              </button>
+              <button onClick={() => switchMode("forgot")} className="w-full text-sm text-[#1B2A4A]/40 hover:text-[#FF6B35] transition-colors">
+                Mot de passe oublié ?
+              </button>
+            </>
+          )}
+          {mode !== "login" && (
+            <button onClick={() => switchMode("login")} className="w-full text-sm text-[#1B2A4A]/50 hover:text-[#FF6B35] transition-colors">
+              ← Retour à la connexion
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
