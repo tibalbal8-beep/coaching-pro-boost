@@ -6,8 +6,8 @@ const AlertCtx = createContext(null);
 function useAlert() { return useContext(AlertCtx); }
 function AlertProvider({ children }) {
   const [modal, setModal] = useState(null);
-  const show = useCallback((msg) => new Promise(resolve => setModal({ msg, resolve })), []);
-  const close = () => { modal?.resolve(); setModal(null); };
+  const show = useCallback((msg, opts = {}) => new Promise(resolve => setModal({ msg, resolve, confirm: opts.confirm })), []);
+  const close = (result) => { modal?.resolve(result); setModal(null); };
   return (
     <AlertCtx.Provider value={show}>
       {children}
@@ -20,9 +20,23 @@ function AlertProvider({ children }) {
             </div>
             <div className="px-5 py-5">
               <p className="text-[#1B2A4A] text-sm leading-relaxed mb-5">{modal.msg}</p>
-              <button onClick={close}
-                className="w-full bg-[#FF6B35] text-white font-semibold py-2.5 rounded-xl text-sm hover:bg-[#e85a28] transition-colors"
-                style={{ fontFamily: "Oswald, sans-serif" }}>OK</button>
+              {modal.confirm ? (
+                <div className="flex gap-3">
+                  <button onClick={() => close(false)}
+                    className="flex-1 border border-[#1B2A4A]/20 text-[#1B2A4A] font-semibold py-2.5 rounded-xl text-sm hover:bg-[#1B2A4A]/5 transition-colors">
+                    Annuler
+                  </button>
+                  <button onClick={() => close(true)}
+                    className="flex-1 bg-[#FF6B35] text-white font-semibold py-2.5 rounded-xl text-sm hover:bg-[#e85a28] transition-colors"
+                    style={{ fontFamily: "Oswald, sans-serif" }}>
+                    Confirmer
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => close(true)}
+                  className="w-full bg-[#FF6B35] text-white font-semibold py-2.5 rounded-xl text-sm hover:bg-[#e85a28] transition-colors"
+                  style={{ fontFamily: "Oswald, sans-serif" }}>OK</button>
+              )}
             </div>
           </div>
         </div>
@@ -4325,7 +4339,6 @@ function CoachingProBoost({ session }) {
               </div>
               <button onClick={async () => {
                 try {
-                  // Charger les fichiers images depuis le storage
                   const exercisesWithFiles = await Promise.all(exercises.map(async (ex) => {
                     if (!ex.file || ex.file.data) return ex;
                     try {
@@ -4351,8 +4364,42 @@ function CoachingProBoost({ session }) {
                   a.click();
                   URL.revokeObjectURL(url);
                 } catch(e) { await cpbAlert("Erreur lors de l'export : " + e.message); }
-              }} className="w-full flex items-center justify-between px-5 py-4 text-sm text-[#1B2A4A] font-medium hover:bg-[#1B2A4A]/5 transition-colors">
+              }} className="w-full flex items-center justify-between px-5 py-4 text-sm text-[#1B2A4A] font-medium hover:bg-[#1B2A4A]/5 transition-colors border-b border-[#1B2A4A]/8">
                 <span>Exporter une sauvegarde</span>
+                <ChevronRight size={16} className="text-[#1B2A4A]/40" />
+              </button>
+              <input type="file" accept=".json" className="hidden" id="cpb-import-input" onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                e.target.value = "";
+                try {
+                  const text = await file.text();
+                  const backup = JSON.parse(text);
+                  if (!backup.version || !backup.exercises) throw new Error("Fichier de sauvegarde invalide.");
+                  const confirmed = await cpbAlert(
+                    `Cette restauration va remplacer toutes tes données actuelles par celles du ${new Date(backup.exportedAt).toLocaleDateString("fr-FR")} (${backup.exercises.length} exercices, ${backup.sessions?.length || 0} séances). Continuer ?`,
+                    { confirm: true }
+                  );
+                  if (!confirmed) return;
+                  // Restaurer exercices avec leurs fichiers
+                  const cleanExercises = backup.exercises.map(ex => {
+                    if (ex.file?.data) {
+                      storage.set(`file:${ex.id}`, JSON.stringify(ex.file)).catch(() => {});
+                      return { ...ex, file: { name: ex.file.name, type: ex.file.type, data: null } };
+                    }
+                    return ex;
+                  });
+                  saveExercises(cleanExercises);
+                  if (backup.sessions) saveSessions(backup.sessions);
+                  if (backup.themes) saveThemes(backup.themes);
+                  if (backup.teams) saveTeams(backup.teams);
+                  if (backup.plays) savePlays(backup.plays);
+                  await cpbAlert("✓ Sauvegarde restaurée avec succès !");
+                } catch(e) { await cpbAlert("Erreur lors de l'import : " + e.message); }
+              }} />
+              <button onClick={() => document.getElementById("cpb-import-input").click()}
+                className="w-full flex items-center justify-between px-5 py-4 text-sm text-[#1B2A4A] font-medium hover:bg-[#1B2A4A]/5 transition-colors">
+                <span>Restaurer une sauvegarde</span>
                 <ChevronRight size={16} className="text-[#1B2A4A]/40" />
               </button>
             </div>
