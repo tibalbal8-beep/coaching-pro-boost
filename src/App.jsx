@@ -1471,6 +1471,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const [activeGab, setActiveGab] = useState(0);
   const [editingGabName, setEditingGabName] = useState(null); // index being renamed
   const [showRefPhoto, setShowRefPhoto] = useState(true);
+  const [courtVariant, setCourtVariant] = useState(null);
 
   const loadBackground = (src) => {
     const img = new Image();
@@ -1917,8 +1918,25 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     });
   };
 
+  const COURT_LABELS = ["Terrain complet", "Demi-terrain ↑", "Demi-terrain ↓"];
+
   return (
     <div>
+      {/* Sélecteur de terrain */}
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <span className="text-xs font-semibold text-[#1B2A4A]/60 uppercase tracking-wide">Terrain :</span>
+        {COURT_LABELS.map((label, i) => (
+          <button key={i} type="button" onClick={() => { setCourtVariant(i); switchGabarit(i); }}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${courtVariant === i ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A] hover:border-[#1B2A4A]/50"}`}>
+            {label} {!gabarits[i]?.dataUrl && <span className="opacity-40">— à configurer</span>}
+          </button>
+        ))}
+      </div>
+      {courtVariant !== null && !gabarits[courtVariant]?.dataUrl && (
+        <p className="mb-3 text-xs text-[#FF6B35]/80 bg-[#FF6B35]/5 border border-[#FF6B35]/20 rounded-lg px-3 py-2">
+          Charge ton image de terrain via <strong>"Changer l'image"</strong> ci-dessous, puis elle sera mémorisée pour la prochaine fois.
+        </p>
+      )}
       {referencePhoto && showRefPhoto && (
         <div className="mb-3 rounded-lg overflow-hidden border border-[#1B2A4A]/10 bg-white/40">
           <div className="flex items-center justify-between px-2 py-1">
