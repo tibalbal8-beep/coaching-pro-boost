@@ -370,7 +370,7 @@ function useStore() {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded };
+  return { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded, persist };
 }
 
 function usePdfJs() {
@@ -3451,7 +3451,7 @@ function ScrollToTopButton() {
 }
 
 function CoachingProBoost({ session }) {
-  const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded } = useStore();
+  const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore();
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
@@ -3530,7 +3530,23 @@ function CoachingProBoost({ session }) {
   const [activeSession, setActiveSession] = useState(null);
   const activeSessionRef = useRef(null);
   useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
+
+  // Autosave toutes les 30 secondes
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        await Promise.all([
+          persist("exercises", JSON.stringify(exercises.map(({ file, ...rest }) => ({ ...rest, hasFile: !!file, fileName: file?.name, fileType: file?.type })))),
+          persist("sessions", JSON.stringify(sessions)),
+          persist("themes", JSON.stringify(themes)),
+        ]);
+        setLastSaved(new Date());
+      } catch {}
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [exercises, sessions, themes]);
   const [newThemeInput, setNewThemeInput] = useState("");
+  const [lastSaved, setLastSaved] = useState(null);
   const [newTeamOpen, setNewTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const [confirmDeleteTeam, setConfirmDeleteTeam] = useState(false);
@@ -3844,7 +3860,12 @@ function CoachingProBoost({ session }) {
       <header className="border-b border-[#1B2A4A]/10 px-6 py-4 flex items-center gap-3 no-print">
         <button onClick={() => setSidebarOpen(true)} className="text-[#1B2A4A] p-1 -ml-1" aria-label="Ouvrir le menu"><Menu size={22} /></button>
         <img src="/logo-icon.png" alt="CPB" className="w-9 h-9 rounded-xl object-contain" />
-        <h1 className="font-bold text-[#1B2A4A] tracking-tight" style={{ fontFamily: "Oswald, sans-serif" }}>COACHING PRO BOOST</h1>
+        <h1 className="font-bold text-[#1B2A4A] tracking-tight flex-1" style={{ fontFamily: "Oswald, sans-serif" }}>COACHING PRO BOOST</h1>
+        {lastSaved && (
+          <span className="text-[10px] text-[#1B2A4A]/30 hidden sm:block">
+            ✓ Sauvegardé {lastSaved.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        )}
       </header>
 
       {sidebarOpen && (
