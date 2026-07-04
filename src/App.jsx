@@ -724,6 +724,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
   const [file, setFile] = useState(initial?.file || null);
   const [newTheme, setNewTheme] = useState("");
   const [themesOpen, setThemesOpen] = useState(false);
+  const [showDraw, setShowDraw] = useState(false);
 
   const toggle = (arr, setArr, v) => setArr(arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
 
@@ -800,6 +801,27 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
         <div className="absolute right-1 top-1"><DictateButton onResult={(t) => setNotes(prev => prev ? prev + " " + t : t)} /></div>
       </div>
       <FileDrop file={file} onChange={setFile} cpbAlert={cpbAlert} />
+      <button type="button" onClick={() => setShowDraw(true)}
+        className="flex items-center gap-2 w-full justify-center border border-dashed border-[#1B2A4A]/25 rounded-xl py-3 text-sm text-[#1B2A4A]/60 hover:border-[#FF6B35]/50 hover:text-[#FF6B35] transition-colors">
+        <span>🏀</span> Dessiner le schéma tactique
+      </button>
+      {showDraw && (
+        <div className="fixed inset-0 z-50 bg-[#1B2A4A]/80 flex flex-col overflow-y-auto">
+          <div className="bg-white rounded-t-2xl mt-auto min-h-screen p-4">
+            <DrawSheetView
+              referencePhoto={file?.data ? `data:${file.type};base64,${file.data}` : null}
+              onCancel={() => setShowDraw(false)}
+              onAddDirect={null}
+              processing={false}
+              onValidate={(dataUrl) => {
+                const b64 = dataUrl.split(",")[1];
+                setFile({ name: "schema.png", type: "image/png", data: b64 });
+                setShowDraw(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
       {initial?.id && (
         <RatingBlock avis={initial.avis || []} label="Noter cet exercice"
           onAdd={(a) => onSave({ id: initial.id, titre, themes: sel, phases, format, niveau, categorie, duree, objectif, notes, file, diagram: initial?.diagram, avis: [...(initial.avis || []), a], createdAt: initial.createdAt, _staySaved: true })} />
@@ -1375,7 +1397,33 @@ function buildBlankSheetSVG() {
   return { svg: s, width: totalW, height: totalH };
 }
 
-function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtType = "basketball" }) {
+function generateBasketballCourtDataUrl(variant) {
+  const s = "#1B2A4A";
+  const bg = "#f0e4c4";
+  let svgStr;
+  if (variant === "full") {
+    const w = 430, h = 800, cx = w / 2;
+    const keyW = w * 0.36, keyH = h * 0.18, keyX = cx - keyW / 2;
+    const ftR = keyW / 2, tpR = w * 0.43;
+    const hoopTop = keyH * 0.22, hoopBot = h - keyH * 0.22;
+    svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${bg}"/><rect x="1" y="1" width="${w-2}" height="${h-2}" fill="none" stroke="${s}" stroke-width="2"/><line x1="0" y1="${h/2}" x2="${w}" y2="${h/2}" stroke="${s}" stroke-width="1.5"/><circle cx="${cx}" cy="${h/2}" r="${w*0.14}" fill="none" stroke="${s}" stroke-width="1.5"/><path d="M ${cx-tpR} ${keyH} L ${cx-tpR} 0 M ${cx+tpR} ${keyH} L ${cx+tpR} 0" fill="none" stroke="${s}" stroke-width="1.5"/><path d="M ${cx-tpR} ${keyH} A ${tpR} ${tpR} 0 0 1 ${cx+tpR} ${keyH}" fill="none" stroke="${s}" stroke-width="1.5"/><rect x="${keyX}" y="0" width="${keyW}" height="${keyH}" fill="none" stroke="${s}" stroke-width="1.5"/><path d="M ${cx-ftR} ${keyH} A ${ftR} ${ftR} 0 0 1 ${cx+ftR} ${keyH}" fill="none" stroke="${s}" stroke-width="1.5"/><circle cx="${cx}" cy="${hoopTop}" r="7" fill="none" stroke="${s}" stroke-width="1.5"/><path d="M ${cx-tpR} ${h-keyH} L ${cx-tpR} ${h} M ${cx+tpR} ${h-keyH} L ${cx+tpR} ${h}" fill="none" stroke="${s}" stroke-width="1.5"/><path d="M ${cx-tpR} ${h-keyH} A ${tpR} ${tpR} 0 0 0 ${cx+tpR} ${h-keyH}" fill="none" stroke="${s}" stroke-width="1.5"/><rect x="${keyX}" y="${h-keyH}" width="${keyW}" height="${keyH}" fill="none" stroke="${s}" stroke-width="1.5"/><path d="M ${cx-ftR} ${h-keyH} A ${ftR} ${ftR} 0 0 0 ${cx+ftR} ${h-keyH}" fill="none" stroke="${s}" stroke-width="1.5"/><circle cx="${cx}" cy="${hoopBot}" r="7" fill="none" stroke="${s}" stroke-width="1.5"/></svg>`;
+  } else if (variant === "half-top") {
+    const w = 430, h = 500, cx = w / 2;
+    const keyW = w * 0.36, keyH = h * 0.36, keyX = cx - keyW / 2;
+    const ftR = keyW / 2, tpR = w * 0.43;
+    const hoopY = keyH * 0.22;
+    svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${bg}"/><rect x="1" y="1" width="${w-2}" height="${h-2}" fill="none" stroke="${s}" stroke-width="2"/><path d="M ${cx-tpR} ${keyH} L ${cx-tpR} 0 M ${cx+tpR} ${keyH} L ${cx+tpR} 0" fill="none" stroke="${s}" stroke-width="1.5"/><path d="M ${cx-tpR} ${keyH} A ${tpR} ${tpR} 0 0 1 ${cx+tpR} ${keyH}" fill="none" stroke="${s}" stroke-width="1.5"/><rect x="${keyX}" y="0" width="${keyW}" height="${keyH}" fill="none" stroke="${s}" stroke-width="1.5"/><path d="M ${cx-ftR} ${keyH} A ${ftR} ${ftR} 0 0 1 ${cx+ftR} ${keyH}" fill="none" stroke="${s}" stroke-width="1.5"/><circle cx="${cx}" cy="${hoopY}" r="7" fill="none" stroke="${s}" stroke-width="1.5"/></svg>`;
+  } else {
+    const w = 430, h = 500, cx = w / 2;
+    const keyW = w * 0.36, keyH = h * 0.36, keyX = cx - keyW / 2, keyY = h - keyH;
+    const ftR = keyW / 2, tpR = w * 0.43;
+    const hoopY = h - keyH * 0.22;
+    svgStr = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${bg}"/><rect x="1" y="1" width="${w-2}" height="${h-2}" fill="none" stroke="${s}" stroke-width="2"/><path d="M ${cx-tpR} ${keyY} L ${cx-tpR} ${h} M ${cx+tpR} ${keyY} L ${cx+tpR} ${h}" fill="none" stroke="${s}" stroke-width="1.5"/><path d="M ${cx-tpR} ${keyY} A ${tpR} ${tpR} 0 0 0 ${cx+tpR} ${keyY}" fill="none" stroke="${s}" stroke-width="1.5"/><rect x="${keyX}" y="${keyY}" width="${keyW}" height="${keyH}" fill="none" stroke="${s}" stroke-width="1.5"/><path d="M ${cx-ftR} ${keyY} A ${ftR} ${ftR} 0 0 0 ${cx+ftR} ${keyY}" fill="none" stroke="${s}" stroke-width="1.5"/><circle cx="${cx}" cy="${hoopY}" r="7" fill="none" stroke="${s}" stroke-width="1.5"/></svg>`;
+  }
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgStr);
+}
+
+function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtType = "basketball", referencePhoto = null }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const bgImgRef = useRef(null);
@@ -1417,6 +1465,8 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const [gabarits, setGabarits] = useState(DEFAULT_GABARITS);
   const [activeGab, setActiveGab] = useState(0);
   const [editingGabName, setEditingGabName] = useState(null); // index being renamed
+  const [courtVariant, setCourtVariant] = useState(null);
+  const [showRefPhoto, setShowRefPhoto] = useState(true);
 
   const loadBackground = (src) => {
     const img = new Image();
@@ -1863,8 +1913,39 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     });
   };
 
+  const selectCourt = (variant) => {
+    setCourtVariant(variant);
+    loadBackground(generateBasketballCourtDataUrl(variant));
+  };
+
   return (
     <div>
+      {/* Court selector */}
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <span className="text-xs font-semibold text-[#1B2A4A]/60 uppercase tracking-wide">Terrain :</span>
+        {[
+          { id: "full", label: "Terrain complet" },
+          { id: "half-top", label: "Demi-terrain ↑" },
+          { id: "half-bottom", label: "Demi-terrain ↓" },
+        ].map(({ id, label }) => (
+          <button key={id} type="button" onClick={() => selectCourt(id)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${courtVariant === id ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A] hover:border-[#1B2A4A]/50"}`}>
+            {label}
+          </button>
+        ))}
+        {referencePhoto && (
+          <button type="button" onClick={() => setShowRefPhoto(v => !v)}
+            className="ml-auto px-3 py-1.5 rounded-full text-xs font-medium border border-[#FF6B35]/40 text-[#FF6B35] hover:bg-[#FF6B35]/10 transition-colors">
+            {showRefPhoto ? "Masquer photo" : "Photo modèle"}
+          </button>
+        )}
+      </div>
+      {referencePhoto && showRefPhoto && (
+        <div className="mb-3 rounded-lg overflow-hidden border border-[#1B2A4A]/10 bg-white/40">
+          <p className="text-[10px] text-[#1B2A4A]/50 px-2 py-1 font-semibold uppercase tracking-wide">Photo modèle — reproduis ce schéma</p>
+          <img src={referencePhoto} alt="Photo modèle" className="w-full max-h-64 object-contain" />
+        </div>
+      )}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
         <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>DESSINER UNE FICHE</h2>
         <div className="flex items-center gap-1 bg-[#1B2A4A]/5 rounded-full p-1">
@@ -2061,13 +2142,15 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
 
       <div className="flex justify-end gap-2">
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
-        <button onClick={() => { commitPendingText(); setTimeout(() => onAddDirect(canvasRef.current.toDataURL("image/png")), 0); }} disabled={processing}
-          className="flex items-center gap-1.5 border border-[#FF6B35] text-[#FF6B35] px-4 py-2 rounded-md text-sm font-medium hover:bg-[#FF6B35]/10 disabled:opacity-50">
-          Ajouter directement à la bibliothèque
-        </button>
+        {onAddDirect && (
+          <button onClick={() => { commitPendingText(); setTimeout(() => onAddDirect(canvasRef.current.toDataURL("image/png")), 0); }} disabled={processing}
+            className="flex items-center gap-1.5 border border-[#FF6B35] text-[#FF6B35] px-4 py-2 rounded-md text-sm font-medium hover:bg-[#FF6B35]/10 disabled:opacity-50">
+            Ajouter directement à la bibliothèque
+          </button>
+        )}
         <button onClick={() => { commitPendingText(); setTimeout(() => onValidate(canvasRef.current.toDataURL("image/png")), 0); }} disabled={processing}
           className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28] disabled:opacity-50">
-          {processing ? <><Loader2 size={15} className="animate-spin" /> Analyse en cours...</> : "Valider avec analyse IA"}
+          {processing ? <><Loader2 size={15} className="animate-spin" /> Analyse en cours...</> : onAddDirect ? "Valider avec analyse IA" : "Utiliser ce schéma"}
         </button>
       </div>
     </div>
