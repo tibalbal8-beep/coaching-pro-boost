@@ -1470,7 +1470,6 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const [gabarits, setGabarits] = useState(DEFAULT_GABARITS);
   const [activeGab, setActiveGab] = useState(0);
   const [editingGabName, setEditingGabName] = useState(null); // index being renamed
-  const [courtVariant, setCourtVariant] = useState(null);
   const [showRefPhoto, setShowRefPhoto] = useState(true);
 
   const loadBackground = (src) => {
@@ -1918,38 +1917,19 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     });
   };
 
-  const selectCourt = (variant) => {
-    setCourtVariant(variant);
-    loadBackground(generateBasketballCourtDataUrl(variant));
-  };
-
   return (
     <div>
-      {/* Court selector */}
-      <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <span className="text-xs font-semibold text-[#1B2A4A]/60 uppercase tracking-wide">Terrain :</span>
-        {[
-          { id: "full", label: "Terrain complet" },
-          { id: "half-top", label: "Demi-terrain ↑" },
-          { id: "half-bottom", label: "Demi-terrain ↓" },
-        ].map(({ id, label }) => (
-          <button key={id} type="button" onClick={() => selectCourt(id)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${courtVariant === id ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A] hover:border-[#1B2A4A]/50"}`}>
-            {label}
-          </button>
-        ))}
-        {referencePhoto && (
-          <button type="button" onClick={() => setShowRefPhoto(v => !v)}
-            className="ml-auto px-3 py-1.5 rounded-full text-xs font-medium border border-[#FF6B35]/40 text-[#FF6B35] hover:bg-[#FF6B35]/10 transition-colors">
-            {showRefPhoto ? "Masquer photo" : "Photo modèle"}
-          </button>
-        )}
-      </div>
       {referencePhoto && showRefPhoto && (
         <div className="mb-3 rounded-lg overflow-hidden border border-[#1B2A4A]/10 bg-white/40">
-          <p className="text-[10px] text-[#1B2A4A]/50 px-2 py-1 font-semibold uppercase tracking-wide">Photo modèle — reproduis ce schéma</p>
+          <div className="flex items-center justify-between px-2 py-1">
+            <p className="text-[10px] text-[#1B2A4A]/50 font-semibold uppercase tracking-wide">Photo modèle</p>
+            <button type="button" onClick={() => setShowRefPhoto(false)} className="text-[10px] text-[#1B2A4A]/40 hover:text-[#1B2A4A]">Masquer</button>
+          </div>
           <img src={referencePhoto} alt="Photo modèle" className="w-full max-h-64 object-contain" />
         </div>
+      )}
+      {referencePhoto && !showRefPhoto && (
+        <button type="button" onClick={() => setShowRefPhoto(true)} className="mb-3 text-xs text-[#FF6B35] hover:underline">Afficher photo modèle</button>
       )}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
         <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>DESSINER UNE FICHE</h2>
