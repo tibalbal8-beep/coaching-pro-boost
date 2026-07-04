@@ -66,7 +66,7 @@ const JOURS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 const FREE_MAX_EXERCISES = 10;
-const FREE_MAX_SESSIONS = 2;
+const FREE_MAX_SESSIONS = 3;
 
 function useSubscription(userId) {
   const [isPremium, setIsPremium] = useState(false);
