@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coaching Pro Boost — L'application des coachs de basket</title>
+  <meta name="description" content="Stocke tes séances, retrouve tes exercices, partage avec tes collègues. L'application indispensable pour les coachs de basketball." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #F2EDE4;
+      --navy: #1B2A4A;
+      --orange: #FF6B35;
+      --orange-dark: #e85a28;
+      --white: #ffffff;
+      --text-muted: rgba(27,42,74,0.55);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--navy);
+      line-height: 1.6;
+    }
+
+    h1, h2, h3, .oswald { font-family: 'Oswald', sans-serif; }
+
+    /* NAV */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(242,237,228,0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(27,42,74,0.08);
+      padding: 14px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .nav-logo img { width: 36px; height: 36px; border-radius: 10px; object-fit: contain; }
+    .nav-logo span { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 17px; color: var(--navy); letter-spacing: 0.5px; }
+    .nav-cta {
+      background: var(--orange); color: white;
+      padding: 9px 20px; border-radius: 8px;
+      font-size: 14px; font-weight: 600;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .nav-cta:hover { background: var(--orange-dark); }
+
+    /* HERO */
+    .hero {
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center;
+      padding: 120px 24px 80px;
+      background: radial-gradient(ellipse at 60% 40%, rgba(255,107,53,0.08) 0%, transparent 60%);
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap-8px;
+      background: rgba(255,107,53,0.12); color: var(--orange);
+      border: 1px solid rgba(255,107,53,0.3);
+      border-radius: 100px; padding: 6px 16px;
+      font-size: 13px; font-weight: 600;
+      margin-bottom: 28px;
+      gap: 8px;
+    }
+    .hero h1 {
+      font-size: clamp(32px, 6vw, 64px);
+      font-weight: 700;
+      line-height: 1.1;
+      max-width: 800px;
+      margin-bottom: 24px;
+      letter-spacing: 0.5px;
+    }
+    .hero h1 span { color: var(--orange); }
+    .hero-sub {
+      font-size: clamp(16px, 2.5vw, 20px);
+      color: var(--text-muted);
+      max-width: 600px;
+      margin-bottom: 40px;
+      line-height: 1.7;
+    }
+    .hero-actions { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; margin-bottom: 64px; }
+    .btn-primary {
+      background: var(--orange); color: white;
+      padding: 14px 32px; border-radius: 10px;
+      font-size: 16px; font-weight: 700;
+      text-decoration: none; font-family: 'Oswald', sans-serif;
+      letter-spacing: 0.5px;
+      transition: background 0.2s, transform 0.1s;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-primary:hover { background: var(--orange-dark); transform: translateY(-1px); }
+    .btn-secondary {
+      background: transparent; color: var(--navy);
+      padding: 14px 32px; border-radius: 10px;
+      font-size: 15px; font-weight: 600;
+      text-decoration: none;
+      border: 2px solid rgba(27,42,74,0.2);
+      transition: border-color 0.2s;
+    }
+    .btn-secondary:hover { border-color: var(--navy); }
+
+    /* MOCKUP */
+    .hero-mockup {
+      width: 100%; max-width: 380px;
+      background: var(--navy);
+      border-radius: 28px;
+      padding: 16px;
+      box-shadow: 0 40px 80px rgba(27,42,74,0.25), 0 0 0 1px rgba(27,42,74,0.1);
+    }
+    .mockup-screen {
+      background: var(--bg);
+      border-radius: 18px;
+      overflow: hidden;
+    }
+    .mockup-header {
+      background: var(--navy);
+      padding: 14px 16px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .mockup-header img { width: 28px; height: 28px; border-radius: 8px; object-fit: contain; }
+    .mockup-header span { color: white; font-family: 'Oswald', sans-serif; font-size: 13px; font-weight: 700; }
+    .mockup-body { padding: 16px; }
+    .mockup-card {
+      background: white; border-radius: 12px; padding: 12px 14px; margin-bottom: 8px;
+      border: 1px solid rgba(27,42,74,0.08);
+    }
+    .mockup-card-title { font-weight: 600; font-size: 13px; color: var(--navy); margin-bottom: 4px; }
+    .mockup-card-meta { font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; margin-bottom: 6px; }
+    .mockup-tag {
+      display: inline-block; font-size: 10px; padding: 2px 8px;
+      border-radius: 100px; background: rgba(255,107,53,0.12); color: var(--orange);
+      font-weight: 500;
+    }
+    .mockup-tag.navy { background: rgba(27,42,74,0.08); color: var(--navy); }
+
+    /* STATS BAND */
+    .stats-band {
+      background: var(--navy);
+      padding: 40px 24px;
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 48px;
+    }
+    .stat-item { text-align: center; }
+    .stat-num { font-family: 'Oswald', sans-serif; font-size: 40px; font-weight: 700; color: var(--orange); }
+    .stat-label { font-size: 13px; color: rgba(255,255,255,0.6); margin-top: 2px; }
+
+    /* SECTION */
+    section { padding: 80px 24px; }
+    .section-inner { max-width: 1100px; margin: 0 auto; }
+    .section-label {
+      font-size: 12px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--orange); margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: clamp(28px, 4vw, 44px);
+      font-weight: 700; line-height: 1.15;
+      margin-bottom: 16px;
+    }
+    .section-sub { font-size: 17px; color: var(--text-muted); max-width: 560px; line-height: 1.7; }
+
+    /* PROBLEM */
+    .problem { background: white; }
+    .problem-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px; margin-top: 48px;
+    }
+    .problem-card {
+      background: var(--bg); border-radius: 16px; padding: 24px;
+      border: 1px solid rgba(27,42,74,0.08);
+    }
+    .problem-icon { font-size: 28px; margin-bottom: 12px; }
+    .problem-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .problem-card p { font-size: 14px; color: var(--text-muted); line-height: 1.6; }
+
+    /* FEATURES */
+    .features-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px; margin-top: 56px;
+    }
+    .feature-card {
+      background: white; border-radius: 20px; padding: 28px;
+      border: 1px solid rgba(27,42,74,0.08);
+      transition: box-shadow 0.2s, transform 0.2s;
+    }
+    .feature-card:hover { box-shadow: 0 12px 40px rgba(27,42,74,0.1); transform: translateY(-2px); }
+    .feature-icon {
+      width: 48px; height: 48px; border-radius: 14px;
+      background: rgba(255,107,53,0.12);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; margin-bottom: 16px;
+    }
+    .feature-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 8px; font-family: 'Oswald', sans-serif; }
+    .feature-card p { font-size: 14px; color: var(--text-muted); line-height: 1.7; }
+    .feature-badge {
+      display: inline-block; margin-top: 12px;
+      font-size: 11px; font-weight: 600; padding: 3px 10px;
+      border-radius: 100px; background: rgba(255,107,53,0.12); color: var(--orange);
+    }
+
+    /* PRICING */
+    .pricing { background: var(--navy); }
+    .pricing .section-title { color: white; }
+    .pricing .section-sub { color: rgba(255,255,255,0.6); }
+    .pricing .section-label { color: var(--orange); }
+    .pricing-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px; margin-top: 56px; max-width: 800px;
+    }
+    .pricing-card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 24px; padding: 32px;
+    }
+    .pricing-card.featured {
+      background: var(--orange);
+      border-color: var(--orange);
+    }
+    .pricing-name { font-family: 'Oswald', sans-serif; font-size: 18px; font-weight: 700; color: white; margin-bottom: 8px; }
+    .pricing-price { margin-bottom: 8px; }
+    .pricing-price .amount { font-family: 'Oswald', sans-serif; font-size: 48px; font-weight: 700; color: white; }
+    .pricing-price .period { font-size: 14px; color: rgba(255,255,255,0.7); }
+    .pricing-desc { font-size: 13px; color: rgba(255,255,255,0.6); margin-bottom: 24px; }
+    .pricing-card.featured .pricing-desc { color: rgba(255,255,255,0.8); }
+    .pricing-features { list-style: none; margin-bottom: 28px; }
+    .pricing-features li {
+      font-size: 14px; color: rgba(255,255,255,0.85);
+      padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.08);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .pricing-features li::before { content: "✓"; color: var(--orange); font-weight: 700; }
+    .pricing-card.featured .pricing-features li::before { color: white; }
+    .pricing-card.featured .pricing-features li { color: white; border-color: rgba(255,255,255,0.2); }
+    .btn-pricing {
+      display: block; text-align: center;
+      padding: 13px; border-radius: 10px;
+      font-size: 15px; font-weight: 700;
+      font-family: 'Oswald', sans-serif;
+      text-decoration: none; letter-spacing: 0.5px;
+      transition: all 0.2s;
+    }
+    .btn-pricing-outline {
+      border: 2px solid rgba(255,255,255,0.3); color: white;
+    }
+    .btn-pricing-outline:hover { border-color: white; }
+    .btn-pricing-white {
+      background: white; color: var(--orange);
+    }
+    .btn-pricing-white:hover { background: rgba(255,255,255,0.9); }
+    .pricing-save {
+      display: inline-block; background: rgba(255,255,255,0.2);
+      color: white; font-size: 11px; font-weight: 700;
+      padding: 3px 10px; border-radius: 100px; margin-left: 8px;
+    }
+
+    /* FAQ */
+    .faq-list { margin-top: 48px; max-width: 700px; }
+    .faq-item {
+      border-bottom: 1px solid rgba(27,42,74,0.1);
+      padding: 20px 0;
+    }
+    .faq-item summary {
+      font-size: 16px; font-weight: 600; cursor: pointer;
+      list-style: none; display: flex; justify-content: space-between; align-items: center;
+    }
+    .faq-item summary::after { content: "+"; font-size: 20px; color: var(--orange); }
+    .faq-item[open] summary::after { content: "−"; }
+    .faq-item p { font-size: 15px; color: var(--text-muted); margin-top: 12px; line-height: 1.7; }
+
+    /* CTA FINAL */
+    .cta-final {
+      background: linear-gradient(135deg, var(--orange) 0%, #ff8c5a 100%);
+      text-align: center; padding: 80px 24px;
+    }
+    .cta-final h2 { color: white; font-size: clamp(28px, 4vw, 44px); margin-bottom: 16px; }
+    .cta-final p { color: rgba(255,255,255,0.85); font-size: 17px; margin-bottom: 36px; }
+    .btn-cta-white {
+      display: inline-block;
+      background: white; color: var(--orange);
+      padding: 16px 40px; border-radius: 12px;
+      font-size: 17px; font-weight: 700;
+      font-family: 'Oswald', sans-serif; letter-spacing: 0.5px;
+      text-decoration: none;
+      transition: all 0.2s;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    }
+    .btn-cta-white:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(0,0,0,0.2); }
+
+    /* FOOTER */
+    footer {
+      background: var(--navy);
+      padding: 40px 24px;
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 16px;
+    }
+    .footer-logo { display: flex; align-items: center; gap: 10px; }
+    .footer-logo img { width: 32px; height: 32px; border-radius: 8px; object-fit: contain; }
+    .footer-logo span { font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 15px; color: white; }
+    .footer-links { display: flex; gap: 24px; flex-wrap: wrap; }
+    .footer-links a { color: rgba(255,255,255,0.5); font-size: 13px; text-decoration: none; transition: color 0.2s; }
+    .footer-links a:hover { color: white; }
+    .footer-copy { color: rgba(255,255,255,0.3); font-size: 12px; width: 100%; text-align: center; margin-top: 8px; }
+
+    @media (max-width: 600px) {
+      .hero { padding: 100px 20px 60px; }
+      .stats-band { gap: 32px; }
+      section { padding: 60px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <a href="/landing.html" class="nav-logo">
+      <img src="/logo-icon.png" alt="CPB" />
+      <span>COACHING PRO BOOST</span>
+    </a>
+    <a href="/" class="nav-cta">Essayer gratuitement</a>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-badge">🏀 Fait par un coach, pour les coachs</div>
+    <h1>Tu en as assez des classeurs<br/>qui s'accumulent et des fiches<br/><span>perdues au fond de ton sac ?</span></h1>
+    <p class="hero-sub">
+      Avec Coaching Pro Boost, stocke toutes tes séances en un clic, retrouve n'importe quel exercice en quelques secondes, réutilise-les pour d'autres séances et partage tes meilleurs exercices avec tes collègues.
+    </p>
+    <div class="hero-actions">
+      <a href="/" class="btn-primary">🚀 Essayer gratuitement</a>
+      <a href="#fonctionnalites" class="btn-secondary">Découvrir les fonctionnalités</a>
+    </div>
+
+    <!-- Mockup -->
+    <div class="hero-mockup">
+      <div class="mockup-screen">
+        <div class="mockup-header">
+          <img src="/logo-icon.png" alt="CPB" />
+          <span>BIBLIOTHÈQUE</span>
+        </div>
+        <div class="mockup-body">
+          <div class="mockup-card">
+            <div class="mockup-card-title">Pick and Roll 2c2</div>
+            <div class="mockup-card-meta"><span>12 min</span><span>3c2</span><span>Confirmé</span></div>
+            <span class="mockup-tag">Pick and Roll</span>
+            <span class="mockup-tag navy">Collectif</span>
+          </div>
+          <div class="mockup-card">
+            <div class="mockup-card-title">Défense en aide rotation</div>
+            <div class="mockup-card-meta"><span>10 min</span><span>5c5</span><span>Intermédiaire</span></div>
+            <span class="mockup-tag">Défense collective</span>
+          </div>
+          <div class="mockup-card">
+            <div class="mockup-card-title">Transition rapide 3c2</div>
+            <div class="mockup-card-meta"><span>8 min</span><span>3c2</span><span>Confirmé</span></div>
+            <span class="mockup-tag">Transition</span>
+            <span class="mockup-tag navy">Pré-collectif</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <div class="stats-band">
+    <div class="stat-item">
+      <div class="stat-num">∞</div>
+      <div class="stat-label">Exercices en Premium</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">📱</div>
+      <div class="stat-label">Installable sur iPad & iPhone</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">30j</div>
+      <div class="stat-label">Partage d'exercices</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">100%</div>
+      <div class="stat-label">Données sécurisées</div>
+    </div>
+  </div>
+
+  <!-- PROBLÈME -->
+  <section class="problem">
+    <div class="section-inner">
+      <div class="section-label">Le problème</div>
+      <h2 class="section-title">Ce que vivent tous les coachs</h2>
+      <p class="section-sub">Des heures de travail perdues à cause d'une organisation qui ne tient pas la route.</p>
+      <div class="problem-grid">
+        <div class="problem-card">
+          <div class="problem-icon">📁</div>
+          <h3>Les classeurs qui s'accumulent</h3>
+          <p>Des années de séances entassées dans des classeurs que tu n'ouvres plus jamais.</p>
+        </div>
+        <div class="problem-card">
+          <div class="problem-icon">🔍</div>
+          <h3>Impossible de retrouver un exercice</h3>
+          <p>Tu sais que tu as fait cet exercice il y a deux ans... mais dans quel classeur ?</p>
+        </div>
+        <div class="problem-card">
+          <div class="problem-icon">🔄</div>
+          <h3>Tout recommencer à zéro</h3>
+          <p>Tu refais les mêmes séances plutôt que de réutiliser ce qui a déjà bien fonctionné.</p>
+        </div>
+        <div class="problem-card">
+          <div class="problem-icon">📤</div>
+          <h3>Le partage impossible</h3>
+          <p>Envoyer un exercice à un collègue c'est une photo floue par WhatsApp ou un PDF illisible.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FONCTIONNALITÉS -->
+  <section id="fonctionnalites">
+    <div class="section-inner">
+      <div class="section-label">Les fonctionnalités</div>
+      <h2 class="section-title">Tout ce dont un coach a besoin</h2>
+      <p class="section-sub">Une application pensée par un coach de basketball pour répondre aux vrais besoins du terrain.</p>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">📚</div>
+          <h3>Bibliothèque d'exercices</h3>
+          <p>Crée et organise tous tes exercices avec photos, schémas tactiques, objectifs, consignes et évaluations. Filtre par thème, phase, format ou catégorie en un instant.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📋</div>
+          <h3>Gestion des séances</h3>
+          <p>Compose tes séances en glissant tes exercices, ajoute une photo du tableau, note les présences et imprime un PDF propre pour ton staff.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">✏️</div>
+          <h3>Dessinateur tactique</h3>
+          <p>Dessine tes schémas directement sur le terrain avec tes joueurs, flèches de déplacement, passes et écrans. Compatible Apple Pencil.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📖</div>
+          <h3>Play Book</h3>
+          <p>Organise tous tes systèmes offensifs, ATO, SLOB et BLOB dans un play book numérique toujours disponible, même en déplacement.</p>
+          <span class="feature-badge">Premium</span>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">📊</div>
+          <h3>Statistiques</h3>
+          <p>Visualise le temps passé sur chaque thème tactique, par équipe et par saison. Assure-toi d'un entraînement équilibré tout au long de l'année.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">🔗</div>
+          <h3>Partage d'exercices</h3>
+          <p>Partage un exercice avec un collègue en un clic. Il reçoit un lien, il clique, l'exercice s'ajoute directement dans sa bibliothèque.</p>
+          <span class="feature-badge">Premium</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TARIFS -->
+  <section class="pricing" id="tarifs">
+    <div class="section-inner">
+      <div class="section-label">Les tarifs</div>
+      <h2 class="section-title">Simple et transparent</h2>
+      <p class="section-sub">Commence gratuitement. Passe en Premium quand tu en as besoin.</p>
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <div class="pricing-name">GRATUIT</div>
+          <div class="pricing-price">
+            <span class="amount">0€</span>
+            <span class="period"> / toujours</span>
+          </div>
+          <div class="pricing-desc">Pour découvrir l'application sans engagement.</div>
+          <ul class="pricing-features">
+            <li>10 exercices</li>
+            <li>3 séances</li>
+            <li>Dessinateur tactique</li>
+            <li>Play Book (lecture)</li>
+          </ul>
+          <a href="/" class="btn-pricing btn-pricing-outline">Commencer gratuitement</a>
+        </div>
+        <div class="pricing-card featured">
+          <div class="pricing-name">PREMIUM ⭐</div>
+          <div class="pricing-price">
+            <span class="amount">4,99€</span>
+            <span class="period"> / mois</span>
+          </div>
+          <div class="pricing-desc">Ou 39,99€/an <span class="pricing-save">-33%</span></div>
+          <ul class="pricing-features">
+            <li>Exercices illimités</li>
+            <li>Séances illimitées</li>
+            <li>Play Book complet</li>
+            <li>Impression PDF</li>
+            <li>Statistiques avancées</li>
+            <li>Partage d'exercices</li>
+            <li>Sauvegarde complète</li>
+          </ul>
+          <a href="/" class="btn-pricing btn-pricing-white">Essayer Premium</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq">
+    <div class="section-inner">
+      <div class="section-label">Questions fréquentes</div>
+      <h2 class="section-title">Tu as des questions ?</h2>
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary>L'application fonctionne-t-elle sans connexion internet ?</summary>
+          <p>Coaching Pro Boost est une application web progressive (PWA). Une fois installée sur ton iPad ou iPhone, elle fonctionne en mode hors-ligne pour consulter tes exercices et séances. La synchronisation se fait automatiquement dès que tu retrouves du réseau.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Comment installer l'application sur mon iPad ?</summary>
+          <p>Ouvre l'application dans Safari, appuie sur le bouton "Partager" puis "Sur l'écran d'accueil". L'application s'installe comme une vraie app native, compatible Apple Pencil pour le dessinateur tactique.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Mes données sont-elles sécurisées ?</summary>
+          <p>Oui. Toutes tes données sont stockées de façon sécurisée via Supabase (infrastructure de classe mondiale). Elles ne sont jamais vendues à des tiers. Tu peux également exporter une sauvegarde complète de tes données à tout moment depuis Mon compte.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Puis-je résilier mon abonnement à tout moment ?</summary>
+          <p>Oui, tu peux résilier à tout moment depuis la section "Mon compte" de l'application. L'accès Premium reste actif jusqu'à la fin de la période déjà payée, sans frais supplémentaires.</p>
+        </details>
+        <details class="faq-item">
+          <summary>L'application est-elle réservée au basketball ?</summary>
+          <p>Coaching Pro Boost a été conçue par un coach de basketball et est optimisée pour ce sport. D'autres sports seront disponibles prochainement.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA FINAL -->
+  <div class="cta-final">
+    <h2>Tout ton travail de coach.<br/>Toujours avec toi.</h2>
+    <p>Rejoint les coachs qui ont arrêté de chercher leurs fiches de séance.</p>
+    <a href="/" class="btn-cta-white">🚀 Commencer gratuitement</a>
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-logo">
+      <img src="/logo-icon.png" alt="CPB" />
+      <span>COACHING PRO BOOST</span>
+    </div>
+    <div class="footer-links">
+      <a href="/">Application</a>
+      <a href="#tarifs">Tarifs</a>
+      <a href="#faq">FAQ</a>
+      <a href="/mentions-legales.html">Mentions légales</a>
+      <a href="mailto:tissier.thibaudnpb@gmail.com">Contact</a>
+    </div>
+    <div class="footer-copy">© 2026 Coaching Pro Boost — Thibaud TISSIER · Saint-Chamond, France</div>
+  </footer>
+
+</body>
+</html>

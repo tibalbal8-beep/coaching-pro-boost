@@ -723,6 +723,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
   const [notes, setNotes] = useState(initial?.notes || "");
   const [file, setFile] = useState(initial?.file || null);
   const [newTheme, setNewTheme] = useState("");
+  const [themesOpen, setThemesOpen] = useState(false);
 
   const toggle = (arr, setArr, v) => setArr(arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
 
@@ -739,15 +740,31 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
       <div className="space-y-4">
       <input value={titre} onChange={e => setTitre(e.target.value)} placeholder="Titre de l'exercice"
         className="w-full text-lg font-semibold bg-transparent border-b-2 border-[#1B2A4A]/20 focus:border-[#FF6B35] outline-none pb-1 text-[#1B2A4A]" />
-      <div>
-        <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Thèmes tactiques</div>
-        <div className="flex flex-wrap gap-1.5 mb-2">{themes.map(t => <Tag key={t} active={sel.includes(t)} onClick={() => toggle(sel, setSel, t)} color="orange">{t}</Tag>)}</div>
-        <div className="flex gap-2">
-          <input value={newTheme} onChange={e => setNewTheme(e.target.value)} onKeyDown={e => e.key === "Enter" && addTheme()}
-            placeholder="+ Nouveau thème..."
-            className="flex-1 text-xs border border-[#1B2A4A]/20 rounded-full px-3 py-1.5 focus:outline-none focus:border-[#FF6B35]" />
-          {newTheme.trim() && <button onClick={addTheme} className="text-xs px-3 py-1.5 bg-[#FF6B35]/10 text-[#FF6B35] rounded-full font-medium hover:bg-[#FF6B35]/20">Ajouter</button>}
-        </div>
+      <div className="border border-[#1B2A4A]/15 rounded-xl overflow-hidden">
+        <button type="button" onClick={() => setThemesOpen(o => !o)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-white/40 hover:bg-white/70 transition-colors">
+          <div className="flex items-center gap-2">
+            <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/60 font-semibold">Thèmes tactiques</span>
+            {sel.length > 0 && <span className="text-[10px] font-bold bg-[#FF6B35] text-white rounded-full px-1.5 py-0.5">{sel.length}</span>}
+          </div>
+          <svg className={`w-4 h-4 text-[#1B2A4A]/40 transition-transform ${themesOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+        </button>
+        {sel.length > 0 && !themesOpen && (
+          <div className="px-4 py-2 bg-white/20 flex flex-wrap gap-1.5 border-t border-[#1B2A4A]/10">
+            {sel.map(t => <Tag key={t} active color="orange" onClick={() => toggle(sel, setSel, t)}>{t}</Tag>)}
+          </div>
+        )}
+        {themesOpen && (
+          <div className="px-4 py-3 bg-white/20 border-t border-[#1B2A4A]/10 space-y-2.5">
+            <div className="flex flex-wrap gap-1.5">{themes.map(t => <Tag key={t} active={sel.includes(t)} onClick={() => toggle(sel, setSel, t)} color="orange">{t}</Tag>)}</div>
+            <div className="flex gap-2">
+              <input value={newTheme} onChange={e => setNewTheme(e.target.value)} onKeyDown={e => e.key === "Enter" && addTheme()}
+                placeholder="+ Nouveau thème..."
+                className="flex-1 text-xs border border-[#1B2A4A]/20 rounded-full px-3 py-1.5 focus:outline-none focus:border-[#FF6B35] bg-white/60" />
+              {newTheme.trim() && <button type="button" onClick={addTheme} className="text-xs px-3 py-1.5 bg-[#FF6B35]/10 text-[#FF6B35] rounded-full font-medium hover:bg-[#FF6B35]/20">Ajouter</button>}
+            </div>
+          </div>
+        )}
       </div>
       <div>
         <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Phase de séance</div>
@@ -3563,6 +3580,23 @@ function CoachingProBoost({ session }) {
   }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sharedExercise, setSharedExercise] = useState(null);
+
+  // Fix dictée vocale iOS : les événements compositionend ne déclenchent pas onChange dans React
+  useEffect(() => {
+    const onCompositionEnd = (e) => {
+      const el = e.target;
+      if (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA") return;
+      const nativeDescriptor =
+        el.tagName === "TEXTAREA"
+          ? Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")
+          : Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value");
+      if (!nativeDescriptor) return;
+      nativeDescriptor.set.call(el, el.value);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    document.addEventListener("compositionend", onCompositionEnd);
+    return () => document.removeEventListener("compositionend", onCompositionEnd);
+  }, []);
 
   // Détection lien de partage ?share=TOKEN
   useEffect(() => {
