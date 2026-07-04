@@ -741,6 +741,27 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
       <div className="space-y-4">
       <input value={titre} onChange={e => setTitre(e.target.value)} placeholder="Titre de l'exercice"
         className="w-full text-lg font-semibold bg-transparent border-b-2 border-[#1B2A4A]/20 focus:border-[#FF6B35] outline-none pb-1 text-[#1B2A4A]" />
+      <button type="button" onClick={() => setShowDraw(true)}
+        className="flex items-center gap-2 w-full justify-center border border-dashed border-[#1B2A4A]/25 rounded-xl py-3 text-sm text-[#1B2A4A]/60 hover:border-[#FF6B35]/50 hover:text-[#FF6B35] transition-colors">
+        <span>🏀</span> Dessiner le schéma tactique
+      </button>
+      {showDraw && (
+        <div className="fixed inset-0 z-50 bg-[#1B2A4A]/80 flex flex-col overflow-y-auto">
+          <div className="bg-white rounded-t-2xl mt-auto min-h-screen p-4">
+            <DrawSheetView
+              referencePhoto={file?.data ? `data:${file.type};base64,${file.data}` : null}
+              onCancel={() => setShowDraw(false)}
+              onAddDirect={null}
+              processing={false}
+              onValidate={(dataUrl) => {
+                const b64 = dataUrl.split(",")[1];
+                setFile({ name: "schema.png", type: "image/png", data: b64 });
+                setShowDraw(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
       <div className="border border-[#1B2A4A]/15 rounded-xl overflow-hidden">
         <button type="button" onClick={() => setThemesOpen(o => !o)}
           className="w-full flex items-center justify-between px-4 py-3 bg-white/40 hover:bg-white/70 transition-colors">
@@ -801,27 +822,6 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
         <div className="absolute right-1 top-1"><DictateButton onResult={(t) => setNotes(prev => prev ? prev + " " + t : t)} /></div>
       </div>
       <FileDrop file={file} onChange={setFile} cpbAlert={cpbAlert} />
-      <button type="button" onClick={() => setShowDraw(true)}
-        className="flex items-center gap-2 w-full justify-center border border-dashed border-[#1B2A4A]/25 rounded-xl py-3 text-sm text-[#1B2A4A]/60 hover:border-[#FF6B35]/50 hover:text-[#FF6B35] transition-colors">
-        <span>🏀</span> Dessiner le schéma tactique
-      </button>
-      {showDraw && (
-        <div className="fixed inset-0 z-50 bg-[#1B2A4A]/80 flex flex-col overflow-y-auto">
-          <div className="bg-white rounded-t-2xl mt-auto min-h-screen p-4">
-            <DrawSheetView
-              referencePhoto={file?.data ? `data:${file.type};base64,${file.data}` : null}
-              onCancel={() => setShowDraw(false)}
-              onAddDirect={null}
-              processing={false}
-              onValidate={(dataUrl) => {
-                const b64 = dataUrl.split(",")[1];
-                setFile({ name: "schema.png", type: "image/png", data: b64 });
-                setShowDraw(false);
-              }}
-            />
-          </div>
-        </div>
-      )}
       {initial?.id && (
         <RatingBlock avis={initial.avis || []} label="Noter cet exercice"
           onAdd={(a) => onSave({ id: initial.id, titre, themes: sel, phases, format, niveau, categorie, duree, objectif, notes, file, diagram: initial?.diagram, avis: [...(initial.avis || []), a], createdAt: initial.createdAt, _staySaved: true })} />
