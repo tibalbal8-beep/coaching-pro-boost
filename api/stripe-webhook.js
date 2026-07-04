@@ -46,6 +46,7 @@ export default async function handler(req, res) {
 
   if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated") {
     const sub = event.data.object;
+    // Si annulation programmée en fin de période, l'accès reste actif jusqu'à current_period_end
     const isActive = sub.status === "active" || sub.status === "trialing";
     const premiumUntil = new Date(sub.current_period_end * 1000).toISOString();
     await supabase.from("profiles")
@@ -53,7 +54,24 @@ export default async function handler(req, res) {
       .eq("stripe_customer_id", sub.customer);
   }
 
-  if (event.type === "customer.subscription.deleted" || event.type === "invoice.payment_failed") {
+  if (event.type === "customer.subscription.deleted") {
+    const sub = event.data.object;
+    // Vérifier si la période payée est encore en cours (annulation en fin de période)
+    const now = Date.now();
+    const periodEnd = sub.current_period_end * 1000;
+    if (periodEnd > now) {
+      // Accès encore valide jusqu'à la fin de la période payée
+      await supabase.from("profiles")
+        .update({ is_premium: true, premium_until: new Date(periodEnd).toISOString() })
+        .eq("stripe_customer_id", sub.customer);
+    } else {
+      await supabase.from("profiles")
+        .update({ is_premium: false, stripe_subscription_id: null, premium_until: null })
+        .eq("stripe_customer_id", sub.customer);
+    }
+  }
+
+  if (event.type === "invoice.payment_failed") {
     const obj = event.data.object;
     await supabase.from("profiles")
       .update({ is_premium: false, stripe_subscription_id: null, premium_until: null })
