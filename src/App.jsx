@@ -404,7 +404,7 @@ function usePdfJs() {
   return ready;
 }
 
-function readImageAsJpeg(file, maxDim = 1600, quality = 0.75) {
+function readImageAsJpeg(file, maxDim = 1200, quality = 0.72) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -418,7 +418,11 @@ function readImageAsJpeg(file, maxDim = 1600, quality = 0.75) {
         const canvas = document.createElement("canvas");
         canvas.width = width; canvas.height = height;
         canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", quality));
+        // Si encore trop lourd, réduire la qualité progressivement
+        let result = canvas.toDataURL("image/jpeg", quality);
+        if (result.length > 600000) result = canvas.toDataURL("image/jpeg", 0.6);
+        if (result.length > 400000) result = canvas.toDataURL("image/jpeg", 0.5);
+        resolve(result);
       };
       img.onerror = reject;
       img.src = reader.result;
@@ -610,12 +614,19 @@ function DictateButton({ onResult }) {
 function FileDrop({ file, onChange, cpbAlert }) {
   const inputRef = useRef();
   const cameraRef = useRef();
-  const handleFile = (f) => {
+  const handleFile = async (f) => {
     if (!f) return;
-    if (f.size > 4.5 * 1024 * 1024) { cpbAlert?.("Fichier trop lourd (max ~4.5 Mo). Compresse l'image ou le PDF."); return; }
-    const reader = new FileReader();
-    reader.onload = () => onChange({ name: f.name, type: f.type, data: reader.result });
-    reader.readAsDataURL(f);
+    if (f.size > 20 * 1024 * 1024) { cpbAlert?.("Fichier trop lourd (max 20 Mo)."); return; }
+    if (f.type.startsWith("image/")) {
+      try {
+        const data = await readImageAsJpeg(f, 1200, 0.72);
+        onChange({ name: f.name.replace(/\.[^.]+$/, ".jpg"), type: "image/jpeg", data });
+      } catch { cpbAlert?.("Impossible de lire l'image."); }
+    } else {
+      const reader = new FileReader();
+      reader.onload = () => onChange({ name: f.name, type: f.type, data: reader.result });
+      reader.readAsDataURL(f);
+    }
   };
   return (
     <div>
@@ -3028,16 +3039,25 @@ function PlayImageSlot({ img, playId, onChange, onRemove }) {
     })();
   }, [img.id, img.file?.data]);
 
-  const handleFile = (f) => {
+  const handleFile = async (f) => {
     if (!f) return;
-    if (f.size > 4.5 * 1024 * 1024) { cpbAlert("Fichier trop lourd (max ~4.5 Mo)."); return; }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const file = { name: f.name, type: f.type, data: reader.result };
-      setLocalData(reader.result);
-      onChange({ ...img, file });
-    };
-    reader.readAsDataURL(f);
+    if (f.size > 20 * 1024 * 1024) { cpbAlert("Fichier trop lourd (max 20 Mo)."); return; }
+    if (f.type.startsWith("image/")) {
+      try {
+        const data = await readImageAsJpeg(f, 1200, 0.72);
+        const file = { name: f.name.replace(/\.[^.]+$/, ".jpg"), type: "image/jpeg", data };
+        setLocalData(data);
+        onChange({ ...img, file });
+      } catch { cpbAlert("Impossible de lire l'image."); }
+    } else {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const file = { name: f.name, type: f.type, data: reader.result };
+        setLocalData(reader.result);
+        onChange({ ...img, file });
+      };
+      reader.readAsDataURL(f);
+    }
   };
 
   return (
@@ -3755,7 +3775,7 @@ function CoachingProBoost({ session }) {
   const handleSessionPhotoFile = async (e) => {
     const f = e.target.files?.[0];
     if (!f || !activeSession) return;
-    const dataUrl = await readImageAsJpeg(f, 2000, 0.85);
+    const dataUrl = await readImageAsJpeg(f, 1600, 0.78);
     setPendingPerspectivePhoto(dataUrl);
     e.target.value = "";
   };
