@@ -55,10 +55,62 @@ function ToastProvider({ children }) {
   );
 }
 
-const DEFAULT_THEMES = ["Démarquage","Pick and Roll","Pick non porteur","Transition","Défense individuelle","Défense collective","Aide défensive","Rotation défensive","Contre","Interception","Prise en charge","Tir","Tir en course","Finition","Rebond","Rebond offensif","Rebond défensif","Jeu sans ballon","Sortie de balle","Passe","Dribble","Pivot","Fixation","Jeu intérieur","Spacing","Attaque de zone","Défense de zone"];
-const PHASES = ["Échauffement","Préparation physique","Technique individuelle","Pré-collectif","Collectif","Fin de séance","Autre"];
-const FORMATS = ["1c0","1c1","2c1","2c2","3c1","3c2","3c3","4c1","4c2","4c3","4c4","5c3","5c4","5c5","2c1+1","3c2+1","4c3+1","5c4+1"];
-const CATEGORIES = ["U7","U9","U11","U13","U15","U17","U18","U20","Seniors"];
+const SPORTS_CONFIG = {
+  basketball: {
+    label: "Basketball", emoji: "🏀",
+    themes: ["Démarquage","Pick and Roll","Pick non porteur","Transition","Défense individuelle","Défense collective","Aide défensive","Rotation défensive","Contre","Interception","Prise en charge","Tir","Tir en course","Finition","Rebond","Rebond offensif","Rebond défensif","Jeu sans ballon","Sortie de balle","Passe","Dribble","Pivot","Fixation","Jeu intérieur","Spacing","Attaque de zone","Défense de zone"],
+    phases: ["Échauffement","Préparation physique","Technique individuelle","Pré-collectif","Collectif","Fin de séance","Autre"],
+    formats: ["1c0","1c1","2c1","2c2","3c1","3c2","3c3","4c1","4c2","4c3","4c4","5c3","5c4","5c5","2c1+1","3c2+1","4c3+1","5c4+1"],
+    categories: ["U7","U9","U11","U13","U15","U17","U18","U20","Seniors"],
+    court: "basketball",
+  },
+  football: {
+    label: "Football", emoji: "⚽",
+    themes: ["Pressing","Contre-pressing","Transition offensive","Transition défensive","Bloc bas","Bloc haut","Jeu en profondeur","Jeu court","Centres","Corners","Coup franc","Repli défensif","Hors-jeu","Dribble","Tir","Passe","Jeu aérien","Duels","Organisation défensive","Organisation offensive"],
+    phases: ["Échauffement","Préparation physique","Technique individuelle","Pré-collectif","Collectif","Situations","Fin de séance","Autre"],
+    formats: ["1c0","1c1","2c1","2c2","3c2","3c3","4c3","4c4","5c4","5c5","6c5","7c6","8c7","9c8","10c9","11c11"],
+    categories: ["U6","U7","U8","U9","U10","U11","U12","U13","U14","U15","U16","U17","U18","U19","U20","Seniors"],
+    court: "football",
+  },
+  handball: {
+    label: "Handball", emoji: "🤾",
+    themes: ["Montée de balle","Jeu en pivot","Jeu en aile","Tir en suspension","Tir en appui","Contre-attaque","Défense 6-0","Défense 5-1","Défense 3-2-1","Repli défensif","Fautes tactiques","Jeu de puissance","Jeu en infériorité","Écran","Pivot"],
+    phases: ["Échauffement","Préparation physique","Technique individuelle","Pré-collectif","Collectif","Fin de séance","Autre"],
+    formats: ["1c0","1c1","2c1","2c2","3c2","3c3","4c3","5c4","6c5","6c6","4c4+GB","6c6+GB"],
+    categories: ["U9","U11","U13","U15","U17","U18","U20","Seniors"],
+    court: "handball",
+  },
+  volleyball: {
+    label: "Volleyball", emoji: "🏐",
+    themes: ["Service","Réception","Passe","Attaque","Contre","Défense","Couverture","Rotation","Système 5-1","Système 4-2","Lecture de jeu","Smasher","Libéro"],
+    phases: ["Échauffement","Technique individuelle","Combinaisons","Système de jeu","Fin de séance","Autre"],
+    formats: ["1c0","1c1","2c2","3c3","4c4","6c6"],
+    categories: ["U11","U13","U15","U17","U18","U20","Seniors"],
+    court: "volleyball",
+  },
+  rugby: {
+    label: "Rugby", emoji: "🏉",
+    themes: ["Plaquage","Ruck","Maul","Touche","Mêlée","Pénalité","En-avant","Jeu au pied","Soutien","Défense en ligne","Défense en rideau","Jeu dans l'axe","Jeu au large","Contre-attaque","Drives"],
+    phases: ["Échauffement","Préparation physique","Technique individuelle","Lignes avants","Trois-quarts","Collectif","Fin de séance","Autre"],
+    formats: ["1c0","1c1","2c1","2c2","3c2","3c3","5c4","7c7","15c15"],
+    categories: ["U8","U10","U12","U14","U16","U18","U20","Seniors"],
+    court: "rugby",
+  },
+  autre: {
+    label: "Autre sport", emoji: "🏅",
+    themes: ["Technique","Tactique","Physique","Mental","Collectif","Individuel"],
+    phases: ["Échauffement","Préparation physique","Technique individuelle","Collectif","Fin de séance","Autre"],
+    formats: ["1c0","1c1","2c1","2c2","3c3","Groupe","Équipe"],
+    categories: ["U10","U12","U14","U16","U18","U20","Seniors"],
+    court: "generic",
+  },
+};
+
+const DEFAULT_SPORT = "basketball";
+const DEFAULT_THEMES = SPORTS_CONFIG.basketball.themes;
+const PHASES = SPORTS_CONFIG.basketball.phases;
+const FORMATS = SPORTS_CONFIG.basketball.formats;
+const CATEGORIES = SPORTS_CONFIG.basketball.categories;
 const NIVEAUX = ["Débutant","Intermédiaire","Confirmé"];
 const PLAY_TYPES = ["Système offensif", "ATO", "SLOB", "BLOB"];
 const JOURS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
@@ -71,20 +123,31 @@ const FREE_MAX_SESSIONS = 3;
 function useSubscription(userId) {
   const [isPremium, setIsPremium] = useState(false);
   const [loadingPremium, setLoadingPremium] = useState(true);
+  const [sport, setSportState] = useState(() => localStorage.getItem("cpb_sport") || DEFAULT_SPORT);
 
   useEffect(() => {
     if (!userId) return;
-    supabase.from("profiles").select("is_premium, premium_until").eq("id", userId).maybeSingle()
+    supabase.from("profiles").select("is_premium, premium_until, sport").eq("id", userId).maybeSingle()
       .then(({ data }) => {
         if (data) {
           const active = data.is_premium && (!data.premium_until || new Date(data.premium_until) > new Date());
           setIsPremium(active);
+          if (data.sport && SPORTS_CONFIG[data.sport]) {
+            setSportState(data.sport);
+            localStorage.setItem("cpb_sport", data.sport);
+          }
         }
         setLoadingPremium(false);
       });
   }, [userId]);
 
-  return { isPremium, loadingPremium };
+  const setSport = async (s) => {
+    setSportState(s);
+    localStorage.setItem("cpb_sport", s);
+    if (userId) await supabase.from("profiles").update({ sport: s }).eq("id", userId);
+  };
+
+  return { isPremium, loadingPremium, sport, setSport };
 }
 
 async function startCheckout(priceId) {
@@ -622,11 +685,11 @@ function ExerciseFormImagePreview({ ex }) {
   return <img src={fileImage} alt="" className="w-full rounded-lg border border-[#1B2A4A]/15" />;
 }
 
-function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes }) {
+function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes, sportPhases = PHASES, sportFormats = FORMATS, sportCategories = CATEGORIES }) {
   const [titre, setTitre] = useState(initial?.titre || "");
   const [sel, setSel] = useState(initial?.themes || []);
   const [phases, setPhases] = useState(initial?.phases || []);
-  const [format, setFormat] = useState(initial?.format || FORMATS[0]);
+  const [format, setFormat] = useState(initial?.format || sportFormats[0]);
   const [niveau, setNiveau] = useState(initial?.niveau || NIVEAUX[1]);
   const [categorie, setCategorie] = useState(initial?.categorie || "");
   const [duree, setDuree] = useState(initial?.duree || 10);
@@ -662,19 +725,19 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes 
       </div>
       <div>
         <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Phase de séance</div>
-        <div className="flex flex-wrap gap-1.5">{PHASES.map(p => <Tag key={p} active={phases.includes(p)} onClick={() => toggle(phases, setPhases, p)}>{p}</Tag>)}</div>
+        <div className="flex flex-wrap gap-1.5">{sportPhases.map(p => <Tag key={p} active={phases.includes(p)} onClick={() => toggle(phases, setPhases, p)}>{p}</Tag>)}</div>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div>
           <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Catégorie</div>
           <select value={categorie} onChange={e => setCategorie(e.target.value)} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60">
             <option value="">—</option>
-            {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+            {sportCategories.map(c => <option key={c}>{c}</option>)}
           </select>
         </div>
         <div>
           <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Format</div>
-          <select value={format} onChange={e => setFormat(e.target.value)} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60">{FORMATS.map(f => <option key={f}>{f}</option>)}</select>
+          <select value={format} onChange={e => setFormat(e.target.value)} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60">{sportFormats.map(f => <option key={f}>{f}</option>)}</select>
         </div>
         <div>
           <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Niveau</div>
@@ -738,13 +801,104 @@ function wavyPath(x1, y1, x2, y2, amplitude = 5) {
   return d;
 }
 
-function CourtDiagram({ players = [], paths = [], screens = [], width = 440, height = 420 }) {
-  const cx = width / 2;
+function CourtLines({ courtType, width, height }) {
+  const cx = width / 2, cy = height / 2;
+  const s = "#444441";
+  if (courtType === "football") {
+    const pw = width * 0.55, ph = height * 0.18, px = (width - pw) / 2;
+    const gw = width * 0.22, gx = (width - gw) / 2;
+    const circleR = Math.min(width, height) * 0.14;
+    return (
+      <g>
+        <rect x="1" y="1" width={width-2} height={height-2} fill="none" stroke={s} strokeWidth="1"/>
+        <line x1="0" y1={cy} x2={width} y2={cy} stroke={s} strokeWidth="0.8" strokeDasharray="4 3"/>
+        <circle cx={cx} cy={cy} r={circleR} fill="none" stroke={s} strokeWidth="1"/>
+        <circle cx={cx} cy={cy} r="2" fill={s}/>
+        <rect x={px} y="1" width={pw} height={ph} fill="none" stroke={s} strokeWidth="1"/>
+        <rect x={gx} y="1" width={gw} height={ph * 0.45} fill="none" stroke={s} strokeWidth="1"/>
+        <rect x={px} y={height - ph - 1} width={pw} height={ph} fill="none" stroke={s} strokeWidth="1"/>
+        <rect x={gx} y={height - ph * 0.45 - 1} width={gw} height={ph * 0.45} fill="none" stroke={s} strokeWidth="1"/>
+      </g>
+    );
+  }
+  if (courtType === "handball") {
+    const gw = width * 0.3, gx = (width - gw) / 2;
+    const gh = height * 0.05;
+    const zone6R = width * 0.38, zone9R = width * 0.54;
+    return (
+      <g>
+        <rect x="1" y="1" width={width-2} height={height-2} fill="none" stroke={s} strokeWidth="1"/>
+        <line x1="0" y1={cy} x2={width} y2={cy} stroke={s} strokeWidth="0.8" strokeDasharray="4 3"/>
+        <rect x={gx} y="1" width={gw} height={gh} fill="none" stroke={s} strokeWidth="1.5"/>
+        <path d={`M ${cx - zone6R} 0 A ${zone6R} ${zone6R} 0 0 1 ${cx + zone6R} 0`} fill="none" stroke={s} strokeWidth="1" transform={`translate(0,${gh})`}/>
+        <path d={`M ${cx - zone9R} 0 A ${zone9R} ${zone9R} 0 0 1 ${cx + zone9R} 0`} fill="none" stroke={s} strokeWidth="1" strokeDasharray="5 3" transform={`translate(0,${gh})`}/>
+        <rect x={gx} y={height - gh - 1} width={gw} height={gh} fill="none" stroke={s} strokeWidth="1.5"/>
+        <path d={`M ${cx - zone6R} 0 A ${zone6R} ${zone6R} 0 0 0 ${cx + zone6R} 0`} fill="none" stroke={s} strokeWidth="1" transform={`translate(0,${height - gh - 1})`}/>
+        <path d={`M ${cx - zone9R} 0 A ${zone9R} ${zone9R} 0 0 0 ${cx + zone9R} 0`} fill="none" stroke={s} strokeWidth="1" strokeDasharray="5 3" transform={`translate(0,${height - gh - 1})`}/>
+      </g>
+    );
+  }
+  if (courtType === "volleyball") {
+    const netY = cy;
+    const attackY1 = cy - height * 0.22, attackY2 = cy + height * 0.22;
+    return (
+      <g>
+        <rect x="1" y="1" width={width-2} height={height-2} fill="none" stroke={s} strokeWidth="1.5"/>
+        <line x1="0" y1={netY} x2={width} y2={netY} stroke={s} strokeWidth="2.5"/>
+        <line x1="0" y1={attackY1} x2={width} y2={attackY1} stroke={s} strokeWidth="0.8" strokeDasharray="5 3"/>
+        <line x1="0" y1={attackY2} x2={width} y2={attackY2} stroke={s} strokeWidth="0.8" strokeDasharray="5 3"/>
+      </g>
+    );
+  }
+  if (courtType === "rugby") {
+    const tryW = width * 0.08, inGoalW = width * 0.1;
+    const h22_1 = height * 0.22, h22_2 = height * 0.78;
+    const hCy = cy;
+    const postW = width * 0.1, postX = (width - postW) / 2;
+    return (
+      <g>
+        <rect x="1" y="1" width={width-2} height={height-2} fill="none" stroke={s} strokeWidth="1"/>
+        <line x1="0" y1={inGoalW} x2={width} y2={inGoalW} stroke={s} strokeWidth="1.5"/>
+        <line x1="0" y1={height - inGoalW} x2={width} y2={height - inGoalW} stroke={s} strokeWidth="1.5"/>
+        <line x1="0" y1={h22_1} x2={width} y2={h22_1} stroke={s} strokeWidth="0.8" strokeDasharray="4 3"/>
+        <line x1="0" y1={h22_2} x2={width} y2={h22_2} stroke={s} strokeWidth="0.8" strokeDasharray="4 3"/>
+        <line x1="0" y1={hCy} x2={width} y2={hCy} stroke={s} strokeWidth="1"/>
+        <line x1={postX} y1="1" x2={postX} y2={inGoalW} stroke={s} strokeWidth="2"/>
+        <line x1={postX + postW} y1="1" x2={postX + postW} y2={inGoalW} stroke={s} strokeWidth="2"/>
+        <line x1={postX} y1={height - inGoalW} x2={postX} y2={height - 1} stroke={s} strokeWidth="2"/>
+        <line x1={postX + postW} y1={height - inGoalW} x2={postX + postW} y2={height - 1} stroke={s} strokeWidth="2"/>
+      </g>
+    );
+  }
+  if (courtType === "generic") {
+    return (
+      <g>
+        <rect x="1" y="1" width={width-2} height={height-2} fill="none" stroke={s} strokeWidth="1"/>
+        <line x1="0" y1={cy} x2={width} y2={cy} stroke={s} strokeWidth="0.8" strokeDasharray="4 3"/>
+        <circle cx={cx} cy={cy} r={Math.min(width, height) * 0.12} fill="none" stroke={s} strokeWidth="1"/>
+      </g>
+    );
+  }
+  // basketball (default)
   const keyW = width * 0.36, keyH = height * 0.36;
   const keyX = cx - keyW / 2, keyY = height - keyH;
-  const ftR = keyW / 2;
-  const tpR = width * 0.43;
+  const ftR = keyW / 2, tpR = width * 0.43;
   const hoopY = height - keyH * 0.22;
+  return (
+    <g>
+      <rect x="1" y="1" width={width-2} height={height-2} fill="none" stroke={s} strokeWidth="1"/>
+      <path d={`M ${cx-tpR} ${keyY} L ${cx-tpR} ${height} M ${cx+tpR} ${keyY} L ${cx+tpR} ${height}`} fill="none" stroke={s} strokeWidth="1"/>
+      <path d={`M ${cx-tpR} ${keyY} A ${tpR} ${tpR} 0 0 0 ${cx+tpR} ${keyY}`} fill="none" stroke={s} strokeWidth="1"/>
+      <rect x={keyX} y={keyY} width={keyW} height={keyH} fill="none" stroke={s} strokeWidth="1"/>
+      <path d={`M ${cx-ftR} ${keyY} A ${ftR} ${ftR} 0 0 0 ${cx+ftR} ${keyY}`} fill="none" stroke={s} strokeWidth="1"/>
+      <path d={`M ${cx-ftR*0.55} ${hoopY-6} A ${ftR*0.55} ${ftR*0.55} 0 0 0 ${cx+ftR*0.55} ${hoopY-6}`} fill="none" stroke={s} strokeWidth="1"/>
+      <line x1={cx-ftR*0.32} y1={hoopY-6} x2={cx+ftR*0.32} y2={hoopY-6} stroke={s} strokeWidth="1.5"/>
+      <circle cx={cx} cy={hoopY-9} r="3" fill="none" stroke={s} strokeWidth="1"/>
+    </g>
+  );
+}
+
+function CourtDiagram({ players = [], paths = [], screens = [], width = 440, height = 420, courtType = "basketball" }) {
   const aid = `arr-${width}-${height}`;
   return (
     <svg viewBox={`0 0 ${width} ${height}`} width="100%" className="bg-white/40 rounded">
@@ -753,14 +907,7 @@ function CourtDiagram({ players = [], paths = [], screens = [], width = 440, hei
           <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" strokeWidth="1.5" />
         </marker>
       </defs>
-      <rect x="1" y="1" width={width - 2} height={height - 2} fill="none" stroke="#444441" strokeWidth="1" />
-      <path d={`M ${cx - tpR} ${keyY} L ${cx - tpR} ${height} M ${cx + tpR} ${keyY} L ${cx + tpR} ${height}`} fill="none" stroke="#444441" strokeWidth="1" />
-      <path d={`M ${cx - tpR} ${keyY} A ${tpR} ${tpR} 0 0 0 ${cx + tpR} ${keyY}`} fill="none" stroke="#444441" strokeWidth="1" />
-      <rect x={keyX} y={keyY} width={keyW} height={keyH} fill="none" stroke="#444441" strokeWidth="1" />
-      <path d={`M ${cx - ftR} ${keyY} A ${ftR} ${ftR} 0 0 0 ${cx + ftR} ${keyY}`} fill="none" stroke="#444441" strokeWidth="1" />
-      <path d={`M ${cx - ftR * 0.55} ${hoopY - 6} A ${ftR * 0.55} ${ftR * 0.55} 0 0 0 ${cx + ftR * 0.55} ${hoopY - 6}`} fill="none" stroke="#444441" strokeWidth="1" />
-      <line x1={cx - ftR * 0.32} y1={hoopY - 6} x2={cx + ftR * 0.32} y2={hoopY - 6} stroke="#444441" strokeWidth="1.5" />
-      <circle cx={cx} cy={hoopY - 9} r="3" fill="none" stroke="#444441" strokeWidth="1" />
+      <CourtLines courtType={courtType} width={width} height={height} />
 
       {paths.map((p, i) => {
         const color = p.color || "#444441";
@@ -904,7 +1051,7 @@ function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage 
   );
 }
 
-function ImportReviewCard({ item, themes, onChange, onRemove }) {
+function ImportReviewCard({ item, themes, onChange, onRemove, sportFormats = FORMATS }) {
   const toggleTheme = (t) => onChange({ ...item, themes: item.themes.includes(t) ? item.themes.filter(x => x !== t) : [...item.themes, t] });
   return (
     <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-4 flex gap-4">
@@ -915,7 +1062,7 @@ function ImportReviewCard({ item, themes, onChange, onRemove }) {
         <div className="flex items-center gap-3">
           <input type="number" value={item.duree} onChange={e => onChange({ ...item, duree: Number(e.target.value) })} className="w-16 border border-[#1B2A4A]/20 rounded px-1.5 py-0.5 text-xs" />
           <span className="text-xs text-[#1B2A4A]/40">min</span>
-          <select value={item.format} onChange={e => onChange({ ...item, format: e.target.value })} className="border border-[#1B2A4A]/20 rounded px-1.5 py-0.5 text-xs">{FORMATS.map(f => <option key={f}>{f}</option>)}</select>
+          <select value={item.format} onChange={e => onChange({ ...item, format: e.target.value })} className="border border-[#1B2A4A]/20 rounded px-1.5 py-0.5 text-xs">{sportFormats.map(f => <option key={f}>{f}</option>)}</select>
           <select value={item.niveau} onChange={e => onChange({ ...item, niveau: e.target.value })} className="border border-[#1B2A4A]/20 rounded px-1.5 py-0.5 text-xs">{NIVEAUX.map(n => <option key={n}>{n}</option>)}</select>
         </div>
         <div className="flex flex-wrap gap-1">{themes.map(t => <Tag key={t} active={item.themes.includes(t)} onClick={() => toggleTheme(t)} color="orange">{t}</Tag>)}</div>
@@ -1174,7 +1321,7 @@ function buildBlankSheetSVG() {
   return { svg: s, width: totalW, height: totalH };
 }
 
-function DrawSheetView({ onValidate, onAddDirect, onCancel, processing }) {
+function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtType = "basketball" }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const bgImgRef = useRef(null);
@@ -2698,24 +2845,8 @@ function CourtEditor({ value, onChange }) {
               <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" strokeWidth="1.5" />
             </marker>
           </defs>
-          {/* Court lines — same as CourtDiagram */}
-          {(() => {
-            const cx = COURT_W / 2, kW = COURT_W * 0.36, kH = COURT_H * 0.36;
-            const kX = cx - kW / 2, kY = COURT_H - kH, ftR = kW / 2, tpR = COURT_W * 0.43;
-            const hoopY = COURT_H - kH * 0.22;
-            return (
-              <g stroke="#888780" strokeWidth="1" fill="none">
-                <rect x="1" y="1" width={COURT_W - 2} height={COURT_H - 2} />
-                <path d={`M ${cx - tpR} ${kY} L ${cx - tpR} ${COURT_H} M ${cx + tpR} ${kY} L ${cx + tpR} ${COURT_H}`} />
-                <path d={`M ${cx - tpR} ${kY} A ${tpR} ${tpR} 0 0 0 ${cx + tpR} ${kY}`} />
-                <rect x={kX} y={kY} width={kW} height={kH} />
-                <path d={`M ${cx - ftR} ${kY} A ${ftR} ${ftR} 0 0 0 ${cx + ftR} ${kY}`} />
-                <path d={`M ${cx - ftR * 0.55} ${hoopY - 6} A ${ftR * 0.55} ${ftR * 0.55} 0 0 0 ${cx + ftR * 0.55} ${hoopY - 6}`} />
-                <line x1={cx - ftR * 0.32} y1={hoopY - 6} x2={cx + ftR * 0.32} y2={hoopY - 6} strokeWidth="1.5" />
-                <circle cx={cx} cy={hoopY - 9} r="3" />
-              </g>
-            );
-          })()}
+          {/* Court lines */}
+          <CourtLines courtType={courtType} width={COURT_W} height={COURT_H} />
 
           {/* Paths */}
           {paths.map((p, i) => {
@@ -3321,7 +3452,12 @@ function ScrollToTopButton() {
 
 function CoachingProBoost({ session }) {
   const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded } = useStore();
-  const { isPremium } = useSubscription(session?.user?.id);
+  const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
+  const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
+  const SPORT_PHASES = sportConfig.phases;
+  const SPORT_FORMATS = sportConfig.formats;
+  const SPORT_CATEGORIES = sportConfig.categories;
+  const SPORT_COURT = sportConfig.court;
   const cpbAlert = useAlert();
   const [paywallReason, setPaywallReason] = useState(null);
   const toast = useToast();
@@ -3570,7 +3706,7 @@ function CoachingProBoost({ session }) {
     }
     const ex = {
       id: uid(), titre: "Exercice rogné " + new Date().toLocaleDateString("fr-FR"),
-      themes: [], phases: [], format: FORMATS[0], niveau: NIVEAUX[1], categorie: "",
+      themes: [], phases: [], format: SPORT_FORMATS[0], niveau: NIVEAUX[1], categorie: "",
       duree: 10, objectif: "", notes: "",
       file: { name: "exercice-rogné.jpg", type: "image/jpeg", data: dataUrl },
     };
@@ -3586,7 +3722,7 @@ function CoachingProBoost({ session }) {
     }
     const ex = {
       id: uid(), titre,
-      themes: selectedThemes, phases: [], format: FORMATS[0], niveau: NIVEAUX[1], categorie: "",
+      themes: selectedThemes, phases: [], format: SPORT_FORMATS[0], niveau: NIVEAUX[1], categorie: "",
       duree, objectif: "", notes: "",
       file: { name: "exercice-rogné.jpg", type: "image/jpeg", data: quickCropData },
     };
@@ -3604,7 +3740,7 @@ function CoachingProBoost({ session }) {
   const addDrawnSheetDirect = (dataUrl) => {
     const ex = {
       id: uid(), titre: "Fiche dessinée " + new Date().toLocaleDateString("fr-FR"),
-      themes: [], phases: [], format: FORMATS[0], niveau: NIVEAUX[1], categorie: "",
+      themes: [], phases: [], format: SPORT_FORMATS[0], niveau: NIVEAUX[1], categorie: "",
       duree: 0, objectif: "", notes: "",
       file: { name: "fiche-dessinee.png", type: "image/png", data: dataUrl },
       createdAt: new Date().toISOString(),
@@ -3806,15 +3942,15 @@ function CoachingProBoost({ session }) {
                 },
                 {
                   key: "format", label: "Opposition", active: filterFormat.length,
-                  content: FORMATS.map(f => <Tag key={f} active={filterFormat.includes(f)} onClick={() => toggleFilter(filterFormat, setFilterFormat, f)}>{f}</Tag>)
+                  content: SPORT_FORMATS.map(f => <Tag key={f} active={filterFormat.includes(f)} onClick={() => toggleFilter(filterFormat, setFilterFormat, f)}>{f}</Tag>)
                 },
                 {
                   key: "phase", label: "Phase", active: filterPhase.length,
-                  content: PHASES.map(p => <Tag key={p} active={filterPhase.includes(p)} onClick={() => toggleFilter(filterPhase, setFilterPhase, p)}>{p}</Tag>)
+                  content: SPORT_PHASES.map(p => <Tag key={p} active={filterPhase.includes(p)} onClick={() => toggleFilter(filterPhase, setFilterPhase, p)}>{p}</Tag>)
                 },
                 {
                   key: "categorie", label: "Catégorie", active: filterCategorie.length,
-                  content: CATEGORIES.map(c => <Tag key={c} active={filterCategorie.includes(c)} onClick={() => toggleFilter(filterCategorie, setFilterCategorie, c)}>{c}</Tag>)
+                  content: SPORT_CATEGORIES.map(c => <Tag key={c} active={filterCategorie.includes(c)} onClick={() => toggleFilter(filterCategorie, setFilterCategorie, c)}>{c}</Tag>)
                 },
               ];
               return (
@@ -3854,7 +3990,7 @@ function CoachingProBoost({ session }) {
         {view === "library" && showForm && (
           <div className="max-w-xl">
             <h2 className="text-xl font-bold text-[#1B2A4A] mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>{editing ? "MODIFIER L'EXERCICE" : "NOUVEL EXERCICE"}</h2>
-            <ExerciseForm themes={themes} saveThemes={saveThemes} initial={editing} onSave={upsertExercise} onCancel={() => { setShowForm(false); setEditing(null); }} cpbAlert={cpbAlert} />
+            <ExerciseForm themes={themes} saveThemes={saveThemes} initial={editing} onSave={upsertExercise} onCancel={() => { setShowForm(false); setEditing(null); }} cpbAlert={cpbAlert} sportPhases={SPORT_PHASES} sportFormats={SPORT_FORMATS} sportCategories={SPORT_CATEGORIES} />
           </div>
         )}
 
@@ -4033,7 +4169,7 @@ function CoachingProBoost({ session }) {
               )}
               <div className="flex flex-wrap gap-1.5 items-center">
                 <span className="text-xs text-[#1B2A4A]/40 w-20">Catégorie :</span>
-                {CATEGORIES.map(c => (
+                {SPORT_CATEGORIES.map(c => (
                   <Tag key={c} active={statsCatFilter.includes(c)} onClick={() => setStatsCatFilter(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c])}>{c}</Tag>
                 ))}
               </div>
@@ -4103,6 +4239,22 @@ function CoachingProBoost({ session }) {
               </div>
               <div className="text-white/60 text-xs mt-1">
                 {isPremium ? "Merci pour ton soutien !" : `${exercises.length}/${FREE_MAX_EXERCISES} exercices · ${sessions.length}/${FREE_MAX_SESSIONS} séances`}
+              </div>
+            </div>
+
+            {/* Sport */}
+            <div className="bg-white/70 rounded-2xl overflow-hidden mb-4">
+              <div className="px-5 py-3 border-b border-[#1B2A4A]/8">
+                <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/50">Mon sport</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 p-3">
+                {Object.entries(SPORTS_CONFIG).map(([key, cfg]) => (
+                  <button key={key} onClick={() => setSport(key)}
+                    className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl text-xs font-medium transition-colors ${sport === key ? "bg-[#FF6B35] text-white" : "bg-white/60 text-[#1B2A4A] hover:bg-[#FF6B35]/10"}`}>
+                    <span className="text-xl">{cfg.emoji}</span>
+                    <span>{cfg.label}</span>
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -4186,7 +4338,7 @@ function CoachingProBoost({ session }) {
         )}
 
         {view === "draw" && (
-          <DrawSheetView processing={drawProcessing} onCancel={() => setViewPersist("sessions")} onValidate={processDrawnSheet} onAddDirect={addDrawnSheetDirect} />
+          <DrawSheetView processing={drawProcessing} onCancel={() => setViewPersist("sessions")} onValidate={processDrawnSheet} onAddDirect={addDrawnSheetDirect} courtType={SPORT_COURT} />
         )}
 
         {viewingPlay && (
@@ -4299,7 +4451,7 @@ function CoachingProBoost({ session }) {
             </div>
             <div className="space-y-3">
               {reviewItems.map((item, i) => (
-                <ImportReviewCard key={item.id} item={item} themes={themes}
+                <ImportReviewCard key={item.id} item={item} themes={themes} sportFormats={SPORT_FORMATS}
                   onChange={(next) => setReviewItems(reviewItems.map(r => r.id === item.id ? next : r))}
                   onRemove={() => setReviewItems(reviewItems.filter(r => r.id !== item.id))} />
               ))}
