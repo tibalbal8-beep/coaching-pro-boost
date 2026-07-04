@@ -128,12 +128,10 @@ function useSubscription(userId) {
   useEffect(() => {
     if (!userId) return;
     supabase.from("profiles").select("is_premium, premium_until, sport").eq("id", userId).maybeSingle()
-      .then(({ data, error }) => {
-        console.log("[CPB] profile data:", data, "error:", error);
+      .then(({ data }) => {
         if (data) {
           const until = data.premium_until ? new Date(data.premium_until) : null;
           const active = data.is_premium && (!until || until > new Date());
-          console.log("[CPB] is_premium:", data.is_premium, "premium_until:", data.premium_until, "active:", active);
           setIsPremium(active);
           if (data.sport && SPORTS_CONFIG[data.sport]) {
             setSportState(data.sport);
