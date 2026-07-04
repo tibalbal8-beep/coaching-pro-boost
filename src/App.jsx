@@ -741,15 +741,20 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
       <div className="space-y-4">
       <input value={titre} onChange={e => setTitre(e.target.value)} placeholder="Titre de l'exercice"
         className="w-full text-lg font-semibold bg-transparent border-b-2 border-[#1B2A4A]/20 focus:border-[#FF6B35] outline-none pb-1 text-[#1B2A4A]" />
-      <button type="button" onClick={() => setShowDraw(true)}
-        className="flex items-center gap-2 w-full justify-center border border-dashed border-[#1B2A4A]/25 rounded-xl py-3 text-sm text-[#1B2A4A]/60 hover:border-[#FF6B35]/50 hover:text-[#FF6B35] transition-colors">
-        <span>🏀</span> Dessiner le schéma tactique
-      </button>
-      {showDraw && (
-        <div className="fixed inset-0 z-50 bg-[#1B2A4A]/80 flex flex-col overflow-y-auto">
-          <div className="bg-white rounded-t-2xl mt-auto min-h-screen p-4">
+      <div className="border border-[#1B2A4A]/15 rounded-xl overflow-hidden">
+        <button type="button" onClick={() => setShowDraw(o => !o)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-white/40 hover:bg-white/70 transition-colors">
+          <div className="flex items-center gap-2">
+            <span>🏀</span>
+            <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/60 font-semibold">Schéma tactique</span>
+            {file?.name === "schema.png" && <span className="text-[10px] font-bold bg-[#FF6B35] text-white rounded-full px-1.5 py-0.5">✓</span>}
+          </div>
+          <svg className={`w-4 h-4 text-[#1B2A4A]/40 transition-transform ${showDraw ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+        </button>
+        {showDraw && (
+          <div className="border-t border-[#1B2A4A]/10 p-3 bg-white/20">
             <DrawSheetView
-              referencePhoto={file?.data ? `data:${file.type};base64,${file.data}` : null}
+              referencePhoto={file?.data && file?.name !== "schema.png" ? `data:${file.type};base64,${file.data}` : null}
               onCancel={() => setShowDraw(false)}
               onAddDirect={null}
               processing={false}
@@ -760,8 +765,8 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
               }}
             />
           </div>
-        </div>
-      )}
+        )}
+      </div>
       <div className="border border-[#1B2A4A]/15 rounded-xl overflow-hidden">
         <button type="button" onClick={() => setThemesOpen(o => !o)}
           className="w-full flex items-center justify-between px-4 py-3 bg-white/40 hover:bg-white/70 transition-colors">
