@@ -4314,10 +4314,46 @@ function CoachingProBoost({ session }) {
                 <span className="text-sm text-[#1B2A4A]/50">Email</span>
                 <span className="text-sm text-[#1B2A4A] font-medium truncate max-w-[200px]">{session?.user?.email}</span>
               </div>
-              <div className="flex items-center justify-between px-5 py-4">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#1B2A4A]/8">
                 <span className="text-sm text-[#1B2A4A]/50">Exercices créés</span>
                 <span className="text-sm text-[#1B2A4A] font-medium">{exercises.length}</span>
               </div>
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#1B2A4A]/8">
+                <span className="text-sm text-[#1B2A4A]/50">Séances créées</span>
+                <span className="text-sm text-[#1B2A4A] font-medium">{sessions.length}</span>
+              </div>
+              <button onClick={async () => {
+                try {
+                  // Charger les fichiers images depuis le storage
+                  const exercisesWithFiles = await Promise.all(exercises.map(async (ex) => {
+                    if (!ex.file || ex.file.data) return ex;
+                    try {
+                      const r = await storage.get(`file:${ex.id}`);
+                      if (r) return { ...ex, file: JSON.parse(r.value) };
+                    } catch {}
+                    return ex;
+                  }));
+                  const backup = {
+                    version: 1,
+                    exportedAt: new Date().toISOString(),
+                    exercises: exercisesWithFiles,
+                    sessions,
+                    themes,
+                    teams,
+                    plays,
+                  };
+                  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `cpb-backup-${new Date().toISOString().slice(0,10)}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } catch(e) { await cpbAlert("Erreur lors de l'export : " + e.message); }
+              }} className="w-full flex items-center justify-between px-5 py-4 text-sm text-[#1B2A4A] font-medium hover:bg-[#1B2A4A]/5 transition-colors">
+                <span>Exporter une sauvegarde</span>
+                <ChevronRight size={16} className="text-[#1B2A4A]/40" />
+              </button>
             </div>
 
             {/* Déconnexion */}
