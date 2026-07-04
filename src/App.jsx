@@ -754,6 +754,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
         {showDraw && (
           <div className="border-t border-[#1B2A4A]/10 p-3 bg-white/20">
             <DrawSheetView
+              gabaritKey="exerciseGabarits"
               referencePhoto={file?.data && file?.name !== "schema.png" ? `data:${file.type};base64,${file.data}` : null}
               onCancel={() => setShowDraw(false)}
               onAddDirect={null}
@@ -1428,7 +1429,7 @@ function generateBasketballCourtDataUrl(variant) {
   return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgStr);
 }
 
-function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtType = "basketball", referencePhoto = null }) {
+function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtType = "basketball", referencePhoto = null, gabaritKey = "sheetGabarits" }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const bgImgRef = useRef(null);
@@ -1486,7 +1487,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   useEffect(() => {
     (async () => {
       try {
-        const stored = await storage.get("sheetGabarits");
+        const stored = await storage.get(gabaritKey);
         const loaded = stored ? JSON.parse(stored.value) : DEFAULT_GABARITS;
         const merged = DEFAULT_GABARITS.map((d, i) => loaded[i] || d);
         setGabarits(merged);
@@ -1499,7 +1500,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
 
   const saveGabarits = async (next) => {
     setGabarits(next);
-    await storage.set("sheetGabarits", JSON.stringify(next));
+    await storage.set(gabaritKey, JSON.stringify(next));
   };
 
   const switchGabarit = (idx) => {
