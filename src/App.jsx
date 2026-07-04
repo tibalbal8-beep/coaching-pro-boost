@@ -4104,7 +4104,7 @@ function CoachingProBoost({ session }) {
                     onRemove={() => saveExercises(exercises.filter(e => e.id !== ex.id))}
                     onAddToDraft={() => addExerciseToDraft(ex.id)}
                     onCropImage={(imgData) => { setCropImage(imgData); setView("crop"); }}
-                    onShare={() => shareExercise(ex)} />
+                    onShare={isPremium ? () => shareExercise(ex) : () => setPaywallReason("Le partage d'exercices est une fonctionnalité Premium.")} />
                 ))}
               </div>
             )}
