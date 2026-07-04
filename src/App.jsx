@@ -1014,21 +1014,32 @@ function FilterAccordion({ label, activeCount, borderTop, children }) {
   );
 }
 
-function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage }) {
+function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage, onShare }) {
   const fileImage = useFileImage(ex);
   const [confirmDel, setConfirmDel] = useState(false);
   return (
     <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-4 relative group hover:shadow-md transition-shadow" onClick={onClick}>
       <div className="flex items-start justify-between mb-2 cursor-pointer">
-        {onRemove && (
-          confirmDel ? (
-            <span className="flex items-center gap-1 text-[10px]" onClick={e => e.stopPropagation()}>
-              <button onClick={() => onRemove()} className="text-red-600 font-medium">Confirmer</button>
-              <button onClick={() => setConfirmDel(false)} className="text-[#1B2A4A]/40">Annuler</button>
-            </span>
-          ) : (
-            <button onClick={(e) => { e.stopPropagation(); setConfirmDel(true); }} className="text-[#1B2A4A]/40 hover:text-red-600"><Trash2 size={14} /></button>
-          )
+        <div className="flex items-center gap-2">
+          {onRemove && (
+            confirmDel ? (
+              <span className="flex items-center gap-1 text-[10px]" onClick={e => e.stopPropagation()}>
+                <button onClick={() => onRemove()} className="text-red-600 font-medium">Confirmer</button>
+                <button onClick={() => setConfirmDel(false)} className="text-[#1B2A4A]/40">Annuler</button>
+              </span>
+            ) : (
+              <button onClick={(e) => { e.stopPropagation(); setConfirmDel(true); }} className="text-[#1B2A4A]/40 hover:text-red-600"><Trash2 size={14} /></button>
+            )
+          )}
+        </div>
+        {onShare && (
+          <button onClick={(e) => { e.stopPropagation(); onShare(); }}
+            className="text-[#1B2A4A]/30 hover:text-[#FF6B35] transition-colors" title="Partager">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+              <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+            </svg>
+          </button>
         )}
       </div>
       <div className="cursor-pointer">
@@ -3531,6 +3542,37 @@ function CoachingProBoost({ session }) {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sharedExercise, setSharedExercise] = useState(null);
+
+  // Détection lien de partage ?share=TOKEN
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("share");
+    if (!token) return;
+    window.history.replaceState({}, "", "/");
+    supabase.from("shared_exercises").select("exercise_data, expires_at").eq("token", token).maybeSingle()
+      .then(({ data }) => {
+        if (!data) { cpbAlert("Ce lien de partage est invalide ou a expiré."); return; }
+        if (data.expires_at && new Date(data.expires_at) < new Date()) { cpbAlert("Ce lien de partage a expiré."); return; }
+        setSharedExercise(data.exercise_data);
+      });
+  }, []);
+
+  const shareExercise = async (ex) => {
+    try {
+      const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const exData = { ...ex };
+      // Charger l'image si besoin
+      if (ex.file && !ex.file.data) {
+        try { const r = await storage.get(`file:${ex.id}`); if (r) exData.file = JSON.parse(r.value); } catch {}
+      }
+      const { error } = await supabase.from("shared_exercises").insert({ token, exercise_data: exData });
+      if (error) throw error;
+      const link = `${window.location.origin}?share=${token}`;
+      await navigator.clipboard.writeText(link);
+      toast?.("Lien copié ! Valable 30 jours.");
+    } catch(e) { await cpbAlert("Erreur lors du partage : " + e.message); }
+  };
+
   const [editing, setEditing] = useState(null);
   const [filterTheme, setFilterTheme] = useState([]);
   const [filterFormat, setFilterFormat] = useState([]);
@@ -3862,6 +3904,51 @@ function CoachingProBoost({ session }) {
           </div>
         </div>
       )}
+      {sharedExercise && (
+        <div className="fixed inset-0 z-[700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
+            <div className="bg-[#1B2A4A] px-6 py-5 text-center">
+              <div className="text-3xl mb-2">🏀</div>
+              <div className="text-white font-bold text-xl" style={{ fontFamily: "Oswald, sans-serif" }}>EXERCICE PARTAGÉ</div>
+              <div className="text-white/60 text-sm mt-1">Un coach partage cet exercice avec toi</div>
+            </div>
+            <div className="px-6 py-5">
+              <div className="bg-[#F2EDE4] rounded-xl p-4 mb-4">
+                <div className="font-bold text-[#1B2A4A] mb-1">{sharedExercise.titre}</div>
+                <div className="flex flex-wrap gap-2 text-xs text-[#1B2A4A]/60 mb-2">
+                  {sharedExercise.duree > 0 && <span>{sharedExercise.duree} min</span>}
+                  {sharedExercise.format && <span>{sharedExercise.format}</span>}
+                  {sharedExercise.niveau && <span>{sharedExercise.niveau}</span>}
+                </div>
+                {sharedExercise.themes?.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {sharedExercise.themes.map(t => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35]">{t}</span>)}
+                  </div>
+                )}
+                {sharedExercise.objectif && <p className="text-xs text-[#1B2A4A]/60 mt-2 italic">{sharedExercise.objectif}</p>}
+              </div>
+              <button onClick={() => {
+                const newEx = { ...sharedExercise, id: uid(), createdAt: new Date().toISOString() };
+                if (newEx.file?.data) {
+                  storage.set(`file:${newEx.id}`, JSON.stringify(newEx.file)).catch(() => {});
+                  newEx.file = { name: newEx.file.name, type: newEx.file.type, data: null };
+                }
+                saveExercises([...exercises, newEx]);
+                setSharedExercise(null);
+                setViewPersist("library");
+                toast?.(`"${newEx.titre}" ajouté à ta bibliothèque !`);
+              }} className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors mb-3"
+                style={{ fontFamily: "Oswald, sans-serif" }}>
+                Ajouter à ma bibliothèque
+              </button>
+              <button onClick={() => setSharedExercise(null)}
+                className="w-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A] transition-colors">
+                Ignorer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showOnboarding && <OnboardingModal onDone={finishOnboarding} />}
       {showTour && !showOnboarding && (
         <GuidedTour
@@ -4016,7 +4103,8 @@ function CoachingProBoost({ session }) {
                     onClick={() => { setEditing(ex); setShowForm(true); }}
                     onRemove={() => saveExercises(exercises.filter(e => e.id !== ex.id))}
                     onAddToDraft={() => addExerciseToDraft(ex.id)}
-                    onCropImage={(imgData) => { setCropImage(imgData); setView("crop"); }} />
+                    onCropImage={(imgData) => { setCropImage(imgData); setView("crop"); }}
+                    onShare={() => shareExercise(ex)} />
                 ))}
               </div>
             )}
