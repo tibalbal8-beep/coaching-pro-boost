@@ -2366,6 +2366,7 @@ function AuthScreen() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        await supabase.auth.signOut({ scope: "others" });
       }
     } catch (err) {
       setError(err.message);
