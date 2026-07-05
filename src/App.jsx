@@ -1609,7 +1609,18 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.setLineDash(stroke.style === "pointille" ? [stroke.width * 3.5, stroke.width * 2.5] : []);
-    drawPts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+    if (drawPts.length < 3) {
+      drawPts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+    } else {
+      ctx.moveTo(drawPts[0].x, drawPts[0].y);
+      for (let i = 1; i < drawPts.length - 1; i++) {
+        const mx = (drawPts[i].x + drawPts[i + 1].x) / 2;
+        const my = (drawPts[i].y + drawPts[i + 1].y) / 2;
+        ctx.quadraticCurveTo(drawPts[i].x, drawPts[i].y, mx, my);
+      }
+      const l = drawPts[drawPts.length - 1];
+      ctx.lineTo(l.x, l.y);
+    }
     ctx.stroke();
     ctx.setLineDash([]);
 
@@ -1617,14 +1628,14 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       drawArrowHead(ctx, prev, last, stroke.color, arrowSize);
     }
 
-    // Écran : trait perpendiculaire en T au bout
+    // Écran : trait perpendiculaire en T au bout (discret)
     if (stroke.style === "ecran") {
-      const perpLen = 14 + stroke.width * 2;
+      const perpLen = 7 + stroke.width;
       const px = Math.cos(angle + Math.PI / 2) * perpLen;
       const py = Math.sin(angle + Math.PI / 2) * perpLen;
       ctx.beginPath();
       ctx.strokeStyle = stroke.color;
-      ctx.lineWidth = stroke.width * 1.5;
+      ctx.lineWidth = stroke.width * 1.2;
       ctx.lineCap = "round";
       ctx.moveTo(last.x - px, last.y - py);
       ctx.lineTo(last.x + px, last.y + py);
