@@ -1955,7 +1955,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       redraw();
       // Auto-incrément du numéro de joueur
       const numSeq = ["1","2","3","4","5","6","7","8","9","10","11","12"];
-      const xSeq = ["X","X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"];
+      const xSeq = ["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"];
       const idxNum = numSeq.indexOf(playerLabel);
       const idxX = xSeq.indexOf(playerLabel);
       if (idxNum >= 0 && idxNum < numSeq.length - 1) setPlayerLabel(numSeq[idxNum + 1]);
@@ -2161,22 +2161,38 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           </>
         ) : tool === "player" ? (
           <>
-            <select value={playerLabel} onChange={e => setPlayerLabel(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-              <optgroup label="Joueurs">
-                {["1","2","3","4","5","6","7","8","9","10","11","12","X","X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"].map(n => <option key={n} value={n}>{n}</option>)}
-              </optgroup>
-              <optgroup label="Équipements">
-                <option value="plot">🔶 Plot</option>
-                <option value="chaise">🪑 Chaise</option>
-                <option value="rack">🏀 Rack à ballons</option>
-              </optgroup>
-            </select>
+            {/* Équipements en boutons icône */}
+            {[{v:"plot",e:"🔶"},{v:"chaise",e:"🪑"},{v:"rack",e:"🏀"}].map(eq => (
+              <button key={eq.v} type="button" onClick={() => setPlayerLabel(eq.v)}
+                title={eq.v.charAt(0).toUpperCase()+eq.v.slice(1)}
+                className={`w-8 h-8 rounded-lg text-base border transition-colors ${playerLabel === eq.v ? "bg-[#1B2A4A] border-[#1B2A4A]" : "border-[#1B2A4A]/20 hover:bg-[#1B2A4A]/5"}`}>
+                {eq.e}
+              </button>
+            ))}
+            <div className="w-px h-5 bg-[#1B2A4A]/15 mx-0.5" />
+            {/* Numéro : 1-12 attaque, X1-X12 défense */}
+            {!["plot","chaise","rack"].includes(playerLabel) && (
+              <select value={playerLabel} onChange={e => setPlayerLabel(e.target.value)}
+                className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white w-16">
+                {(playerIsDefender
+                  ? ["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"]
+                  : ["1","2","3","4","5","6","7","8","9","10","11","12"]
+                ).map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+            )}
             {!["plot","chaise","rack"].includes(playerLabel) && <>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
-                <input type="checkbox" checked={playerHasBall} onChange={e => setPlayerHasBall(e.target.checked)} disabled={playerIsDefender} /> Avec ballon
+                <input type="checkbox" checked={playerHasBall} onChange={e => setPlayerHasBall(e.target.checked)} disabled={playerIsDefender} /> Ballon
               </label>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
-                <input type="checkbox" checked={playerIsDefender} onChange={e => setPlayerIsDefender(e.target.checked)} /> Défenseur
+                <input type="checkbox" checked={playerIsDefender} onChange={e => {
+                  const def = e.target.checked;
+                  setPlayerIsDefender(def);
+                  const nums = ["1","2","3","4","5","6","7","8","9","10","11","12"];
+                  const xNums = ["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"];
+                  if (def) { const i = nums.indexOf(playerLabel); if (i >= 0) setPlayerLabel(xNums[i]); else setPlayerLabel("X1"); }
+                  else { const i = xNums.indexOf(playerLabel); if (i >= 0) setPlayerLabel(nums[i]); else setPlayerLabel("1"); }
+                }} /> Défenseur
               </label>
             </>}
             <span className="text-xs text-[#1B2A4A]/40">Touche le terrain pour placer</span>
