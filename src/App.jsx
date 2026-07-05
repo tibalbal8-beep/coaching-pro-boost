@@ -3809,6 +3809,8 @@ function CoachingProBoost({ session }) {
   const [viewingSessionExercise, setViewingSessionExercise] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem("cpb_onboarded"));
   const [showTour, setShowTour] = useState(false);
+  const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+  const [showInstallBanner, setShowInstallBanner] = useState(() => !isStandalone && !localStorage.getItem("cpb_install_dismissed"));
   const finishOnboarding = () => {
     localStorage.setItem("cpb_onboarded", "1");
     setShowOnboarding(false);
@@ -4123,6 +4125,21 @@ function CoachingProBoost({ session }) {
         </div>
       )}
       {showOnboarding && <OnboardingModal onDone={finishOnboarding} />}
+      {showInstallBanner && !showOnboarding && (
+        <div className="fixed bottom-20 left-3 right-3 z-40 bg-[#1B2A4A] text-white rounded-2xl p-4 shadow-xl flex items-start gap-3 no-print">
+          <span className="text-2xl flex-shrink-0">📲</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold mb-0.5">Installer l'application</p>
+            <p className="text-xs text-white/60">
+              {/iphone|ipad|ipod/i.test(navigator.userAgent)
+                ? "Sur Safari : bouton Partager ⎋ → \"Sur l'écran d'accueil\""
+                : "Sur Chrome : menu ⋮ → \"Ajouter à l'écran d'accueil\""}
+            </p>
+          </div>
+          <button onClick={() => { setShowInstallBanner(false); localStorage.setItem("cpb_install_dismissed", "1"); }}
+            className="flex-shrink-0 text-white/50 hover:text-white text-lg leading-none mt-0.5">✕</button>
+        </div>
+      )}
       {showTour && !showOnboarding && (
         <GuidedTour
           onDone={finishTour}
@@ -4667,6 +4684,46 @@ function CoachingProBoost({ session }) {
                 <ChevronRight size={16} className="text-[#1B2A4A]/40" />
               </button>
             </div>
+
+            {/* Installer l'app */}
+            {!window.matchMedia("(display-mode: standalone)").matches && !window.navigator.standalone && (
+              <div className="bg-white/70 rounded-2xl overflow-hidden mb-4">
+                <div className="px-5 py-3 border-b border-[#1B2A4A]/8 flex items-center gap-2">
+                  <span>📲</span>
+                  <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold">Installer l'application</span>
+                </div>
+                <div className="p-4 space-y-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-base">🍎</span>
+                      <span className="text-sm font-semibold text-[#1B2A4A]">iPhone / iPad (Safari)</span>
+                    </div>
+                    <ol className="space-y-1.5 pl-1">
+                      {["Ouvre l'app dans Safari", "Appuie sur le bouton Partager ⎋ en bas de l'écran", "Fais défiler et appuie sur \"Sur l'écran d'accueil\"", "Appuie sur \"Ajouter\""].map((step, i) => (
+                        <li key={i} className="flex items-start gap-2 text-xs text-[#1B2A4A]/70">
+                          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-[#1B2A4A]/10 text-[#1B2A4A] flex items-center justify-center text-[10px] font-bold mt-0.5">{i+1}</span>
+                          {step}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                  <div className="border-t border-[#1B2A4A]/8 pt-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-base">🤖</span>
+                      <span className="text-sm font-semibold text-[#1B2A4A]">Android (Chrome)</span>
+                    </div>
+                    <ol className="space-y-1.5 pl-1">
+                      {["Ouvre l'app dans Chrome", "Appuie sur les 3 points ⋮ en haut à droite", "Appuie sur \"Ajouter à l'écran d'accueil\"", "Appuie sur \"Ajouter\""].map((step, i) => (
+                        <li key={i} className="flex items-start gap-2 text-xs text-[#1B2A4A]/70">
+                          <span className="flex-shrink-0 w-4 h-4 rounded-full bg-[#1B2A4A]/10 text-[#1B2A4A] flex items-center justify-center text-[10px] font-bold mt-0.5">{i+1}</span>
+                          {step}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Déconnexion */}
             <button onClick={() => supabase.auth.signOut()}
