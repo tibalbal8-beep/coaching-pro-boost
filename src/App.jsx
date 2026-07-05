@@ -2140,9 +2140,10 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           </>
         ) : tool === "player" ? (
           <>
-            {/* Équipements en boutons icône */}
+            {/* Équipements en boutons icône — re-cliquer désélectionne */}
             {[{v:"plot",e:"🔶"},{v:"chaise",e:"🪑"},{v:"rack",e:"🏀"}].map(eq => (
-              <button key={eq.v} type="button" onClick={() => setPlayerLabel(eq.v)}
+              <button key={eq.v} type="button"
+                onClick={() => setPlayerLabel(playerLabel === eq.v ? (playerIsDefender ? "X1" : "1") : eq.v)}
                 title={eq.v.charAt(0).toUpperCase()+eq.v.slice(1)}
                 className={`w-8 h-8 rounded-lg text-base border transition-colors ${playerLabel === eq.v ? "bg-[#1B2A4A] border-[#1B2A4A]" : "border-[#1B2A4A]/20 hover:bg-[#1B2A4A]/5"}`}>
                 {eq.e}
