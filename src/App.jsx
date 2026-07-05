@@ -1681,6 +1681,41 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     const arrowSize = 6 + stroke.width * 2;
     const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
 
+    // Tir : double trait parallèle + flèche forcée
+    if (stroke.style === "tir") {
+      const gap = stroke.width * 2.5;
+      const globalAngle = Math.atan2(last.y - pts[0].y, last.x - pts[0].x);
+      const px = Math.cos(globalAngle + Math.PI / 2) * gap / 2;
+      const py = Math.sin(globalAngle + Math.PI / 2) * gap / 2;
+      const tirPts = [
+        ...pts.slice(0, -1),
+        { x: last.x - Math.cos(angle) * arrowSize * 0.7, y: last.y - Math.sin(angle) * arrowSize * 0.7 }
+      ];
+      const drawLine = (offX, offY) => {
+        const op = tirPts.map(p => ({ x: p.x + offX, y: p.y + offY }));
+        ctx.beginPath();
+        ctx.strokeStyle = stroke.color;
+        ctx.lineWidth = stroke.width * 0.85;
+        ctx.lineCap = "round"; ctx.lineJoin = "round";
+        ctx.setLineDash([]);
+        if (op.length < 3) {
+          op.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+        } else {
+          ctx.moveTo(op[0].x, op[0].y);
+          for (let i = 1; i < op.length - 1; i++) {
+            const mx = (op[i].x + op[i + 1].x) / 2, my = (op[i].y + op[i + 1].y) / 2;
+            ctx.quadraticCurveTo(op[i].x, op[i].y, mx, my);
+          }
+          ctx.lineTo(op[op.length - 1].x, op[op.length - 1].y);
+        }
+        ctx.stroke();
+      };
+      drawLine(px, py);
+      drawLine(-px, -py);
+      drawArrowHead(ctx, prev, last, stroke.color, arrowSize);
+      return;
+    }
+
     // Pour flèche : raccourcir le dernier point pour que la ligne s'arrête à la base de la flèche
     const drawPts = (stroke.arrow && stroke.style !== "ecran") ? [
       ...pts.slice(0, -1),
@@ -2100,6 +2135,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
               <option value="pointille">Passe</option>
               <option value="zigzag">Dribble</option>
               <option value="ecran">Écran</option>
+              <option value="tir">Tir</option>
             </select>
             <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
               <input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche
