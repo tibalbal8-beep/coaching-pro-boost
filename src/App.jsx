@@ -2204,7 +2204,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           </span>
         )}
         <button onClick={undo} className="px-3 py-1.5 rounded-md text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5 ml-auto">Annuler</button>
-        <button onClick={clearAll} className="px-3 py-1.5 rounded-md text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5">Effacer tout</button>
+        <button onClick={() => { if (window.confirm("Effacer tout le dessin ? Cette action est irréversible.")) clearAll(); }} className="px-3 py-1.5 rounded-md text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5">Effacer tout</button>
         <input ref={templateInputRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={e => { handleTemplateUpload(e.target.files?.[0]); e.target.value = ""; }} />
         <div className="flex flex-col gap-1 ml-auto">
           <div className="flex items-center gap-1">
