@@ -3346,7 +3346,7 @@ const ONBOARDING_STEPS = [
   {
     icon: "🏀",
     title: "Bienvenue sur\nCoaching Pro Boost",
-    desc: "Votre assistant d'entraînement basket. Retrouvez tous vos outils de coach en un seul endroit, accessible depuis votre iPad.",
+    desc: "Votre assistant d'entraînement basket. Retrouvez tous vos outils de coach en un seul endroit, sur iOS et Android.",
     color: "#1B2A4A",
   },
   {
@@ -3370,7 +3370,7 @@ const ONBOARDING_STEPS = [
   {
     icon: "✏️",
     title: "Dessiner une fiche",
-    desc: "Annotez vos gabarits personnalisés avec le stylo Apple Pencil. Texte, schémas, pictogrammes d'équipement — tout y est.",
+    desc: "Annotez vos gabarits personnalisés avec votre doigt ou un stylet. Texte, schémas, pictogrammes d'équipement — tout y est.",
     color: "#1B2A4A",
   },
   {
