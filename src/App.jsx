@@ -3208,6 +3208,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
   const [showDiagram, setShowDiagram] = useState(!!(initial?.diagram));
   const [selectedTags, setSelectedTags] = useState(initial?.tags || []);
   const [newTagInput, setNewTagInput] = useState("");
+  const [tagsOpen, setTagsOpen] = useState(false);
   const [cropSource, setCropSource] = useState(null);
   const [cropCount, setCropCount] = useState(0);
   const cropInputRef = useRef();
@@ -3249,17 +3250,36 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
           {PLAY_TYPES.map(t => <Tag key={t} active={type === t} onClick={() => setType(t)}>{t}</Tag>)}
         </div>
       </div>
-      <div>
-        <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Mots-clés</div>
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {playTags.map(t => (
-            <Tag key={t} active={selectedTags.includes(t)} onClick={() => setSelectedTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])} color="orange">{t}</Tag>
-          ))}
-        </div>
-        <input value={newTagInput} onChange={e => setNewTagInput(e.target.value)}
-          placeholder="+ nouveau mot-clé"
-          className="text-xs border border-[#1B2A4A]/20 rounded-full px-2 py-1 w-36 bg-white/60"
-          onKeyDown={e => { if (e.key === "Enter") addTag(newTagInput); }} />
+      <div className="border border-[#1B2A4A]/15 rounded-xl overflow-hidden">
+        <button type="button" onClick={() => setTagsOpen(o => !o)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-white/40 hover:bg-white/70 transition-colors">
+          <div className="flex items-center gap-2">
+            <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/60 font-semibold">Mots-clés</span>
+            {selectedTags.length > 0 && <span className="text-[10px] font-bold bg-[#FF6B35] text-white rounded-full px-1.5 py-0.5">{selectedTags.length}</span>}
+          </div>
+          <svg className={`w-4 h-4 text-[#1B2A4A]/40 transition-transform ${tagsOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+        </button>
+        {selectedTags.length > 0 && !tagsOpen && (
+          <div className="px-4 py-2 bg-white/20 flex flex-wrap gap-1.5 border-t border-[#1B2A4A]/10">
+            {selectedTags.map(t => <Tag key={t} active color="orange" onClick={() => setSelectedTags(prev => prev.filter(x => x !== t))}>{t}</Tag>)}
+          </div>
+        )}
+        {tagsOpen && (
+          <div className="px-4 py-3 bg-white/20 border-t border-[#1B2A4A]/10 space-y-2.5">
+            <div className="flex flex-wrap gap-1.5">
+              {playTags.map(t => (
+                <Tag key={t} active={selectedTags.includes(t)} onClick={() => setSelectedTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])} color="orange">{t}</Tag>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input value={newTagInput} onChange={e => setNewTagInput(e.target.value)}
+                placeholder="+ nouveau mot-clé"
+                className="flex-1 text-xs border border-[#1B2A4A]/20 rounded-full px-3 py-1.5 focus:outline-none focus:border-[#FF6B35] bg-white/60"
+                onKeyDown={e => { if (e.key === "Enter") addTag(newTagInput); }} />
+              {newTagInput.trim() && <button type="button" onClick={() => addTag(newTagInput)} className="text-xs px-3 py-1.5 bg-[#FF6B35]/10 text-[#FF6B35] rounded-full font-medium hover:bg-[#FF6B35]/20">Ajouter</button>}
+            </div>
+          </div>
+        )}
       </div>
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -3729,6 +3749,7 @@ function CoachingProBoost({ session }) {
   const [viewingPlay, setViewingPlay] = useState(null);
   const [filterPlayType, setFilterPlayType] = useState([]);
   const [filterPlayTags, setFilterPlayTags] = useState([]);
+  const [playbookTagsOpen, setPlaybookTagsOpen] = useState(false);
   const [activeSession, setActiveSession] = useState(null);
   const activeSessionRef = useRef(null);
   useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
@@ -4290,11 +4311,29 @@ function CoachingProBoost({ session }) {
                 ))}
               </div>
               {playTags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 items-center">
-                  <span className="text-xs text-[#1B2A4A]/40 mr-1">Mots-clés :</span>
-                  {playTags.map(t => (
-                    <Tag key={t} active={filterPlayTags.includes(t)} onClick={() => setFilterPlayTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])} color="orange">{t}</Tag>
-                  ))}
+                <div className="border border-[#1B2A4A]/15 rounded-xl overflow-hidden">
+                  <button type="button" onClick={() => setPlaybookTagsOpen(o => !o)}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-white/40 hover:bg-white/70 transition-colors">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/60 font-semibold">Mots-clés</span>
+                      {filterPlayTags.length > 0 && <span className="text-[10px] font-bold bg-[#FF6B35] text-white rounded-full px-1.5 py-0.5">{filterPlayTags.length}</span>}
+                    </div>
+                    <svg className={`w-4 h-4 text-[#1B2A4A]/40 transition-transform ${playbookTagsOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                  </button>
+                  {filterPlayTags.length > 0 && !playbookTagsOpen && (
+                    <div className="px-4 py-2 bg-white/20 flex flex-wrap gap-1.5 border-t border-[#1B2A4A]/10">
+                      {filterPlayTags.map(t => <Tag key={t} active color="orange" onClick={() => setFilterPlayTags(prev => prev.filter(x => x !== t))}>{t}</Tag>)}
+                    </div>
+                  )}
+                  {playbookTagsOpen && (
+                    <div className="px-4 py-3 bg-white/20 border-t border-[#1B2A4A]/10">
+                      <div className="flex flex-wrap gap-1.5">
+                        {playTags.map(t => (
+                          <Tag key={t} active={filterPlayTags.includes(t)} onClick={() => setFilterPlayTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])} color="orange">{t}</Tag>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
