@@ -4550,21 +4550,6 @@ function CoachingProBoost({ session }) {
               </div>
             </div>
 
-            {/* Sport */}
-            <div className="bg-white/70 rounded-2xl overflow-hidden mb-4">
-              <div className="px-5 py-3 border-b border-[#1B2A4A]/8">
-                <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/50">Mon sport</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2 p-3">
-                {Object.entries(SPORTS_CONFIG).map(([key, cfg]) => (
-                  <button key={key} onClick={() => setSport(key)}
-                    className={`flex flex-col items-center gap-1 py-3 px-2 rounded-xl text-xs font-medium transition-colors ${sport === key ? "bg-[#FF6B35] text-white" : "bg-white/60 text-[#1B2A4A] hover:bg-[#FF6B35]/10"}`}>
-                    <span className="text-xl">{cfg.emoji}</span>
-                    <span>{cfg.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
 
             {/* Actions abonnement */}
             <div className="bg-white/70 rounded-2xl overflow-hidden mb-4">
