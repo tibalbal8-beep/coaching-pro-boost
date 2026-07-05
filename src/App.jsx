@@ -1803,6 +1803,13 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         ? { type: "token", x: pt.x, y: pt.y, kind: playerLabel }
         : { type: "token", x: pt.x, y: pt.y, label: playerLabel, hasBall: playerHasBall, role: playerIsDefender ? "defender" : "offense" });
       redraw();
+      // Auto-incrément du numéro de joueur
+      const numSeq = ["1","2","3","4","5"];
+      const xSeq = ["X","X1","X2","X3","X4","X5"];
+      const idxNum = numSeq.indexOf(playerLabel);
+      const idxX = xSeq.indexOf(playerLabel);
+      if (idxNum >= 0 && idxNum < numSeq.length - 1) setPlayerLabel(numSeq[idxNum + 1]);
+      else if (idxX >= 0 && idxX < xSeq.length - 1) setPlayerLabel(xSeq[idxX + 1]);
       return;
     }
     if (tool === "text") {
