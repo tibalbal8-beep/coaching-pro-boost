@@ -760,8 +760,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
               onAddDirect={null}
               processing={false}
               onValidate={(dataUrl) => {
-                const b64 = dataUrl.split(",")[1];
-                setFile({ name: "schema.png", type: "image/png", data: b64 });
+                setFile({ name: "schema.png", type: "image/png", data: dataUrl });
                 setShowDraw(false);
               }}
             />
