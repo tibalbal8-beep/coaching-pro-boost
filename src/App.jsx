@@ -4477,8 +4477,8 @@ function CoachingProBoost({ session }) {
                             <span className="text-[#1B2A4A] font-medium">{t}</span>
                             <span className="text-[#1B2A4A]/50">{h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`} · {pct}%</span>
                           </div>
-                          <div className="h-2 rounded-full bg-[#1B2A4A]/8 overflow-hidden">
-                            <div className="h-full bg-[#FF6B35] rounded-full" style={{ width: `${Math.min(pct, 100)}%` }} />
+                          <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: "#1B2A4A" }}>
+                            <div className="h-full rounded-full" style={{ width: `${Math.max(pct, 2)}%`, backgroundColor: "#FF6B35" }} />
                           </div>
                         </div>
                       );
