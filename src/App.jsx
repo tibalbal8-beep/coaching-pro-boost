@@ -1543,6 +1543,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const [playerLabel, setPlayerLabel] = useState("1");
   const [playerHasBall, setPlayerHasBall] = useState(false);
   const [playerIsDefender, setPlayerIsDefender] = useState(false);
+  const [playerSize, setPlayerSize] = useState(1); // 0.6 petit, 1 moyen, 1.5 grand
   const [dims, setDims] = useState({ width: 900, height: 1273 });
   const [loadingTemplate, setLoadingTemplate] = useState(false);
   const DEFAULT_GABARITS = [
@@ -1727,12 +1728,13 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   };
 
   const drawPlayerToken = (ctx, t) => {
-    const r = 16;
+    const sc = t.size ?? 1;
+    const r = 16 * sc;
     ctx.save();
 
     if (t.kind === "plot") {
       // Cone orange
-      const h = 28, w = 22;
+      const h = 28 * sc, w = 22 * sc;
       ctx.beginPath();
       ctx.moveTo(t.x, t.y - h / 2);
       ctx.lineTo(t.x - w / 2, t.y + h / 2);
@@ -1751,84 +1753,49 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       ctx.lineWidth = 2.5;
       ctx.stroke();
     } else if (t.kind === "chaise") {
-      const s = 18;
+      const s = 18 * sc;
       ctx.strokeStyle = "#5a3e2b";
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 2.5 * sc;
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
-      // assise
       ctx.beginPath();
-      ctx.moveTo(t.x - s / 2, t.y);
-      ctx.lineTo(t.x + s / 2, t.y);
-      ctx.stroke();
-      // dossier
+      ctx.moveTo(t.x - s / 2, t.y); ctx.lineTo(t.x + s / 2, t.y); ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(t.x + s / 2, t.y);
-      ctx.lineTo(t.x + s / 2, t.y - s * 0.8);
-      ctx.stroke();
-      // pied avant
+      ctx.moveTo(t.x + s / 2, t.y); ctx.lineTo(t.x + s / 2, t.y - s * 0.8); ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(t.x - s / 2, t.y);
-      ctx.lineTo(t.x - s / 2, t.y + s * 0.7);
-      ctx.stroke();
-      // pied arrière
+      ctx.moveTo(t.x - s / 2, t.y); ctx.lineTo(t.x - s / 2, t.y + s * 0.7); ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(t.x + s / 2, t.y);
-      ctx.lineTo(t.x + s / 2, t.y + s * 0.7);
-      ctx.stroke();
+      ctx.moveTo(t.x + s / 2, t.y); ctx.lineTo(t.x + s / 2, t.y + s * 0.7); ctx.stroke();
     } else if (t.kind === "rack") {
-      const rw = 36, rh = 12, bR = 6;
-      // structure du rack (rectangle)
-      ctx.strokeStyle = "#555";
-      ctx.lineWidth = 2;
+      const rw = 36 * sc, rh = 12 * sc, bR = 6 * sc;
+      ctx.strokeStyle = "#555"; ctx.lineWidth = 2 * sc;
       ctx.strokeRect(t.x - rw / 2, t.y - rh / 2, rw, rh);
-      // pieds
       ctx.beginPath();
-      ctx.moveTo(t.x - rw / 2 + 4, t.y + rh / 2);
-      ctx.lineTo(t.x - rw / 2 + 4, t.y + rh / 2 + 8);
-      ctx.moveTo(t.x + rw / 2 - 4, t.y + rh / 2);
-      ctx.lineTo(t.x + rw / 2 - 4, t.y + rh / 2 + 8);
+      ctx.moveTo(t.x - rw / 2 + 4 * sc, t.y + rh / 2); ctx.lineTo(t.x - rw / 2 + 4 * sc, t.y + rh / 2 + 8 * sc);
+      ctx.moveTo(t.x + rw / 2 - 4 * sc, t.y + rh / 2); ctx.lineTo(t.x + rw / 2 - 4 * sc, t.y + rh / 2 + 8 * sc);
       ctx.stroke();
-      // ballons (3 cercles orange)
-      [-10, 0, 10].forEach(dx => {
-        ctx.beginPath();
-        ctx.arc(t.x + dx, t.y, bR, 0, Math.PI * 2);
-        ctx.fillStyle = "#e07020";
-        ctx.fill();
-        ctx.strokeStyle = "#b05010";
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        // ligne courbe sur le ballon
-        ctx.beginPath();
-        ctx.arc(t.x + dx, t.y, bR * 0.55, -Math.PI * 0.7, Math.PI * 0.3);
-        ctx.strokeStyle = "rgba(0,0,0,0.2)";
-        ctx.lineWidth = 1;
-        ctx.stroke();
+      [-10 * sc, 0, 10 * sc].forEach(dx => {
+        ctx.beginPath(); ctx.arc(t.x + dx, t.y, bR, 0, Math.PI * 2);
+        ctx.fillStyle = "#e07020"; ctx.fill();
+        ctx.strokeStyle = "#b05010"; ctx.lineWidth = sc; ctx.stroke();
+        ctx.beginPath(); ctx.arc(t.x + dx, t.y, bR * 0.55, -Math.PI * 0.7, Math.PI * 0.3);
+        ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = sc; ctx.stroke();
       });
     } else if (t.role === "defender") {
-      ctx.font = "bold 17px sans-serif";
+      ctx.font = `bold ${Math.round(17 * sc)}px sans-serif`;
       ctx.fillStyle = "#D62828";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(t.label, t.x, t.y);
     } else if (t.hasBall) {
-      ctx.beginPath();
-      ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = "white";
-      ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "#1B2A4A";
-      ctx.stroke();
-      ctx.font = "bold 15px sans-serif";
-      ctx.fillStyle = "#1B2A4A";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
+      ctx.beginPath(); ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = "white"; ctx.fill();
+      ctx.lineWidth = 2 * sc; ctx.strokeStyle = "#1B2A4A"; ctx.stroke();
+      ctx.font = `bold ${Math.round(15 * sc)}px sans-serif`;
+      ctx.fillStyle = "#1B2A4A"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(t.label, t.x, t.y);
     } else {
-      ctx.font = "bold 17px sans-serif";
-      ctx.fillStyle = "#1B2A4A";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
+      ctx.font = `bold ${Math.round(17 * sc)}px sans-serif`;
+      ctx.fillStyle = "#1B2A4A"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(t.label, t.x, t.y);
     }
 
@@ -1929,8 +1896,8 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       const equipKinds = ["plot", "chaise", "rack"];
       const isEquip = equipKinds.includes(playerLabel);
       elementsRef.current.push(isEquip
-        ? { type: "token", x: pt.x, y: pt.y, kind: playerLabel }
-        : { type: "token", x: pt.x, y: pt.y, label: playerLabel, hasBall: playerHasBall, role: playerIsDefender ? "defender" : "offense" });
+        ? { type: "token", x: pt.x, y: pt.y, kind: playerLabel, size: playerSize }
+        : { type: "token", x: pt.x, y: pt.y, label: playerLabel, hasBall: playerHasBall, role: playerIsDefender ? "defender" : "offense", size: playerSize });
       redraw();
       // Auto-incrément du numéro de joueur
       const numSeq = ["1","2","3","4","5","6","7","8","9","10","11","12"];
@@ -2175,6 +2142,14 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
                 }} /> Défenseur
               </label>
             </>}
+            <div className="flex items-center gap-1 bg-[#1B2A4A]/5 rounded-full px-1 py-0.5">
+              {[{v:0.6,l:"S"},{v:1,l:"M"},{v:1.5,l:"L"}].map(sz => (
+                <button key={sz.v} type="button" onClick={() => setPlayerSize(sz.v)}
+                  className={`w-6 h-6 rounded-full text-xs font-bold transition-colors ${playerSize === sz.v ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>
+                  {sz.l}
+                </button>
+              ))}
+            </div>
             <span className="text-xs text-[#1B2A4A]/40">Touche le terrain pour placer</span>
           </>
         ) : tool === "text" ? (
