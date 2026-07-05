@@ -1590,19 +1590,45 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   };
 
   const drawStroke = (ctx, stroke) => {
+    const pts = stroke.points;
+    if (pts.length < 2) return;
+    const last = pts[pts.length - 1];
+    const prev = pts[Math.max(0, pts.length - 4)];
+    const arrowSize = 6 + stroke.width * 2;
+    const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
+
+    // Pour flèche : raccourcir le dernier point pour que la ligne s'arrête à la base de la flèche
+    const drawPts = (stroke.arrow && stroke.style !== "ecran") ? [
+      ...pts.slice(0, -1),
+      { x: last.x - Math.cos(angle) * arrowSize * 0.7, y: last.y - Math.sin(angle) * arrowSize * 0.7 }
+    ] : pts;
+
     ctx.beginPath();
     ctx.strokeStyle = stroke.color;
     ctx.lineWidth = stroke.width;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.setLineDash(stroke.style === "pointille" ? [stroke.width * 3.5, stroke.width * 2.5] : []);
-    stroke.points.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+    drawPts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
     ctx.stroke();
     ctx.setLineDash([]);
-    if (stroke.arrow && stroke.points.length > 1) {
-      const last = stroke.points[stroke.points.length - 1];
-      const prev = stroke.points[Math.max(0, stroke.points.length - 4)];
-      drawArrowHead(ctx, prev, last, stroke.color, 6 + stroke.width * 2);
+
+    if (stroke.arrow && stroke.style !== "ecran") {
+      drawArrowHead(ctx, prev, last, stroke.color, arrowSize);
+    }
+
+    // Écran : trait perpendiculaire en T au bout
+    if (stroke.style === "ecran") {
+      const perpLen = 14 + stroke.width * 2;
+      const px = Math.cos(angle + Math.PI / 2) * perpLen;
+      const py = Math.sin(angle + Math.PI / 2) * perpLen;
+      ctx.beginPath();
+      ctx.strokeStyle = stroke.color;
+      ctx.lineWidth = stroke.width * 1.5;
+      ctx.lineCap = "round";
+      ctx.moveTo(last.x - px, last.y - py);
+      ctx.lineTo(last.x + px, last.y + py);
+      ctx.stroke();
     }
   };
 
@@ -1804,8 +1830,8 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         : { type: "token", x: pt.x, y: pt.y, label: playerLabel, hasBall: playerHasBall, role: playerIsDefender ? "defender" : "offense" });
       redraw();
       // Auto-incrément du numéro de joueur
-      const numSeq = ["1","2","3","4","5"];
-      const xSeq = ["X","X1","X2","X3","X4","X5"];
+      const numSeq = ["1","2","3","4","5","6","7","8","9","10","11","12"];
+      const xSeq = ["X","X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"];
       const idxNum = numSeq.indexOf(playerLabel);
       const idxX = xSeq.indexOf(playerLabel);
       if (idxNum >= 0 && idxNum < numSeq.length - 1) setPlayerLabel(numSeq[idxNum + 1]);
@@ -1986,6 +2012,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
               <option value="simple">Déplacement</option>
               <option value="pointille">Passe</option>
               <option value="zigzag">Dribble</option>
+              <option value="ecran">Écran</option>
             </select>
             <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
               <input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche
@@ -1995,7 +2022,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           <>
             <select value={playerLabel} onChange={e => setPlayerLabel(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
               <optgroup label="Joueurs">
-                {["1","2","3","4","5","X","X1","X2","X3","X4","X5"].map(n => <option key={n} value={n}>{n}</option>)}
+                {["1","2","3","4","5","6","7","8","9","10","11","12","X","X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"].map(n => <option key={n} value={n}>{n}</option>)}
               </optgroup>
               <optgroup label="Équipements">
                 <option value="plot">🔶 Plot</option>
