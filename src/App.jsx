@@ -337,13 +337,20 @@ function useStore() {
     try { const r = await storage.set(key, value); if (!r) console.error("Storage set returned null for", key); } catch (e) { console.error("Storage error", key, e); }
   }, []);
 
-  const stripFiles = (list) => list.map(({ file, ...rest }) => ({ ...rest, hasFile: !!file, fileName: file?.name, fileType: file?.type }));
+  const stripFiles = (list) => list.map(({ file, schemas, ...rest }) => ({
+    ...rest,
+    hasFile: !!file, fileName: file?.name, fileType: file?.type,
+    schemaCount: schemas?.length || 0,
+  }));
 
   const saveExercises = async (next) => {
     setExercises(next);
     for (const ex of next) {
       if (ex.file && ex.file.data) {
         try { await storage.set(`file:${ex.id}`, JSON.stringify(ex.file)); } catch (e) { console.error("File store failed", ex.id, e); }
+      }
+      if (ex.schemas?.length) {
+        try { await storage.set(`schemas:${ex.id}`, JSON.stringify(ex.schemas)); } catch (e) { console.error("Schemas store failed", ex.id, e); }
       }
     }
     persist("exercises", JSON.stringify(stripFiles(next)));
@@ -705,6 +712,23 @@ function RatingBlock({ avis = [], onAdd, label = "Noter cette séance" }) {
   );
 }
 
+function useSchemasData(ex) {
+  const [schemas, setSchemas] = React.useState(ex.schemas || []);
+  React.useEffect(() => {
+    if (ex.schemas?.length) { setSchemas(ex.schemas); return; }
+    if (!ex.id || !ex.schemaCount) { setSchemas([]); return; }
+    let active = true;
+    (async () => {
+      try {
+        const r = await storage.get(`schemas:${ex.id}`);
+        if (r && active) setSchemas(JSON.parse(r.value) || []);
+      } catch {}
+    })();
+    return () => { active = false; };
+  }, [ex.id, ex.schemaCount]);
+  return schemas;
+}
+
 function ExerciseFormImagePreview({ ex }) {
   const fileImage = useFileImage(ex);
   if (!fileImage || !ex.file?.type?.startsWith("image/")) return null;
@@ -721,7 +745,14 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
   const [duree, setDuree] = useState(initial?.duree || 10);
   const [objectif, setObjectif] = useState(initial?.objectif || "");
   const [notes, setNotes] = useState(initial?.notes || "");
-  const [file, setFile] = useState(initial?.file || null);
+  const [file, setFile] = useState(initial?.file?.name !== "schema.png" ? (initial?.file || null) : null);
+  const [schemas, setSchemas] = useState(() => {
+    if (initial?.schemas?.length) return initial.schemas;
+    if (initial?.file?.name === "schema.png" && initial.file.data) return [initial.file.data];
+    return [];
+  });
+  const [activeSchemaIdx, setActiveSchemaIdx] = useState(0);
+  const [editingSchemaIdx, setEditingSchemaIdx] = useState(null);
   const [newTheme, setNewTheme] = useState("");
   const [themesOpen, setThemesOpen] = useState(false);
   const [showDraw, setShowDraw] = useState(false);
@@ -742,28 +773,67 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
       <input value={titre} onChange={e => setTitre(e.target.value)} placeholder="Titre de l'exercice"
         className="w-full text-lg font-semibold bg-transparent border-b-2 border-[#1B2A4A]/20 focus:border-[#FF6B35] outline-none pb-1 text-[#1B2A4A]" />
       <div className="border border-[#1B2A4A]/15 rounded-xl overflow-hidden">
-        <button type="button" onClick={() => setShowDraw(o => !o)}
+        <button type="button" onClick={() => { setShowDraw(o => !o); setEditingSchemaIdx(null); }}
           className="w-full flex items-center justify-between px-4 py-3 bg-white/40 hover:bg-white/70 transition-colors">
           <div className="flex items-center gap-2">
             <span>🏀</span>
-            <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/60 font-semibold">Schéma tactique</span>
-            {file?.name === "schema.png" && <span className="text-[10px] font-bold bg-[#FF6B35] text-white rounded-full px-1.5 py-0.5">✓</span>}
+            <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/60 font-semibold">Schémas tactiques</span>
+            {schemas.length > 0 && <span className="text-[10px] font-bold bg-[#FF6B35] text-white rounded-full px-1.5 py-0.5">{schemas.length}</span>}
           </div>
           <svg className={`w-4 h-4 text-[#1B2A4A]/40 transition-transform ${showDraw ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
         </button>
         {showDraw && (
-          <div className="border-t border-[#1B2A4A]/10 p-3 bg-white/20">
-            <DrawSheetView
-              gabaritKey="exerciseGabarits"
-              referencePhoto={file?.data && file?.name !== "schema.png" ? `data:${file.type};base64,${file.data}` : null}
-              onCancel={() => setShowDraw(false)}
-              onAddDirect={null}
-              processing={false}
-              onValidate={(dataUrl) => {
-                setFile({ name: "schema.png", type: "image/png", data: dataUrl });
-                setShowDraw(false);
-              }}
-            />
+          <div className="border-t border-[#1B2A4A]/10 p-3 bg-white/20 space-y-3">
+            {/* Carrousel des schémas existants */}
+            {schemas.length > 0 && editingSchemaIdx === null && (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <button type="button" disabled={activeSchemaIdx === 0}
+                    onClick={() => setActiveSchemaIdx(i => i - 1)}
+                    className="w-7 h-7 flex items-center justify-center rounded-full border border-[#1B2A4A]/20 text-[#1B2A4A] disabled:opacity-30 hover:bg-[#1B2A4A]/5">‹</button>
+                  <span className="text-xs font-medium text-[#1B2A4A]/60 flex-1 text-center">Schéma {activeSchemaIdx + 1} / {schemas.length}</span>
+                  <button type="button" disabled={activeSchemaIdx === schemas.length - 1}
+                    onClick={() => setActiveSchemaIdx(i => i + 1)}
+                    className="w-7 h-7 flex items-center justify-center rounded-full border border-[#1B2A4A]/20 text-[#1B2A4A] disabled:opacity-30 hover:bg-[#1B2A4A]/5">›</button>
+                </div>
+                <img src={schemas[activeSchemaIdx]} alt="" className="w-full rounded-lg border border-[#1B2A4A]/10 mb-2" />
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setEditingSchemaIdx(activeSchemaIdx)}
+                    className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5">Modifier</button>
+                  <button type="button" onClick={() => {
+                    setSchemas(s => s.filter((_, i) => i !== activeSchemaIdx));
+                    setActiveSchemaIdx(i => Math.max(0, i - 1));
+                  }} className="py-1.5 px-3 rounded-lg text-xs font-medium border border-red-200 text-red-500 hover:bg-red-50">Supprimer</button>
+                </div>
+              </div>
+            )}
+            {/* DrawSheetView pour éditer ou ajouter */}
+            {editingSchemaIdx !== null && (
+              <DrawSheetView
+                gabaritKey="exerciseGabarits"
+                referencePhoto={file?.data ? file.data : null}
+                onCancel={() => setEditingSchemaIdx(null)}
+                onAddDirect={null}
+                processing={false}
+                onValidate={(dataUrl) => {
+                  if (editingSchemaIdx < schemas.length) {
+                    setSchemas(s => s.map((x, i) => i === editingSchemaIdx ? dataUrl : x));
+                  } else {
+                    setSchemas(s => [...s, dataUrl]);
+                    setActiveSchemaIdx(schemas.length);
+                  }
+                  setEditingSchemaIdx(null);
+                }}
+              />
+            )}
+            {/* Bouton ajouter (visible quand on ne dessine pas) */}
+            {editingSchemaIdx === null && (
+              <button type="button"
+                onClick={() => setEditingSchemaIdx(schemas.length)}
+                className="w-full py-2 rounded-lg text-xs font-semibold border-2 border-dashed border-[#FF6B35]/40 text-[#FF6B35] hover:border-[#FF6B35] hover:bg-[#FF6B35]/5 transition-colors">
+                + Ajouter un schéma
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -836,7 +906,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
         <button
           onClick={() => {
             if (!titre.trim()) { cpbAlert?.("Donne un titre à l'exercice."); return; }
-            onSave({ id: initial?.id || uid(), titre, themes: sel, phases, format, niveau, categorie, duree, objectif, notes, file, diagram: initial?.diagram, avis: initial?.avis, createdAt: initial?.createdAt || new Date().toISOString() });
+            onSave({ id: initial?.id || uid(), titre, themes: sel, phases, format, niveau, categorie, duree, objectif, notes, file, schemas, diagram: initial?.diagram, avis: initial?.avis, createdAt: initial?.createdAt || new Date().toISOString() });
           }}
           className="px-5 py-2 text-sm font-medium rounded-md bg-[#FF6B35] text-white hover:bg-[#e85a28]"
         >Enregistrer</button>
@@ -1071,6 +1141,8 @@ function FilterAccordion({ label, activeCount, borderTop, children }) {
 
 function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage, onShare }) {
   const fileImage = useFileImage(ex);
+  const schemas = useSchemasData(ex);
+  const [carouselIdx, setCarouselIdx] = useState(0);
   const [confirmDel, setConfirmDel] = useState(false);
   return (
     <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-4 relative group hover:shadow-md transition-shadow" onClick={onClick}>
@@ -1101,6 +1173,21 @@ function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage,
         <h3 className="font-semibold text-[#1B2A4A] mb-1.5 leading-tight">{ex.titre}</h3>
         {ex.diagram ? (
           <div className="mb-2"><CourtDiagram players={ex.diagram.players} paths={ex.diagram.paths} screens={ex.diagram.screens} /></div>
+        ) : schemas.length > 0 ? (
+          <div className="mb-2 relative" onClick={e => e.stopPropagation()}>
+            <img src={schemas[carouselIdx]} alt="" className="w-full rounded border border-[#1B2A4A]/10 object-contain max-h-48" />
+            {schemas.length > 1 && (
+              <div className="absolute bottom-2 left-0 right-0 flex items-center justify-center gap-2">
+                <button onClick={() => setCarouselIdx(i => Math.max(0, i - 1))}
+                  disabled={carouselIdx === 0}
+                  className="w-6 h-6 flex items-center justify-center rounded-full bg-white/90 border border-[#1B2A4A]/20 text-[#1B2A4A] text-sm disabled:opacity-30 shadow-sm">‹</button>
+                <span className="text-[10px] font-medium bg-white/90 px-1.5 py-0.5 rounded-full text-[#1B2A4A]/60 shadow-sm">{carouselIdx + 1}/{schemas.length}</span>
+                <button onClick={() => setCarouselIdx(i => Math.min(schemas.length - 1, i + 1))}
+                  disabled={carouselIdx === schemas.length - 1}
+                  className="w-6 h-6 flex items-center justify-center rounded-full bg-white/90 border border-[#1B2A4A]/20 text-[#1B2A4A] text-sm disabled:opacity-30 shadow-sm">›</button>
+              </div>
+            )}
+          </div>
         ) : fileImage && ex.file?.type?.startsWith("image/") ? (
           <div className="mb-2 relative">
             <img src={fileImage} alt="" className="w-full rounded border border-[#1B2A4A]/10 object-contain max-h-48" />
