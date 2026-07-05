@@ -1473,6 +1473,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const [editingGabName, setEditingGabName] = useState(null); // index being renamed
   const [showRefPhoto, setShowRefPhoto] = useState(true);
   const [courtVariant, setCourtVariant] = useState(null);
+  const [selectedEl, setSelectedEl] = useState(null);
 
   const loadBackground = (src) => {
     const img = new Image();
@@ -1809,6 +1810,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     });
   };
 
+  const selectedElRef = useRef(null);
   const redraw = () => {
     const canvas = canvasRef.current;
     if (!canvas || !bgImgRef.current) return;
@@ -1819,6 +1821,31 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       if (el.type === "token") drawPlayerToken(ctx, el);
       else if (el.type === "text") drawTextElement(ctx, el);
       else drawStroke(ctx, el);
+      // Highlight selected element
+      if (el === selectedElRef.current) {
+        if (el.type === "token") {
+          ctx.save();
+          ctx.strokeStyle = "#FF6B35";
+          ctx.lineWidth = 3;
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath();
+          ctx.arc(el.x, el.y, 22, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.restore();
+        } else if (el.type === "stroke") {
+          ctx.save();
+          ctx.strokeStyle = "#FF6B35";
+          ctx.lineWidth = el.width + 6;
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+          ctx.globalAlpha = 0.35;
+          ctx.beginPath();
+          el.points.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
     });
   };
 
@@ -1859,7 +1886,13 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     if (tool === "select") {
       const pt = toCanvasPoint(e);
       const el = findElementAt(pt);
-      if (el) draggingRef.current = { el, startX: pt.x, startY: pt.y, origX: pt.x, origY: pt.y, moved: false };
+      if (el) {
+        draggingRef.current = { el, startX: pt.x, startY: pt.y, origX: pt.x, origY: pt.y, moved: false };
+      } else {
+        selectedElRef.current = null;
+        setSelectedEl(null);
+        redraw();
+      }
       return;
     }
     currentRef.current = { type: "stroke", color, width: lineWidth, style: lineStyle, arrow: arrowEnd, points: [toCanvasPoint(e)] };
@@ -1897,13 +1930,24 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     if (tool === "select") {
       const d = draggingRef.current;
       draggingRef.current = null;
-      if (d && !d.moved && d.el.type === "text") {
-        elementsRef.current = elementsRef.current.filter(x => x !== d.el);
-        const wrapRect = wrapRef.current.getBoundingClientRect();
-        const canvas = canvasRef.current;
-        const rect = canvas.getBoundingClientRect();
-        const scale = rect.width / canvas.width;
-        setPendingText({ x: d.el.x, y: d.el.y, screenX: d.el.x * scale, screenY: d.el.y * scale, value: d.el.value });
+      if (d && !d.moved) {
+        if (d.el.type === "text") {
+          elementsRef.current = elementsRef.current.filter(x => x !== d.el);
+          const canvas = canvasRef.current;
+          const rect = canvas.getBoundingClientRect();
+          const scale = rect.width / canvas.width;
+          setPendingText({ x: d.el.x, y: d.el.y, screenX: d.el.x * scale, screenY: d.el.y * scale, value: d.el.value });
+          redraw();
+        } else {
+          // Select the element (stroke or token)
+          selectedElRef.current = d.el;
+          setSelectedEl(d.el);
+          redraw();
+        }
+      } else if (d && d.moved) {
+        // Deselect after drag
+        selectedElRef.current = null;
+        setSelectedEl(null);
         redraw();
       }
       return;
@@ -2069,7 +2113,9 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
             <span className="text-xs text-[#1B2A4A]/40">Touche le terrain pour écrire</span>
           </>
         ) : (
-          <span className="text-xs text-[#1B2A4A]/40">Touche un texte ou un joueur pour le faire glisser. Un simple tap sur un texte permet de le réécrire.</span>
+          <span className="text-xs text-[#1B2A4A]/40">
+            {selectedEl ? "Élément sélectionné — modifie ou supprime ci-dessous" : "Tap = sélectionner · Glisser = déplacer"}
+          </span>
         )}
         <button onClick={undo} className="px-3 py-1.5 rounded-md text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5 ml-auto">Annuler</button>
         <button onClick={clearAll} className="px-3 py-1.5 rounded-md text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5">Effacer tout</button>
@@ -2157,6 +2203,86 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           );
         })()}
       </div>
+
+      {/* Toolbar de sélection */}
+      {selectedEl && (
+        <div className="mb-4 p-3 border border-[#FF6B35]/30 rounded-xl bg-[#FF6B35]/5 flex flex-wrap items-center gap-3">
+          <span className="text-xs font-semibold text-[#FF6B35] uppercase tracking-wide">
+            {selectedEl.type === "stroke" ? "Trait sélectionné" : "Élément sélectionné"}
+          </span>
+          {selectedEl.type === "stroke" && (
+            <>
+              {/* Couleur */}
+              <div className="flex items-center gap-1">
+                {["#1B2A4A", "#D62828", "#2563EB", "#16a34a", "#FF6B35"].map(c => (
+                  <button key={c} type="button"
+                    onClick={() => {
+                      selectedEl.color = c;
+                      selectedElRef.current = selectedEl;
+                      redraw();
+                      setSelectedEl({ ...selectedEl, color: c });
+                    }}
+                    className="w-6 h-6 rounded-full border-2 transition-transform hover:scale-110"
+                    style={{ backgroundColor: c, borderColor: selectedEl.color === c ? "#FF6B35" : "transparent" }} />
+                ))}
+              </div>
+              {/* Style */}
+              <select value={selectedEl.style}
+                onChange={e => {
+                  selectedEl.style = e.target.value;
+                  selectedElRef.current = selectedEl;
+                  redraw();
+                  setSelectedEl({ ...selectedEl, style: e.target.value });
+                }}
+                className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
+                <option value="simple">Déplacement</option>
+                <option value="pointille">Passe</option>
+                <option value="zigzag">Dribble</option>
+                <option value="ecran">Écran</option>
+              </select>
+              {/* Flèche */}
+              <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
+                <input type="checkbox" checked={!!selectedEl.arrow}
+                  onChange={e => {
+                    selectedEl.arrow = e.target.checked;
+                    selectedElRef.current = selectedEl;
+                    redraw();
+                    setSelectedEl({ ...selectedEl, arrow: e.target.checked });
+                  }} /> Flèche
+              </label>
+              {/* Épaisseur */}
+              <select value={selectedEl.width}
+                onChange={e => {
+                  selectedEl.width = Number(e.target.value);
+                  selectedElRef.current = selectedEl;
+                  redraw();
+                  setSelectedEl({ ...selectedEl, width: Number(e.target.value) });
+                }}
+                className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
+                <option value={1.5}>Fin</option>
+                <option value={2.5}>Moyen</option>
+                <option value={4}>Épais</option>
+              </select>
+            </>
+          )}
+          {/* Supprimer */}
+          <button type="button"
+            onClick={() => {
+              elementsRef.current = elementsRef.current.filter(x => x !== selectedEl);
+              selectedElRef.current = null;
+              setSelectedEl(null);
+              redraw();
+            }}
+            className="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition-colors">
+            🗑 Supprimer
+          </button>
+          <button type="button"
+            onClick={() => { selectedElRef.current = null; setSelectedEl(null); redraw(); }}
+            className="px-3 py-1.5 rounded-lg text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5 transition-colors">
+            ✕ Désélectionner
+          </button>
+        </div>
+      )}
 
       {/* Notes structurées */}
       <div className="mb-4 border border-[#1B2A4A]/15 rounded-lg bg-white/60 overflow-hidden">
