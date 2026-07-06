@@ -169,9 +169,13 @@ async function startCheckout(priceId) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Non connecté.");
 
-  // Récupère le stripe_customer_id existant
+  // Vérifie si déjà premium pour éviter un double abonnement
   const { data: profile } = await supabase.from("profiles")
-    .select("stripe_customer_id").eq("id", user.id).maybeSingle();
+    .select("stripe_customer_id, is_premium, premium_until").eq("id", user.id).maybeSingle();
+
+  if (profile?.is_premium && profile?.premium_until && new Date(profile.premium_until) > new Date()) {
+    throw new Error("Tu as déjà un abonnement actif jusqu'au " + new Date(profile.premium_until).toLocaleDateString("fr-FR") + ".");
+  }
 
   const res = await fetch("/api/create-checkout-session", {
     method: "POST",
