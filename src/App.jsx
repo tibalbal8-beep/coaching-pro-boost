@@ -2415,12 +2415,12 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       <div className="flex justify-end gap-2">
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
         {onAddDirect && (
-          <button onClick={() => { commitPendingText(); setTimeout(() => onAddDirect(canvasRef.current.toDataURL("image/png")), 0); }} disabled={processing}
+          <button onClick={() => { commitPendingText(); setTimeout(() => { let q = canvasRef.current.toDataURL("image/jpeg", 0.75); if (q.length > 400000) q = canvasRef.current.toDataURL("image/jpeg", 0.55); onAddDirect(q); }, 0); }} disabled={processing}
             className="flex items-center gap-1.5 border border-[#FF6B35] text-[#FF6B35] px-4 py-2 rounded-md text-sm font-medium hover:bg-[#FF6B35]/10 disabled:opacity-50">
             Ajouter directement à la bibliothèque
           </button>
         )}
-        <button onClick={() => { commitPendingText(); setTimeout(() => onValidate(canvasRef.current.toDataURL("image/png")), 0); }} disabled={processing}
+        <button onClick={() => { commitPendingText(); setTimeout(() => { let q = canvasRef.current.toDataURL("image/jpeg", 0.75); if (q.length > 400000) q = canvasRef.current.toDataURL("image/jpeg", 0.55); onValidate(q); }, 0); }} disabled={processing}
           className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28] disabled:opacity-50">
           {processing ? <><Loader2 size={15} className="animate-spin" /> Analyse en cours...</> : onAddDirect ? "Valider avec analyse IA" : "Utiliser ce schéma"}
         </button>
