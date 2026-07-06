@@ -2925,7 +2925,10 @@ function AuthScreen() {
         await supabase.auth.signOut({ scope: "others" });
       }
     } catch (err) {
-      setError(err.message);
+      const msg = typeof err.message === "string" && err.message.trim() && err.message !== "{}"
+        ? err.message
+        : "Une erreur est survenue. Vérifie ton email ou réessaie plus tard.";
+      setError(msg);
     } finally {
       setLoading(false);
     }
