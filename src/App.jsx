@@ -5652,12 +5652,15 @@ function ResetPasswordScreen() {
 export default function App() {
   const [session, setSession] = useState(undefined);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
-    // Détecte le token recovery dans les query params ou le hash
     const params = new URLSearchParams(window.location.search);
     const hashParams = new URLSearchParams(window.location.hash.replace("#", "?"));
-    const isRecovery = params.get("type") === "recovery" || hashParams.get("type") === "recovery";
+    const isRecovery =
+      params.get("type") === "recovery" ||
+      hashParams.get("type") === "recovery" ||
+      window.location.hash === "#recovery" ||
+      sessionStorage.getItem("passwordRecovery") === "1";
     if (isRecovery) sessionStorage.setItem("passwordRecovery", "1");
-    return isRecovery || sessionStorage.getItem("passwordRecovery") === "1";
+    return isRecovery;
   });
 
   useEffect(() => {
