@@ -1,5 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 
+// Capture le flag recovery AVANT que Supabase nettoie l'URL
+const _recoveryParams = new URLSearchParams(window.location.search);
+if (_recoveryParams.get("type") === "recovery") {
+  localStorage.setItem("passwordRecovery", "1");
+}
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
