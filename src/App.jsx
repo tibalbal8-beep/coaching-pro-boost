@@ -4312,6 +4312,7 @@ function CoachingProBoost({ session }) {
       });
       if (error) throw error;
       const scoutingUrl = `${window.location.origin}/api/scouting?token=${token}`;
+      window.open(scoutingUrl, "_blank");
       await copyOrShow(scoutingUrl, `Lien scouting copié ! ${selectedIds.length} play${selectedIds.length > 1 ? "s" : ""} partagé${selectedIds.length > 1 ? "s" : ""}.`);
       setSelectedPlays([]);
       setScoutingTitle("");
