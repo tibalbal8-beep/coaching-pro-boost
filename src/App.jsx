@@ -4275,9 +4275,17 @@ function CoachingProBoost({ session }) {
       const { error } = await supabase.from("shared_plays").insert({ token, play_data: playData });
       if (error) throw error;
       const link = `${window.location.origin}?shareplay=${token}`;
-      await navigator.clipboard.writeText(link);
-      toast?.("Lien copié ! Valable 30 jours.");
+      await copyOrShow(link, "Lien copié ! Valable 30 jours.");
     } catch(e) { await cpbAlert("Erreur lors du partage : " + e.message); }
+  };
+
+  const copyOrShow = async (link, successMsg) => {
+    try {
+      await navigator.clipboard.writeText(link);
+      toast?.(successMsg);
+    } catch {
+      await cpbAlert(`Copie ce lien :\n\n${link}`);
+    }
   };
 
   const sharePlayCollection = async (selectedIds, title) => {
@@ -4304,8 +4312,7 @@ function CoachingProBoost({ session }) {
       });
       if (error) throw error;
       const scoutingUrl = `${window.location.origin}/api/scouting?token=${token}`;
-      await navigator.clipboard.writeText(scoutingUrl);
-      toast?.(`Lien scouting copié ! ${selectedIds.length} play${selectedIds.length > 1 ? "s" : ""} partagé${selectedIds.length > 1 ? "s" : ""}.`);
+      await copyOrShow(scoutingUrl, `Lien scouting copié ! ${selectedIds.length} play${selectedIds.length > 1 ? "s" : ""} partagé${selectedIds.length > 1 ? "s" : ""}.`);
       setSelectedPlays([]);
       setScoutingTitle("");
     } catch(e) { await cpbAlert("Erreur : " + e.message); }
@@ -4322,8 +4329,7 @@ function CoachingProBoost({ session }) {
       const { error } = await supabase.from("shared_exercises").insert({ token, exercise_data: exData });
       if (error) throw error;
       const link = `${window.location.origin}?share=${token}`;
-      await navigator.clipboard.writeText(link);
-      toast?.("Lien copié ! Valable 30 jours.");
+      await copyOrShow(link, "Lien copié ! Valable 30 jours.");
     } catch(e) { await cpbAlert("Erreur lors du partage : " + e.message); }
   };
 
