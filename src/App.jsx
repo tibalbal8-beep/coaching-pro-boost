@@ -1693,7 +1693,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           const dataUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgText);
           merged = merged.map((g, i) => i === 0 ? { name: "Fiche séance", dataUrl } : g);
         }
-        if (courtType === "basketball") {
+        if (courtType === "basketball" && gabaritKey === "exerciseGabarits") {
           const defaults = [
             { name: "Terrain complet", file: "/basketball-terrain-complet.png" },
             { name: "Demi-terrain ↑", file: "/basketball-demi-terrain-haut.png" },
