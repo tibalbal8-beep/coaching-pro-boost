@@ -3051,7 +3051,7 @@ function AuthScreen() {
         setMode("login");
       } else if (mode === "forgot") {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.origin + "?type=recovery",
+          redirectTo: window.location.origin + "/reset-password.html",
         });
         if (error) throw error;
         setMessage("Email de réinitialisation envoyé ! Vérifie ta boîte mail.");
