@@ -1687,6 +1687,12 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         const stored = await storage.get(gabaritKey);
         const loaded = stored ? JSON.parse(stored.value) : DEFAULT_GABARITS;
         let merged = DEFAULT_GABARITS.map((d, i) => loaded[i] || d);
+        if (courtType === "basketball" && gabaritKey === "sheetGabarits" && !merged[0]?.dataUrl) {
+          const resp = await fetch("/basketball-fiche-seance.png");
+          const blob = await resp.blob();
+          const dataUrl = await new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(blob); });
+          merged = merged.map((g, i) => i === 0 ? { name: "Fiche séance", dataUrl } : g);
+        }
         if (courtType === "handball" && !merged[0]?.dataUrl) {
           const svgResp = await fetch("/handball-fiche-seance.svg");
           const svgText = await svgResp.text();
