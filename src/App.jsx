@@ -5605,13 +5605,60 @@ function CoachingProBoost({ session }) {
   );
 }
 
+function ResetPasswordScreen() {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (password !== confirm) { setError("Les mots de passe ne correspondent pas."); return; }
+    if (password.length < 6) { setError("Minimum 6 caractères."); return; }
+    setLoading(true);
+    const { error: err } = await supabase.auth.updateUser({ password });
+    setLoading(false);
+    if (err) { setError(err.message); return; }
+    setDone(true);
+    setTimeout(() => window.location.href = "/", 2000);
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F2EDE4] flex items-center justify-center px-4">
+      <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
+        <h2 className="text-xl font-bold text-[#1B2A4A] mb-6">Nouveau mot de passe</h2>
+        {done ? (
+          <p className="text-green-600 text-sm">Mot de passe mis à jour ! Redirection...</p>
+        ) : (
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <input type="password" placeholder="Nouveau mot de passe" value={password} onChange={e => setPassword(e.target.value)} required className="border border-[#1B2A4A]/20 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#1B2A4A]" />
+            <input type="password" placeholder="Confirmer le mot de passe" value={confirm} onChange={e => setConfirm(e.target.value)} required className="border border-[#1B2A4A]/20 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#1B2A4A]" />
+            {error && <p className="text-red-500 text-xs">{error}</p>}
+            <button type="submit" disabled={loading} className="bg-[#1B2A4A] text-white rounded-xl py-3 text-sm font-medium">
+              {loading ? "Enregistrement..." : "Enregistrer"}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(undefined);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setIsPasswordRecovery(true);
+        setSession(session);
+      } else {
+        setIsPasswordRecovery(false);
+        setSession(session);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -5623,6 +5670,7 @@ export default function App() {
       </div>
     );
   }
+  if (isPasswordRecovery) return <ResetPasswordScreen />;
   if (!session) return <AuthScreen />;
   return <AlertProvider><ToastProvider><CoachingProBoost key={session.user.id} session={session} /></ToastProvider></AlertProvider>;
 }
