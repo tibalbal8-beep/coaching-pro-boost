@@ -5651,7 +5651,12 @@ function ResetPasswordScreen() {
 
 export default function App() {
   const [session, setSession] = useState(undefined);
-  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
+    // Détecte le token recovery directement dans l'URL au chargement
+    const hash = window.location.hash;
+    const params = new URLSearchParams(hash.replace("#", "?"));
+    return params.get("type") === "recovery";
+  });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
@@ -5659,8 +5664,10 @@ export default function App() {
       if (event === "PASSWORD_RECOVERY") {
         setIsPasswordRecovery(true);
         setSession(session);
-      } else {
+      } else if (event === "USER_UPDATED") {
         setIsPasswordRecovery(false);
+        setSession(session);
+      } else {
         setSession(session);
       }
     });
