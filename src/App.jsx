@@ -4349,7 +4349,13 @@ function CoachingProBoost({ session }) {
       <div style="color:rgba(255,255,255,0.6);font-size:13px;margin-top:5px;">${selectedPlaysData.length} play${selectedPlaysData.length > 1 ? "s" : ""} • Coaching Pro Boost</div>
     </div>
     ${playsHtml}
-    <div style="text-align:center;padding:16px;color:#999;font-size:11px;">Généré avec Coaching Pro Boost</div>
+    <div style="background:#FF6B35;border-radius:12px;padding:20px;text-align:center;margin-top:8px;">
+      <div style="color:white;font-family:'Oswald',sans-serif;font-size:18px;font-weight:800;margin-bottom:4px;">Coaching Pro Boost</div>
+      <div style="color:rgba(255,255,255,0.9);font-size:13px;margin-bottom:12px;">Crée tes séances, gère ton Play Book, partage tes exercices.</div>
+      <div style="background:white;color:#FF6B35;font-family:'Oswald',sans-serif;font-weight:800;font-size:15px;padding:10px 24px;border-radius:8px;display:inline-block;">À partir de 3,33€/mois — Abonnement annuel 39,99€/an</div>
+      <div style="color:rgba(255,255,255,0.7);font-size:11px;margin-top:10px;">coachingproboost.com</div>
+    </div>
+    <div style="text-align:center;padding:12px;color:#999;font-size:11px;">Généré avec Coaching Pro Boost</div>
   </div>
 </body>
 </html>`;
@@ -5052,8 +5058,9 @@ function CoachingProBoost({ session }) {
                 <div className="text-white font-semibold text-sm">{selectedPlays.length} play{selectedPlays.length > 1 ? "s" : ""} sélectionné{selectedPlays.length > 1 ? "s" : ""}</div>
                 <input value={scoutingTitle} onChange={e => setScoutingTitle(e.target.value)} placeholder="Titre du scouting (ex: Adversaire Finale)" className="w-full rounded-xl px-3 py-2 text-sm outline-none text-[#1B2A4A]" />
                 <div className="flex gap-2">
+                  <button onClick={() => sharePlayCollection(selectedPlays, scoutingTitle)} className="flex-1 bg-white text-[#1B2A4A] py-2 rounded-xl text-sm font-bold">Partager</button>
                   <button onClick={() => exportPlaysPDF(selectedPlays, scoutingTitle)} className="flex-1 bg-[#FF6B35] text-white py-2 rounded-xl text-sm font-bold">Exporter PDF</button>
-                  <button onClick={() => setSelectedPlays([])} className="px-4 py-2 rounded-xl text-sm text-white/60 border border-white/20">Annuler</button>
+                  <button onClick={() => setSelectedPlays([])} className="px-4 py-2 rounded-xl text-sm text-white/60 border border-white/20">✕</button>
                 </div>
               </div>
             )}
