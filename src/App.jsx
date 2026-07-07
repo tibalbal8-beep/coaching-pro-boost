@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
-import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera } from "lucide-react";
+import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera, Share2 } from "lucide-react";
 import { storage, supabase, isPasswordRecoveryUrl } from "./storage";
 
 const AlertCtx = createContext(null);
@@ -3236,7 +3236,7 @@ function usePlayImages(play) {
   return images;
 }
 
-function PlayCard({ play, onView, onEdit, onRemove, onAddToSession }) {
+function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare }) {
   const images = usePlayImages(play);
   const [imgIdx, setImgIdx] = useState(0);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -3290,6 +3290,11 @@ function PlayCard({ play, onView, onEdit, onRemove, onAddToSession }) {
             {onAddToSession && (
               <button onClick={onAddToSession} className="p-1 text-[#FF6B35] hover:bg-[#FF6B35]/10 rounded" title="Ajouter à la séance">
                 <Plus size={14} />
+              </button>
+            )}
+            {onShare && (
+              <button onClick={onShare} className="p-1 text-[#1B2A4A]/40 hover:text-[#FF6B35] rounded" title="Partager">
+                <Share2 size={14} />
               </button>
             )}
             {onEdit && (
@@ -4191,6 +4196,7 @@ function CoachingProBoost({ session }) {
   }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sharedExercise, setSharedExercise] = useState(null);
+  const [sharedPlay, setSharedPlay] = useState(null);
 
   // Fix dictée vocale iOS : les événements compositionend ne déclenchent pas onChange dans React
   useEffect(() => {
@@ -4209,6 +4215,19 @@ function CoachingProBoost({ session }) {
     return () => document.removeEventListener("compositionend", onCompositionEnd);
   }, []);
 
+  // Détection lien de partage play ?shareplay=TOKEN
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("shareplay");
+    if (!token) return;
+    window.history.replaceState({}, "", "/");
+    supabase.from("shared_plays").select("play_data, expires_at").eq("token", token).maybeSingle()
+      .then(({ data }) => {
+        if (!data) { cpbAlert("Ce lien de partage est invalide ou a expiré."); return; }
+        if (data.expires_at && new Date(data.expires_at) < new Date()) { cpbAlert("Ce lien de partage a expiré."); return; }
+        setSharedPlay(data.play_data);
+      });
+  }, []);
+
   // Détection lien de partage ?share=TOKEN
   useEffect(() => {
     const token = new URLSearchParams(window.location.search).get("share");
@@ -4221,6 +4240,29 @@ function CoachingProBoost({ session }) {
         setSharedExercise(data.exercise_data);
       });
   }, []);
+
+  const sharePlay = async (play) => {
+    try {
+      const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const playData = { ...play };
+      // Charger toutes les images embarquées
+      if (play.images?.length) {
+        playData.images = await Promise.all(play.images.map(async (img) => {
+          if (img.file?.data) return img;
+          try {
+            const r = await storage.get(`playimg:${play.id}:${img.id}`);
+            if (r) { const parsed = JSON.parse(r.value); return { ...img, file: parsed }; }
+          } catch {}
+          return img;
+        }));
+      }
+      const { error } = await supabase.from("shared_plays").insert({ token, play_data: playData });
+      if (error) throw error;
+      const link = `${window.location.origin}?shareplay=${token}`;
+      await navigator.clipboard.writeText(link);
+      toast?.("Lien copié ! Valable 30 jours.");
+    } catch(e) { await cpbAlert("Erreur lors du partage : " + e.message); }
+  };
 
   const shareExercise = async (ex) => {
     try {
@@ -4617,6 +4659,55 @@ function CoachingProBoost({ session }) {
           </div>
         </div>
       )}
+      {sharedPlay && (
+        <div className="fixed inset-0 z-[700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
+            <div className="bg-[#1B2A4A] px-6 py-5 text-center">
+              <div className="text-3xl mb-2">📋</div>
+              <div className="text-white font-bold text-xl" style={{ fontFamily: "Oswald, sans-serif" }}>PLAY PARTAGÉ</div>
+              <div className="text-white/60 text-sm mt-1">Un coach partage ce play avec toi</div>
+            </div>
+            <div className="px-6 py-5">
+              <div className="bg-[#F2EDE4] rounded-xl p-4 mb-4">
+                <div className="font-bold text-[#1B2A4A] mb-1">{sharedPlay.titre}</div>
+                {sharedPlay.type && <div className="text-xs font-medium mb-1" style={{ color: "#FF6B35" }}>{sharedPlay.type}</div>}
+                {sharedPlay.description && <p className="text-xs text-[#1B2A4A]/60 mt-1">{sharedPlay.description}</p>}
+                {(sharedPlay.tags || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {sharedPlay.tags.map(t => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35]">{t}</span>)}
+                  </div>
+                )}
+                {sharedPlay.images?.length > 0 && (
+                  <div className="mt-2 text-xs text-[#1B2A4A]/50">{sharedPlay.images.length} schéma{sharedPlay.images.length > 1 ? "s" : ""}</div>
+                )}
+              </div>
+              <button onClick={async () => {
+                const newPlay = { ...sharedPlay, id: uid(), createdAt: new Date().toISOString() };
+                if (newPlay.images?.length) {
+                  newPlay.images = await Promise.all(newPlay.images.map(async (img) => {
+                    if (img.file?.data) {
+                      await storage.set(`playimg:${newPlay.id}:${img.id}`, JSON.stringify(img.file)).catch(() => {});
+                      return { ...img, file: { name: img.file.name, type: img.file.type, data: null } };
+                    }
+                    return img;
+                  }));
+                }
+                savePlays([...plays, newPlay]);
+                setSharedPlay(null);
+                setViewPersist("playbook");
+                toast?.(`"${newPlay.titre}" ajouté à ton Play Book !`);
+              }} className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors mb-3"
+                style={{ fontFamily: "Oswald, sans-serif" }}>
+                Ajouter à mon Play Book
+              </button>
+              <button onClick={() => setSharedPlay(null)}
+                className="w-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A] transition-colors">
+                Ignorer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showOnboarding && <OnboardingModal onDone={finishOnboarding} />}
       {showInstallBanner && !showOnboarding && (
         <div className="fixed bottom-20 left-3 right-3 z-40 bg-[#1B2A4A] text-white rounded-2xl p-4 shadow-xl flex items-start gap-3 no-print">
@@ -4871,6 +4962,7 @@ function CoachingProBoost({ session }) {
                 ).map(play => (
                   <PlayCard key={play.id} play={play}
                     onView={() => setViewingPlay(play)}
+                    onShare={() => sharePlay(play)}
                     onEdit={isPremium ? () => { setEditingPlay(play); setPlaybookForm(true); } : () => setPaywallReason("Modifiez vos plays en passant en Premium.")}
                     onRemove={isPremium ? () => savePlays(plays.filter(p => p.id !== play.id)) : () => setPaywallReason("Supprimez vos plays en passant en Premium.")} />
                 ))}
