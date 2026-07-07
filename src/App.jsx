@@ -227,8 +227,8 @@ function PaywallModal({ onClose, reason }) {
   const [annual, setAnnual] = useState(false);
   const cpbAlert = useAlert();
 
-  const PRICE_MONTHLY = import.meta.env.VITE_STRIPE_PRICE_ID_MONTHLY;
-  const PRICE_ANNUAL = import.meta.env.VITE_STRIPE_PRICE_ID_ANNUAL;
+  const PRICE_MONTHLY = "price_1Tp8g9LH4wEQmwbloGD8n6cP";
+  const PRICE_ANNUAL = "price_1Tp8g8LH4wEQmwblB9CJi7zZ";
 
   return (
     <div className="fixed inset-0 z-[600] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
@@ -739,7 +739,7 @@ function ExerciseFormImagePreview({ ex }) {
   return <img src={fileImage} alt="" className="w-full rounded-lg border border-[#1B2A4A]/15" />;
 }
 
-function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes, sportPhases = PHASES, sportFormats = FORMATS, sportCategories = CATEGORIES }) {
+function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes, sportPhases = PHASES, sportFormats = FORMATS, sportCategories = CATEGORIES, courtType = "basketball" }) {
   const [titre, setTitre] = useState(initial?.titre || "");
   const [sel, setSel] = useState(initial?.themes || []);
   const [phases, setPhases] = useState(initial?.phases || []);
@@ -814,7 +814,8 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
             {/* DrawSheetView pour éditer ou ajouter */}
             {editingSchemaIdx !== null && (
               <DrawSheetView
-                gabaritKey="exerciseGabarits"
+                gabaritKey={courtType === "handball" ? "exerciseGabaritsHandball" : "exerciseGabarits"}
+                courtType={courtType}
                 referencePhoto={file?.data ? file.data : null}
                 onCancel={() => setEditingSchemaIdx(null)}
                 onAddDirect={null}
@@ -1289,7 +1290,7 @@ function diagramToSvgString(diagram, width = 320, height = 305) {
   return s;
 }
 
-function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = [] } = {}) {
+function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = [], sport = "basketball" } = {}) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const total = session.exerciseIds.reduce((sum, id) => sum + (exercises.find(e => e.id === id)?.duree || 0), 0);
   const h = Math.floor(total / 60), m = total % 60;
@@ -1335,6 +1336,92 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
       </div>
     </div>`;
   }).join("");
+
+  // ── HANDBALL FICHE ──────────────────────────────────────────────────────────
+  if (sport === "handball") {
+    const team = teams.find(t => t.id === session.teamId);
+    const teamStr = team ? `${team.nom}${team.niveau ? ` · ${team.niveau}` : ""}` : "";
+    const d2 = new Date(session.date);
+    const dateShort = isNaN(d2) ? esc(session.date) : d2.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+    const blankTerrain = `<svg viewBox="0 0 200 130" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
+      <rect width="200" height="130" fill="#f8f6f0"/>
+      <rect x="2" y="2" width="196" height="126" fill="none" stroke="#1B2A4A" stroke-width="1.5"/>
+      <line x1="100" y1="2" x2="100" y2="128" stroke="#1B2A4A" stroke-width="1.5"/>
+      <rect x="80" y="2" width="40" height="8" fill="none" stroke="#1B2A4A" stroke-width="1.2"/>
+      <path d="M 40 80 A 60 60 0 0 1 160 80" fill="none" stroke="#1B2A4A" stroke-width="1.2"/>
+      <path d="M 25 80 A 75 75 0 0 1 175 80" fill="none" stroke="#1B2A4A" stroke-width="1.2" stroke-dasharray="4,3"/>
+      <line x1="40" y1="80" x2="40" y2="128" stroke="#1B2A4A" stroke-width="1.2"/>
+      <line x1="160" y1="80" x2="160" y2="128" stroke="#1B2A4A" stroke-width="1.2"/>
+      <rect x="75" y="120" width="50" height="8" fill="none" stroke="#1B2A4A" stroke-width="1.2"/>
+    </svg>`;
+
+    const hbBlocks = sessionExos.map((ex, i) => {
+      const schemas = ex.schemas || [];
+      const terrains = [0,1,2,3].map(j => {
+        if (schemas[j]) return `<img src="${schemas[j]}" style="width:100%;height:auto;display:block" />`;
+        return blankTerrain;
+      });
+      return `<div class="hb-exo">
+        <div class="hb-left">
+          <div class="hb-num">${String(i+1).padStart(2,"0")}</div>
+          <div class="hb-desc">
+            <div class="hb-titre">${esc(ex.titre)}</div>
+            <div class="hb-meta">${esc(ex.duree)} min · ${esc(ex.format)}${ex.categorie ? " · " + esc(ex.categorie) : ""}</div>
+            ${ex.objectif ? `<div class="hb-field"><span class="hb-lbl">Objectif :</span> ${esc(ex.objectif)}</div>` : ""}
+            ${ex.notes ? `<div class="hb-field hb-notes">${esc(ex.notes)}</div>` : ""}
+            ${ex.themes?.length ? `<div class="hb-technique-box">${ex.themes.map(t => esc(t)).join(" · ")}</div>` : `<div class="hb-technique-box">Technique</div>`}
+          </div>
+        </div>
+        <div class="hb-right">
+          <div class="hb-terrain-grid">
+            ${terrains.map(t => `<div class="hb-terrain">${t}</div>`).join("")}
+          </div>
+        </div>
+      </div>`;
+    }).join("");
+
+    return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>${esc(session.titre)}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Inter',sans-serif;color:#1B2A4A;font-size:12px;background:#fff;padding:12px}
+    .hb-header{display:grid;grid-template-columns:1fr 1fr 2fr 1fr;border:1.5px solid #1B2A4A;margin-bottom:14px}
+    .hb-header-cell{padding:8px 10px;border-right:1.5px solid #1B2A4A}
+    .hb-header-cell:last-child{border-right:none}
+    .hb-header-cell label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px}
+    .hb-header-cell .val{font-size:13px;min-height:22px}
+    .hb-exo{display:grid;grid-template-columns:42% 58%;border:1.5px solid #1B2A4A;margin-bottom:12px;break-inside:avoid;page-break-inside:avoid}
+    .hb-left{display:flex;border-right:1.5px solid #1B2A4A}
+    .hb-num{width:24px;flex-shrink:0;border-right:1.5px solid #1B2A4A;display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;font-size:14px;writing-mode:vertical-rl;text-orientation:mixed;background:#1B2A4A08}
+    .hb-desc{flex:1;padding:10px;display:flex;flex-direction:column;gap:6px}
+    .hb-titre{font-family:'Oswald',sans-serif;font-size:14px;font-weight:600}
+    .hb-meta{font-size:10px;color:#1B2A4A70}
+    .hb-field{font-size:11px;line-height:1.5}
+    .hb-lbl{font-weight:600}
+    .hb-notes{white-space:pre-wrap;color:#1B2A4A90;font-size:11px;flex:1}
+    .hb-technique-box{margin-top:auto;border:1.5px solid #1B2A4A;padding:6px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;min-height:28px}
+    .hb-right{padding:8px}
+    .hb-terrain-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:6px;height:100%}
+    .hb-terrain{border:1px solid #1B2A4A30;overflow:hidden;border-radius:2px}
+    @media print{@page{margin:8mm;size:A4} body{padding:0} *{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style>
+</head>
+<body>
+  <div class="hb-header">
+    <div class="hb-header-cell"><label>Team</label><div class="val">${esc(teamStr)}</div></div>
+    <div class="hb-header-cell"><label>Date</label><div class="val">${esc(dateShort)}</div></div>
+    <div class="hb-header-cell"><label>Objectif séance</label><div class="val">${esc(session.objectif || session.titre)}</div></div>
+    <div class="hb-header-cell"><label>Cycle</label><div class="val">${esc(session.cycle || "")}</div></div>
+  </div>
+  ${hbBlocks}
+</body></html>`;
+  }
+  // ── FIN HANDBALL ────────────────────────────────────────────────────────────
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -1437,16 +1524,25 @@ async function downloadSessionHTML(session, exercises, opts) {
   // Les images sont stockées séparément sous file:{id} — on les pré-charge toutes
   const sessionExos = session.exerciseIds.map(id => exercises.find(e => e.id === id)).filter(Boolean);
   const enriched = await Promise.all(sessionExos.map(async (ex) => {
-    if (!ex.file) return ex;
-    if (ex.file.data) return ex; // déjà en mémoire
-    try {
-      const r = await storage.get(`file:${ex.id}`);
-      if (r) {
-        const parsed = JSON.parse(r.value);
-        return { ...ex, file: { ...ex.file, data: parsed.data } };
-      }
-    } catch {}
-    return ex;
+    let result = ex;
+    // Enrichir file
+    if (ex.file && !ex.file.data) {
+      try {
+        const r = await storage.get(`file:${ex.id}`);
+        if (r) {
+          const parsed = JSON.parse(r.value);
+          result = { ...result, file: { ...ex.file, data: parsed.data } };
+        }
+      } catch {}
+    }
+    // Enrichir schemas
+    if (!result.schemas?.length && result.schemaCount) {
+      try {
+        const r = await storage.get(`schemas:${ex.id}`);
+        if (r) result = { ...result, schemas: JSON.parse(r.value) || [] };
+      } catch {}
+    }
+    return result;
   }));
   // Reconstruire la liste complète avec les exercices enrichis
   const exercisesEnriched = exercises.map(ex => enriched.find(e => e.id === ex.id) || ex);
@@ -1572,12 +1668,31 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     img.src = src;
   };
 
+  const fetchImgAsDataUrl = (src) => new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext("2d").drawImage(img, 0, 0);
+      resolve(c.toDataURL("image/jpeg", 0.9));
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+
   useEffect(() => {
     (async () => {
       try {
         const stored = await storage.get(gabaritKey);
         const loaded = stored ? JSON.parse(stored.value) : DEFAULT_GABARITS;
-        const merged = DEFAULT_GABARITS.map((d, i) => loaded[i] || d);
+        let merged = DEFAULT_GABARITS.map((d, i) => loaded[i] || d);
+        if (courtType === "handball" && !merged[0]?.dataUrl) {
+          const svgResp = await fetch("/handball-fiche-seance.svg");
+          const svgText = await svgResp.text();
+          const dataUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgText);
+          merged = merged.map((g, i) => i === 0 ? { name: "Fiche séance", dataUrl } : g);
+        }
         setGabarits(merged);
         loadBackground(merged[0].dataUrl || DEFAULT_SHEET_TEMPLATE);
       } catch {
@@ -1805,21 +1920,20 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       ctx.moveTo(t.x - s / 2, t.y); ctx.lineTo(t.x - s / 2, t.y + s * 0.7); ctx.stroke();
       ctx.beginPath();
       ctx.moveTo(t.x + s / 2, t.y); ctx.lineTo(t.x + s / 2, t.y + s * 0.7); ctx.stroke();
-    } else if (t.kind === "rack") {
-      const rw = 36 * sc, rh = 12 * sc, bR = 6 * sc;
-      ctx.strokeStyle = "#555"; ctx.lineWidth = 2 * sc;
-      ctx.strokeRect(t.x - rw / 2, t.y - rh / 2, rw, rh);
-      ctx.beginPath();
-      ctx.moveTo(t.x - rw / 2 + 4 * sc, t.y + rh / 2); ctx.lineTo(t.x - rw / 2 + 4 * sc, t.y + rh / 2 + 8 * sc);
-      ctx.moveTo(t.x + rw / 2 - 4 * sc, t.y + rh / 2); ctx.lineTo(t.x + rw / 2 - 4 * sc, t.y + rh / 2 + 8 * sc);
-      ctx.stroke();
-      [-10 * sc, 0, 10 * sc].forEach(dx => {
-        ctx.beginPath(); ctx.arc(t.x + dx, t.y, bR, 0, Math.PI * 2);
-        ctx.fillStyle = "#e07020"; ctx.fill();
-        ctx.strokeStyle = "#b05010"; ctx.lineWidth = sc; ctx.stroke();
-        ctx.beginPath(); ctx.arc(t.x + dx, t.y, bR * 0.55, -Math.PI * 0.7, Math.PI * 0.3);
-        ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = sc; ctx.stroke();
-      });
+    } else if (t.kind === "cerceau") {
+      const cr = 16 * sc;
+      ctx.beginPath(); ctx.arc(t.x, t.y, cr, 0, Math.PI * 2);
+      ctx.strokeStyle = "#e07020"; ctx.lineWidth = 3 * sc; ctx.stroke();
+    } else if (t.kind === "handball") {
+      const br = 11 * sc;
+      ctx.beginPath(); ctx.arc(t.x, t.y, br, 0, Math.PI * 2);
+      ctx.fillStyle = "#c0392b"; ctx.fill();
+      ctx.strokeStyle = "#7b241c"; ctx.lineWidth = 1.5 * sc; ctx.stroke();
+      // lignes du ballon de handball
+      ctx.beginPath(); ctx.arc(t.x, t.y, br, 0, Math.PI * 2); ctx.strokeStyle = "rgba(0,0,0,0.25)"; ctx.lineWidth = sc; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(t.x - br, t.y); ctx.lineTo(t.x + br, t.y); ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = sc; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(t.x, t.y - br); ctx.lineTo(t.x, t.y + br); ctx.stroke();
+      ctx.beginPath(); ctx.arc(t.x, t.y, br * 0.6, Math.PI * 0.2, Math.PI * 0.9); ctx.stroke();
     } else if (t.role === "defender") {
       ctx.font = `bold ${Math.round(17 * sc)}px sans-serif`;
       ctx.fillStyle = "#D62828";
@@ -1932,7 +2046,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     canvasRef.current.setPointerCapture?.(e.pointerId);
     if (tool === "player") {
       const pt = toCanvasPoint(e);
-      const equipKinds = ["plot", "chaise", "rack"];
+      const equipKinds = ["plot", "chaise", "cerceau", "handball"];
       const isEquip = equipKinds.includes(playerLabel);
       elementsRef.current.push(isEquip
         ? { type: "token", x: pt.x, y: pt.y, kind: playerLabel, size: playerSize }
@@ -2078,23 +2192,25 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     });
   };
 
-  const COURT_LABELS = ["Terrain complet", "Demi-terrain ↑", "Demi-terrain ↓"];
+  const COURT_LABELS = courtType === "handball"
+    ? ["Fiche séance", "Gabarit 2", "Gabarit 3"]
+    : ["Terrain complet", "Demi-terrain ↑", "Demi-terrain ↓"];
 
   return (
     <div>
       {/* Sélecteur de terrain — uniquement dans l'éditeur d'exercice */}
-      {gabaritKey === "exerciseGabarits" && (
+      {(gabaritKey === "exerciseGabarits" || gabaritKey === "exerciseGabaritsHandball") && (
         <>
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <span className="text-xs font-semibold text-[#1B2A4A]/60 uppercase tracking-wide">Terrain :</span>
             {COURT_LABELS.map((label, i) => (
               <button key={i} type="button" onClick={() => { setCourtVariant(i); switchGabarit(i); }}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${courtVariant === i ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A] hover:border-[#1B2A4A]/50"}`}>
-                {label} {!gabarits[i]?.dataUrl && <span className="opacity-40">— à configurer</span>}
+                {label} {!gabarits[i]?.dataUrl && courtType !== "handball" && <span className="opacity-40">— à configurer</span>}
               </button>
             ))}
           </div>
-          {courtVariant !== null && !gabarits[courtVariant]?.dataUrl && (
+          {courtVariant !== null && !gabarits[courtVariant]?.dataUrl && courtType !== "handball" && (
             <p className="mb-3 text-xs text-[#FF6B35]/80 bg-[#FF6B35]/5 border border-[#FF6B35]/20 rounded-lg px-3 py-2">
               Charge ton image de terrain via <strong>"Changer l'image"</strong> ci-dessous, puis elle sera mémorisée pour la prochaine fois.
             </p>
@@ -2148,17 +2264,30 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         ) : tool === "player" ? (
           <>
             {/* Équipements en boutons icône — re-cliquer désélectionne */}
-            {[{v:"plot",e:"🔶"},{v:"chaise",e:"🪑"},{v:"rack",e:"🏀"}].map(eq => (
+            {[
+              {v:"plot", icon: <span className="text-base">🔶</span>},
+              {v:"chaise", icon: <span className="text-base">🪑</span>},
+              {v:"cerceau", icon: <span className="text-base">⭕</span>},
+              {v:"handball", icon: (
+                <svg viewBox="0 0 22 22" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="11" cy="11" r="9" fill="#c0392b" stroke="#7b241c" strokeWidth="1.2"/>
+                  <path d="M 5 8 Q 11 5 17 8" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round"/>
+                  <path d="M 3.5 12 Q 11 9.5 18.5 12" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round"/>
+                  <path d="M 5 16 Q 11 14 17 16" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round"/>
+                  <path d="M 11 2 Q 11 11 11 20" fill="none" stroke="rgba(0,0,0,0.2)" strokeWidth="1" strokeLinecap="round"/>
+                </svg>
+              )},
+            ].map(eq => (
               <button key={eq.v} type="button"
                 onClick={() => setPlayerLabel(playerLabel === eq.v ? (playerIsDefender ? "X1" : "1") : eq.v)}
                 title={eq.v.charAt(0).toUpperCase()+eq.v.slice(1)}
-                className={`w-8 h-8 rounded-lg text-base border transition-colors ${playerLabel === eq.v ? "bg-[#1B2A4A] border-[#1B2A4A]" : "border-[#1B2A4A]/20 hover:bg-[#1B2A4A]/5"}`}>
-                {eq.e}
+                className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${playerLabel === eq.v ? "bg-[#1B2A4A] border-[#1B2A4A]" : "border-[#1B2A4A]/20 hover:bg-[#1B2A4A]/5"}`}>
+                {eq.icon}
               </button>
             ))}
             <div className="w-px h-5 bg-[#1B2A4A]/15 mx-0.5" />
             {/* Numéro : 1-12 attaque, X1-X12 défense */}
-            {!["plot","chaise","rack"].includes(playerLabel) && (
+            {!["plot","chaise","cerceau","handball"].includes(playerLabel) && (
               <select value={playerLabel} onChange={e => setPlayerLabel(e.target.value)}
                 className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white w-16">
                 {(playerIsDefender
@@ -2167,7 +2296,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
                 ).map(n => <option key={n} value={n}>{n}</option>)}
               </select>
             )}
-            {!["plot","chaise","rack"].includes(playerLabel) && <>
+            {!["plot","chaise","cerceau","handball"].includes(playerLabel) && <>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
                 <input type="checkbox" checked={playerHasBall} onChange={e => setPlayerHasBall(e.target.checked)} disabled={playerIsDefender} /> Ballon
               </label>
@@ -3911,6 +4040,34 @@ function CoachingProBoost({ session }) {
     if (p === "success") { window.history.replaceState({}, "", "/"); return true; }
     return false;
   });
+
+  // Sync premium au retour du paiement — appel direct à Stripe via /api/sync-premium
+  useEffect(() => {
+    if (!premiumSuccess) return;
+    const userId = session?.user?.id;
+    if (!userId) return;
+    (async () => {
+      try {
+        const res = await fetch("/api/sync-premium", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId }),
+        });
+        const data = await res.json();
+        if (data.isPremium) window.location.reload();
+        else {
+          // Webhook peut avoir du retard — retry toutes les 3s pendant 30s
+          let attempts = 0;
+          const interval = setInterval(async () => {
+            attempts++;
+            const r2 = await fetch("/api/sync-premium", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId }) });
+            const d2 = await r2.json();
+            if (d2.isPremium || attempts >= 10) { clearInterval(interval); if (d2.isPremium) window.location.reload(); }
+          }, 3000);
+        }
+      } catch {}
+    })();
+  }, [premiumSuccess, session?.user?.id]);
   const team = teams.find(t => t.id === activeTeamId) || teams[0] || { nom: "", niveau: "", jours: [], nbJoueurs: 0 };
   const updateTeam = (patch) => {
     if (!team.id) {
@@ -4568,7 +4725,7 @@ function CoachingProBoost({ session }) {
         {view === "library" && showForm && (
           <div className="max-w-xl">
             <h2 className="text-xl font-bold text-[#1B2A4A] mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>{editing ? "MODIFIER L'EXERCICE" : "NOUVEL EXERCICE"}</h2>
-            <ExerciseForm themes={themes} saveThemes={saveThemes} initial={editing} onSave={upsertExercise} onCancel={() => { setShowForm(false); setEditing(null); }} cpbAlert={cpbAlert} sportPhases={SPORT_PHASES} sportFormats={SPORT_FORMATS} sportCategories={SPORT_CATEGORIES} />
+            <ExerciseForm themes={themes} saveThemes={saveThemes} initial={editing} onSave={upsertExercise} onCancel={() => { setShowForm(false); setEditing(null); }} cpbAlert={cpbAlert} sportPhases={SPORT_PHASES} sportFormats={SPORT_FORMATS} sportCategories={SPORT_CATEGORIES} courtType={SPORT_COURT} />
           </div>
         )}
 
@@ -4868,6 +5025,43 @@ function CoachingProBoost({ session }) {
               )}
             </div>
 
+            {/* Sync abonnement */}
+            <div className="bg-white/70 rounded-2xl overflow-hidden mb-4">
+              <button onClick={async () => {
+                const userId = session?.user?.id;
+                if (!userId) return;
+                try {
+                  const res = await fetch("/api/sync-premium", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ userId }),
+                  });
+                  const data = await res.json();
+                  if (data.isPremium) { await cpbAlert("✓ Abonnement Premium actif ! L'app va se recharger."); window.location.reload(); }
+                  else await cpbAlert("Aucun abonnement actif trouvé dans Stripe. Si tu viens de payer, attends 10 secondes et réessaie.");
+                } catch (e) { await cpbAlert("Erreur : " + e.message); }
+              }} className="w-full flex items-center justify-between px-5 py-4 text-sm text-[#1B2A4A] font-medium hover:bg-[#1B2A4A]/5 transition-colors">
+                <span>Synchroniser mon abonnement</span>
+                <ChevronRight size={16} className="text-[#1B2A4A]/40" />
+              </button>
+            </div>
+
+            {/* Sélecteur de sport */}
+            <div className="bg-white/70 rounded-2xl overflow-hidden mb-4">
+              <div className="px-5 py-4">
+                <p className="text-xs font-semibold text-[#1B2A4A]/50 uppercase tracking-wide mb-3">Sport</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {Object.entries(SPORTS_CONFIG).map(([key, cfg]) => (
+                    <button key={key} onClick={() => setSport(key)}
+                      className={`flex flex-col items-center gap-1 rounded-xl px-2 py-3 text-xs font-medium border transition-colors ${sport === key ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/15 text-[#1B2A4A] hover:border-[#1B2A4A]/40 bg-white/50"}`}>
+                      <span className="text-xl">{cfg.emoji}</span>
+                      <span>{cfg.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             {/* Infos compte */}
             <div className="bg-white/70 rounded-2xl overflow-hidden mb-4">
               <div className="flex items-center justify-between px-5 py-4 border-b border-[#1B2A4A]/8">
@@ -5153,7 +5347,7 @@ function CoachingProBoost({ session }) {
           <div>
             <div className="flex items-center justify-between mb-5 no-print">
               <button onClick={() => setViewPersist("sessions")} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Retour aux séances</button>
-              <button onClick={() => downloadSessionHTML(activeSession, exercises, { clubLogo, sessionPhoto: currentSessionPhoto, teams })} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Imprimer la séance</button>
+              <button onClick={() => downloadSessionHTML(activeSession, exercises, { clubLogo, sessionPhoto: currentSessionPhoto, teams, sport })} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Imprimer la séance</button>
             </div>
             <div className="flex items-start gap-4 mb-4">
               {clubLogo && <img src={clubLogo} alt="Logo club" className="w-16 h-16 object-contain flex-shrink-0 rounded" />}
@@ -5196,6 +5390,22 @@ function CoachingProBoost({ session }) {
                 </div>
               </div>
             </div>
+            {sport === "handball" && (
+              <div className="grid grid-cols-2 gap-3 mb-4 no-print">
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/40 mb-1">Objectif séance</div>
+                  <input value={activeSession.objectif || ""} onChange={e => updateSession({ ...activeSession, objectif: e.target.value })}
+                    placeholder="Objectif principal..."
+                    className="w-full text-sm text-[#1B2A4A] bg-white/60 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 outline-none focus:border-[#FF6B35]" />
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/40 mb-1">Cycle</div>
+                  <input value={activeSession.cycle || ""} onChange={e => updateSession({ ...activeSession, cycle: e.target.value })}
+                    placeholder="Ex: Semaine 3, Cycle 1..."
+                    className="w-full text-sm text-[#1B2A4A] bg-white/60 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 outline-none focus:border-[#FF6B35]" />
+                </div>
+              </div>
+            )}
             <div className="mb-6 no-print">
               <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Thèmes de la séance</div>
               <div className="flex flex-wrap gap-1.5">
