@@ -3236,7 +3236,7 @@ function usePlayImages(play) {
   return images;
 }
 
-function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare }) {
+function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare, onSelect, selected }) {
   const images = usePlayImages(play);
   const [imgIdx, setImgIdx] = useState(0);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -3244,7 +3244,15 @@ function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare }) {
   const currentImg = visibleImgs[Math.min(imgIdx, visibleImgs.length - 1)];
 
   return (
-    <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 overflow-hidden hover:border-[#FF6B35]/50 transition-all">
+    <div className={`border rounded-lg bg-white/70 overflow-hidden transition-all ${selected ? "border-[#FF6B35] ring-2 ring-[#FF6B35]/30" : "border-[#1B2A4A]/15 hover:border-[#FF6B35]/50"}`}>
+      {onSelect && (
+        <div className="flex items-center gap-2 px-3 pt-2" onClick={onSelect}>
+          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-colors ${selected ? "bg-[#FF6B35] border-[#FF6B35]" : "border-[#1B2A4A]/30"}`}>
+            {selected && <Check size={12} className="text-white" />}
+          </div>
+          <span className="text-xs text-[#1B2A4A]/50">{selected ? "Sélectionné" : "Sélectionner"}</span>
+        </div>
+      )}
       {visibleImgs.length > 0 && (
         <div className="relative select-none cursor-pointer" onClick={onView}>
           <img src={currentImg.data} alt="" className="w-full h-48 object-contain bg-white" />
@@ -4215,6 +4223,14 @@ function CoachingProBoost({ session }) {
     return () => document.removeEventListener("compositionend", onCompositionEnd);
   }, []);
 
+  // Détection lien scouting ?scoutingtoken=TOKEN
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("scoutingtoken");
+    if (!token) return;
+    window.history.replaceState({}, "", "/");
+    window.location.href = `/api/scouting?token=${token}`;
+  }, []);
+
   // Détection lien de partage play ?shareplay=TOKEN
   useEffect(() => {
     const token = new URLSearchParams(window.location.search).get("shareplay");
@@ -4264,6 +4280,37 @@ function CoachingProBoost({ session }) {
     } catch(e) { await cpbAlert("Erreur lors du partage : " + e.message); }
   };
 
+  const sharePlayCollection = async (selectedIds, title) => {
+    try {
+      const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const selectedPlaysData = await Promise.all(
+        plays.filter(p => selectedIds.includes(p.id)).map(async (play) => {
+          const playData = { ...play };
+          if (play.images?.length) {
+            playData.images = await Promise.all(play.images.map(async (img) => {
+              if (img.file?.data) return img;
+              try {
+                const r = await storage.get(`playimg:${play.id}:${img.id}`);
+                if (r) { const parsed = JSON.parse(r.value); return { ...img, file: parsed }; }
+              } catch {}
+              return img;
+            }));
+          }
+          return playData;
+        })
+      );
+      const { error } = await supabase.from("shared_play_collections").insert({
+        token, title: title || "Scouting Report", plays: selectedPlaysData
+      });
+      if (error) throw error;
+      const scoutingUrl = `${window.location.origin}/api/scouting?token=${token}`;
+      await navigator.clipboard.writeText(scoutingUrl);
+      toast?.(`Lien scouting copié ! ${selectedIds.length} play${selectedIds.length > 1 ? "s" : ""} partagé${selectedIds.length > 1 ? "s" : ""}.`);
+      setSelectedPlays([]);
+      setScoutingTitle("");
+    } catch(e) { await cpbAlert("Erreur : " + e.message); }
+  };
+
   const shareExercise = async (ex) => {
     try {
       const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -4287,6 +4334,8 @@ function CoachingProBoost({ session }) {
   const [filterCategorie, setFilterCategorie] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [playbookForm, setPlaybookForm] = useState(false);
+  const [selectedPlays, setSelectedPlays] = useState([]);
+  const [scoutingTitle, setScoutingTitle] = useState("");
   const [editingPlay, setEditingPlay] = useState(null);
   const [viewingPlay, setViewingPlay] = useState(null);
   const [filterPlayType, setFilterPlayType] = useState([]);
@@ -4911,6 +4960,17 @@ function CoachingProBoost({ session }) {
                 </button>
               )}
             </div>
+            {/* Mode scouting */}
+            {selectedPlays.length > 0 && (
+              <div className="bg-[#1B2A4A] rounded-2xl p-4 mb-4 flex flex-col gap-3">
+                <div className="text-white font-semibold text-sm">{selectedPlays.length} play{selectedPlays.length > 1 ? "s" : ""} sélectionné{selectedPlays.length > 1 ? "s" : ""}</div>
+                <input value={scoutingTitle} onChange={e => setScoutingTitle(e.target.value)} placeholder="Titre du scouting (ex: Adversaire Finale)" className="w-full rounded-xl px-3 py-2 text-sm outline-none text-[#1B2A4A]" />
+                <div className="flex gap-2">
+                  <button onClick={() => sharePlayCollection(selectedPlays, scoutingTitle)} className="flex-1 bg-[#FF6B35] text-white py-2 rounded-xl text-sm font-bold">Partager le scouting</button>
+                  <button onClick={() => setSelectedPlays([])} className="px-4 py-2 rounded-xl text-sm text-white/60 border border-white/20">Annuler</button>
+                </div>
+              </div>
+            )}
             <div className="space-y-2 mb-5">
               <div className="flex flex-wrap gap-1.5 items-center">
                 <span className="text-xs text-[#1B2A4A]/40 mr-1">Type :</span>
@@ -4963,6 +5023,8 @@ function CoachingProBoost({ session }) {
                   <PlayCard key={play.id} play={play}
                     onView={() => setViewingPlay(play)}
                     onShare={() => sharePlay(play)}
+                    onSelect={isPremium ? () => setSelectedPlays(prev => prev.includes(play.id) ? prev.filter(id => id !== play.id) : [...prev, play.id]) : null}
+                    selected={selectedPlays.includes(play.id)}
                     onEdit={isPremium ? () => { setEditingPlay(play); setPlaybookForm(true); } : () => setPaywallReason("Modifiez vos plays en passant en Premium.")}
                     onRemove={isPremium ? () => savePlays(plays.filter(p => p.id !== play.id)) : () => setPaywallReason("Supprimez vos plays en passant en Premium.")} />
                 ))}
