@@ -5088,9 +5088,13 @@ function CoachingProBoost({ session }) {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ userId }),
                   });
-                  const data = await res.json();
-                  if (data.isPremium) { await cpbAlert("✓ Abonnement Premium actif ! L'app va se recharger."); window.location.reload(); }
-                  else await cpbAlert("Aucun abonnement actif trouvé dans Stripe. Si tu viens de payer, attends 10 secondes et réessaie.");
+                  const text = await res.text();
+                  if (!text) { await cpbAlert("✓ Ton abonnement Premium est déjà actif."); return; }
+                  const data = JSON.parse(text);
+                  if (data.isPremium) {
+                    if (isPremium) { await cpbAlert("✓ Ton abonnement Premium est déjà actif."); return; }
+                    await cpbAlert("✓ Abonnement Premium activé ! L'app va se recharger."); window.location.reload();
+                  } else await cpbAlert("Aucun abonnement actif trouvé dans Stripe. Si tu viens de payer, attends 10 secondes et réessaie.");
                 } catch (e) { await cpbAlert("Erreur : " + e.message); }
               }} className="w-full flex items-center justify-between px-5 py-4 text-sm text-[#1B2A4A] font-medium hover:bg-[#1B2A4A]/5 transition-colors">
                 <span>Synchroniser mon abonnement</span>
