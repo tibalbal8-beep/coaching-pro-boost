@@ -1693,6 +1693,20 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           const dataUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgText);
           merged = merged.map((g, i) => i === 0 ? { name: "Fiche séance", dataUrl } : g);
         }
+        if (courtType === "basketball") {
+          const defaults = [
+            { name: "Terrain complet", file: "/basketball-terrain-complet.png" },
+            { name: "Demi-terrain ↑", file: "/basketball-demi-terrain-haut.png" },
+            { name: "Demi-terrain ↓", file: "/basketball-demi-terrain-bas.png" },
+          ];
+          merged = await Promise.all(merged.map(async (g, i) => {
+            if (g?.dataUrl) return g;
+            const resp = await fetch(defaults[i].file);
+            const blob = await resp.blob();
+            const dataUrl = await new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(blob); });
+            return { name: defaults[i].name, dataUrl };
+          }));
+        }
         setGabarits(merged);
         loadBackground(merged[0].dataUrl || DEFAULT_SHEET_TEMPLATE);
       } catch {
