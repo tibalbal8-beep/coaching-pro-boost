@@ -3025,7 +3025,11 @@ function AuthScreen() {
   useEffect(() => {
     const hash = window.location.hash;
     const params = new URLSearchParams(window.location.search);
-    if (hash.includes("access_token") || params.get("type") === "signup" || params.get("type") === "recovery") {
+    if (params.get("type") === "recovery") {
+      // Laisser Supabase gérer le token — l'event PASSWORD_RECOVERY sera déclenché dans App
+      return;
+    }
+    if (hash.includes("access_token") || params.get("type") === "signup") {
       setMessage("✅ Email confirmé ! Vous pouvez maintenant vous connecter.");
       window.history.replaceState({}, "", window.location.pathname);
     }
