@@ -1,7 +1,4 @@
 {
-  "redirects": [
-    { "source": "/", "has": [{"type": "query", "key": "type", "value": "recovery"}], "destination": "/reset-password.html", "permanent": false }
-  ],
   "routes": [
     { "src": "^/app$", "dest": "/index.html" },
     { "src": "^/$", "dest": "/landing.html" },

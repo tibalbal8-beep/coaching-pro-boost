@@ -3025,10 +3025,6 @@ function AuthScreen() {
   useEffect(() => {
     const hash = window.location.hash;
     const params = new URLSearchParams(window.location.search);
-    if (params.get("type") === "recovery") {
-      // Laisser Supabase gérer le token — l'event PASSWORD_RECOVERY sera déclenché dans App
-      return;
-    }
     if (hash.includes("access_token") || params.get("type") === "signup") {
       setMessage("✅ Email confirmé ! Vous pouvez maintenant vous connecter.");
       window.history.replaceState({}, "", window.location.pathname);
@@ -3051,7 +3047,7 @@ function AuthScreen() {
         setMode("login");
       } else if (mode === "forgot") {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.origin + "/reset-password.html",
+          redirectTo: window.location.origin + "/?type=recovery",
         });
         if (error) throw error;
         setMessage("Email de réinitialisation envoyé ! Vérifie ta boîte mail.");
@@ -5609,7 +5605,7 @@ function CoachingProBoost({ session }) {
   );
 }
 
-function ResetPasswordScreen() {
+function ResetPasswordScreen({ onDone }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -5625,15 +5621,16 @@ function ResetPasswordScreen() {
     setLoading(false);
     if (err) { setError(err.message); return; }
     setDone(true);
-    setTimeout(() => window.location.href = "/", 2000);
+    setTimeout(() => onDone(), 2000);
   };
 
   return (
     <div className="min-h-screen bg-[#F2EDE4] flex items-center justify-center px-4">
       <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
-        <h2 className="text-xl font-bold text-[#1B2A4A] mb-6">Nouveau mot de passe</h2>
+        <h2 className="text-xl font-bold text-[#1B2A4A] mb-2">Nouveau mot de passe</h2>
+        <p className="text-sm text-[#1B2A4A]/50 mb-6">Choisissez un nouveau mot de passe pour votre compte.</p>
         {done ? (
-          <p className="text-green-600 text-sm">Mot de passe mis à jour ! Redirection...</p>
+          <p className="text-green-600 text-sm">✅ Mot de passe mis à jour ! Redirection...</p>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <input type="password" placeholder="Nouveau mot de passe" value={password} onChange={e => setPassword(e.target.value)} required className="border border-[#1B2A4A]/20 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#1B2A4A]" />
@@ -5651,32 +5648,17 @@ function ResetPasswordScreen() {
 
 export default function App() {
   const [session, setSession] = useState(undefined);
-  const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    const hashParams = new URLSearchParams(window.location.hash.replace("#", "?"));
-    const isRecovery =
-      params.get("type") === "recovery" ||
-      hashParams.get("type") === "recovery" ||
-      window.location.hash === "#recovery" ||
-      localStorage.getItem("passwordRecovery") === "1";
-    if (isRecovery) localStorage.setItem("passwordRecovery", "1");
-    return isRecovery;
-  });
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") {
-        localStorage.setItem("passwordRecovery", "1");
         setIsPasswordRecovery(true);
-        setSession(session);
       } else if (event === "USER_UPDATED") {
-        localStorage.removeItem("passwordRecovery");
         setIsPasswordRecovery(false);
-        setSession(session);
-      } else {
-        setSession(session);
       }
+      setSession(session);
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -5688,7 +5670,7 @@ export default function App() {
       </div>
     );
   }
-  if (isPasswordRecovery) return <ResetPasswordScreen />;
+  if (isPasswordRecovery) return <ResetPasswordScreen onDone={() => { setIsPasswordRecovery(false); supabase.auth.signOut(); }} />;
   if (!session) return <AuthScreen />;
   return <AlertProvider><ToastProvider><CoachingProBoost key={session.user.id} session={session} /></ToastProvider></AlertProvider>;
 }
