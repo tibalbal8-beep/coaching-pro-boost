@@ -5652,19 +5652,23 @@ function ResetPasswordScreen() {
 export default function App() {
   const [session, setSession] = useState(undefined);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(() => {
-    // Détecte le token recovery directement dans l'URL au chargement
-    const hash = window.location.hash;
-    const params = new URLSearchParams(hash.replace("#", "?"));
-    return params.get("type") === "recovery";
+    // Détecte le token recovery dans les query params ou le hash
+    const params = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace("#", "?"));
+    const isRecovery = params.get("type") === "recovery" || hashParams.get("type") === "recovery";
+    if (isRecovery) sessionStorage.setItem("passwordRecovery", "1");
+    return isRecovery || sessionStorage.getItem("passwordRecovery") === "1";
   });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") {
+        sessionStorage.setItem("passwordRecovery", "1");
         setIsPasswordRecovery(true);
         setSession(session);
       } else if (event === "USER_UPDATED") {
+        sessionStorage.removeItem("passwordRecovery");
         setIsPasswordRecovery(false);
         setSession(session);
       } else {
