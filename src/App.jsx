@@ -4288,6 +4288,85 @@ function CoachingProBoost({ session }) {
     }
   };
 
+  const exportPlaysPDF = async (selectedIds, title) => {
+    const selectedPlaysData = await Promise.all(
+      plays.filter(p => selectedIds.includes(p.id)).map(async (play) => {
+        const images = await Promise.all((play.images || []).map(async (img) => {
+          if (img.file?.data) return { ...img, data: img.file.data };
+          try {
+            const r = await storage.get(`playimg:${play.id}:${img.id}`);
+            if (r) { const parsed = JSON.parse(r.value); return { ...img, data: parsed.data || null }; }
+          } catch {}
+          return { ...img, data: null };
+        }));
+        return { ...play, _images: images.filter(i => i.data) };
+      })
+    );
+
+    const playsHtml = selectedPlaysData.map((play, idx) => {
+      const imgsHtml = play._images.map(img => `
+        <div style="flex:1;min-width:180px;max-width:260px;">
+          ${img.annotation ? `<div style="font-size:10px;color:#888;margin-bottom:3px;font-style:italic;">${img.annotation}</div>` : ""}
+          <img src="${img.data}" style="width:100%;border-radius:6px;border:1px solid #ddd;" />
+        </div>
+      `).join("");
+
+      return `
+        <div style="background:#fff;border-radius:10px;padding:18px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);page-break-inside:avoid;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;">
+            <div>
+              <div style="font-size:10px;color:#FF6B35;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">${play.type || ""}</div>
+              <div style="font-size:17px;font-weight:800;color:#1B2A4A;font-family:'Oswald',sans-serif;">${play.titre || "Sans titre"}</div>
+              ${play.description ? `<div style="font-size:12px;color:#666;margin-top:3px;">${play.description}</div>` : ""}
+            </div>
+            <div style="background:#1B2A4A;color:#fff;font-size:18px;font-weight:800;font-family:'Oswald',sans-serif;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${idx + 1}</div>
+          </div>
+          ${(play.tags || []).length > 0 ? `
+            <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
+              ${play.tags.map(t => `<span style="font-size:10px;padding:2px 7px;background:rgba(255,107,53,0.12);color:#FF6B35;border-radius:20px;">${t}</span>`).join("")}
+            </div>` : ""}
+          ${play._images.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;">${imgsHtml}</div>` : ""}
+        </div>`;
+    }).join("");
+
+    const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>${title || "Scouting Report"}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Inter',sans-serif;background:#F2EDE4;color:#1B2A4A;padding:20px}
+    @media print{body{background:white;padding:0}@page{margin:8mm;size:A4}}
+  </style>
+</head>
+<body>
+  <div style="max-width:780px;margin:0 auto;">
+    <div style="background:#1B2A4A;color:white;border-radius:12px;padding:24px;margin-bottom:20px;text-align:center;">
+      <div style="font-size:32px;margin-bottom:8px;">🏀</div>
+      <div style="font-family:'Oswald',sans-serif;font-size:26px;font-weight:800;">${title || "SCOUTING REPORT"}</div>
+      <div style="color:rgba(255,255,255,0.6);font-size:13px;margin-top:5px;">${selectedPlaysData.length} play${selectedPlaysData.length > 1 ? "s" : ""} • Coaching Pro Boost</div>
+    </div>
+    ${playsHtml}
+    <div style="text-align:center;padding:16px;color:#999;font-size:11px;">Généré avec Coaching Pro Boost</div>
+  </div>
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(title || "scouting").replace(/[^a-z0-9]+/gi, "_")}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setSelectedPlays([]);
+    setScoutingTitle("");
+  };
+
   const sharePlayCollection = async (selectedIds, title) => {
     try {
       const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -4973,7 +5052,7 @@ function CoachingProBoost({ session }) {
                 <div className="text-white font-semibold text-sm">{selectedPlays.length} play{selectedPlays.length > 1 ? "s" : ""} sélectionné{selectedPlays.length > 1 ? "s" : ""}</div>
                 <input value={scoutingTitle} onChange={e => setScoutingTitle(e.target.value)} placeholder="Titre du scouting (ex: Adversaire Finale)" className="w-full rounded-xl px-3 py-2 text-sm outline-none text-[#1B2A4A]" />
                 <div className="flex gap-2">
-                  <button onClick={() => sharePlayCollection(selectedPlays, scoutingTitle)} className="flex-1 bg-[#FF6B35] text-white py-2 rounded-xl text-sm font-bold">Partager le scouting</button>
+                  <button onClick={() => exportPlaysPDF(selectedPlays, scoutingTitle)} className="flex-1 bg-[#FF6B35] text-white py-2 rounded-xl text-sm font-bold">Exporter PDF</button>
                   <button onClick={() => setSelectedPlays([])} className="px-4 py-2 rounded-xl text-sm text-white/60 border border-white/20">Annuler</button>
                 </div>
               </div>
