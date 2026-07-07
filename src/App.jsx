@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera } from "lucide-react";
-import { storage, supabase } from "./storage";
+import { storage, supabase, isPasswordRecoveryUrl } from "./storage";
 
 const AlertCtx = createContext(null);
 function useAlert() { return useContext(AlertCtx); }
@@ -3010,6 +3010,58 @@ function EyeIcon({ open }) {
   );
 }
 
+function ChangePasswordBlock() {
+  const [open, setOpen] = useState(false);
+  const [pwd, setPwd] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (pwd !== confirm) { setErr("Les mots de passe ne correspondent pas."); return; }
+    if (pwd.length < 6) { setErr("Minimum 6 caractères."); return; }
+    setLoading(true); setErr("");
+    const { error } = await supabase.auth.updateUser({ password: pwd });
+    setLoading(false);
+    if (error) { setErr(error.message); return; }
+    setOk(true);
+    setTimeout(() => { setOpen(false); setOk(false); setPwd(""); setConfirm(""); }, 2000);
+  };
+
+  return (
+    <>
+      <div className="bg-white/70 rounded-2xl overflow-hidden mb-4">
+        <button onClick={() => setOpen(true)} className="w-full flex items-center justify-between px-5 py-4 text-sm text-[#1B2A4A] font-medium hover:bg-[#1B2A4A]/5 transition-colors">
+          <span>Changer mon mot de passe</span>
+          <ChevronRight size={16} className="text-[#1B2A4A]/40" />
+        </button>
+      </div>
+      {open && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4" onClick={() => setOpen(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-[#1B2A4A] mb-4">Changer le mot de passe</h3>
+            {ok ? (
+              <p className="text-green-600 text-sm">✅ Mot de passe mis à jour !</p>
+            ) : (
+              <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+                <input type="password" placeholder="Nouveau mot de passe" value={pwd} onChange={e => setPwd(e.target.value)} required className="border border-[#1B2A4A]/20 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#1B2A4A]" />
+                <input type="password" placeholder="Confirmer le mot de passe" value={confirm} onChange={e => setConfirm(e.target.value)} required className="border border-[#1B2A4A]/20 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#1B2A4A]" />
+                {err && <p className="text-red-500 text-xs">{err}</p>}
+                <div className="flex gap-2 mt-1">
+                  <button type="button" onClick={() => setOpen(false)} className="flex-1 border border-[#1B2A4A]/20 rounded-xl py-3 text-sm text-[#1B2A4A]">Annuler</button>
+                  <button type="submit" disabled={loading} className="flex-1 bg-[#1B2A4A] text-white rounded-xl py-3 text-sm font-medium">{loading ? "..." : "Enregistrer"}</button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function AuthScreen() {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
@@ -5062,6 +5114,9 @@ function CoachingProBoost({ session }) {
               </div>
             </div>
 
+            {/* Changer mot de passe */}
+            <ChangePasswordBlock />
+
             {/* Infos compte */}
             <div className="bg-white/70 rounded-2xl overflow-hidden mb-4">
               <div className="flex items-center justify-between px-5 py-4 border-b border-[#1B2A4A]/8">
@@ -5648,7 +5703,7 @@ function ResetPasswordScreen({ onDone }) {
 
 export default function App() {
   const [session, setSession] = useState(undefined);
-  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(isPasswordRecoveryUrl);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));

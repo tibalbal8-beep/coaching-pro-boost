@@ -1,5 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
+// Lu AVANT createClient car Supabase efface l'URL de façon asynchrone
+export const isPasswordRecoveryUrl =
+  new URLSearchParams(window.location.search).get("type") === "recovery";
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
