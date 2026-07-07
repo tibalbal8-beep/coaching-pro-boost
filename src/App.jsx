@@ -5658,8 +5658,8 @@ export default function App() {
       params.get("type") === "recovery" ||
       hashParams.get("type") === "recovery" ||
       window.location.hash === "#recovery" ||
-      sessionStorage.getItem("passwordRecovery") === "1";
-    if (isRecovery) sessionStorage.setItem("passwordRecovery", "1");
+      localStorage.getItem("passwordRecovery") === "1";
+    if (isRecovery) localStorage.setItem("passwordRecovery", "1");
     return isRecovery;
   });
 
@@ -5667,11 +5667,11 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY") {
-        sessionStorage.setItem("passwordRecovery", "1");
+        localStorage.setItem("passwordRecovery", "1");
         setIsPasswordRecovery(true);
         setSession(session);
       } else if (event === "USER_UPDATED") {
-        sessionStorage.removeItem("passwordRecovery");
+        localStorage.removeItem("passwordRecovery");
         setIsPasswordRecovery(false);
         setSession(session);
       } else {
