@@ -2496,33 +2496,30 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball" }) {
         { label: "Demi-terrain ↓", file: "/basketball-demi-terrain-bas.png" },
       ];
 
-  const [terrainUrls, setTerrainUrls] = useState([null, null, null]);
   const [activeTerrain, setActiveTerrain] = useState(0);
+  const [bgReady, setBgReady] = useState(false);
 
-  const loadBackground = (src) => {
-    const img = new Image();
-    img.onload = () => { bgImgRef.current = img; setDims({ width: img.naturalWidth, height: img.naturalHeight }); setTimeout(redraw, 0); };
-    img.src = src;
-  };
-
+  // Charge le terrain actif directement depuis /public sans fetch
   useEffect(() => {
-    (async () => {
-      try {
-        const urls = await Promise.all(TERRAIN_DEFS.map(async (d) => {
-          const resp = await fetch(d.file);
-          const blob = await resp.blob();
-          return new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(blob); });
-        }));
-        setTerrainUrls(urls);
-        loadBackground(urls[0]);
-      } catch { /* pas de fond */ }
-    })();
-  }, []);
+    setBgReady(false);
+    const img = new Image();
+    img.onload = () => {
+      bgImgRef.current = img;
+      setDims({ width: img.naturalWidth, height: img.naturalHeight });
+      setBgReady(true);
+    };
+    img.onerror = () => { bgImgRef.current = null; setBgReady(false); };
+    img.src = TERRAIN_DEFS[activeTerrain].file;
+  }, [activeTerrain]);
+
+  // Redessine dès que le fond est prêt ou que les dims changent
+  useEffect(() => {
+    if (bgReady) redraw();
+  }, [bgReady, dims]);
 
   const switchTerrain = (idx) => {
-    setActiveTerrain(idx);
     elementsRef.current = [];
-    if (terrainUrls[idx]) loadBackground(terrainUrls[idx]);
+    setActiveTerrain(idx);
   };
 
   const redraw = () => {
