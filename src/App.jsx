@@ -1705,12 +1705,11 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
             { name: "Demi-terrain ↑", file: "/basketball-demi-terrain-haut.png" },
             { name: "Demi-terrain ↓", file: "/basketball-demi-terrain-bas.png" },
           ];
-          merged = await Promise.all(merged.map(async (g, i) => {
-            if (g?.dataUrl) return g;
-            const resp = await fetch(defaults[i].file);
+          merged = await Promise.all(defaults.map(async (d, i) => {
+            const resp = await fetch(d.file);
             const blob = await resp.blob();
             const dataUrl = await new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(blob); });
-            return { name: defaults[i].name, dataUrl };
+            return { name: d.name, dataUrl };
           }));
         }
         setGabarits(merged);
