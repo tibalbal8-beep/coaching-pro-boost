@@ -1656,6 +1656,28 @@ function _catmullRomPath(ctx, pts) {
   }
 }
 
+function _sampleCatmullRom(pts, stepsPerSeg = 30) {
+  if (pts.length < 2) return pts;
+  const result = [];
+  for (let seg = 0; seg < pts.length - 1; seg++) {
+    const p0 = pts[Math.max(seg - 1, 0)];
+    const p1 = pts[seg];
+    const p2 = pts[seg + 1];
+    const p3 = pts[Math.min(seg + 2, pts.length - 1)];
+    const cp1x = p1.x + (p2.x - p0.x) / 6, cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6, cp2y = p2.y - (p3.y - p1.y) / 6;
+    for (let i = 0; i < stepsPerSeg; i++) {
+      const t = i / stepsPerSeg, mt = 1 - t;
+      result.push({
+        x: mt*mt*mt*p1.x + 3*mt*mt*t*cp1x + 3*mt*t*t*cp2x + t*t*t*p2.x,
+        y: mt*mt*mt*p1.y + 3*mt*mt*t*cp1y + 3*mt*t*t*cp2y + t*t*t*p2.y,
+      });
+    }
+  }
+  result.push(pts[pts.length - 1]);
+  return result;
+}
+
 function _drawArrowHead(ctx, from, to, color, size) {
   const angle = Math.atan2(to.y - from.y, to.x - from.x);
   const a1 = angle + Math.PI - 0.45, a2 = angle + Math.PI + 0.45;
@@ -1672,7 +1694,7 @@ function _drawStroke(ctx, stroke) {
   const pts = stroke.points;
   if (pts.length < 2) return;
   const last = pts[pts.length - 1];
-  const prev = pts[Math.max(0, pts.length - 4)];
+  const prev = stroke.isCurve ? pts[Math.max(0, pts.length - 2)] : pts[Math.max(0, pts.length - 4)];
   const arrowSize = 6 + stroke.width * 2;
   const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
   if (stroke.style === "tir") {
@@ -1698,7 +1720,11 @@ function _drawStroke(ctx, stroke) {
   ctx.beginPath(); ctx.strokeStyle = stroke.color; ctx.lineWidth = stroke.width;
   ctx.lineCap = "round"; ctx.lineJoin = "round";
   ctx.setLineDash(stroke.style === "pointille" ? [stroke.width * 3.5, stroke.width * 2.5] : []);
-  if (stroke.isCurve) { _catmullRomPath(ctx, drawPts); }
+  if (stroke.isCurve && stroke.style === "zigzag") {
+    const sampled = _sampleCatmullRom(stroke.arrow ? [...pts.slice(0, -1), { x: last.x - Math.cos(angle) * arrowSize * 0.7, y: last.y - Math.sin(angle) * arrowSize * 0.7 }] : pts);
+    const zpts = _zigzagify(sampled);
+    zpts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+  } else if (stroke.isCurve) { _catmullRomPath(ctx, drawPts); }
   else if (drawPts.length < 3) { drawPts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); }); }
   else { ctx.moveTo(drawPts[0].x, drawPts[0].y); for (let i = 1; i < drawPts.length - 1; i++) { const mx = (drawPts[i].x + drawPts[i + 1].x) / 2, my = (drawPts[i].y + drawPts[i + 1].y) / 2; ctx.quadraticCurveTo(drawPts[i].x, drawPts[i].y, mx, my); } ctx.lineTo(drawPts[drawPts.length - 1].x, drawPts[drawPts.length - 1].y); }
   ctx.stroke(); ctx.setLineDash([]);
@@ -1822,6 +1848,10 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const [showRefPhoto, setShowRefPhoto] = useState(true);
   const [courtVariant, setCourtVariant] = useState(null);
   const [selectedEl, setSelectedEl] = useState(null);
+  const curvePointsRef = useRef([]);
+  const [curvePoints, setCurvePoints] = useState([]);
+  const lastClickTimeRef = useRef(0);
+  const pointerDownPtRef = useRef(null);
 
   const loadBackground = (src) => {
     const img = new Image();
@@ -1964,6 +1994,21 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         }
       }
     });
+    // Preview courbe en cours
+    const cpPts = curvePointsRef.current;
+    if (cpPts.length >= 1) {
+      if (cpPts.length >= 2) {
+        ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = lineWidth;
+        ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.setLineDash([6, 4]);
+        ctx.beginPath(); _catmullRomPath(ctx, cpPts); ctx.stroke();
+        ctx.setLineDash([]); ctx.restore();
+      }
+      cpPts.forEach((p, i) => {
+        ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = i === 0 ? "#FF6B35" : color; ctx.fill();
+        ctx.strokeStyle = "white"; ctx.lineWidth = 1.5; ctx.stroke();
+      });
+    }
   };
 
   const toCanvasPoint = (e) => {
@@ -1973,9 +2018,23 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
   };
 
+  const commitCurve = () => {
+    const pts = curvePointsRef.current;
+    if (pts.length >= 2) {
+      elementsRef.current.push({ type: "stroke", color, width: lineWidth, style: lineStyle, arrow: arrowEnd, points: pts, isCurve: true });
+    }
+    curvePointsRef.current = [];
+    setCurvePoints([]);
+    redraw();
+  };
+
   const handlePointerDown = (e) => {
     e.preventDefault();
     canvasRef.current.setPointerCapture?.(e.pointerId);
+    if (tool === "curve") {
+      pointerDownPtRef.current = toCanvasPoint(e);
+      return;
+    }
     if (tool === "player") {
       const pt = toCanvasPoint(e);
       const equipKinds = ["plot", "chaise", "cerceau", "handball"];
@@ -2015,6 +2074,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     currentRef.current = { type: "stroke", color, width: lineWidth, style: lineStyle, arrow: arrowEnd, points: [toCanvasPoint(e)] };
   };
   const handlePointerMove = (e) => {
+    if (tool === "curve") return;
     if (tool === "select") {
       if (!draggingRef.current) return;
       e.preventDefault();
@@ -2044,6 +2104,22 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     ctx.stroke();
   };
   const handlePointerUp = (e) => {
+    if (tool === "curve") {
+      const pt = toCanvasPoint(e);
+      const down = pointerDownPtRef.current;
+      if (!down || Math.hypot(pt.x - down.x, pt.y - down.y) > 8) return;
+      const now = Date.now();
+      const isDbl = (now - lastClickTimeRef.current) < 300;
+      lastClickTimeRef.current = now;
+      if (isDbl && curvePointsRef.current.length >= 1) {
+        commitCurve();
+      } else {
+        curvePointsRef.current = [...curvePointsRef.current, pt];
+        setCurvePoints([...curvePointsRef.current]);
+        redraw();
+      }
+      return;
+    }
     if (tool === "select") {
       const d = draggingRef.current;
       draggingRef.current = null;
@@ -2146,6 +2222,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>DESSINER UNE FICHE</h2>
         <div className="flex items-center gap-1 bg-[#1B2A4A]/5 rounded-full p-1">
           <button onClick={() => setTool("pen")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "pen" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>✏️ Stylo</button>
+          <button onClick={() => { curvePointsRef.current = []; setCurvePoints([]); setTool("curve"); }} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "curve" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>〜 Courbe</button>
           <button onClick={() => setTool("player")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "player" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🧍 Joueur</button>
           <button onClick={() => setTool("text")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "text" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🔤 Texte</button>
           <button onClick={() => setTool("select")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "select" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🖐 Déplacer</button>
@@ -2173,6 +2250,21 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
             <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
               <input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche
             </label>
+          </>
+        ) : tool === "curve" ? (
+          <>
+            {["#1B2A4A","#D62828","#2563EB"].map(c => <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />)}
+            <select value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
+              <option value={1.5}>Fin</option><option value={2.5}>Moyen</option><option value={4}>Épais</option>
+            </select>
+            <select value={lineStyle} onChange={e => setLineStyle(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
+              <option value="simple">Déplacement</option><option value="pointille">Passe</option><option value="zigzag">Dribble</option><option value="ecran">Écran</option>
+            </select>
+            <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche</label>
+            {curvePoints.length >= 2 && (
+              <button onClick={commitCurve} className="px-3 py-1.5 rounded-md text-sm font-semibold bg-[#FF6B35] text-white hover:bg-[#e85a28]">✓ Terminer ({curvePoints.length} pts)</button>
+            )}
+            {curvePoints.length === 0 && <span className="text-xs text-[#1B2A4A]/40">Clique pour placer des points · double-clic pour terminer</span>}
           </>
         ) : tool === "player" ? (
           <>
@@ -2760,7 +2852,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball" }) {
             {["#1B2A4A","#D62828","#2563EB"].map(c => <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />)}
             <select value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white"><option value={1.5}>Fin</option><option value={2.5}>Moyen</option><option value={4}>Épais</option></select>
             <select value={lineStyle} onChange={e => setLineStyle(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-              <option value="simple">Déplacement</option><option value="pointille">Passe</option>
+              <option value="simple">Déplacement</option><option value="pointille">Passe</option><option value="zigzag">Dribble</option><option value="ecran">Écran</option>
             </select>
             <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche</label>
             {curvePoints.length >= 2 && (
