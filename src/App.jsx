@@ -1699,7 +1699,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           const dataUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgText);
           merged = merged.map((g, i) => i === 0 ? { name: "Fiche séance", dataUrl } : g);
         }
-        if (courtType === "basketball" && gabaritKey === "exerciseGabarits") {
+        if (courtType === "basketball" && (gabaritKey === "exerciseGabarits" || gabaritKey === "playGabarits")) {
           const defaults = [
             { name: "Terrain complet", file: "/basketball-terrain-complet.png" },
             { name: "Demi-terrain ↑", file: "/basketball-demi-terrain-haut.png" },
@@ -3595,9 +3595,16 @@ function PlayViewer({ play, onClose, onEdit }) {
           <div className="text-white/40 text-sm">Aucune image</div>
         )}
       </div>
-      {(play.description || play.notes || (play.tags || []).length > 0 || play.diagram) && (
+      {(play.description || play.notes || (play.tags || []).length > 0 || play.diagram || (play.schemas || []).length > 0) && (
         <div className="flex-shrink-0 bg-[#1B2A4A]/90 px-4 py-3 max-h-60 overflow-y-auto" onClick={e => e.stopPropagation()}>
-          {play.diagram && (
+          {(play.schemas || []).length > 0 && (
+            <div className="flex gap-2 flex-wrap mb-2">
+              {play.schemas.map((dataUrl, i) => (
+                <img key={i} src={dataUrl} className="h-20 w-auto rounded-lg border border-white/20 object-cover" />
+              ))}
+            </div>
+          )}
+          {play.diagram && !play.schemas?.length && (
             <div className="mb-2 bg-white/10 rounded-lg overflow-hidden">
               <CourtDiagram diagram={play.diagram} />
             </div>
@@ -3689,8 +3696,8 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
   const [images, setImages] = useState(
     initial?.images?.map(img => ({ ...img, file: img.hasFile ? { name: img.fileName, type: img.fileType, data: null } : null })) || []
   );
-  const [diagram, setDiagram] = useState(initial?.diagram || null);
-  const [showDiagram, setShowDiagram] = useState(!!(initial?.diagram));
+  const [schemas, setSchemas] = useState(initial?.schemas || []);
+  const [editingSchemaIdx, setEditingSchemaIdx] = useState(null);
   const [selectedTags, setSelectedTags] = useState(initial?.tags || []);
   const [newTagInput, setNewTagInput] = useState("");
   const [tagsOpen, setTagsOpen] = useState(false);
@@ -3810,20 +3817,42 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
         />
       )}
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50">Schéma tactique</div>
-          {!showDiagram ? (
-            <button type="button" onClick={() => setShowDiagram(true)}
-              className="flex items-center gap-1 text-xs text-[#FF6B35] hover:underline font-medium">
-              <Plus size={13} /> Dessiner un play
-            </button>
-          ) : (
-            <button type="button" onClick={() => { setShowDiagram(false); setDiagram(null); }}
-              className="text-xs text-[#1B2A4A]/40 hover:text-red-500">Supprimer le schéma</button>
-          )}
-        </div>
-        {showDiagram && (
-          <CourtEditor value={diagram} onChange={setDiagram} />
+        <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-2">Schémas tactiques</div>
+        {schemas.length > 0 && editingSchemaIdx === null && (
+          <div className="flex gap-2 flex-wrap mb-2">
+            {schemas.map((dataUrl, i) => (
+              <div key={i} className="relative group">
+                <img src={dataUrl} className="w-28 h-20 object-cover rounded-lg border border-[#1B2A4A]/15 cursor-pointer" onClick={() => setEditingSchemaIdx(i)} />
+                <button type="button" onClick={() => setSchemas(s => s.filter((_, j) => j !== i))}
+                  className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {editingSchemaIdx !== null && (
+          <DrawSheetView
+            gabaritKey="playGabarits"
+            courtType={SPORT_COURT}
+            referencePhoto={null}
+            onCancel={() => setEditingSchemaIdx(null)}
+            onAddDirect={null}
+            processing={false}
+            onValidate={(dataUrl) => {
+              if (editingSchemaIdx < schemas.length) {
+                setSchemas(s => s.map((x, i) => i === editingSchemaIdx ? dataUrl : x));
+              } else {
+                setSchemas(s => [...s, dataUrl]);
+              }
+              setEditingSchemaIdx(null);
+            }}
+          />
+        )}
+        {editingSchemaIdx === null && (
+          <button type="button"
+            onClick={() => setEditingSchemaIdx(schemas.length)}
+            className="w-full py-2 rounded-lg text-xs font-semibold border-2 border-dashed border-[#FF6B35]/40 text-[#FF6B35] hover:border-[#FF6B35] hover:bg-[#FF6B35]/5 transition-colors">
+            + Ajouter un schéma tactique
+          </button>
         )}
       </div>
       <div className="relative">
@@ -3840,7 +3869,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
         <button onClick={() => {
           if (!titre.trim()) { cpbAlert?.("Donne un titre au play."); return; }
-          onSave({ id: initial?.id || uid(), titre, type, description, notes, tags: selectedTags, images, diagram: showDiagram ? diagram : null, createdAt: initial?.createdAt || new Date().toISOString() });
+          onSave({ id: initial?.id || uid(), titre, type, description, notes, tags: selectedTags, images, schemas, createdAt: initial?.createdAt || new Date().toISOString() });
         }} className="px-5 py-2 text-sm font-medium rounded-md bg-[#FF6B35] text-white hover:bg-[#e85a28]">Enregistrer</button>
       </div>
     </div>
