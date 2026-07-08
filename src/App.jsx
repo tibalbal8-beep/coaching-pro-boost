@@ -3688,7 +3688,7 @@ function PlayImageSlot({ img, playId, onChange, onRemove }) {
   );
 }
 
-function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
+function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType = "basketball" }) {
   const [titre, setTitre] = useState(initial?.titre || "");
   const [type, setType] = useState(initial?.type || PLAY_TYPES[0]);
   const [description, setDescription] = useState(initial?.description || "");
@@ -3832,7 +3832,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags }) {
         {editingSchemaIdx !== null && (
           <DrawSheetView
             gabaritKey="playGabarits"
-            courtType={SPORT_COURT}
+            courtType={courtType}
             referencePhoto={null}
             onCancel={() => setEditingSchemaIdx(null)}
             onAddDirect={null}
@@ -5158,7 +5158,7 @@ function CoachingProBoost({ session }) {
         {view === "playbook" && playbookForm && (
           <div className="max-w-xl">
             <h2 className="text-xl font-bold text-[#1B2A4A] mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>{editingPlay ? "MODIFIER LE PLAY" : "NOUVEAU PLAY"}</h2>
-            <PlayForm initial={editingPlay} playTags={playTags} savePlayTags={savePlayTags}
+            <PlayForm initial={editingPlay} playTags={playTags} savePlayTags={savePlayTags} courtType={SPORT_COURT}
               onSave={(play) => {
                 const next = editingPlay ? plays.map(p => p.id === play.id ? play : p) : [...plays, play];
                 savePlays(next);
