@@ -811,15 +811,11 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
                 </div>
               </div>
             )}
-            {/* DrawSheetView pour éditer ou ajouter */}
+            {/* DrawTacticalView pour éditer ou ajouter un schéma */}
             {editingSchemaIdx !== null && (
-              <DrawSheetView
-                gabaritKey={courtType === "handball" ? "exerciseGabaritsHandball" : "exerciseGabarits"}
+              <DrawTacticalView
                 courtType={courtType}
-                referencePhoto={file?.data ? file.data : null}
                 onCancel={() => setEditingSchemaIdx(null)}
-                onAddDirect={null}
-                processing={false}
                 onValidate={(dataUrl) => {
                   if (editingSchemaIdx < schemas.length) {
                     setSchemas(s => s.map((x, i) => i === editingSchemaIdx ? dataUrl : x));
@@ -1611,6 +1607,158 @@ function generateBasketballCourtDataUrl(variant) {
   return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgStr);
 }
 
+// ─── Fonctions utilitaires de dessin canvas (partagées entre DrawSheetView et DrawTacticalView) ───
+
+function _zigzagify(points, amplitude = 7, step = 12) {
+  if (points.length < 2) return points;
+  const resampled = [points[0]];
+  let dist = 0;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1], b = points[i];
+    const segLen = Math.hypot(b.x - a.x, b.y - a.y);
+    let covered = 0;
+    while (dist + (segLen - covered) >= step) {
+      const remaining = step - dist;
+      const t = (covered + remaining) / segLen;
+      resampled.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+      covered += remaining;
+      dist = 0;
+    }
+    dist += segLen - covered;
+  }
+  resampled.push(points[points.length - 1]);
+  if (resampled.length < 3) return points;
+  const out = [resampled[0]];
+  for (let i = 1; i < resampled.length - 1; i++) {
+    const a = resampled[i - 1], b = resampled[i];
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len, ny = dx / len;
+    const side = i % 2 === 0 ? 1 : -1;
+    out.push({ x: b.x + nx * amplitude * side, y: b.y + ny * amplitude * side });
+  }
+  out.push(resampled[resampled.length - 1]);
+  return out;
+}
+
+function _drawArrowHead(ctx, from, to, color, size) {
+  const angle = Math.atan2(to.y - from.y, to.x - from.x);
+  const a1 = angle + Math.PI - 0.45, a2 = angle + Math.PI + 0.45;
+  ctx.beginPath();
+  ctx.moveTo(to.x, to.y);
+  ctx.lineTo(to.x + size * Math.cos(a1), to.y + size * Math.sin(a1));
+  ctx.lineTo(to.x + size * Math.cos(a2), to.y + size * Math.sin(a2));
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+function _drawStroke(ctx, stroke) {
+  const pts = stroke.points;
+  if (pts.length < 2) return;
+  const last = pts[pts.length - 1];
+  const prev = pts[Math.max(0, pts.length - 4)];
+  const arrowSize = 6 + stroke.width * 2;
+  const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
+  if (stroke.style === "tir") {
+    const gap = stroke.width * 2.5;
+    const globalAngle = Math.atan2(last.y - pts[0].y, last.x - pts[0].x);
+    const px = Math.cos(globalAngle + Math.PI / 2) * gap / 2;
+    const py = Math.sin(globalAngle + Math.PI / 2) * gap / 2;
+    const tirPts = [...pts.slice(0, -1), { x: last.x - Math.cos(angle) * arrowSize * 0.7, y: last.y - Math.sin(angle) * arrowSize * 0.7 }];
+    const drawLine = (offX, offY) => {
+      const op = tirPts.map(p => ({ x: p.x + offX, y: p.y + offY }));
+      ctx.beginPath();
+      ctx.strokeStyle = stroke.color; ctx.lineWidth = stroke.width * 0.85;
+      ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.setLineDash([]);
+      if (op.length < 3) { op.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); }); }
+      else { ctx.moveTo(op[0].x, op[0].y); for (let i = 1; i < op.length - 1; i++) { const mx = (op[i].x + op[i + 1].x) / 2, my = (op[i].y + op[i + 1].y) / 2; ctx.quadraticCurveTo(op[i].x, op[i].y, mx, my); } ctx.lineTo(op[op.length - 1].x, op[op.length - 1].y); }
+      ctx.stroke();
+    };
+    drawLine(px, py); drawLine(-px, -py);
+    _drawArrowHead(ctx, prev, last, stroke.color, arrowSize);
+    return;
+  }
+  const drawPts = (stroke.arrow && stroke.style !== "ecran") ? [...pts.slice(0, -1), { x: last.x - Math.cos(angle) * arrowSize * 0.7, y: last.y - Math.sin(angle) * arrowSize * 0.7 }] : pts;
+  ctx.beginPath(); ctx.strokeStyle = stroke.color; ctx.lineWidth = stroke.width;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.setLineDash(stroke.style === "pointille" ? [stroke.width * 3.5, stroke.width * 2.5] : []);
+  if (drawPts.length < 3) { drawPts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); }); }
+  else { ctx.moveTo(drawPts[0].x, drawPts[0].y); for (let i = 1; i < drawPts.length - 1; i++) { const mx = (drawPts[i].x + drawPts[i + 1].x) / 2, my = (drawPts[i].y + drawPts[i + 1].y) / 2; ctx.quadraticCurveTo(drawPts[i].x, drawPts[i].y, mx, my); } ctx.lineTo(drawPts[drawPts.length - 1].x, drawPts[drawPts.length - 1].y); }
+  ctx.stroke(); ctx.setLineDash([]);
+  if (stroke.arrow && stroke.style !== "ecran") _drawArrowHead(ctx, prev, last, stroke.color, arrowSize);
+  if (stroke.style === "ecran") {
+    const perpLen = 7 + stroke.width;
+    const px = Math.cos(angle + Math.PI / 2) * perpLen, py = Math.sin(angle + Math.PI / 2) * perpLen;
+    ctx.beginPath(); ctx.strokeStyle = stroke.color; ctx.lineWidth = stroke.width * 1.2; ctx.lineCap = "round";
+    ctx.moveTo(last.x - px, last.y - py); ctx.lineTo(last.x + px, last.y + py); ctx.stroke();
+  }
+}
+
+function _drawPlayerToken(ctx, t) {
+  const sc = t.size ?? 1; const r = 16 * sc;
+  ctx.save();
+  if (t.kind === "plot") {
+    const h = 28 * sc, w = 22 * sc;
+    ctx.beginPath(); ctx.moveTo(t.x, t.y - h / 2); ctx.lineTo(t.x - w / 2, t.y + h / 2); ctx.lineTo(t.x + w / 2, t.y + h / 2); ctx.closePath();
+    ctx.fillStyle = "#FF6B35"; ctx.fill(); ctx.strokeStyle = "#c0440a"; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(t.x - w * 0.28, t.y + h * 0.12); ctx.lineTo(t.x + w * 0.28, t.y + h * 0.12); ctx.strokeStyle = "white"; ctx.lineWidth = 2.5; ctx.stroke();
+  } else if (t.kind === "chaise") {
+    const s = 18 * sc; ctx.strokeStyle = "#5a3e2b"; ctx.lineWidth = 2.5 * sc; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.beginPath(); ctx.moveTo(t.x - s / 2, t.y); ctx.lineTo(t.x + s / 2, t.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(t.x + s / 2, t.y); ctx.lineTo(t.x + s / 2, t.y - s * 0.8); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(t.x - s / 2, t.y); ctx.lineTo(t.x - s / 2, t.y + s * 0.7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(t.x + s / 2, t.y); ctx.lineTo(t.x + s / 2, t.y + s * 0.7); ctx.stroke();
+  } else if (t.kind === "cerceau") {
+    const cr = 16 * sc; ctx.beginPath(); ctx.arc(t.x, t.y, cr, 0, Math.PI * 2); ctx.strokeStyle = "#e07020"; ctx.lineWidth = 3 * sc; ctx.stroke();
+  } else if (t.kind === "handball") {
+    const br = 11 * sc;
+    ctx.beginPath(); ctx.arc(t.x, t.y, br, 0, Math.PI * 2); ctx.fillStyle = "#c0392b"; ctx.fill(); ctx.strokeStyle = "#7b241c"; ctx.lineWidth = 1.5 * sc; ctx.stroke();
+    ctx.beginPath(); ctx.arc(t.x, t.y, br, 0, Math.PI * 2); ctx.strokeStyle = "rgba(0,0,0,0.25)"; ctx.lineWidth = sc; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(t.x - br, t.y); ctx.lineTo(t.x + br, t.y); ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = sc; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(t.x, t.y - br); ctx.lineTo(t.x, t.y + br); ctx.stroke();
+    ctx.beginPath(); ctx.arc(t.x, t.y, br * 0.6, Math.PI * 0.2, Math.PI * 0.9); ctx.stroke();
+  } else if (t.role === "defender") {
+    ctx.font = `bold ${Math.round(17 * sc)}px sans-serif`; ctx.fillStyle = "#D62828"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t.label, t.x, t.y);
+  } else if (t.hasBall) {
+    ctx.beginPath(); ctx.arc(t.x, t.y, r, 0, Math.PI * 2); ctx.fillStyle = "white"; ctx.fill(); ctx.lineWidth = 2 * sc; ctx.strokeStyle = "#1B2A4A"; ctx.stroke();
+    ctx.font = `bold ${Math.round(15 * sc)}px sans-serif`; ctx.fillStyle = "#1B2A4A"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t.label, t.x, t.y);
+  } else {
+    ctx.font = `bold ${Math.round(17 * sc)}px sans-serif`; ctx.fillStyle = "#1B2A4A"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t.label, t.x, t.y);
+  }
+  ctx.restore();
+}
+
+function _parseInline(text) {
+  const segs = []; const re = /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*([^*]+?)\*)/g;
+  let last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) segs.push({ text: text.slice(last, m.index), b: false, i: false });
+    if (m[2]) segs.push({ text: m[2], b: true, i: true });
+    else if (m[3]) segs.push({ text: m[3], b: true, i: false });
+    else segs.push({ text: m[4], b: false, i: true });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) segs.push({ text: text.slice(last), b: false, i: false });
+  return segs.length ? segs : [{ text, b: false, i: false }];
+}
+
+function _segFont(t, seg) { return `${(t.italic || seg.i) ? "italic " : ""}${(t.bold || seg.b) ? "bold " : ""}${t.size}px sans-serif`; }
+
+function _drawTextElement(ctx, t) {
+  ctx.textAlign = "left"; ctx.textBaseline = "top";
+  const lineHeight = t.size * 1.25;
+  const lines = t.value.split("\n");
+  if (t.highlight) {
+    const maxW = Math.max(...lines.map(line => _parseInline(line).reduce((w, seg) => { ctx.font = _segFont(t, seg); return w + ctx.measureText(seg.text).width; }, 0)));
+    ctx.fillStyle = "rgba(255,230,0,0.55)"; ctx.fillRect(t.x - 2, t.y - 2, maxW + 4, lines.length * lineHeight + 4);
+  }
+  ctx.fillStyle = t.color;
+  lines.forEach((line, li) => {
+    let xOff = 0;
+    _parseInline(line).forEach(seg => { ctx.font = _segFont(t, seg); ctx.fillText(seg.text, t.x + xOff, t.y + li * lineHeight); xOff += ctx.measureText(seg.text).width; });
+  });
+}
+
 function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtType = "basketball", referencePhoto = null, gabaritKey = "sheetGabarits" }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
@@ -1699,19 +1847,6 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           const dataUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgText);
           merged = merged.map((g, i) => i === 0 ? { name: "Fiche séance", dataUrl } : g);
         }
-        if (courtType === "basketball" && (gabaritKey === "exerciseGabarits" || gabaritKey === "playGabarits")) {
-          const defaults = [
-            { name: "Terrain complet", file: "/basketball-terrain-complet.png" },
-            { name: "Demi-terrain ↑", file: "/basketball-demi-terrain-haut.png" },
-            { name: "Demi-terrain ↓", file: "/basketball-demi-terrain-bas.png" },
-          ];
-          merged = await Promise.all(defaults.map(async (d, i) => {
-            const resp = await fetch(d.file);
-            const blob = await resp.blob();
-            const dataUrl = await new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(blob); });
-            return { name: d.name, dataUrl };
-          }));
-        }
         setGabarits(merged);
         loadBackground(merged[0].dataUrl || DEFAULT_SHEET_TEMPLATE);
       } catch {
@@ -1767,252 +1902,13 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     setEditingGabName(null);
   };
 
-  const zigzagify = (points, amplitude = 7, step = 12) => {
-    if (points.length < 2) return points;
-    // resample at fixed arc-length steps along the raw path
-    const resampled = [points[0]];
-    let dist = 0;
-    for (let i = 1; i < points.length; i++) {
-      const a = points[i - 1], b = points[i];
-      const segLen = Math.hypot(b.x - a.x, b.y - a.y);
-      let covered = 0;
-      while (dist + (segLen - covered) >= step) {
-        const remaining = step - dist;
-        const t = (covered + remaining) / segLen;
-        resampled.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-        covered += remaining;
-        dist = 0;
-      }
-      dist += segLen - covered;
-    }
-    resampled.push(points[points.length - 1]);
-    if (resampled.length < 3) return points;
-    const out = [resampled[0]];
-    for (let i = 1; i < resampled.length - 1; i++) {
-      const a = resampled[i - 1], b = resampled[i];
-      const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
-      const nx = -dy / len, ny = dx / len;
-      const side = i % 2 === 0 ? 1 : -1;
-      out.push({ x: b.x + nx * amplitude * side, y: b.y + ny * amplitude * side });
-    }
-    out.push(resampled[resampled.length - 1]);
-    return out;
-  };
-
-  const drawArrowHead = (ctx, from, to, color, size) => {
-    const angle = Math.atan2(to.y - from.y, to.x - from.x);
-    const a1 = angle + Math.PI - 0.45, a2 = angle + Math.PI + 0.45;
-    ctx.beginPath();
-    ctx.moveTo(to.x, to.y);
-    ctx.lineTo(to.x + size * Math.cos(a1), to.y + size * Math.sin(a1));
-    ctx.lineTo(to.x + size * Math.cos(a2), to.y + size * Math.sin(a2));
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
-  };
-
-  const drawStroke = (ctx, stroke) => {
-    const pts = stroke.points;
-    if (pts.length < 2) return;
-    const last = pts[pts.length - 1];
-    const prev = pts[Math.max(0, pts.length - 4)];
-    const arrowSize = 6 + stroke.width * 2;
-    const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
-
-    // Tir : double trait parallèle + flèche forcée
-    if (stroke.style === "tir") {
-      const gap = stroke.width * 2.5;
-      const globalAngle = Math.atan2(last.y - pts[0].y, last.x - pts[0].x);
-      const px = Math.cos(globalAngle + Math.PI / 2) * gap / 2;
-      const py = Math.sin(globalAngle + Math.PI / 2) * gap / 2;
-      const tirPts = [
-        ...pts.slice(0, -1),
-        { x: last.x - Math.cos(angle) * arrowSize * 0.7, y: last.y - Math.sin(angle) * arrowSize * 0.7 }
-      ];
-      const drawLine = (offX, offY) => {
-        const op = tirPts.map(p => ({ x: p.x + offX, y: p.y + offY }));
-        ctx.beginPath();
-        ctx.strokeStyle = stroke.color;
-        ctx.lineWidth = stroke.width * 0.85;
-        ctx.lineCap = "round"; ctx.lineJoin = "round";
-        ctx.setLineDash([]);
-        if (op.length < 3) {
-          op.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
-        } else {
-          ctx.moveTo(op[0].x, op[0].y);
-          for (let i = 1; i < op.length - 1; i++) {
-            const mx = (op[i].x + op[i + 1].x) / 2, my = (op[i].y + op[i + 1].y) / 2;
-            ctx.quadraticCurveTo(op[i].x, op[i].y, mx, my);
-          }
-          ctx.lineTo(op[op.length - 1].x, op[op.length - 1].y);
-        }
-        ctx.stroke();
-      };
-      drawLine(px, py);
-      drawLine(-px, -py);
-      drawArrowHead(ctx, prev, last, stroke.color, arrowSize);
-      return;
-    }
-
-    // Pour flèche : raccourcir le dernier point pour que la ligne s'arrête à la base de la flèche
-    const drawPts = (stroke.arrow && stroke.style !== "ecran") ? [
-      ...pts.slice(0, -1),
-      { x: last.x - Math.cos(angle) * arrowSize * 0.7, y: last.y - Math.sin(angle) * arrowSize * 0.7 }
-    ] : pts;
-
-    ctx.beginPath();
-    ctx.strokeStyle = stroke.color;
-    ctx.lineWidth = stroke.width;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.setLineDash(stroke.style === "pointille" ? [stroke.width * 3.5, stroke.width * 2.5] : []);
-    if (drawPts.length < 3) {
-      drawPts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
-    } else {
-      ctx.moveTo(drawPts[0].x, drawPts[0].y);
-      for (let i = 1; i < drawPts.length - 1; i++) {
-        const mx = (drawPts[i].x + drawPts[i + 1].x) / 2;
-        const my = (drawPts[i].y + drawPts[i + 1].y) / 2;
-        ctx.quadraticCurveTo(drawPts[i].x, drawPts[i].y, mx, my);
-      }
-      const l = drawPts[drawPts.length - 1];
-      ctx.lineTo(l.x, l.y);
-    }
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    if (stroke.arrow && stroke.style !== "ecran") {
-      drawArrowHead(ctx, prev, last, stroke.color, arrowSize);
-    }
-
-    // Écran : trait perpendiculaire en T au bout (discret)
-    if (stroke.style === "ecran") {
-      const perpLen = 7 + stroke.width;
-      const px = Math.cos(angle + Math.PI / 2) * perpLen;
-      const py = Math.sin(angle + Math.PI / 2) * perpLen;
-      ctx.beginPath();
-      ctx.strokeStyle = stroke.color;
-      ctx.lineWidth = stroke.width * 1.2;
-      ctx.lineCap = "round";
-      ctx.moveTo(last.x - px, last.y - py);
-      ctx.lineTo(last.x + px, last.y + py);
-      ctx.stroke();
-    }
-  };
-
-  const drawPlayerToken = (ctx, t) => {
-    const sc = t.size ?? 1;
-    const r = 16 * sc;
-    ctx.save();
-
-    if (t.kind === "plot") {
-      // Cone orange
-      const h = 28 * sc, w = 22 * sc;
-      ctx.beginPath();
-      ctx.moveTo(t.x, t.y - h / 2);
-      ctx.lineTo(t.x - w / 2, t.y + h / 2);
-      ctx.lineTo(t.x + w / 2, t.y + h / 2);
-      ctx.closePath();
-      ctx.fillStyle = "#FF6B35";
-      ctx.fill();
-      ctx.strokeStyle = "#c0440a";
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      // bande blanche
-      ctx.beginPath();
-      ctx.moveTo(t.x - w * 0.28, t.y + h * 0.12);
-      ctx.lineTo(t.x + w * 0.28, t.y + h * 0.12);
-      ctx.strokeStyle = "white";
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-    } else if (t.kind === "chaise") {
-      const s = 18 * sc;
-      ctx.strokeStyle = "#5a3e2b";
-      ctx.lineWidth = 2.5 * sc;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.beginPath();
-      ctx.moveTo(t.x - s / 2, t.y); ctx.lineTo(t.x + s / 2, t.y); ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(t.x + s / 2, t.y); ctx.lineTo(t.x + s / 2, t.y - s * 0.8); ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(t.x - s / 2, t.y); ctx.lineTo(t.x - s / 2, t.y + s * 0.7); ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(t.x + s / 2, t.y); ctx.lineTo(t.x + s / 2, t.y + s * 0.7); ctx.stroke();
-    } else if (t.kind === "cerceau") {
-      const cr = 16 * sc;
-      ctx.beginPath(); ctx.arc(t.x, t.y, cr, 0, Math.PI * 2);
-      ctx.strokeStyle = "#e07020"; ctx.lineWidth = 3 * sc; ctx.stroke();
-    } else if (t.kind === "handball") {
-      const br = 11 * sc;
-      ctx.beginPath(); ctx.arc(t.x, t.y, br, 0, Math.PI * 2);
-      ctx.fillStyle = "#c0392b"; ctx.fill();
-      ctx.strokeStyle = "#7b241c"; ctx.lineWidth = 1.5 * sc; ctx.stroke();
-      // lignes du ballon de handball
-      ctx.beginPath(); ctx.arc(t.x, t.y, br, 0, Math.PI * 2); ctx.strokeStyle = "rgba(0,0,0,0.25)"; ctx.lineWidth = sc; ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(t.x - br, t.y); ctx.lineTo(t.x + br, t.y); ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = sc; ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(t.x, t.y - br); ctx.lineTo(t.x, t.y + br); ctx.stroke();
-      ctx.beginPath(); ctx.arc(t.x, t.y, br * 0.6, Math.PI * 0.2, Math.PI * 0.9); ctx.stroke();
-    } else if (t.role === "defender") {
-      ctx.font = `bold ${Math.round(17 * sc)}px sans-serif`;
-      ctx.fillStyle = "#D62828";
-      ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(t.label, t.x, t.y);
-    } else if (t.hasBall) {
-      ctx.beginPath(); ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = "white"; ctx.fill();
-      ctx.lineWidth = 2 * sc; ctx.strokeStyle = "#1B2A4A"; ctx.stroke();
-      ctx.font = `bold ${Math.round(15 * sc)}px sans-serif`;
-      ctx.fillStyle = "#1B2A4A"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(t.label, t.x, t.y);
-    } else {
-      ctx.font = `bold ${Math.round(17 * sc)}px sans-serif`;
-      ctx.fillStyle = "#1B2A4A"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(t.label, t.x, t.y);
-    }
-
-    ctx.restore();
-  };
-
-  const parseInline = (text) => {
-    const segs = [];
-    const re = /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*([^*]+?)\*)/g;
-    let last = 0, m;
-    while ((m = re.exec(text)) !== null) {
-      if (m.index > last) segs.push({ text: text.slice(last, m.index), b: false, i: false });
-      if (m[2]) segs.push({ text: m[2], b: true, i: true });
-      else if (m[3]) segs.push({ text: m[3], b: true, i: false });
-      else segs.push({ text: m[4], b: false, i: true });
-      last = m.index + m[0].length;
-    }
-    if (last < text.length) segs.push({ text: text.slice(last), b: false, i: false });
-    return segs.length ? segs : [{ text, b: false, i: false }];
-  };
-
-  const segFont = (t, seg) => `${(t.italic || seg.i) ? "italic " : ""}${(t.bold || seg.b) ? "bold " : ""}${t.size}px sans-serif`;
-
-  const drawTextElement = (ctx, t) => {
-    ctx.textAlign = "left";
-    ctx.textBaseline = "top";
-    const lineHeight = t.size * 1.25;
-    const lines = t.value.split("\n");
-    if (t.highlight) {
-      const maxW = Math.max(...lines.map(line => {
-        return parseInline(line).reduce((w, seg) => { ctx.font = segFont(t, seg); return w + ctx.measureText(seg.text).width; }, 0);
-      }));
-      ctx.fillStyle = "rgba(255,230,0,0.55)";
-      ctx.fillRect(t.x - 2, t.y - 2, maxW + 4, lines.length * lineHeight + 4);
-    }
-    ctx.fillStyle = t.color;
-    lines.forEach((line, li) => {
-      let xOff = 0;
-      parseInline(line).forEach(seg => {
-        ctx.font = segFont(t, seg);
-        ctx.fillText(seg.text, t.x + xOff, t.y + li * lineHeight);
-        xOff += ctx.measureText(seg.text).width;
-      });
-    });
-  };
+  const zigzagify = _zigzagify;
+  const drawArrowHead = _drawArrowHead;
+  const drawStroke = _drawStroke;
+  const drawPlayerToken = _drawPlayerToken;
+  const parseInline = _parseInline;
+  const segFont = _segFont;
+  const drawTextElement = _drawTextElement;
 
   const selectedElRef = useRef(null);
   const redraw = () => {
@@ -2217,25 +2113,6 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
 
   return (
     <div>
-      {/* Sélecteur de terrain — exercice et play */}
-      {(gabaritKey === "exerciseGabarits" || gabaritKey === "exerciseGabaritsHandball" || gabaritKey === "playGabarits") && (
-        <>
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <span className="text-xs font-semibold text-[#1B2A4A]/60 uppercase tracking-wide">Terrain :</span>
-            {COURT_LABELS.map((label, i) => (
-              <button key={i} type="button" onClick={() => { setCourtVariant(i); switchGabarit(i); }}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${courtVariant === i ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A] hover:border-[#1B2A4A]/50"}`}>
-                {label} {!gabarits[i]?.dataUrl && courtType !== "handball" && <span className="opacity-40">— à configurer</span>}
-              </button>
-            ))}
-          </div>
-          {courtVariant !== null && !gabarits[courtVariant]?.dataUrl && courtType !== "handball" && (
-            <p className="mb-3 text-xs text-[#FF6B35]/80 bg-[#FF6B35]/5 border border-[#FF6B35]/20 rounded-lg px-3 py-2">
-              Charge ton image de terrain via <strong>"Changer l'image"</strong> ci-dessous, puis elle sera mémorisée pour la prochaine fois.
-            </p>
-          )}
-        </>
-      )}
       {referencePhoto && showRefPhoto && (
         <div className="mb-3 rounded-lg overflow-hidden border border-[#1B2A4A]/10 bg-white/40">
           <div className="flex items-center justify-between px-2 py-1">
@@ -2575,6 +2452,328 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         <button onClick={() => { commitPendingText(); setTimeout(() => { let q = canvasRef.current.toDataURL("image/jpeg", 0.75); if (q.length > 400000) q = canvasRef.current.toDataURL("image/jpeg", 0.55); onValidate(q); }, 0); }} disabled={processing}
           className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28] disabled:opacity-50">
           {processing ? <><Loader2 size={15} className="animate-spin" /> Analyse en cours...</> : onAddDirect ? "Valider avec analyse IA" : "Utiliser ce schéma"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Dessinateur tactique (bibliothèque + playbook) — terrains fixes, sans gabarits Supabase ───
+function DrawTacticalView({ onValidate, onCancel, courtType = "basketball" }) {
+  const canvasRef = useRef(null);
+  const wrapRef = useRef(null);
+  const bgImgRef = useRef(null);
+  const elementsRef = useRef([]);
+  const currentRef = useRef(null);
+  const [color, setColor] = useState("#1B2A4A");
+  const [lineWidth, setLineWidth] = useState(2.5);
+  const [lineStyle, setLineStyle] = useState("simple");
+  const [arrowEnd, setArrowEnd] = useState(true);
+  const [tool, setTool] = useState("pen");
+  const draggingRef = useRef(null);
+  const [textSize, setTextSize] = useState(16);
+  const [textBold, setTextBold] = useState(false);
+  const [textItalic, setTextItalic] = useState(false);
+  const [textHighlight, setTextHighlight] = useState(false);
+  const [pendingText, setPendingText] = useState(null);
+  const [playerLabel, setPlayerLabel] = useState("1");
+  const [playerHasBall, setPlayerHasBall] = useState(false);
+  const [playerIsDefender, setPlayerIsDefender] = useState(false);
+  const [playerSize, setPlayerSize] = useState(1);
+  const [dims, setDims] = useState({ width: 900, height: 600 });
+  const [selectedEl, setSelectedEl] = useState(null);
+  const selectedElRef = useRef(null);
+
+  const TERRAIN_DEFS = courtType === "handball"
+    ? [
+        { label: "Terrain complet", file: "/handball-terrain-complet.png" },
+        { label: "Attaque", file: "/handball-terrain-attaque.png" },
+        { label: "Défense", file: "/handball-terrain-defense.png" },
+      ]
+    : [
+        { label: "Terrain complet", file: "/basketball-terrain-complet.png" },
+        { label: "Demi-terrain ↑", file: "/basketball-demi-terrain-haut.png" },
+        { label: "Demi-terrain ↓", file: "/basketball-demi-terrain-bas.png" },
+      ];
+
+  const [terrainUrls, setTerrainUrls] = useState([null, null, null]);
+  const [activeTerrain, setActiveTerrain] = useState(0);
+
+  const loadBackground = (src) => {
+    const img = new Image();
+    img.onload = () => { bgImgRef.current = img; setDims({ width: img.naturalWidth, height: img.naturalHeight }); setTimeout(redraw, 0); };
+    img.src = src;
+  };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const urls = await Promise.all(TERRAIN_DEFS.map(async (d) => {
+          const resp = await fetch(d.file);
+          const blob = await resp.blob();
+          return new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(blob); });
+        }));
+        setTerrainUrls(urls);
+        loadBackground(urls[0]);
+      } catch { /* pas de fond */ }
+    })();
+  }, []);
+
+  const switchTerrain = (idx) => {
+    setActiveTerrain(idx);
+    elementsRef.current = [];
+    if (terrainUrls[idx]) loadBackground(terrainUrls[idx]);
+  };
+
+  const redraw = () => {
+    const canvas = canvasRef.current;
+    if (!canvas || !bgImgRef.current) return;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bgImgRef.current, 0, 0, canvas.width, canvas.height);
+    elementsRef.current.forEach(el => {
+      if (el.type === "token") _drawPlayerToken(ctx, el);
+      else if (el.type === "text") _drawTextElement(ctx, el);
+      else _drawStroke(ctx, el);
+      if (el === selectedElRef.current) {
+        if (el.type === "token") {
+          ctx.save(); ctx.strokeStyle = "#FF6B35"; ctx.lineWidth = 3; ctx.setLineDash([4, 3]);
+          ctx.beginPath(); ctx.arc(el.x, el.y, 22, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+        } else if (el.type === "stroke") {
+          ctx.save(); ctx.strokeStyle = "#FF6B35"; ctx.lineWidth = el.width + 6; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.globalAlpha = 0.35;
+          ctx.beginPath(); el.points.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); }); ctx.stroke(); ctx.restore();
+        }
+      }
+    });
+  };
+
+  const toCanvasPoint = (e) => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    return { x: (e.clientX - rect.left) * canvas.width / rect.width, y: (e.clientY - rect.top) * canvas.height / rect.height };
+  };
+
+  const findElementAt = (pt) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    for (let i = elementsRef.current.length - 1; i >= 0; i--) {
+      const el = elementsRef.current[i];
+      if (el.type === "token") { if (Math.hypot(pt.x - el.x, pt.y - el.y) <= 20) return el; }
+      else if (el.type === "text") { ctx.font = `${el.size}px sans-serif`; const lines = el.value.split("\n"); const w = Math.max(...lines.map(l => ctx.measureText(l).width)); const h = lines.length * el.size * 1.25; if (pt.x >= el.x - 4 && pt.x <= el.x + w + 4 && pt.y >= el.y - 4 && pt.y <= el.y + h + 4) return el; }
+      else if (el.type === "stroke") { const tol = el.width / 2 + 10; for (let j = 0; j < el.points.length - 1; j++) { const a = el.points[j], b = el.points[j + 1]; const len2 = (b.x-a.x)**2+(b.y-a.y)**2; let t = len2===0?0:((pt.x-a.x)*(b.x-a.x)+(pt.y-a.y)*(b.y-a.y))/len2; t=Math.max(0,Math.min(1,t)); if (Math.hypot(pt.x-a.x-t*(b.x-a.x), pt.y-a.y-t*(b.y-a.y))<=tol) return el; } }
+    }
+    return null;
+  };
+
+  const moveElementBy = (el, dx, dy) => { if (el.type === "stroke") el.points.forEach(p => { p.x += dx; p.y += dy; }); else { el.x += dx; el.y += dy; } };
+
+  const handlePointerDown = (e) => {
+    e.preventDefault();
+    canvasRef.current.setPointerCapture?.(e.pointerId);
+    if (tool === "player") {
+      const pt = toCanvasPoint(e);
+      const equipKinds = ["plot", "chaise", "cerceau", "handball"];
+      const isEquip = equipKinds.includes(playerLabel);
+      elementsRef.current.push(isEquip
+        ? { type: "token", x: pt.x, y: pt.y, kind: playerLabel, size: playerSize }
+        : { type: "token", x: pt.x, y: pt.y, label: playerLabel, hasBall: playerHasBall, role: playerIsDefender ? "defender" : "offense", size: playerSize });
+      redraw();
+      const numSeq = ["1","2","3","4","5","6","7","8","9","10","11","12"];
+      const xSeq = ["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"];
+      const idxNum = numSeq.indexOf(playerLabel), idxX = xSeq.indexOf(playerLabel);
+      if (idxNum >= 0 && idxNum < numSeq.length - 1) setPlayerLabel(numSeq[idxNum + 1]);
+      else if (idxX >= 0 && idxX < xSeq.length - 1) setPlayerLabel(xSeq[idxX + 1]);
+      return;
+    }
+    if (tool === "text") {
+      if (pendingText) commitPendingText();
+      const pt = toCanvasPoint(e);
+      const wrapRect = wrapRef.current.getBoundingClientRect();
+      setPendingText({ x: pt.x, y: pt.y, screenX: e.clientX - wrapRect.left, screenY: e.clientY - wrapRect.top, value: "" });
+      return;
+    }
+    if (tool === "select") {
+      const pt = toCanvasPoint(e);
+      const el = findElementAt(pt);
+      if (el) { draggingRef.current = { el, startX: pt.x, startY: pt.y, origX: pt.x, origY: pt.y, moved: false }; }
+      else { selectedElRef.current = null; setSelectedEl(null); redraw(); }
+      return;
+    }
+    currentRef.current = { type: "stroke", color, width: lineWidth, style: lineStyle, arrow: arrowEnd, points: [toCanvasPoint(e)] };
+  };
+
+  const handlePointerMove = (e) => {
+    if (tool === "select") {
+      if (!draggingRef.current) return;
+      e.preventDefault();
+      const pt = toCanvasPoint(e);
+      const d = draggingRef.current;
+      moveElementBy(d.el, pt.x - d.startX, pt.y - d.startY);
+      d.startX = pt.x; d.startY = pt.y;
+      if (Math.hypot(pt.x - d.origX, pt.y - d.origY) > 3) d.moved = true;
+      redraw(); return;
+    }
+    if (tool === "player" || !currentRef.current) return;
+    e.preventDefault();
+    const pt = toCanvasPoint(e);
+    currentRef.current.points.push(pt);
+    const ctx = canvasRef.current.getContext("2d");
+    const pts = currentRef.current.points;
+    ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = lineWidth; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    const prev = pts[pts.length - 2] || pt;
+    ctx.moveTo(prev.x, prev.y); ctx.lineTo(pt.x, pt.y); ctx.stroke();
+  };
+
+  const handlePointerUp = (e) => {
+    if (tool === "select") {
+      const d = draggingRef.current; draggingRef.current = null;
+      if (d && !d.moved) {
+        if (d.el.type === "text") {
+          elementsRef.current = elementsRef.current.filter(x => x !== d.el);
+          const canvas = canvasRef.current; const rect = canvas.getBoundingClientRect(); const scale = rect.width / canvas.width;
+          setPendingText({ x: d.el.x, y: d.el.y, screenX: d.el.x * scale, screenY: d.el.y * scale, value: d.el.value }); redraw();
+        } else { selectedElRef.current = d.el; setSelectedEl(d.el); redraw(); }
+      } else if (d && d.moved) { selectedElRef.current = null; setSelectedEl(null); redraw(); }
+      return;
+    }
+    if (tool === "player") return;
+    const stroke = currentRef.current; currentRef.current = null;
+    if (!stroke || stroke.points.length < 2) return;
+    if (stroke.style === "zigzag") stroke.points = _zigzagify(stroke.points);
+    elementsRef.current.push(stroke); redraw();
+  };
+
+  const commitPendingText = () => {
+    setPendingText(current => {
+      if (current && current.value.trim()) {
+        elementsRef.current.push({ type: "text", x: current.x, y: current.y, value: current.value, color, size: textSize, bold: textBold, italic: textItalic, highlight: textHighlight });
+        redraw();
+      }
+      return null;
+    });
+  };
+
+  const undo = () => { elementsRef.current.pop(); redraw(); };
+  const clearAll = () => { if (window.confirm("Effacer tout le dessin ?")) { elementsRef.current = []; redraw(); } };
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <span className="text-xs font-semibold text-[#1B2A4A]/60 uppercase tracking-wide">Terrain :</span>
+        {TERRAIN_DEFS.map((d, i) => (
+          <button key={i} type="button" onClick={() => switchTerrain(i)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${activeTerrain === i ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A] hover:border-[#1B2A4A]/50"}`}>
+            {d.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
+        <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>DESSINER UN SCHÉMA</h2>
+        <div className="flex items-center gap-1 bg-[#1B2A4A]/5 rounded-full p-1">
+          <button onClick={() => setTool("pen")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "pen" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>✏️ Stylo</button>
+          <button onClick={() => setTool("player")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "player" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🧍 Joueur</button>
+          <button onClick={() => setTool("text")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "text" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🔤 Texte</button>
+          <button onClick={() => setTool("select")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "select" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🖐 Déplacer</button>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        {tool === "pen" ? (
+          <>
+            {["#1B2A4A","#D62828","#2563EB"].map(c => <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />)}
+            <select value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white"><option value={1.5}>Fin</option><option value={2.5}>Moyen</option><option value={4}>Épais</option></select>
+            <select value={lineStyle} onChange={e => setLineStyle(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
+              <option value="simple">Déplacement</option><option value="pointille">Passe</option><option value="zigzag">Dribble</option><option value="ecran">Écran</option><option value="tir">Tir</option>
+            </select>
+            <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche</label>
+          </>
+        ) : tool === "player" ? (
+          <>
+            {[{v:"plot",icon:<span className="text-base">🔶</span>},{v:"chaise",icon:<span className="text-base">🪑</span>},{v:"cerceau",icon:<span className="text-base">⭕</span>}].map(eq => (
+              <button key={eq.v} type="button" onClick={() => setPlayerLabel(playerLabel === eq.v ? (playerIsDefender ? "X1" : "1") : eq.v)}
+                className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${playerLabel === eq.v ? "bg-[#1B2A4A] border-[#1B2A4A]" : "border-[#1B2A4A]/20 hover:bg-[#1B2A4A]/5"}`}>{eq.icon}</button>
+            ))}
+            <div className="w-px h-5 bg-[#1B2A4A]/15 mx-0.5" />
+            {!["plot","chaise","cerceau"].includes(playerLabel) && (
+              <select value={playerLabel} onChange={e => setPlayerLabel(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white w-16">
+                {(playerIsDefender?["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"]:["1","2","3","4","5","6","7","8","9","10","11","12"]).map(n=><option key={n} value={n}>{n}</option>)}
+              </select>
+            )}
+            {!["plot","chaise","cerceau"].includes(playerLabel) && <>
+              <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={playerHasBall} onChange={e => setPlayerHasBall(e.target.checked)} disabled={playerIsDefender} /> Ballon</label>
+              <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={playerIsDefender} onChange={e => { const def=e.target.checked; setPlayerIsDefender(def); const nums=["1","2","3","4","5","6","7","8","9","10","11","12"],xNums=["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"]; if(def){const i=nums.indexOf(playerLabel);if(i>=0)setPlayerLabel(xNums[i]);else setPlayerLabel("X1");}else{const i=xNums.indexOf(playerLabel);if(i>=0)setPlayerLabel(nums[i]);else setPlayerLabel("1");} }} /> Défenseur</label>
+            </>}
+            <div className="flex items-center gap-1 bg-[#1B2A4A]/5 rounded-full px-1 py-0.5">
+              {[{v:0.6,l:"S"},{v:1,l:"M"},{v:1.5,l:"L"}].map(sz=><button key={sz.v} type="button" onClick={() => setPlayerSize(sz.v)} className={`w-6 h-6 rounded-full text-xs font-bold transition-colors ${playerSize===sz.v?"bg-white text-[#1B2A4A] shadow-sm":"text-[#1B2A4A]/50"}`}>{sz.l}</button>)}
+            </div>
+          </>
+        ) : tool === "text" ? (
+          <>
+            {["#1B2A4A","#D62828","#2563EB","#16a34a","#FF6B35"].map(c=><button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2 flex-shrink-0" style={{ backgroundColor:c, borderColor:color===c?"#FF6B35":"transparent" }} />)}
+            <select value={textSize} onChange={e => setTextSize(Number(e.target.value))} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white"><option value={10}>XS</option><option value={14}>Petit</option><option value={18}>Moyen</option><option value={24}>Grand</option><option value={32}>Titre</option></select>
+            <button onClick={() => setTextBold(b=>!b)} className={`px-2.5 py-1 rounded text-sm font-bold border ${textBold?"bg-[#1B2A4A] text-white border-[#1B2A4A]":"border-[#1B2A4A]/20 text-[#1B2A4A]"}`}>G</button>
+            <button onClick={() => setTextItalic(b=>!b)} className={`px-2.5 py-1 rounded text-sm italic border ${textItalic?"bg-[#1B2A4A] text-white border-[#1B2A4A]":"border-[#1B2A4A]/20 text-[#1B2A4A]"}`}>I</button>
+            <button onClick={() => setTextHighlight(b=>!b)} className={`px-2.5 py-1 rounded text-sm border ${textHighlight?"bg-yellow-300 border-yellow-400 text-[#1B2A4A]":"border-[#1B2A4A]/20 text-[#1B2A4A]"}`}>🖊</button>
+          </>
+        ) : (
+          <span className="text-xs text-[#1B2A4A]/40">{selectedEl ? "Élément sélectionné" : "Tap = sélectionner · Glisser = déplacer"}</span>
+        )}
+        <button onClick={undo} className="px-3 py-1.5 rounded-md text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5 ml-auto">Annuler</button>
+        <button onClick={clearAll} className="px-3 py-1.5 rounded-md text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5">Effacer tout</button>
+      </div>
+      <div ref={wrapRef} className="relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white mb-4" style={{ touchAction: "none" }}>
+        <canvas ref={canvasRef} width={dims.width} height={dims.height}
+          style={{ width: "100%", height: "auto", display: "block", touchAction: "none" }}
+          onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp} />
+        {pendingText && (() => {
+          const taRef = React.createRef();
+          return (
+            <div style={{ position: "absolute", left: pendingText.screenX, top: pendingText.screenY - textSize * 0.7 }} onPointerDown={e => e.stopPropagation()}>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 4 }}>
+                <textarea ref={taRef} autoFocus rows={Math.max(1, pendingText.value.split("\n").length)} value={pendingText.value}
+                  onChange={e => setPendingText({ ...pendingText, value: e.target.value })}
+                  onKeyDown={e => { if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); commitPendingText(); } if (e.key === "Escape") setPendingText(null); }}
+                  style={{ fontSize: textSize, color, fontWeight: textBold?"bold":"normal", fontStyle: textItalic?"italic":"normal", background: textHighlight?"rgba(255,230,0,0.7)":"rgba(255,255,255,0.9)", border: "1px dashed #FF6B35", outline: "none", padding: "2px 4px", minWidth: 120, resize: "both", lineHeight: 1.25, fontFamily: "sans-serif", borderRadius: 3 }} />
+                <button onClick={commitPendingText} style={{ fontSize: 11, background: "#FF6B35", color: "white", border: "none", borderRadius: 4, padding: "3px 8px", cursor: "pointer", marginBottom: 2 }}>OK</button>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+      {selectedEl && (
+        <div className="mb-4 p-3 border border-[#FF6B35]/30 rounded-xl bg-[#FF6B35]/5 flex flex-wrap items-center gap-3">
+          <span className="text-xs font-semibold text-[#FF6B35] uppercase tracking-wide">{selectedEl.type === "stroke" ? "Trait sélectionné" : "Élément sélectionné"}</span>
+          {selectedEl.type === "stroke" && (
+            <>
+              <div className="flex items-center gap-1">
+                {["#1B2A4A","#D62828","#2563EB","#16a34a","#FF6B35"].map(c => (
+                  <button key={c} type="button" onClick={() => { selectedEl.color=c; selectedElRef.current=selectedEl; redraw(); setSelectedEl({...selectedEl,color:c}); }}
+                    className="w-6 h-6 rounded-full border-2" style={{ backgroundColor:c, borderColor:selectedEl.color===c?"#FF6B35":"transparent" }} />
+                ))}
+              </div>
+              <select value={selectedEl.style} onChange={e => { selectedEl.style=e.target.value; selectedElRef.current=selectedEl; redraw(); setSelectedEl({...selectedEl,style:e.target.value}); }}
+                className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
+                <option value="simple">Déplacement</option><option value="pointille">Passe</option><option value="zigzag">Dribble</option><option value="ecran">Écran</option>
+              </select>
+              <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
+                <input type="checkbox" checked={!!selectedEl.arrow} onChange={e => { selectedEl.arrow=e.target.checked; selectedElRef.current=selectedEl; redraw(); setSelectedEl({...selectedEl,arrow:e.target.checked}); }} /> Flèche
+              </label>
+              <select value={selectedEl.width} onChange={e => { selectedEl.width=Number(e.target.value); selectedElRef.current=selectedEl; redraw(); setSelectedEl({...selectedEl,width:Number(e.target.value)}); }}
+                className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
+                <option value={1.5}>Fin</option><option value={2.5}>Moyen</option><option value={4}>Épais</option>
+              </select>
+            </>
+          )}
+          <button type="button" onClick={() => { elementsRef.current=elementsRef.current.filter(x=>x!==selectedEl); selectedElRef.current=null; setSelectedEl(null); redraw(); }}
+            className="ml-auto px-3 py-1.5 rounded-lg text-sm font-medium bg-red-500 text-white hover:bg-red-600">🗑 Supprimer</button>
+          <button type="button" onClick={() => { selectedElRef.current=null; setSelectedEl(null); redraw(); }}
+            className="px-3 py-1.5 rounded-lg text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5">✕ Désélectionner</button>
+        </div>
+      )}
+      <div className="flex justify-end gap-2">
+        <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
+        <button onClick={() => { commitPendingText(); setTimeout(() => { let q = canvasRef.current.toDataURL("image/jpeg", 0.75); if (q.length > 400000) q = canvasRef.current.toDataURL("image/jpeg", 0.55); onValidate(q); }, 0); }}
+          className="bg-[#FF6B35] text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]">
+          Utiliser ce schéma
         </button>
       </div>
     </div>
@@ -3829,13 +4028,9 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
           </div>
         )}
         {editingSchemaIdx !== null && (
-          <DrawSheetView
-            gabaritKey="playGabarits"
+          <DrawTacticalView
             courtType={courtType}
-            referencePhoto={null}
             onCancel={() => setEditingSchemaIdx(null)}
-            onAddDirect={null}
-            processing={false}
             onValidate={(dataUrl) => {
               if (editingSchemaIdx < schemas.length) {
                 setSchemas(s => s.map((x, i) => i === editingSchemaIdx ? dataUrl : x));
