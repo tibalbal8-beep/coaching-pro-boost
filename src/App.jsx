@@ -2086,7 +2086,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     currentRef.current = { type: "stroke", color, width: lineWidth, style: lineStyle, arrow: arrowEnd, points: [toCanvasPoint(e)] };
   };
   const handlePointerMove = (e) => {
-    if (tool === "curve") return;
+    if (tool === "curve") { e.preventDefault(); return; }
     if (tool === "select") {
       if (!draggingRef.current) return;
       e.preventDefault();
@@ -2123,7 +2123,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     if (tool === "curve") {
       const pt = toCanvasPoint(e);
       const down = pointerDownPtRef.current;
-      if (!down || Math.hypot(pt.x - down.x, pt.y - down.y) > 8) return;
+      if (!down || Math.hypot(pt.x - down.x, pt.y - down.y) > 15) return;
       const now = Date.now();
       const isDbl = (now - lastClickTimeRef.current) < 300;
       lastClickTimeRef.current = now;
@@ -2773,7 +2773,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball" }) {
   };
 
   const handlePointerMove = (e) => {
-    if (tool === "curve") return;
+    if (tool === "curve") { e.preventDefault(); return; }
     if (tool === "select") {
       if (!draggingRef.current) return;
       e.preventDefault();
@@ -2803,7 +2803,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball" }) {
     if (tool === "curve") {
       const pt = toCanvasPoint(e);
       const down = pointerDownPtRef.current;
-      if (!down || Math.hypot(pt.x - down.x, pt.y - down.y) > 8) return;
+      if (!down || Math.hypot(pt.x - down.x, pt.y - down.y) > 15) return;
       const now = Date.now();
       const isDbl = (now - lastClickTimeRef.current) < 300;
       lastClickTimeRef.current = now;
