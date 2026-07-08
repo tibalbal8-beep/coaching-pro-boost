@@ -1980,6 +1980,12 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           ctx.stroke();
           ctx.setLineDash([]);
           ctx.restore();
+        } else if (el.type === "stroke" && el.isCurve) {
+          el.points.forEach(p => {
+            ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(255,107,53,0.9)"; ctx.fill();
+            ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.stroke();
+          });
         } else if (el.type === "stroke") {
           ctx.save();
           ctx.strokeStyle = "#FF6B35";
@@ -2061,6 +2067,12 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     }
     if (tool === "select") {
       const pt = toCanvasPoint(e);
+      // Glisser un point de contrôle d'une courbe sélectionnée
+      const sel = selectedElRef.current;
+      if (sel?.type === "stroke" && sel.isCurve) {
+        const pidx = sel.points.findIndex(p => Math.hypot(pt.x - p.x, pt.y - p.y) <= 14);
+        if (pidx >= 0) { draggingRef.current = { el: sel, pointIdx: pidx, startX: pt.x, startY: pt.y, moved: false }; return; }
+      }
       const el = findElementAt(pt);
       if (el) {
         draggingRef.current = { el, startX: pt.x, startY: pt.y, origX: pt.x, origY: pt.y, moved: false };
@@ -2080,6 +2092,10 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       e.preventDefault();
       const pt = toCanvasPoint(e);
       const d = draggingRef.current;
+      if (d.pointIdx !== undefined) {
+        d.el.points[d.pointIdx] = { x: pt.x, y: pt.y };
+        d.moved = true; redraw(); return;
+      }
       moveElementBy(d.el, pt.x - d.startX, pt.y - d.startY);
       d.startX = pt.x; d.startY = pt.y;
       if (Math.hypot(pt.x - d.origX, pt.y - d.origY) > 3) d.moved = true;
@@ -2668,6 +2684,12 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball" }) {
         if (el.type === "token") {
           ctx.save(); ctx.strokeStyle = "#FF6B35"; ctx.lineWidth = 3; ctx.setLineDash([4, 3]);
           ctx.beginPath(); ctx.arc(el.x, el.y, 22, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+        } else if (el.type === "stroke" && el.isCurve) {
+          el.points.forEach(p => {
+            ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(255,107,53,0.9)"; ctx.fill();
+            ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.stroke();
+          });
         } else if (el.type === "stroke") {
           ctx.save(); ctx.strokeStyle = "#FF6B35"; ctx.lineWidth = el.width + 6; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.globalAlpha = 0.35;
           ctx.beginPath(); el.points.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); }); ctx.stroke(); ctx.restore();
@@ -2737,6 +2759,11 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball" }) {
     }
     if (tool === "select") {
       const pt = toCanvasPoint(e);
+      const sel = selectedElRef.current;
+      if (sel?.type === "stroke" && sel.isCurve) {
+        const pidx = sel.points.findIndex(p => Math.hypot(pt.x - p.x, pt.y - p.y) <= 14);
+        if (pidx >= 0) { draggingRef.current = { el: sel, pointIdx: pidx, startX: pt.x, startY: pt.y, moved: false }; return; }
+      }
       const el = findElementAt(pt);
       if (el) { draggingRef.current = { el, startX: pt.x, startY: pt.y, origX: pt.x, origY: pt.y, moved: false }; }
       else { selectedElRef.current = null; setSelectedEl(null); redraw(); }
@@ -2752,6 +2779,10 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball" }) {
       e.preventDefault();
       const pt = toCanvasPoint(e);
       const d = draggingRef.current;
+      if (d.pointIdx !== undefined) {
+        d.el.points[d.pointIdx] = { x: pt.x, y: pt.y };
+        d.moved = true; redraw(); return;
+      }
       moveElementBy(d.el, pt.x - d.startX, pt.y - d.startY);
       d.startX = pt.x; d.startY = pt.y;
       if (Math.hypot(pt.x - d.origX, pt.y - d.origY) > 3) d.moved = true;
