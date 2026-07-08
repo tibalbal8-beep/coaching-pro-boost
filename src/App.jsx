@@ -2218,8 +2218,8 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
 
   return (
     <div>
-      {/* Sélecteur de terrain — uniquement dans l'éditeur d'exercice */}
-      {(gabaritKey === "exerciseGabarits" || gabaritKey === "exerciseGabaritsHandball") && (
+      {/* Sélecteur de terrain — exercice et play */}
+      {(gabaritKey === "exerciseGabarits" || gabaritKey === "exerciseGabaritsHandball" || gabaritKey === "playGabarits") && (
         <>
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <span className="text-xs font-semibold text-[#1B2A4A]/60 uppercase tracking-wide">Terrain :</span>
