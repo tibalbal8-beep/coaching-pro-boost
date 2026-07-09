@@ -3644,7 +3644,13 @@ function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare, onS
   const [imgIdx, setImgIdx] = useState(0);
   const [confirmDel, setConfirmDel] = useState(false);
   const visibleImgs = images.filter(img => img.data && img.fileType?.startsWith("image/"));
-  const currentImg = visibleImgs[Math.min(imgIdx, visibleImgs.length - 1)];
+  const schemas = play.schemas || [];
+  // Carousel unifié : photos + schémas tactiques
+  const carouselItems = [
+    ...visibleImgs.map(img => ({ src: img.data, annotation: img.annotation })),
+    ...schemas.map(s => ({ src: s, annotation: null })),
+  ];
+  const currentItem = carouselItems[Math.min(imgIdx, carouselItems.length - 1)];
 
   return (
     <div className={`border rounded-lg bg-white/70 overflow-hidden transition-all ${selected ? "border-[#FF6B35] ring-2 ring-[#FF6B35]/30" : "border-[#1B2A4A]/15 hover:border-[#FF6B35]/50"}`}>
@@ -3656,29 +3662,29 @@ function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare, onS
           <span className="text-xs text-[#1B2A4A]/50">{selected ? "Sélectionné" : "Sélectionner"}</span>
         </div>
       )}
-      {visibleImgs.length > 0 && (
+      {carouselItems.length > 0 && (
         <div className="relative select-none cursor-pointer" onClick={onView}>
-          <img src={currentImg.data} alt="" className="w-full h-48 object-contain bg-white" />
-          {visibleImgs.length > 1 && (
+          <img src={currentItem.src} alt="" className="w-full h-48 object-contain bg-white" />
+          {carouselItems.length > 1 && (
             <>
-              <button onClick={e => { e.stopPropagation(); setImgIdx(i => (i - 1 + visibleImgs.length) % visibleImgs.length); }}
+              <button onClick={e => { e.stopPropagation(); setImgIdx(i => (i - 1 + carouselItems.length) % carouselItems.length); }}
                 className="absolute left-1.5 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full p-0.5 hover:bg-black/70">
                 <ChevronRight size={15} className="rotate-180" />
               </button>
-              <button onClick={e => { e.stopPropagation(); setImgIdx(i => (i + 1) % visibleImgs.length); }}
+              <button onClick={e => { e.stopPropagation(); setImgIdx(i => (i + 1) % carouselItems.length); }}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full p-0.5 hover:bg-black/70">
                 <ChevronRight size={15} />
               </button>
               <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1">
-                {visibleImgs.map((_, i) => (
+                {carouselItems.map((_, i) => (
                   <div key={i} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === imgIdx ? "bg-white" : "bg-white/40"}`} />
                 ))}
               </div>
             </>
           )}
-          {currentImg.annotation && (
+          {currentItem.annotation && (
             <div className="absolute bottom-0 left-0 right-0 bg-black/55 text-white text-xs px-2 py-1 text-center">
-              {currentImg.annotation}
+              {currentItem.annotation}
             </div>
           )}
         </div>
@@ -3998,15 +4004,8 @@ function PlayViewer({ play, onClose, onEdit }) {
           <div className="text-white/40 text-sm">Aucune image</div>
         )}
       </div>
-      {(play.description || play.notes || (play.tags || []).length > 0 || play.diagram || (play.schemas || []).length > 0) && (
+      {(play.description || play.notes || (play.tags || []).length > 0 || play.diagram) && (
         <div className="flex-shrink-0 bg-[#1B2A4A]/90 px-4 py-3 max-h-60 overflow-y-auto" onClick={e => e.stopPropagation()}>
-          {(play.schemas || []).length > 0 && (
-            <div className="flex gap-2 flex-wrap mb-2">
-              {play.schemas.map((dataUrl, i) => (
-                <img key={i} src={dataUrl} className="h-20 w-auto rounded-lg border border-white/20 object-cover" />
-              ))}
-            </div>
-          )}
           {play.diagram && !play.schemas?.length && (
             <div className="mb-2 bg-white/10 rounded-lg overflow-hidden">
               <CourtDiagram diagram={play.diagram} />
