@@ -37,18 +37,21 @@ export default async function handler(req, res) {
       const customerId = session.customer;
       const subId = session.subscription;
       const sub = await stripe.subscriptions.retrieve(subId);
-      const premiumUntil = new Date(sub.current_period_end * 1000).toISOString();
+      const premiumUntil = sub.current_period_end
+        ? new Date(sub.current_period_end * 1000).toISOString()
+        : null;
       await supabase.from("profiles")
-        .update({ is_premium: true, stripe_subscription_id: subId, premium_until: premiumUntil })
+        .update({ is_premium: true, stripe_subscription_id: subId, stripe_customer_id: customerId, premium_until: premiumUntil })
         .eq("stripe_customer_id", customerId);
     }
   }
 
   if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated") {
     const sub = event.data.object;
-    // Si annulation programmée en fin de période, l'accès reste actif jusqu'à current_period_end
     const isActive = sub.status === "active" || sub.status === "trialing";
-    const premiumUntil = new Date(sub.current_period_end * 1000).toISOString();
+    const premiumUntil = sub.current_period_end
+      ? new Date(sub.current_period_end * 1000).toISOString()
+      : null;
     await supabase.from("profiles")
       .update({ is_premium: isActive, stripe_subscription_id: sub.id, premium_until: premiumUntil })
       .eq("stripe_customer_id", sub.customer);
@@ -56,11 +59,9 @@ export default async function handler(req, res) {
 
   if (event.type === "customer.subscription.deleted") {
     const sub = event.data.object;
-    // Vérifier si la période payée est encore en cours (annulation en fin de période)
     const now = Date.now();
-    const periodEnd = sub.current_period_end * 1000;
+    const periodEnd = sub.current_period_end ? sub.current_period_end * 1000 : 0;
     if (periodEnd > now) {
-      // Accès encore valide jusqu'à la fin de la période payée
       await supabase.from("profiles")
         .update({ is_premium: true, premium_until: new Date(periodEnd).toISOString() })
         .eq("stripe_customer_id", sub.customer);
