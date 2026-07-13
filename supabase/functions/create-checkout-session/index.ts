@@ -1,4 +1,7 @@
+import Stripe from "https://esm.sh/stripe@14?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, { apiVersion: "2024-04-10" });
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,64 +22,26 @@ Deno.serve(async (req) => {
     if (!user) return new Response("Non autorisé", { status: 401, headers: corsHeaders });
 
     const { priceId, successUrl, cancelUrl } = await req.json();
-    console.log("priceId:", priceId);
-    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY")!;
-    console.log("stripeKey present:", !!stripeKey);;
 
     // Récupère ou crée le customer Stripe
-    const { data: profile } = await supabase.from("profiles")
-      .select("stripe_customer_id").eq("id", user.id).maybeSingle();
-
-    if (!profile) {
-      await supabase.from("profiles").insert({ id: user.id });
-    }
-
+    const { data: profile } = await supabase.from("profiles").select("stripe_customer_id").eq("id", user.id).single();
     let customerId = profile?.stripe_customer_id;
-    console.log("customerId:", customerId);
 
     if (!customerId) {
-      console.log("Creating Stripe customer...");
-      const customerRes = await fetch("https://api.stripe.com/v1/customers", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${stripeKey}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          email: user.email!,
-          "metadata[supabase_uid]": user.id,
-        }),
-      });
-      const customer = await customerRes.json();
+      const customer = await stripe.customers.create({ email: user.email!, metadata: { supabase_uid: user.id } });
       customerId = customer.id;
       await supabase.from("profiles").update({ stripe_customer_id: customerId }).eq("id", user.id);
     }
 
-    const sessionRes = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${stripeKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: new URLSearchParams({
-        customer: customerId,
-        mode: "subscription",
-        "payment_method_types[0]": "card",
-        "line_items[0][price]": priceId,
-        "line_items[0][quantity]": "1",
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        locale: "fr",
-      }),
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      mode: "subscription",
+      payment_method_types: ["card"],
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      locale: "fr",
     });
-
-    const session = await sessionRes.json();
-
-    if (!session.url) {
-      return new Response(JSON.stringify({ error: session.error?.message || "Erreur Stripe" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
 
     return new Response(JSON.stringify({ url: session.url }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
