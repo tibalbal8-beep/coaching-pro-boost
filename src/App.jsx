@@ -6414,6 +6414,7 @@ function SharedPlayPublicView({ token }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [imported, setImported] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
 
   useEffect(() => {
     supabase.from("shared_plays").select("play_data, expires_at").eq("token", token).maybeSingle()
@@ -6424,6 +6425,8 @@ function SharedPlayPublicView({ token }) {
         setLoading(false);
       });
   }, [token]);
+
+  if (showLogin) return <AuthScreen />;
 
   if (loading) return (
     <div className="min-h-screen bg-[#F2EDE4] flex items-center justify-center">
@@ -6485,10 +6488,10 @@ function SharedPlayPublicView({ token }) {
           <div style={{ fontSize: 13, color: "#1B2A4A", opacity: 0.6, marginBottom: 16 }}>
             Importe ce système directement dans ton application pour l'utiliser dans ton playbook.
           </div>
-          <a href={`/?shareplay=${token}`}
-            style={{ display: "block", background: "#FF6B35", color: "white", fontFamily: "Oswald, sans-serif", fontWeight: 700, fontSize: 16, padding: "14px 20px", borderRadius: 14, textDecoration: "none", marginBottom: 12 }}>
+          <button onClick={() => setShowLogin(true)}
+            style={{ display: "block", width: "100%", background: "#FF6B35", color: "white", fontFamily: "Oswald, sans-serif", fontWeight: 700, fontSize: 16, padding: "14px 20px", borderRadius: 14, border: "none", cursor: "pointer", marginBottom: 12 }}>
             📥 IMPORTER CE SYSTÈME
-          </a>
+          </button>
           <a href="/" style={{ display: "block", fontSize: 12, color: "#1B2A4A", opacity: 0.4, textDecoration: "none" }}>
             Ouvrir Coaching Pro Boost
           </a>
