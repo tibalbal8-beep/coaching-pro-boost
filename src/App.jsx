@@ -6409,6 +6409,79 @@ function ResetPasswordScreen({ onDone }) {
   );
 }
 
+function SharedPlayPublicView({ token }) {
+  const [play, setPlay] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [imported, setImported] = useState(false);
+
+  useEffect(() => {
+    supabase.from("shared_plays").select("play_data, expires_at").eq("token", token).maybeSingle()
+      .then(({ data }) => {
+        if (!data) { setError("Lien invalide ou expiré."); }
+        else if (data.expires_at && new Date(data.expires_at) < new Date()) { setError("Ce lien a expiré."); }
+        else { setPlay(data.play_data); }
+        setLoading(false);
+      });
+  }, [token]);
+
+  if (loading) return (
+    <div className="min-h-screen bg-[#F2EDE4] flex items-center justify-center">
+      <div className="text-[#1B2A4A]/50 text-sm">Chargement du play...</div>
+    </div>
+  );
+
+  if (error) return (
+    <div className="min-h-screen bg-[#F2EDE4] flex items-center justify-center px-4">
+      <div className="text-center">
+        <div className="text-4xl mb-4">🏀</div>
+        <div className="text-[#1B2A4A] font-bold mb-2">{error}</div>
+        <a href="/" className="text-[#FF6B35] text-sm underline">Aller sur Coaching Pro Boost</a>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-[#F2EDE4] flex items-center justify-center px-4 py-8">
+      <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
+        <div className="bg-[#1B2A4A] px-6 py-5 text-center">
+          <div className="text-3xl mb-2">📋</div>
+          <div className="text-white font-bold text-xl" style={{ fontFamily: "Oswald, sans-serif" }}>PLAY PARTAGÉ</div>
+          <div className="text-white/60 text-sm mt-1">Un coach partage ce play avec toi</div>
+        </div>
+        <div className="px-6 py-5">
+          <div className="bg-[#F2EDE4] rounded-xl p-4 mb-4">
+            <div className="font-bold text-[#1B2A4A] mb-1">{play.titre}</div>
+            {play.type && <div className="text-xs font-medium mb-1" style={{ color: "#FF6B35" }}>{play.type}</div>}
+            {play.description && <p className="text-xs text-[#1B2A4A]/60 mt-1">{play.description}</p>}
+            {(play.tags || []).length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {play.tags.map(t => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35]">{t}</span>)}
+              </div>
+            )}
+            {play.schemas?.length > 0 && (
+              <div className="mt-3 flex flex-col gap-2">
+                {play.schemas.map((s, i) => <img key={i} src={s} className="w-full rounded-lg border border-[#1B2A4A]/10" alt={`Schéma ${i+1}`} />)}
+              </div>
+            )}
+          </div>
+          {imported ? (
+            <div className="text-center text-green-600 font-medium text-sm py-2">✅ Play importé ! Connecte-toi pour le voir.</div>
+          ) : (
+            <a href={`/?shareplay=${token}`} className="block w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm text-center hover:bg-[#e85a28] transition-colors mb-3"
+              style={{ fontFamily: "Oswald, sans-serif" }}>
+              Importer dans mon Play Book
+            </a>
+          )}
+          <a href="/" className="block w-full text-center text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A] transition-colors">
+            Ouvrir Coaching Pro Boost
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(undefined);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(isPasswordRecoveryUrl);
@@ -6426,6 +6499,8 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  const shareplayToken = new URLSearchParams(window.location.search).get("shareplay");
+
   if (session === undefined) {
     return (
       <div className="min-h-screen bg-[#F2EDE4] flex items-center justify-center">
@@ -6434,6 +6509,7 @@ export default function App() {
     );
   }
   if (isPasswordRecovery) return <ResetPasswordScreen onDone={() => { setIsPasswordRecovery(false); supabase.auth.signOut(); }} />;
+  if (!session && shareplayToken) return <SharedPlayPublicView token={shareplayToken} />;
   if (!session) return <AuthScreen />;
   return <AlertProvider><ToastProvider><CoachingProBoost key={session.user.id} session={session} /></ToastProvider></AlertProvider>;
 }
