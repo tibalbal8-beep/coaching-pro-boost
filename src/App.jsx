@@ -3978,7 +3978,12 @@ function PlayViewer({ play, onClose, onEdit }) {
   const images = usePlayImages(play);
   const [imgIdx, setImgIdx] = useState(0);
   const visibleImgs = images.filter(img => img.data && img.fileType?.startsWith("image/"));
-  const currentImg = visibleImgs[imgIdx];
+  const schemas = play.schemas || [];
+  const carouselItems = [
+    ...visibleImgs.map(img => ({ src: img.data, annotation: img.annotation })),
+    ...schemas.map(s => ({ src: s, annotation: null })),
+  ];
+  const currentItem = carouselItems[Math.min(imgIdx, carouselItems.length - 1)];
 
   return (
     <div className="fixed inset-0 z-[250] bg-black/85 flex flex-col" onClick={onClose}>
@@ -3993,29 +3998,29 @@ function PlayViewer({ play, onClose, onEdit }) {
         </button>
       </div>
       <div className="flex-1 flex flex-col items-center justify-center px-4 overflow-hidden" onClick={e => e.stopPropagation()}>
-        {visibleImgs.length > 0 ? (
+        {carouselItems.length > 0 ? (
           <>
             <div className="relative w-full max-w-2xl">
-              <img src={currentImg.data} alt="" className="w-full max-h-[60vh] object-contain rounded-lg" />
-              {visibleImgs.length > 1 && (
+              <img src={currentItem.src} alt="" className="w-full max-h-[60vh] object-contain rounded-lg" />
+              {carouselItems.length > 1 && (
                 <>
-                  <button onClick={() => setImgIdx(i => (i - 1 + visibleImgs.length) % visibleImgs.length)}
+                  <button onClick={() => setImgIdx(i => (i - 1 + carouselItems.length) % carouselItems.length)}
                     className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 text-white rounded-full p-1.5 hover:bg-black/80">
                     <ChevronRight size={20} className="rotate-180" />
                   </button>
-                  <button onClick={() => setImgIdx(i => (i + 1) % visibleImgs.length)}
+                  <button onClick={() => setImgIdx(i => (i + 1) % carouselItems.length)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 text-white rounded-full p-1.5 hover:bg-black/80">
                     <ChevronRight size={20} />
                   </button>
                 </>
               )}
             </div>
-            {currentImg.annotation && (
-              <div className="mt-2 text-white/80 text-sm italic text-center">{currentImg.annotation}</div>
+            {currentItem.annotation && (
+              <div className="mt-2 text-white/80 text-sm italic text-center">{currentItem.annotation}</div>
             )}
-            {visibleImgs.length > 1 && (
+            {carouselItems.length > 1 && (
               <div className="flex gap-2 mt-3">
-                {visibleImgs.map((_, i) => (
+                {carouselItems.map((_, i) => (
                   <button key={i} onClick={() => setImgIdx(i)}
                     className={`w-2.5 h-2.5 rounded-full transition-colors ${i === imgIdx ? "bg-white" : "bg-white/30"}`} />
                 ))}
