@@ -3974,16 +3974,34 @@ function CourtEditor({ value, onChange }) {
   );
 }
 
-function PlayViewer({ play, onClose, onEdit }) {
+function PlayViewer({ play, onClose, onEdit, onUpdatePlay }) {
   const images = usePlayImages(play);
   const [imgIdx, setImgIdx] = useState(0);
+  const [cropping, setCropping] = useState(false);
   const visibleImgs = images.filter(img => img.data && img.fileType?.startsWith("image/"));
   const schemas = play.schemas || [];
   const carouselItems = [
-    ...visibleImgs.map(img => ({ src: img.data, annotation: img.annotation })),
-    ...schemas.map(s => ({ src: s, annotation: null })),
+    ...visibleImgs.map((img, i) => ({ src: img.data, annotation: img.annotation, type: "image", idx: i })),
+    ...schemas.map((s, i) => ({ src: s, annotation: null, type: "schema", idx: i })),
   ];
   const currentItem = carouselItems[Math.min(imgIdx, carouselItems.length - 1)];
+
+  const handleCrop = (croppedDataUrl) => {
+    if (!onUpdatePlay || !currentItem) return;
+    if (currentItem.type === "schema") {
+      const newSchemas = [...(play.schemas || [])];
+      newSchemas[currentItem.idx] = croppedDataUrl;
+      onUpdatePlay({ ...play, schemas: newSchemas });
+    } else {
+      const newImages = play.images.map((img, i) => i === currentItem.idx ? { ...img, file: { ...img.file, data: croppedDataUrl } } : img);
+      onUpdatePlay({ ...play, images: newImages });
+    }
+    setCropping(false);
+  };
+
+  if (cropping && currentItem) {
+    return <CropPhotoView imageData={currentItem.src} onCancel={() => setCropping(false)} onCrop={handleCrop} />;
+  }
 
   return (
     <div className="fixed inset-0 z-[250] bg-black/85 flex flex-col" onClick={onClose}>
@@ -4002,6 +4020,12 @@ function PlayViewer({ play, onClose, onEdit }) {
           <>
             <div className="relative w-full max-w-2xl">
               <img src={currentItem.src} alt="" className="w-full max-h-[60vh] object-contain rounded-lg" />
+              {onUpdatePlay && (
+                <button onClick={() => setCropping(true)}
+                  className="absolute top-2 right-2 bg-black/60 text-white rounded-full px-3 py-1.5 text-xs flex items-center gap-1.5 hover:bg-black/80">
+                  <Pencil size={12} /> Rogner
+                </button>
+              )}
               {carouselItems.length > 1 && (
                 <>
                   <button onClick={() => setImgIdx(i => (i - 1 + carouselItems.length) % carouselItems.length)}
@@ -6017,7 +6041,8 @@ function CoachingProBoost({ session }) {
 
         {viewingPlay && (
           <PlayViewer play={viewingPlay} onClose={() => setViewingPlay(null)}
-            onEdit={() => { setEditingPlay(viewingPlay); setPlaybookForm(true); setViewingPlay(null); }} />
+            onEdit={() => { setEditingPlay(viewingPlay); setPlaybookForm(true); setViewingPlay(null); }}
+            onUpdatePlay={(updatedPlay) => { savePlays(plays.map(p => p.id === updatedPlay.id ? updatedPlay : p)); setViewingPlay(updatedPlay); }} />
         )}
 
         {view === "sessions" && !reviewItems && (
