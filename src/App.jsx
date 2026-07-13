@@ -2203,7 +2203,18 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     else { el.x += dx; el.y += dy; }
   };
 
-  const undo = () => { elementsRef.current.pop(); redraw(); };
+  const undo = () => {
+    const el = elementsRef.current.pop();
+    if (el?.type === "token" && el.label) {
+      const numSeq = ["1","2","3","4","5","6","7","8","9","10","11","12"];
+      const xSeq = ["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"];
+      const idxNum = numSeq.indexOf(el.label);
+      const idxX = xSeq.indexOf(el.label);
+      if (idxNum >= 0 && playerLabel === numSeq[idxNum + 1]) setPlayerLabel(el.label);
+      else if (idxX >= 0 && playerLabel === xSeq[idxX + 1]) setPlayerLabel(el.label);
+    }
+    redraw();
+  };
   const clearAll = () => { elementsRef.current = []; redraw(); };
 
   const commitPendingText = () => {
@@ -2844,7 +2855,18 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball" }) {
     });
   };
 
-  const undo = () => { elementsRef.current.pop(); redraw(); };
+  const undo = () => {
+    const el = elementsRef.current.pop();
+    if (el?.type === "token" && el.label) {
+      const numSeq = ["1","2","3","4","5","6","7","8","9","10","11","12"];
+      const xSeq = ["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"];
+      const idxNum = numSeq.indexOf(el.label);
+      const idxX = xSeq.indexOf(el.label);
+      if (idxNum >= 0 && playerLabel === numSeq[idxNum + 1]) setPlayerLabel(el.label);
+      else if (idxX >= 0 && playerLabel === xSeq[idxX + 1]) setPlayerLabel(el.label);
+    }
+    redraw();
+  };
   const clearAll = () => { if (window.confirm("Effacer tout le dessin ?")) { elementsRef.current = []; redraw(); } };
 
   return (
