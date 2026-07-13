@@ -6442,38 +6442,54 @@ function SharedPlayPublicView({ token }) {
   );
 
   return (
-    <div className="min-h-screen bg-[#F2EDE4] flex items-center justify-center px-4 py-8">
-      <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
-        <div className="bg-[#1B2A4A] px-6 py-5 text-center">
-          <div className="text-3xl mb-2">📋</div>
-          <div className="text-white font-bold text-xl" style={{ fontFamily: "Oswald, sans-serif" }}>PLAY PARTAGÉ</div>
-          <div className="text-white/60 text-sm mt-1">Un coach partage ce play avec toi</div>
+    <div className="min-h-screen bg-[#F2EDE4] px-4 py-8">
+      <div className="max-w-lg mx-auto">
+        {/* Header */}
+        <div className="text-center mb-6">
+          <div style={{ fontFamily: "Oswald, sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: 2, color: "#FF6B35", textTransform: "uppercase", marginBottom: 6 }}>Coaching Pro Boost</div>
+          <div style={{ fontFamily: "Oswald, sans-serif", fontSize: 26, fontWeight: 800, color: "#1B2A4A" }}>Un coach partage</div>
+          <div style={{ fontFamily: "Oswald, sans-serif", fontSize: 26, fontWeight: 800, color: "#FF6B35" }}>ce système avec toi</div>
         </div>
-        <div className="px-6 py-5">
-          <div className="bg-[#F2EDE4] rounded-xl p-4 mb-4">
-            <div className="font-bold text-[#1B2A4A] mb-1">{play.titre}</div>
-            {play.type && <div className="text-xs font-medium mb-1" style={{ color: "#FF6B35" }}>{play.type}</div>}
-            {play.description && <p className="text-xs text-[#1B2A4A]/60 mt-1">{play.description}</p>}
+
+        {/* Play card */}
+        <div className="bg-white rounded-2xl overflow-hidden shadow-lg mb-4">
+          <div className="bg-[#1B2A4A] px-5 py-4">
+            {play.type && <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: "#FF6B35", textTransform: "uppercase", marginBottom: 4 }}>{play.type}</div>}
+            <div style={{ fontFamily: "Oswald, sans-serif", fontSize: 22, fontWeight: 800, color: "white" }}>{play.titre}</div>
+            {play.description && <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>{play.description}</p>}
             {(play.tags || []).length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {play.tags.map(t => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35]">{t}</span>)}
-              </div>
-            )}
-            {play.schemas?.length > 0 && (
-              <div className="mt-3 flex flex-col gap-2">
-                {play.schemas.map((s, i) => <img key={i} src={s} className="w-full rounded-lg border border-[#1B2A4A]/10" alt={`Schéma ${i+1}`} />)}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                {play.tags.map(t => <span key={t} style={{ fontSize: 11, padding: "2px 8px", background: "rgba(255,107,53,0.2)", color: "#FF6B35", borderRadius: 20 }}>{t}</span>)}
               </div>
             )}
           </div>
-          {imported ? (
-            <div className="text-center text-green-600 font-medium text-sm py-2">✅ Play importé ! Connecte-toi pour le voir.</div>
-          ) : (
-            <a href={`/?shareplay=${token}`} className="block w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm text-center hover:bg-[#e85a28] transition-colors mb-3"
-              style={{ fontFamily: "Oswald, sans-serif" }}>
-              Importer dans mon Play Book
-            </a>
+
+          {/* Schemas */}
+          {play.schemas?.length > 0 && (
+            <div className="p-4 flex flex-col gap-3">
+              {play.schemas.map((s, i) => (
+                <img key={i} src={s} className="w-full rounded-xl border border-[#1B2A4A]/10" alt={`Schéma ${i+1}`} />
+              ))}
+            </div>
           )}
-          <a href="/" className="block w-full text-center text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A] transition-colors">
+
+          {play.notes && (
+            <div className="px-5 pb-4">
+              <p style={{ fontSize: 13, color: "#1B2A4A", opacity: 0.6, fontStyle: "italic" }}>{play.notes}</p>
+            </div>
+          )}
+        </div>
+
+        {/* CTA */}
+        <div className="bg-white rounded-2xl p-5 shadow-lg text-center">
+          <div style={{ fontSize: 13, color: "#1B2A4A", opacity: 0.6, marginBottom: 16 }}>
+            Importe ce système directement dans ton application pour l'utiliser dans ton playbook.
+          </div>
+          <a href={`/?shareplay=${token}`}
+            style={{ display: "block", background: "#FF6B35", color: "white", fontFamily: "Oswald, sans-serif", fontWeight: 700, fontSize: 16, padding: "14px 20px", borderRadius: 14, textDecoration: "none", marginBottom: 12 }}>
+            📥 IMPORTER CE SYSTÈME
+          </a>
+          <a href="/" style={{ display: "block", fontSize: 12, color: "#1B2A4A", opacity: 0.4, textDecoration: "none" }}>
             Ouvrir Coaching Pro Boost
           </a>
         </div>
