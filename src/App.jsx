@@ -3026,7 +3026,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         {editingExisting ? (
           <>
-            <span className="text-xs font-medium text-[#1B2A4A]/60">✏️ Schéma pré-rempli — déplace/efface/ajoute tes éléments par-dessus</span>
+            <span className="text-xs font-medium text-[#1B2A4A]/60">✏️ Modification du schéma existant — ajoute tes flèches/joueurs par-dessus</span>
             <button type="button" onClick={() => { if (window.confirm("Repartir d'un terrain vierge ? Le dessin existant sera perdu.")) { elementsRef.current = []; setEditingExisting(false); } }}
               className="px-3 py-1.5 rounded-full text-xs font-medium border border-[#1B2A4A]/20 text-[#1B2A4A] hover:border-[#1B2A4A]/50 transition-colors">
               Repartir d'un terrain vierge
@@ -4456,11 +4456,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
         {editingSchemaIdx !== null && (
           <DrawTacticalView
             courtType={courtType}
-            initialImage={
-              editingSchemaIdx < schemas.length
-                ? schemas[editingSchemaIdx]
-                : (schemas.length > 0 ? schemas[schemas.length - 1] : null)
-            }
+            initialImage={editingSchemaIdx < schemas.length ? schemas[editingSchemaIdx] : null}
             onCancel={() => setEditingSchemaIdx(null)}
             onValidate={(dataUrl) => {
               if (editingSchemaIdx < schemas.length) {
