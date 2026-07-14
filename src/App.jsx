@@ -1335,20 +1335,21 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
   }).join("");
 
   const sessionPlays = (session.playIds || []).map(id => plays.find(p => p.id === id)).filter(Boolean);
-  const playCards = sessionPlays.map((play, i) => {
+  const playsBlocks = sessionPlays.map((play, i) => {
     const schemas = play.schemas || [];
-    const photos = (play.images || []).filter(img => img.file?.data || img.data);
-    const visuals = [...schemas, ...photos.map(img => img.file?.data || img.data)];
+    const photos = (play.images || []).filter(img => img.file?.data || img.data).map(img => img.file?.data || img.data);
+    const visuals = [...schemas, ...photos];
+    const imgsHtml = visuals.map(v => `<div class="play-img"><img src="${v}" alt="" /></div>`).join("");
     return `
-    <div class="play-card">
-      <div class="play-card-visual">
-        ${visuals[0] ? `<img src="${visuals[0]}" alt="" />` : `<div class="play-card-noviz">S${String(i + 1).padStart(2, "0")}</div>`}
+    <div class="play-block">
+      <div class="play-block-header">
+        <span class="exo-num">S${String(i + 1).padStart(2, "0")}</span>
+        <span class="play-block-title">${esc(play.titre)}</span>
+        ${play.type ? `<span class="play-block-type">${esc(play.type)}</span>` : ""}
       </div>
-      <div class="play-card-title">${esc(play.titre)}</div>
-      ${play.type ? `<div class="play-card-type">${esc(play.type)}</div>` : ""}
+      ${visuals.length ? `<div class="plays-grid">${imgsHtml}</div>` : `<p class="empty-text" style="padding:12px">Aucun visuel.</p>`}
     </div>`;
   }).join("");
-  const playsBlocks = sessionPlays.length ? `<div class="plays-grid">${playCards}</div>` : "";
 
   // ── HANDBALL FICHE ──────────────────────────────────────────────────────────
   if (sport === "handball") {
@@ -1469,7 +1470,7 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
 
     /* ── SESSION PHOTO ── */
     .session-photo-wrap{padding:20px 28px 0}
-    .session-photo-wrap img{width:100%;max-height:280px;object-fit:cover;border-radius:10px;border:1px solid #1B2A4A15;display:block}
+    .session-photo-wrap img{width:100%;height:auto;border-radius:10px;border:1px solid #1B2A4A15;display:block}
 
     /* ── CONTENT ── */
     .content{padding:20px 28px}
@@ -1496,14 +1497,14 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
     .notes{white-space:pre-wrap;color:#1B2A4A90}
     .empty-text{font-size:12px;color:#1B2A4A40;font-style:italic}
 
-    /* ── SYSTEMES GRID (4 vignettes par ligne) ── */
-    .plays-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-    .play-card{border:1px solid #1B2A4A20;border-radius:8px;overflow:hidden;break-inside:avoid;page-break-inside:avoid;background:#fff}
-    .play-card-visual{aspect-ratio:4/3;background:#eef2f7;display:flex;align-items:center;justify-content:center;overflow:hidden}
-    .play-card-visual img{width:100%;height:100%;object-fit:cover;display:block}
-    .play-card-noviz{font-family:'Oswald',sans-serif;font-size:20px;color:#1B2A4A40}
-    .play-card-title{font-family:'Oswald',sans-serif;font-size:11px;padding:6px 8px 0;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .play-card-type{font-size:9px;color:#FF6B35;text-transform:uppercase;letter-spacing:.4px;padding:2px 8px 6px}
+    /* ── SYSTEMES (un bloc par play, images complètes 4 par ligne) ── */
+    .play-block{border:1px solid #1B2A4A20;border-radius:10px;overflow:hidden;margin-bottom:16px;break-inside:avoid;page-break-inside:avoid}
+    .play-block-header{background:#1B2A4A;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px}
+    .play-block-title{font-family:'Oswald',sans-serif;font-size:15px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .play-block-type{font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;flex-shrink:0}
+    .plays-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px}
+    .play-img{background:#eef2f7;border-radius:6px;overflow:hidden;border:1px solid #1B2A4A12}
+    .play-img img{width:100%;height:auto;display:block}
 
     @media print{
       @page{margin:0;size:A4}
