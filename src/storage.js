@@ -94,4 +94,36 @@ export const storage = {
     }
     return { keys: (data || []).map((row) => row.key), prefix };
   },
+
+  // Historique de versions (best-effort, ne bloque jamais l'écriture principale).
+  // Conserve un snapshot horodaté à chaque sauvegarde, purgé après 3 jours.
+  async snapshot(key, value) {
+    const userId = cachedUserId !== null ? getCurrentUserIdSync() : await ensureUserIdReady();
+    try {
+      await supabase.from("kv_store_history").insert({ user_id: userId, key, value });
+      const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+      await supabase.from("kv_store_history").delete().eq("user_id", userId).eq("key", key).lt("created_at", cutoff);
+    } catch (e) {
+      console.error("storage.snapshot error:", e);
+    }
+  },
+
+  // Renvoie le snapshot le plus récent antérieur (ou égal) à `beforeDate` pour chaque clé.
+  async getHistorySnapshot(key, beforeDate) {
+    const userId = cachedUserId !== null ? getCurrentUserIdSync() : await ensureUserIdReady();
+    const { data, error } = await supabase
+      .from("kv_store_history")
+      .select("value, created_at")
+      .eq("user_id", userId)
+      .eq("key", key)
+      .lte("created_at", beforeDate.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.error("storage.getHistorySnapshot error:", error);
+      return null;
+    }
+    return data;
+  },
 };

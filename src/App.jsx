@@ -339,6 +339,7 @@ function useStore() {
 
   const persist = useCallback(async (key, value) => {
     try { const r = await storage.set(key, value); if (!r) console.error("Storage set returned null for", key); } catch (e) { console.error("Storage error", key, e); }
+    storage.snapshot(key, value).catch(() => {});
   }, []);
 
   const stripFiles = (list) => list.map(({ file, schemas, ...rest }) => ({
@@ -4684,6 +4685,30 @@ function CoachingProBoost({ session }) {
   const [sharedExercise, setSharedExercise] = useState(null);
   const [sharedPlay, setSharedPlay] = useState(null);
   const [sharedPlayCollection, setSharedPlayCollection] = useState(null);
+  const [showHistoryRestore, setShowHistoryRestore] = useState(false);
+
+  const restoreFromHistory = async (hoursAgo) => {
+    const confirmed = await cpbAlert(
+      `Restaurer tes données à leur état d'il y a ${hoursAgo < 24 ? hoursAgo + "h" : Math.round(hoursAgo / 24) + " jour(s)"} ? Cela remplacera tes exercices, séances, thèmes, équipes et plays actuels.`,
+      { confirm: true }
+    );
+    if (!confirmed) return;
+    const before = new Date(Date.now() - hoursAgo * 60 * 60 * 1000);
+    let restoredAny = false;
+    const apply = async (key, applyFn) => {
+      const snap = await storage.getHistorySnapshot(key, before);
+      if (snap) { applyFn(JSON.parse(snap.value)); restoredAny = true; }
+    };
+    try {
+      await apply("exercises", saveExercises);
+      await apply("sessions", saveSessions);
+      await apply("themes", saveThemes);
+      await apply("teams", saveTeams);
+      await apply("plays", savePlays);
+    } catch (e) { await cpbAlert("Erreur lors de la restauration : " + e.message); return; }
+    setShowHistoryRestore(false);
+    await cpbAlert(restoredAny ? "✓ Données restaurées !" : "Aucun historique disponible pour cette période (moins de 3 jours conservés).");
+  };
 
   // Fix dictée vocale iOS : les événements compositionend ne déclenchent pas onChange dans React
   useEffect(() => {
@@ -5380,6 +5405,30 @@ function CoachingProBoost({ session }) {
           </div>
         </div>
       )}
+      {showHistoryRestore && (
+        <div className="fixed inset-0 z-[700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
+            <div className="bg-[#1B2A4A] px-6 py-5 text-center">
+              <div className="text-3xl mb-2">⏱️</div>
+              <div className="text-white font-bold text-xl" style={{ fontFamily: "Oswald, sans-serif" }}>RESTAURER UNE VERSION</div>
+              <div className="text-white/60 text-sm mt-1">Choisis à quel moment revenir (3 derniers jours)</div>
+            </div>
+            <div className="px-6 py-5 flex flex-col gap-2">
+              {[{ label: "Il y a 1 heure", h: 1 }, { label: "Il y a 8 heures", h: 8 }, { label: "Il y a 24 heures", h: 24 }, { label: "Il y a 3 jours", h: 72 }].map(opt => (
+                <button key={opt.h} onClick={() => restoreFromHistory(opt.h)}
+                  className="w-full bg-[#F2EDE4] text-[#1B2A4A] font-bold py-3 rounded-xl text-sm hover:bg-[#FF6B35]/15 transition-colors"
+                  style={{ fontFamily: "Oswald, sans-serif" }}>
+                  {opt.label}
+                </button>
+              ))}
+              <button onClick={() => setShowHistoryRestore(false)}
+                className="w-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A] transition-colors mt-2">
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showOnboarding && <OnboardingModal onDone={finishOnboarding} />}
       {showInstallBanner && !showOnboarding && (
         <div className="fixed bottom-20 left-3 right-3 z-40 bg-[#1B2A4A] text-white rounded-2xl p-4 shadow-xl flex items-start gap-3 no-print">
@@ -6004,8 +6053,13 @@ function CoachingProBoost({ session }) {
                 } catch(e) { await cpbAlert("Erreur lors de l'import : " + e.message); }
               }} />
               <button onClick={() => document.getElementById("cpb-import-input").click()}
-                className="w-full flex items-center justify-between px-5 py-4 text-sm text-[#1B2A4A] font-medium hover:bg-[#1B2A4A]/5 transition-colors">
+                className="w-full flex items-center justify-between px-5 py-4 text-sm text-[#1B2A4A] font-medium hover:bg-[#1B2A4A]/5 transition-colors border-b border-[#1B2A4A]/8">
                 <span>Restaurer une sauvegarde</span>
+                <ChevronRight size={16} className="text-[#1B2A4A]/40" />
+              </button>
+              <button onClick={() => setShowHistoryRestore(true)}
+                className="w-full flex items-center justify-between px-5 py-4 text-sm text-[#1B2A4A] font-medium hover:bg-[#1B2A4A]/5 transition-colors">
+                <span>Restaurer une version antérieure</span>
                 <ChevronRight size={16} className="text-[#1B2A4A]/40" />
               </button>
             </div>
