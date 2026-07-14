@@ -4783,7 +4783,8 @@ function CoachingProBoost({ session }) {
           } catch {}
           return { ...img, data: null };
         }));
-        return { ...play, _images: images.filter(i => i.data) };
+        const schemaImages = (play.schemas || []).map(s => ({ data: s, annotation: null }));
+        return { ...play, _images: [...schemaImages, ...images.filter(i => i.data)] };
       })
     );
 
@@ -5589,7 +5590,7 @@ function CoachingProBoost({ session }) {
                 <input value={scoutingTitle} onChange={e => setScoutingTitle(e.target.value)} placeholder="Titre du scouting (ex: Adversaire Finale)" className="w-full rounded-xl px-3 py-2 text-sm outline-none text-[#1B2A4A]" />
                 <div className="flex gap-2">
                   <button onClick={() => sharePlayCollection(selectedPlays, scoutingTitle)} className="flex-1 bg-white text-[#1B2A4A] py-2 rounded-xl text-sm font-bold">Partager</button>
-                  <button onClick={() => exportPlaysPDF(selectedPlays, scoutingTitle)} className="flex-1 bg-[#FF6B35] text-white py-2 rounded-xl text-sm font-bold">Exporter PDF</button>
+                  <button onClick={() => exportPlaysPDF(selectedPlays, scoutingTitle)} className="flex-1 bg-[#FF6B35] text-white py-2 rounded-xl text-sm font-bold">Exporter HTML</button>
                   <button onClick={() => setSelectedPlays([])} className="px-4 py-2 rounded-xl text-sm text-white/60 border border-white/20">✕</button>
                 </div>
               </div>

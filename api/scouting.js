@@ -23,7 +23,12 @@ export default async function handler(req, res) {
 
   const playsHtml = plays.map((play, idx) => {
     const images = (play.images || []).filter(img => img.file?.data);
-    const imgsHtml = images.map(img => `
+    const schemaImgsHtml = (play.schemas || []).map(s => `
+      <div style="flex:1;min-width:200px;max-width:280px;">
+        <img src="${s}" style="width:100%;border-radius:8px;border:1px solid #e0d8d0;" />
+      </div>
+    `).join("");
+    const imgsHtml = schemaImgsHtml + images.map(img => `
       <div style="flex:1;min-width:200px;max-width:280px;">
         ${img.annotation ? `<div style="font-size:11px;color:#666;margin-bottom:4px;font-style:italic;">${img.annotation}</div>` : ""}
         <img src="${img.file.data}" style="width:100%;border-radius:8px;border:1px solid #e0d8d0;" />
@@ -45,7 +50,7 @@ export default async function handler(req, res) {
             ${play.tags.map(t => `<span style="font-size:11px;padding:2px 8px;background:#FF6B35/15;background-color:rgba(255,107,53,0.12);color:#FF6B35;border-radius:20px;">${t}</span>`).join("")}
           </div>
         ` : ""}
-        ${images.length > 0 ? `
+        ${(images.length > 0 || (play.schemas || []).length > 0) ? `
           <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px;">
             ${imgsHtml}
           </div>
