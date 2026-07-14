@@ -1287,7 +1287,7 @@ function diagramToSvgString(diagram, width = 320, height = 305) {
   return s;
 }
 
-function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = [], sport = "basketball" } = {}) {
+function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = [], sport = "basketball", plays = [] } = {}) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const total = session.exerciseIds.reduce((sum, id) => sum + (exercises.find(e => e.id === id)?.duree || 0), 0);
   const h = Math.floor(total / 60), m = total % 60;
@@ -1329,6 +1329,30 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
           ${ex.objectif ? `<div class="field"><div class="field-label">Objectif</div><p class="field-val">${esc(ex.objectif)}</p></div>` : ""}
           ${ex.notes ? `<div class="field"><div class="field-label">Consignes</div><p class="field-val notes">${esc(ex.notes)}</p></div>` : ""}
           ${!ex.objectif && !ex.notes && !ex.themes?.length ? `<p class="empty-text">Aucune consigne renseignée.</p>` : ""}
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+
+  const sessionPlays = (session.playIds || []).map(id => plays.find(p => p.id === id)).filter(Boolean);
+  const playsBlocks = sessionPlays.map((play, i) => {
+    const schemas = play.schemas || [];
+    const schemasHtml = schemas.map(s => `
+      <div class="visual-inner" style="margin-bottom:8px;"><img src="${s}" style="width:100%;height:auto;display:block" /></div>
+    `).join("");
+    return `
+    <div class="exo">
+      <div class="exo-header">
+        <span class="exo-num">S${String(i + 1).padStart(2, "0")}</span>
+        <span class="exo-title">${esc(play.titre)}</span>
+        <span class="exo-meta">${esc(play.type || "")}</span>
+      </div>
+      <div class="exo-body${schemas.length ? "" : " no-visual"}">
+        ${schemas.length ? `<div class="exo-visual" style="flex-direction:column">${schemasHtml}</div>` : ""}
+        <div class="exo-text">
+          ${(play.tags || []).length ? `<div class="tags">${play.tags.map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
+          ${play.description ? `<div class="field"><div class="field-label">Description</div><p class="field-val">${esc(play.description)}</p></div>` : ""}
+          ${!play.description && !schemas.length && !(play.tags || []).length ? `<p class="empty-text">Aucune consigne renseignée.</p>` : ""}
         </div>
       </div>
     </div>`;
@@ -1504,6 +1528,7 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
   <div class="stats-bar">
     <div class="stat"><div class="stat-val">${sessionExos.length}</div><div class="stat-lbl">Exercices</div></div>
     <div class="stat"><div class="stat-val">${totalStr}</div><div class="stat-lbl">Durée totale</div></div>
+    ${sessionPlays.length ? `<div class="stat"><div class="stat-val">${sessionPlays.length}</div><div class="stat-lbl">Système${sessionPlays.length > 1 ? "s" : ""}</div></div>` : ""}
     ${allThemes.length ? `<div class="stat"><div class="stat-val">${allThemes.length}</div><div class="stat-lbl">Thèmes</div></div>` : ""}
     ${session.presents != null ? `<div class="stat"><div class="stat-val">${session.presents}${team?.nbJoueurs ? `<span style="font-size:14px;font-weight:400;color:#1B2A4A60"> / ${team.nbJoueurs}</span>` : ""}</div><div class="stat-lbl">Joueurs présents</div></div>` : ""}
   </div>
@@ -1512,7 +1537,10 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
 
   ${sessionPhoto ? `<div class="session-photo-wrap"><img src="${sessionPhoto}" alt="Photo de séance" /></div>` : ""}
 
-  <div class="content">${blocks}</div>
+  <div class="content">
+    ${blocks}
+    ${sessionPlays.length ? `<h2 style="font-family:'Oswald',sans-serif;font-size:16px;margin:8px 0 12px;color:#1B2A4A">Systèmes</h2>${playsBlocks}` : ""}
+  </div>
 
 </body></html>`;
 }
@@ -6269,7 +6297,7 @@ function CoachingProBoost({ session }) {
           <div>
             <div className="flex items-center justify-between mb-5 no-print">
               <button onClick={() => setViewPersist("sessions")} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Retour aux séances</button>
-              <button onClick={() => downloadSessionHTML(activeSession, exercises, { clubLogo, sessionPhoto: currentSessionPhoto, teams, sport })} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Imprimer la séance</button>
+              <button onClick={() => downloadSessionHTML(activeSession, exercises, { clubLogo, sessionPhoto: currentSessionPhoto, teams, sport, plays })} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Imprimer la séance</button>
             </div>
             <div className="flex items-start gap-4 mb-4">
               {clubLogo && <img src={clubLogo} alt="Logo club" className="w-16 h-16 object-contain flex-shrink-0 rounded" />}
