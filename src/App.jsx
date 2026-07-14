@@ -1743,6 +1743,17 @@ function _drawArrowHead(ctx, from, to, color, size) {
 function _drawStroke(ctx, stroke) {
   const pts = stroke.points;
   if (pts.length < 2) return;
+  if (stroke.erase) {
+    ctx.save();
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.beginPath();
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.lineWidth = stroke.width;
+    pts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
   const last = pts[pts.length - 1];
   const prev = stroke.isCurve ? pts[Math.max(0, pts.length - 2)] : pts[Math.max(0, pts.length - 4)];
   const arrowSize = 6 + stroke.width * 2;
@@ -1861,6 +1872,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const templateInputRef = useRef(null);
   const [color, setColor] = useState("#1B2A4A");
   const [lineWidth, setLineWidth] = useState(2.5);
+  const [eraserSize, setEraserSize] = useState(24);
   const [lineStyle, setLineStyle] = useState("simple"); // simple | pointille | zigzag
   const [arrowEnd, setArrowEnd] = useState(true);
   const [tool, setTool] = useState("pen"); // pen | player | text | select
@@ -2008,49 +2020,74 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const drawTextElement = _drawTextElement;
 
   const selectedElRef = useRef(null);
-  const redraw = () => {
+  // Buffer hors-écran pour les éléments (tokens/traits/textes), séparé du fond.
+  // La gomme applique un destination-out sur CE buffer uniquement, jamais sur
+  // le fond du terrain, pour éviter de créer une zone transparente qui
+  // ressortirait noire une fois exportée en JPEG.
+  const elementsCanvasRef = useRef(null);
+  const getElementsCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!elementsCanvasRef.current) elementsCanvasRef.current = document.createElement("canvas");
+    const buf = elementsCanvasRef.current;
+    if (canvas && (buf.width !== canvas.width || buf.height !== canvas.height)) {
+      buf.width = canvas.width; buf.height = canvas.height;
+    }
+    return buf;
+  };
+  const compositeMain = () => {
     const canvas = canvasRef.current;
     if (!canvas || !bgImgRef.current) return;
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(bgImgRef.current, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(getElementsCanvas(), 0, 0);
+  };
+
+  const redraw = () => {
+    const canvas = canvasRef.current;
+    if (!canvas || !bgImgRef.current) return;
+    const buf = getElementsCanvas();
+    const bctx = buf.getContext("2d");
+    bctx.clearRect(0, 0, buf.width, buf.height);
     elementsRef.current.forEach(el => {
-      if (el.type === "token") drawPlayerToken(ctx, el);
-      else if (el.type === "text") drawTextElement(ctx, el);
-      else drawStroke(ctx, el);
+      if (el.type === "token") drawPlayerToken(bctx, el);
+      else if (el.type === "text") drawTextElement(bctx, el);
+      else drawStroke(bctx, el);
       // Highlight selected element
       if (el === selectedElRef.current) {
         if (el.type === "token") {
-          ctx.save();
-          ctx.strokeStyle = "#FF6B35";
-          ctx.lineWidth = 3;
-          ctx.setLineDash([4, 3]);
-          ctx.beginPath();
-          ctx.arc(el.x, el.y, 22, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.restore();
+          bctx.save();
+          bctx.strokeStyle = "#FF6B35";
+          bctx.lineWidth = 3;
+          bctx.setLineDash([4, 3]);
+          bctx.beginPath();
+          bctx.arc(el.x, el.y, 22, 0, Math.PI * 2);
+          bctx.stroke();
+          bctx.setLineDash([]);
+          bctx.restore();
         } else if (el.type === "stroke" && el.isCurve) {
           el.points.forEach(p => {
-            ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
-            ctx.fillStyle = "rgba(255,107,53,0.9)"; ctx.fill();
-            ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.stroke();
+            bctx.beginPath(); bctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+            bctx.fillStyle = "rgba(255,107,53,0.9)"; bctx.fill();
+            bctx.strokeStyle = "white"; bctx.lineWidth = 2; bctx.stroke();
           });
         } else if (el.type === "stroke") {
-          ctx.save();
-          ctx.strokeStyle = "#FF6B35";
-          ctx.lineWidth = el.width + 6;
-          ctx.lineCap = "round";
-          ctx.lineJoin = "round";
-          ctx.globalAlpha = 0.35;
-          ctx.beginPath();
-          el.points.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
-          ctx.stroke();
-          ctx.restore();
+          bctx.save();
+          bctx.strokeStyle = "#FF6B35";
+          bctx.lineWidth = el.width + 6;
+          bctx.lineCap = "round";
+          bctx.lineJoin = "round";
+          bctx.globalAlpha = 0.35;
+          bctx.beginPath();
+          el.points.forEach((p, i) => { if (i === 0) bctx.moveTo(p.x, p.y); else bctx.lineTo(p.x, p.y); });
+          bctx.stroke();
+          bctx.restore();
         }
       }
     });
-    // Preview courbe en cours
+    compositeMain();
+    // Preview courbe en cours (par-dessus, sur le canvas principal)
+    const ctx = canvas.getContext("2d");
     const cpPts = curvePointsRef.current;
     if (cpPts.length >= 1) {
       if (cpPts.length >= 2) {
@@ -2133,7 +2170,9 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       }
       return;
     }
-    currentRef.current = { type: "stroke", color, width: lineWidth, style: lineStyle, arrow: arrowEnd, points: [toCanvasPoint(e)] };
+    currentRef.current = tool === "eraser"
+      ? { type: "stroke", erase: true, width: eraserSize, points: [toCanvasPoint(e)] }
+      : { type: "stroke", color, width: lineWidth, style: lineStyle, arrow: arrowEnd, points: [toCanvasPoint(e)] };
   };
   const handlePointerMove = (e) => {
     if (tool === "curve") { e.preventDefault(); return; }
@@ -2157,14 +2196,30 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     const pt = toCanvasPoint(e);
     currentRef.current.points.push(pt);
     // live raw feedback while drawing; final styling (zigzag/dash/arrow) is applied on release
-    const ctx = canvasRef.current.getContext("2d");
     const pts = currentRef.current.points;
+    const prev = pts[pts.length - 2] || pt;
+    if (tool === "eraser") {
+      // Efface uniquement sur le buffer d'éléments, jamais le fond (évite le noir au flatten JPEG)
+      const bctx = getElementsCanvas().getContext("2d");
+      bctx.save();
+      bctx.globalCompositeOperation = "destination-out";
+      bctx.beginPath();
+      bctx.lineWidth = eraserSize;
+      bctx.lineCap = "round";
+      bctx.lineJoin = "round";
+      bctx.moveTo(prev.x, prev.y);
+      bctx.lineTo(pt.x, pt.y);
+      bctx.stroke();
+      bctx.restore();
+      compositeMain();
+      return;
+    }
+    const ctx = canvasRef.current.getContext("2d");
     ctx.beginPath();
     ctx.strokeStyle = color;
     ctx.lineWidth = lineWidth;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    const prev = pts[pts.length - 2] || pt;
     ctx.moveTo(prev.x, prev.y);
     ctx.lineTo(pt.x, pt.y);
     ctx.stroke();
@@ -2302,12 +2357,19 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           <button onClick={() => { curvePointsRef.current = []; setCurvePoints([]); setTool("curve"); }} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "curve" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>〜 Courbe</button>
           <button onClick={() => setTool("player")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "player" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🧍 Joueur</button>
           <button onClick={() => setTool("text")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "text" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🔤 Texte</button>
+          <button onClick={() => setTool("eraser")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "eraser" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🧹 Gomme</button>
           <button onClick={() => setTool("select")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "select" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🖐 Déplacer</button>
         </div>
       </div>
 
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        {tool === "pen" ? (
+        {tool === "eraser" ? (
+          <select value={eraserSize} onChange={e => setEraserSize(Number(e.target.value))} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
+            <option value={12}>Petite</option>
+            <option value={24}>Moyenne</option>
+            <option value={40}>Grande</option>
+          </select>
+        ) : tool === "pen" ? (
           <>
             {["#1B2A4A", "#D62828", "#2563EB"].map(c => (
               <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />
@@ -2653,6 +2715,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
   const currentRef = useRef(null);
   const [color, setColor] = useState("#1B2A4A");
   const [lineWidth, setLineWidth] = useState(2.5);
+  const [eraserSize, setEraserSize] = useState(24);
   const [lineStyle, setLineStyle] = useState("simple");
   const [arrowEnd, setArrowEnd] = useState(true);
   const [tool, setTool] = useState("pen");
@@ -2713,18 +2776,60 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
     setActiveTerrain(idx);
   };
 
-  const redraw = () => {
+  // Buffer hors-écran pour les éléments (tokens/traits/textes), séparé du fond.
+  // La gomme applique un destination-out sur CE buffer uniquement, jamais sur
+  // le fond du terrain/schéma, pour éviter une zone transparente qui
+  // ressortirait noire une fois exportée en JPEG.
+  const elementsCanvasRef = useRef(null);
+  const getElementsCanvas = () => {
+    const canvas = canvasRef.current;
+    if (!elementsCanvasRef.current) elementsCanvasRef.current = document.createElement("canvas");
+    const buf = elementsCanvasRef.current;
+    if (canvas && (buf.width !== canvas.width || buf.height !== canvas.height)) {
+      buf.width = canvas.width; buf.height = canvas.height;
+    }
+    return buf;
+  };
+  const compositeMain = () => {
     const canvas = canvasRef.current;
     if (!canvas || !bgImgRef.current) return;
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(bgImgRef.current, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(getElementsCanvas(), 0, 0);
+  };
+
+  const redraw = () => {
+    const canvas = canvasRef.current;
+    if (!canvas || !bgImgRef.current) return;
+    const buf = getElementsCanvas();
+    const bctx = buf.getContext("2d");
+    bctx.clearRect(0, 0, buf.width, buf.height);
     elementsRef.current.forEach(el => {
-      if (el.type === "token") _drawPlayerToken(ctx, el);
-      else if (el.type === "text") _drawTextElement(ctx, el);
-      else _drawStroke(ctx, el);
+      if (el.type === "token") _drawPlayerToken(bctx, el);
+      else if (el.type === "text") _drawTextElement(bctx, el);
+      else _drawStroke(bctx, el);
     });
-    // Preview courbe en cours
+    elementsRef.current.forEach(el => {
+      if (el === selectedElRef.current) {
+        if (el.type === "token") {
+          bctx.save(); bctx.strokeStyle = "#FF6B35"; bctx.lineWidth = 3; bctx.setLineDash([4, 3]);
+          bctx.beginPath(); bctx.arc(el.x, el.y, 22, 0, Math.PI * 2); bctx.stroke(); bctx.setLineDash([]); bctx.restore();
+        } else if (el.type === "stroke" && el.isCurve) {
+          el.points.forEach(p => {
+            bctx.beginPath(); bctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+            bctx.fillStyle = "rgba(255,107,53,0.9)"; bctx.fill();
+            bctx.strokeStyle = "white"; bctx.lineWidth = 2; bctx.stroke();
+          });
+        } else if (el.type === "stroke") {
+          bctx.save(); bctx.strokeStyle = "#FF6B35"; bctx.lineWidth = el.width + 6; bctx.lineCap = "round"; bctx.lineJoin = "round"; bctx.globalAlpha = 0.35;
+          bctx.beginPath(); el.points.forEach((p, i) => { if (i === 0) bctx.moveTo(p.x, p.y); else bctx.lineTo(p.x, p.y); }); bctx.stroke(); bctx.restore();
+        }
+      }
+    });
+    compositeMain();
+    // Preview courbe en cours (par-dessus, sur le canvas principal)
+    const ctx = canvas.getContext("2d");
     const cpPts = curvePointsRef.current;
     if (cpPts.length >= 1) {
       if (cpPts.length >= 2) {
@@ -2741,23 +2846,6 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
         ctx.strokeStyle = "white"; ctx.lineWidth = 1.5; ctx.stroke();
       });
     }
-    elementsRef.current.forEach(el => {
-      if (el === selectedElRef.current) {
-        if (el.type === "token") {
-          ctx.save(); ctx.strokeStyle = "#FF6B35"; ctx.lineWidth = 3; ctx.setLineDash([4, 3]);
-          ctx.beginPath(); ctx.arc(el.x, el.y, 22, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
-        } else if (el.type === "stroke" && el.isCurve) {
-          el.points.forEach(p => {
-            ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
-            ctx.fillStyle = "rgba(255,107,53,0.9)"; ctx.fill();
-            ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.stroke();
-          });
-        } else if (el.type === "stroke") {
-          ctx.save(); ctx.strokeStyle = "#FF6B35"; ctx.lineWidth = el.width + 6; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.globalAlpha = 0.35;
-          ctx.beginPath(); el.points.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); }); ctx.stroke(); ctx.restore();
-        }
-      }
-    });
   };
 
   const toCanvasPoint = (e) => {
@@ -2831,7 +2919,9 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       else { selectedElRef.current = null; setSelectedEl(null); redraw(); }
       return;
     }
-    currentRef.current = { type: "stroke", color, width: lineWidth, style: lineStyle, arrow: arrowEnd, points: [toCanvasPoint(e)] };
+    currentRef.current = tool === "eraser"
+      ? { type: "stroke", erase: true, width: eraserSize, points: [toCanvasPoint(e)] }
+      : { type: "stroke", color, width: lineWidth, style: lineStyle, arrow: arrowEnd, points: [toCanvasPoint(e)] };
   };
 
   const handlePointerMove = (e) => {
@@ -2854,10 +2944,21 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
     e.preventDefault();
     const pt = toCanvasPoint(e);
     currentRef.current.points.push(pt);
-    const ctx = canvasRef.current.getContext("2d");
     const pts = currentRef.current.points;
-    ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = lineWidth; ctx.lineCap = "round"; ctx.lineJoin = "round";
     const prev = pts[pts.length - 2] || pt;
+    if (tool === "eraser") {
+      // Efface uniquement sur le buffer d'éléments, jamais le fond (évite le noir au flatten JPEG)
+      const bctx = getElementsCanvas().getContext("2d");
+      bctx.save();
+      bctx.globalCompositeOperation = "destination-out";
+      bctx.beginPath(); bctx.lineWidth = eraserSize; bctx.lineCap = "round"; bctx.lineJoin = "round";
+      bctx.moveTo(prev.x, prev.y); bctx.lineTo(pt.x, pt.y); bctx.stroke();
+      bctx.restore();
+      compositeMain();
+      return;
+    }
+    const ctx = canvasRef.current.getContext("2d");
+    ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = lineWidth; ctx.lineCap = "round"; ctx.lineJoin = "round";
     ctx.moveTo(prev.x, prev.y); ctx.lineTo(pt.x, pt.y); ctx.stroke();
   };
 
@@ -2950,11 +3051,18 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
           <button onClick={() => { curvePointsRef.current = []; setCurvePoints([]); setTool("curve"); }} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "curve" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>〜 Courbe</button>
           <button onClick={() => setTool("player")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "player" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🧍 Joueur</button>
           <button onClick={() => setTool("text")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "text" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🔤 Texte</button>
+          <button onClick={() => setTool("eraser")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "eraser" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🧹 Gomme</button>
           <button onClick={() => setTool("select")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "select" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🖐 Déplacer</button>
         </div>
       </div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        {tool === "pen" ? (
+        {tool === "eraser" ? (
+          <select value={eraserSize} onChange={e => setEraserSize(Number(e.target.value))} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
+            <option value={12}>Petite</option>
+            <option value={24}>Moyenne</option>
+            <option value={40}>Grande</option>
+          </select>
+        ) : tool === "pen" ? (
           <>
             {["#1B2A4A","#D62828","#2563EB"].map(c => <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />)}
             <select value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white"><option value={1.5}>Fin</option><option value={2.5}>Moyen</option><option value={4}>Épais</option></select>
