@@ -6605,6 +6605,85 @@ function SharedPlayPublicView({ token }) {
   );
 }
 
+function SharedPlayCollectionPublicView({ token }) {
+  const [collection, setCollection] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showLogin, setShowLogin] = useState(false);
+
+  useEffect(() => {
+    supabase.from("shared_play_collections").select("title, plays, expires_at").eq("token", token).maybeSingle()
+      .then(({ data }) => {
+        if (!data) { setError("Lien invalide ou expiré."); }
+        else if (data.expires_at && new Date(data.expires_at) < new Date()) { setError("Ce lien a expiré."); }
+        else { setCollection(data); }
+        setLoading(false);
+      });
+  }, [token]);
+
+  if (showLogin) return <AuthScreen />;
+
+  if (loading) return (
+    <div className="min-h-screen bg-[#F2EDE4] flex items-center justify-center">
+      <div className="text-[#1B2A4A]/50 text-sm">Chargement du scouting report...</div>
+    </div>
+  );
+
+  if (error) return (
+    <div className="min-h-screen bg-[#F2EDE4] flex items-center justify-center px-4">
+      <div className="text-center">
+        <div className="text-4xl mb-4">🏀</div>
+        <div className="text-[#1B2A4A] font-bold mb-2">{error}</div>
+        <a href="/" className="text-[#FF6B35] text-sm underline">Aller sur Coaching Pro Boost</a>
+      </div>
+    </div>
+  );
+
+  const plays = collection.plays || [];
+
+  return (
+    <div className="min-h-screen bg-[#F2EDE4] px-4 py-8">
+      <div className="max-w-lg mx-auto">
+        <div className="text-center mb-6">
+          <div style={{ fontFamily: "Oswald, sans-serif", fontSize: 13, fontWeight: 700, letterSpacing: 2, color: "#FF6B35", textTransform: "uppercase", marginBottom: 6 }}>Coaching Pro Boost</div>
+          <div style={{ fontFamily: "Oswald, sans-serif", fontSize: 26, fontWeight: 800, color: "#1B2A4A" }}>Un coach partage</div>
+          <div style={{ fontFamily: "Oswald, sans-serif", fontSize: 26, fontWeight: 800, color: "#FF6B35" }}>{plays.length} play{plays.length > 1 ? "s" : ""} avec toi</div>
+        </div>
+
+        <div className="bg-white rounded-2xl overflow-hidden shadow-lg mb-4">
+          <div className="bg-[#1B2A4A] px-5 py-4">
+            <div style={{ fontFamily: "Oswald, sans-serif", fontSize: 22, fontWeight: 800, color: "white" }}>{collection.title || "Scouting Report"}</div>
+          </div>
+          <div className="p-4 flex flex-col gap-2">
+            {plays.map((p, i) => (
+              <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-xl bg-[#F2EDE4]">
+                <div style={{ background: "#1B2A4A", color: "#fff", width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, fontFamily: "Oswald, sans-serif", flexShrink: 0 }}>{i + 1}</div>
+                <div>
+                  <div className="text-sm font-bold text-[#1B2A4A]">{p.titre || "Sans titre"}</div>
+                  {p.type && <div className="text-xs" style={{ color: "#FF6B35" }}>{p.type}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl p-5 shadow-lg text-center">
+          <div style={{ fontSize: 13, color: "#1B2A4A", opacity: 0.6, marginBottom: 16 }}>
+            Importe ces {plays.length} play{plays.length > 1 ? "s" : ""} directement dans ton application pour les utiliser dans ton playbook.
+          </div>
+          <button onClick={() => setShowLogin(true)}
+            style={{ display: "block", width: "100%", background: "#FF6B35", color: "white", fontFamily: "Oswald, sans-serif", fontWeight: 700, fontSize: 16, padding: "14px 20px", borderRadius: 14, border: "none", cursor: "pointer", marginBottom: 12 }}>
+            📥 IMPORTER CES PLAYS
+          </button>
+          <a href="/" style={{ display: "block", fontSize: 12, color: "#1B2A4A", opacity: 0.4, textDecoration: "none" }}>
+            Ouvrir Coaching Pro Boost
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(undefined);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(isPasswordRecoveryUrl);
@@ -6623,6 +6702,7 @@ export default function App() {
   }, []);
 
   const shareplayToken = new URLSearchParams(window.location.search).get("shareplay");
+  const scoutingToken = new URLSearchParams(window.location.search).get("scoutingtoken");
 
   if (session === undefined) {
     return (
@@ -6633,6 +6713,7 @@ export default function App() {
   }
   if (isPasswordRecovery) return <ResetPasswordScreen onDone={() => { setIsPasswordRecovery(false); supabase.auth.signOut(); }} />;
   if (!session && shareplayToken) return <SharedPlayPublicView token={shareplayToken} />;
+  if (!session && scoutingToken) return <SharedPlayCollectionPublicView token={scoutingToken} />;
   if (!session) return <AuthScreen />;
   return <AlertProvider><ToastProvider><CoachingProBoost key={session.user.id} session={session} /></ToastProvider></AlertProvider>;
 }
