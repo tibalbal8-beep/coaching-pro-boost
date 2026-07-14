@@ -7,6 +7,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      workbox: {
+        navigateFallbackDenylist: [/^\/api\//],
+      },
       includeAssets: ["favicon.png", "icon-192.png", "icon-512.png", "logo-icon.png", "logo-full.png"],
       manifest: {
         name: "Coaching Pro Boost",
