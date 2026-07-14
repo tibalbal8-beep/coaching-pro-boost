@@ -1335,31 +1335,20 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
   }).join("");
 
   const sessionPlays = (session.playIds || []).map(id => plays.find(p => p.id === id)).filter(Boolean);
-  const playsBlocks = sessionPlays.map((play, i) => {
+  const playCards = sessionPlays.map((play, i) => {
     const schemas = play.schemas || [];
     const photos = (play.images || []).filter(img => img.file?.data || img.data);
-    const visualsHtml = [
-      ...schemas.map(s => `<div class="visual-inner" style="margin-bottom:8px;"><img src="${s}" style="width:100%;height:auto;display:block" /></div>`),
-      ...photos.map(img => `<div class="visual-inner" style="margin-bottom:8px;"><img src="${img.file?.data || img.data}" style="width:100%;height:auto;display:block" /></div>`),
-    ].join("");
-    const hasVisual = schemas.length > 0 || photos.length > 0;
+    const visuals = [...schemas, ...photos.map(img => img.file?.data || img.data)];
     return `
-    <div class="exo">
-      <div class="exo-header">
-        <span class="exo-num">S${String(i + 1).padStart(2, "0")}</span>
-        <span class="exo-title">${esc(play.titre)}</span>
-        <span class="exo-meta">${esc(play.type || "")}</span>
+    <div class="play-card">
+      <div class="play-card-visual">
+        ${visuals[0] ? `<img src="${visuals[0]}" alt="" />` : `<div class="play-card-noviz">S${String(i + 1).padStart(2, "0")}</div>`}
       </div>
-      <div class="exo-body${hasVisual ? "" : " no-visual"}">
-        ${hasVisual ? `<div class="exo-visual" style="flex-direction:column">${visualsHtml}</div>` : ""}
-        <div class="exo-text">
-          ${(play.tags || []).length ? `<div class="tags">${play.tags.map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
-          ${play.description ? `<div class="field"><div class="field-label">Description</div><p class="field-val">${esc(play.description)}</p></div>` : ""}
-          ${!play.description && !hasVisual && !(play.tags || []).length ? `<p class="empty-text">Aucune consigne renseignée.</p>` : ""}
-        </div>
-      </div>
+      <div class="play-card-title">${esc(play.titre)}</div>
+      ${play.type ? `<div class="play-card-type">${esc(play.type)}</div>` : ""}
     </div>`;
   }).join("");
+  const playsBlocks = sessionPlays.length ? `<div class="plays-grid">${playCards}</div>` : "";
 
   // ── HANDBALL FICHE ──────────────────────────────────────────────────────────
   if (sport === "handball") {
@@ -1506,6 +1495,15 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
     .field-val{font-size:12px;line-height:1.55;color:#1B2A4A}
     .notes{white-space:pre-wrap;color:#1B2A4A90}
     .empty-text{font-size:12px;color:#1B2A4A40;font-style:italic}
+
+    /* ── SYSTEMES GRID (4 vignettes par ligne) ── */
+    .plays-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    .play-card{border:1px solid #1B2A4A20;border-radius:8px;overflow:hidden;break-inside:avoid;page-break-inside:avoid;background:#fff}
+    .play-card-visual{aspect-ratio:4/3;background:#eef2f7;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .play-card-visual img{width:100%;height:100%;object-fit:cover;display:block}
+    .play-card-noviz{font-family:'Oswald',sans-serif;font-size:20px;color:#1B2A4A40}
+    .play-card-title{font-family:'Oswald',sans-serif;font-size:11px;padding:6px 8px 0;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .play-card-type{font-size:9px;color:#FF6B35;text-transform:uppercase;letter-spacing:.4px;padding:2px 8px 6px}
 
     @media print{
       @page{margin:0;size:A4}
