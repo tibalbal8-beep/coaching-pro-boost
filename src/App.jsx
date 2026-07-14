@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera, Share2 } from "lucide-react";
 import { storage, supabase, isPasswordRecoveryUrl } from "./storage";
+import { Analytics } from "@vercel/analytics/react";
 
 const AlertCtx = createContext(null);
 function useAlert() { return useContext(AlertCtx); }
@@ -6716,6 +6717,6 @@ export default function App() {
   if (!session && shareplayToken) return <SharedPlayPublicView token={shareplayToken} />;
   if (!session && scoutingToken) return <SharedPlayCollectionPublicView token={scoutingToken} />;
   if (!session) return <AuthScreen />;
-  return <AlertProvider><ToastProvider><CoachingProBoost key={session.user.id} session={session} /></ToastProvider></AlertProvider>;
+  return <><AlertProvider><ToastProvider><CoachingProBoost key={session.user.id} session={session} /></ToastProvider></AlertProvider><Analytics /></>;
 }
 
