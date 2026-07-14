@@ -2646,7 +2646,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
 }
 
 // ─── Dessinateur tactique (bibliothèque + playbook) — terrains fixes, sans gabarits Supabase ───
-function DrawTacticalView({ onValidate, onCancel, courtType = "basketball" }) {
+function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", initialImage = null }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const bgImgRef = useRef(null);
@@ -2689,8 +2689,9 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball" }) {
 
   const [activeTerrain, setActiveTerrain] = useState(0);
   const [bgReady, setBgReady] = useState(false);
+  const [editingExisting, setEditingExisting] = useState(!!initialImage);
 
-  // Charge le terrain actif directement depuis /public sans fetch
+  // Charge le fond : soit le schéma existant (édition), soit le terrain sélectionné
   useEffect(() => {
     setBgReady(false);
     const img = new Image();
@@ -2700,8 +2701,8 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball" }) {
       setBgReady(true);
     };
     img.onerror = () => { bgImgRef.current = null; setBgReady(false); };
-    img.src = TERRAIN_DEFS[activeTerrain].file;
-  }, [activeTerrain]);
+    img.src = editingExisting ? initialImage : TERRAIN_DEFS[activeTerrain].file;
+  }, [activeTerrain, editingExisting]);
 
   // Redessine dès que le fond est prêt ou que les dims changent
   useEffect(() => {
@@ -2923,13 +2924,25 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball" }) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <span className="text-xs font-semibold text-[#1B2A4A]/60 uppercase tracking-wide">Terrain :</span>
-        {TERRAIN_DEFS.map((d, i) => (
-          <button key={i} type="button" onClick={() => switchTerrain(i)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${activeTerrain === i ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A] hover:border-[#1B2A4A]/50"}`}>
-            {d.label}
-          </button>
-        ))}
+        {editingExisting ? (
+          <>
+            <span className="text-xs font-medium text-[#1B2A4A]/60">✏️ Modification du schéma existant — ajoute tes flèches/joueurs par-dessus</span>
+            <button type="button" onClick={() => { if (window.confirm("Repartir d'un terrain vierge ? Le dessin existant sera perdu.")) { elementsRef.current = []; setEditingExisting(false); } }}
+              className="px-3 py-1.5 rounded-full text-xs font-medium border border-[#1B2A4A]/20 text-[#1B2A4A] hover:border-[#1B2A4A]/50 transition-colors">
+              Repartir d'un terrain vierge
+            </button>
+          </>
+        ) : (
+          <>
+            <span className="text-xs font-semibold text-[#1B2A4A]/60 uppercase tracking-wide">Terrain :</span>
+            {TERRAIN_DEFS.map((d, i) => (
+              <button key={i} type="button" onClick={() => switchTerrain(i)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${activeTerrain === i ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A] hover:border-[#1B2A4A]/50"}`}>
+                {d.label}
+              </button>
+            ))}
+          </>
+        )}
       </div>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
         <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>DESSINER UN SCHÉMA</h2>
@@ -4336,6 +4349,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
         {editingSchemaIdx !== null && (
           <DrawTacticalView
             courtType={courtType}
+            initialImage={editingSchemaIdx < schemas.length ? schemas[editingSchemaIdx] : null}
             onCancel={() => setEditingSchemaIdx(null)}
             onValidate={(dataUrl) => {
               if (editingSchemaIdx < schemas.length) {
