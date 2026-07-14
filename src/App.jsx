@@ -4868,7 +4868,15 @@ function CoachingProBoost({ session }) {
     let restoredAny = false;
     const apply = async (key, applyFn) => {
       const snap = await storage.getHistorySnapshot(key, before);
-      if (snap) { applyFn(JSON.parse(snap.value)); restoredAny = true; }
+      if (!snap) return;
+      let parsed = JSON.parse(snap.value);
+      if (key === "exercises") {
+        // Les exercices sont stockés sans le champ `file` (juste hasFile/fileName/fileType) ;
+        // useFileImage exige `ex.file` pour déclencher le chargement lazy depuis file:{id}.
+        parsed = parsed.map(e => e.hasFile ? { ...e, file: { name: e.fileName, type: e.fileType, data: null } } : e);
+      }
+      applyFn(parsed);
+      restoredAny = true;
     };
     try {
       await apply("exercises", saveExercises);
