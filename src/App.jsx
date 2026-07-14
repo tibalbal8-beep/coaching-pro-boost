@@ -1337,9 +1337,12 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
   const sessionPlays = (session.playIds || []).map(id => plays.find(p => p.id === id)).filter(Boolean);
   const playsBlocks = sessionPlays.map((play, i) => {
     const schemas = play.schemas || [];
-    const schemasHtml = schemas.map(s => `
-      <div class="visual-inner" style="margin-bottom:8px;"><img src="${s}" style="width:100%;height:auto;display:block" /></div>
-    `).join("");
+    const photos = (play.images || []).filter(img => img.file?.data || img.data);
+    const visualsHtml = [
+      ...schemas.map(s => `<div class="visual-inner" style="margin-bottom:8px;"><img src="${s}" style="width:100%;height:auto;display:block" /></div>`),
+      ...photos.map(img => `<div class="visual-inner" style="margin-bottom:8px;"><img src="${img.file?.data || img.data}" style="width:100%;height:auto;display:block" /></div>`),
+    ].join("");
+    const hasVisual = schemas.length > 0 || photos.length > 0;
     return `
     <div class="exo">
       <div class="exo-header">
@@ -1347,12 +1350,12 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
         <span class="exo-title">${esc(play.titre)}</span>
         <span class="exo-meta">${esc(play.type || "")}</span>
       </div>
-      <div class="exo-body${schemas.length ? "" : " no-visual"}">
-        ${schemas.length ? `<div class="exo-visual" style="flex-direction:column">${schemasHtml}</div>` : ""}
+      <div class="exo-body${hasVisual ? "" : " no-visual"}">
+        ${hasVisual ? `<div class="exo-visual" style="flex-direction:column">${visualsHtml}</div>` : ""}
         <div class="exo-text">
           ${(play.tags || []).length ? `<div class="tags">${play.tags.map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
           ${play.description ? `<div class="field"><div class="field-label">Description</div><p class="field-val">${esc(play.description)}</p></div>` : ""}
-          ${!play.description && !schemas.length && !(play.tags || []).length ? `<p class="empty-text">Aucune consigne renseignée.</p>` : ""}
+          ${!play.description && !hasVisual && !(play.tags || []).length ? `<p class="empty-text">Aucune consigne renseignée.</p>` : ""}
         </div>
       </div>
     </div>`;
@@ -1571,7 +1574,26 @@ async function downloadSessionHTML(session, exercises, opts) {
   }));
   // Reconstruire la liste complète avec les exercices enrichis
   const exercisesEnriched = exercises.map(ex => enriched.find(e => e.id === ex.id) || ex);
-  const html = buildSessionHTML(session, exercisesEnriched, opts);
+
+  // Précharger les photos des systèmes liés (stockées séparément sous playimg:{playId}:{imgId})
+  const plays = opts?.plays || [];
+  const sessionPlayIds = session.playIds || [];
+  const enrichedPlays = await Promise.all(
+    plays.filter(p => sessionPlayIds.includes(p.id)).map(async (play) => {
+      const images = await Promise.all((play.images || []).map(async (img) => {
+        if (img.file?.data || img.data) return img;
+        try {
+          const r = await storage.get(`playimg:${play.id}:${img.id}`);
+          if (r) { const parsed = JSON.parse(r.value); return { ...img, file: parsed }; }
+        } catch {}
+        return img;
+      }));
+      return { ...play, images };
+    })
+  );
+  const playsEnriched = plays.map(p => enrichedPlays.find(e => e.id === p.id) || p);
+
+  const html = buildSessionHTML(session, exercisesEnriched, { ...opts, plays: playsEnriched });
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
