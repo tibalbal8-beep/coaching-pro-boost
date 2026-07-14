@@ -15,15 +15,33 @@ if (!supabaseUrl || !supabaseKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
-async function getCurrentUserId() {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Non authentifié");
-  return user.id;
+// Cache synchrone de l'utilisateur courant, tenu à jour via onAuthStateChange.
+// Toute opération de storage doit capturer l'userId de façon SYNCHRONE, avant
+// tout `await` : un appel async à supabase.auth.getUser() résolu après un
+// changement de compte (déconnexion/reconnexion rapide) renverrait le NOUVEL
+// utilisateur alors que l'appel a été déclenché pour l'ANCIEN, ce qui écrase
+// les données du nouveau compte avec celles de l'ancien.
+let cachedUserId = null;
+let cachedUserIdReady = supabase.auth.getSession().then(({ data: { session } }) => {
+  cachedUserId = session?.user?.id || null;
+});
+supabase.auth.onAuthStateChange((_event, session) => {
+  cachedUserId = session?.user?.id || null;
+});
+
+function getCurrentUserIdSync() {
+  if (!cachedUserId) throw new Error("Non authentifié");
+  return cachedUserId;
+}
+
+async function ensureUserIdReady() {
+  await cachedUserIdReady;
+  return getCurrentUserIdSync();
 }
 
 export const storage = {
   async get(key) {
-    const userId = await getCurrentUserId();
+    const userId = cachedUserId !== null ? getCurrentUserIdSync() : await ensureUserIdReady();
     const { data, error } = await supabase
       .from("kv_store")
       .select("key, value")
@@ -38,7 +56,7 @@ export const storage = {
   },
 
   async set(key, value) {
-    const userId = await getCurrentUserId();
+    const userId = cachedUserId !== null ? getCurrentUserIdSync() : await ensureUserIdReady();
     const { error } = await supabase
       .from("kv_store")
       .upsert({ user_id: userId, key, value, updated_at: new Date().toISOString() });
@@ -50,7 +68,7 @@ export const storage = {
   },
 
   async delete(key) {
-    const userId = await getCurrentUserId();
+    const userId = cachedUserId !== null ? getCurrentUserIdSync() : await ensureUserIdReady();
     const { error } = await supabase
       .from("kv_store")
       .delete()
@@ -64,7 +82,7 @@ export const storage = {
   },
 
   async list(prefix = "") {
-    const userId = await getCurrentUserId();
+    const userId = cachedUserId !== null ? getCurrentUserIdSync() : await ensureUserIdReady();
     const query = supabase
       .from("kv_store")
       .select("key")
