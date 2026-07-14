@@ -5160,6 +5160,7 @@ function CoachingProBoost({ session }) {
   const [cropContext, setCropContext] = useState("library"); // "library" | "session"
   const [quickCropData, setQuickCropData] = useState(null);
   const [currentSessionPhoto, setCurrentSessionPhoto] = useState(null);
+  const [showSessionDrawer, setShowSessionDrawer] = useState(false);
   const [pendingPerspectivePhoto, setPendingPerspectivePhoto] = useState(null);
   const sessionPhotoInputRef = useRef();
   const sessionCameraRef = useRef();
@@ -5465,6 +5466,18 @@ function CoachingProBoost({ session }) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {showSessionDrawer && activeSession && (
+        <div className="fixed inset-0 z-[700] bg-[#F2EDE4] overflow-y-auto p-4">
+          <DrawSheetView
+            courtType={SPORT_COURT}
+            onCancel={() => setShowSessionDrawer(false)}
+            onValidate={async (dataUrl) => {
+              await confirmSessionPhoto(dataUrl);
+              setShowSessionDrawer(false);
+            }}
+          />
         </div>
       )}
       {showHistoryRestore && (
@@ -6331,7 +6344,10 @@ function CoachingProBoost({ session }) {
           <div>
             <div className="flex items-center justify-between mb-5 no-print">
               <button onClick={() => setViewPersist("sessions")} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Retour aux séances</button>
-              <button onClick={() => downloadSessionHTML(activeSession, exercises, { clubLogo, sessionPhoto: currentSessionPhoto, teams, sport, plays })} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Imprimer la séance</button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setShowSessionDrawer(true)} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Pencil size={14} /> Dessiner la séance</button>
+                <button onClick={() => downloadSessionHTML(activeSession, exercises, { clubLogo, sessionPhoto: currentSessionPhoto, teams, sport, plays })} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Imprimer la séance</button>
+              </div>
             </div>
             <div className="flex items-start gap-4 mb-4">
               {clubLogo && <img src={clubLogo} alt="Logo club" className="w-16 h-16 object-contain flex-shrink-0 rounded" />}
