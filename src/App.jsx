@@ -4683,6 +4683,7 @@ function CoachingProBoost({ session }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sharedExercise, setSharedExercise] = useState(null);
   const [sharedPlay, setSharedPlay] = useState(null);
+  const [sharedPlayCollection, setSharedPlayCollection] = useState(null);
 
   // Fix dictée vocale iOS : les événements compositionend ne déclenchent pas onChange dans React
   useEffect(() => {
@@ -4706,7 +4707,12 @@ function CoachingProBoost({ session }) {
     const token = new URLSearchParams(window.location.search).get("scoutingtoken");
     if (!token) return;
     window.history.replaceState({}, "", "/");
-    window.location.href = `/api/scouting?token=${token}`;
+    supabase.from("shared_play_collections").select("title, plays, expires_at").eq("token", token).maybeSingle()
+      .then(({ data }) => {
+        if (!data) { cpbAlert("Ce lien de scouting est invalide ou a expiré."); return; }
+        if (data.expires_at && new Date(data.expires_at) < new Date()) { cpbAlert("Ce lien de scouting a expiré."); return; }
+        setSharedPlayCollection(data);
+      });
   }, []);
 
   // Détection lien de partage play ?shareplay=TOKEN
@@ -5319,6 +5325,53 @@ function CoachingProBoost({ session }) {
                 Ajouter à mon Play Book
               </button>
               <button onClick={() => setSharedPlay(null)}
+                className="w-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A] transition-colors">
+                Ignorer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {sharedPlayCollection && (
+        <div className="fixed inset-0 z-[700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
+            <div className="bg-[#1B2A4A] px-6 py-5 text-center">
+              <div className="text-3xl mb-2">📋</div>
+              <div className="text-white font-bold text-xl" style={{ fontFamily: "Oswald, sans-serif" }}>SCOUTING REPORT</div>
+              <div className="text-white/60 text-sm mt-1">Un coach partage {sharedPlayCollection.plays?.length || 0} play{(sharedPlayCollection.plays?.length || 0) > 1 ? "s" : ""} avec toi</div>
+            </div>
+            <div className="px-6 py-5">
+              <div className="bg-[#F2EDE4] rounded-xl p-4 mb-4 max-h-60 overflow-y-auto">
+                <div className="font-bold text-[#1B2A4A] mb-2">{sharedPlayCollection.title}</div>
+                {(sharedPlayCollection.plays || []).map((p, i) => (
+                  <div key={i} className="text-xs text-[#1B2A4A]/70 py-1 border-t border-[#1B2A4A]/10 first:border-t-0">
+                    {p.titre || "Sans titre"}{p.type ? ` — ${p.type}` : ""}
+                  </div>
+                ))}
+              </div>
+              <button onClick={async () => {
+                const newPlays = await Promise.all((sharedPlayCollection.plays || []).map(async (sp) => {
+                  const newPlay = { ...sp, id: uid(), createdAt: new Date().toISOString() };
+                  if (newPlay.images?.length) {
+                    newPlay.images = await Promise.all(newPlay.images.map(async (img) => {
+                      if (img.file?.data) {
+                        await storage.set(`playimg:${newPlay.id}:${img.id}`, JSON.stringify(img.file)).catch(() => {});
+                        return { ...img, file: { name: img.file.name, type: img.file.type, data: null } };
+                      }
+                      return img;
+                    }));
+                  }
+                  return newPlay;
+                }));
+                savePlays([...plays, ...newPlays]);
+                setSharedPlayCollection(null);
+                setViewPersist("playbook");
+                toast?.(`${newPlays.length} play${newPlays.length > 1 ? "s" : ""} ajouté${newPlays.length > 1 ? "s" : ""} à ton Play Book !`);
+              }} className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors mb-3"
+                style={{ fontFamily: "Oswald, sans-serif" }}>
+                Tout ajouter à mon Play Book
+              </button>
+              <button onClick={() => setSharedPlayCollection(null)}
                 className="w-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A] transition-colors">
                 Ignorer
               </button>
