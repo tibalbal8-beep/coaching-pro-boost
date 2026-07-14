@@ -4758,7 +4758,7 @@ function CoachingProBoost({ session }) {
       }
       const { error } = await supabase.from("shared_plays").insert({ token, play_data: playData });
       if (error) throw error;
-      const link = `${window.location.origin}?shareplay=${token}`;
+      const link = `${window.location.origin}/app?shareplay=${token}`;
       await copyOrShow(link, "Lien copié ! Valable 30 jours.");
     } catch(e) { await cpbAlert("Erreur lors du partage : " + e.message); }
   };
@@ -4898,7 +4898,7 @@ function CoachingProBoost({ session }) {
       }
       const { error } = await supabase.from("shared_exercises").insert({ token, exercise_data: exData });
       if (error) throw error;
-      const link = `${window.location.origin}?share=${token}`;
+      const link = `${window.location.origin}/app?share=${token}`;
       await copyOrShow(link, "Lien copié ! Valable 30 jours.");
     } catch(e) { await cpbAlert("Erreur lors du partage : " + e.message); }
   };

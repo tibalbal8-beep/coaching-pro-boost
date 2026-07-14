@@ -88,7 +88,7 @@ export default async function handler(req, res) {
       <p>${plays.length} play${plays.length > 1 ? "s" : ""} • Coaching Pro Boost</p>
     </div>
     <div class="no-print">
-      <a href="https://coachingproboost.com?scoutingtoken=${token}" class="import-btn">
+      <a href="https://coachingproboost.com/app?scoutingtoken=${token}" class="import-btn">
         📥 Importer dans mon Play Book (Premium)
       </a>
       <button onclick="window.print()" class="print-btn">🖨️ Imprimer / Exporter PDF</button>
