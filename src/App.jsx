@@ -5166,6 +5166,7 @@ function CoachingProBoost({ session }) {
   const [filterPlayType, setFilterPlayType] = useState([]);
   const [filterPlayTags, setFilterPlayTags] = useState([]);
   const [filterScoutedTeam, setFilterScoutedTeam] = useState("");
+  const [playbookSearch, setPlaybookSearch] = useState("");
   const [playbookTagsOpen, setPlaybookTagsOpen] = useState(false);
   const [activeSession, setActiveSession] = useState(null);
   const activeSessionRef = useRef(null);
@@ -5194,12 +5195,14 @@ function CoachingProBoost({ session }) {
   const [reviewItems, setReviewItems] = useState(null); // array or null
   const importInputRef = useRef();
 
+  const [librarySearch, setLibrarySearch] = useState("");
   const filtered = exercises.filter(ex =>
     (filterTheme.length === 0 || filterTheme.every(t => ex.themes?.includes(t))) &&
     (filterFormat.length === 0 || filterFormat.includes(ex.format)) &&
     (filterPhase.length === 0 || filterPhase.every(p => ex.phases?.includes(p))) &&
-    (filterCategorie.length === 0 || filterCategorie.includes(ex.categorie))
-  );
+    (filterCategorie.length === 0 || filterCategorie.includes(ex.categorie)) &&
+    (!librarySearch.trim() || ex.titre?.toLowerCase().includes(librarySearch.trim().toLowerCase()))
+  ).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
   const toggleFilter = (arr, setArr, v) => setArr(arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
 
@@ -5796,6 +5799,14 @@ function CoachingProBoost({ session }) {
                 </div>
               </div>
             )}
+            <div className="relative mb-3">
+              <input value={librarySearch} onChange={e => setLibrarySearch(e.target.value)} placeholder="Rechercher un exercice par nom..."
+                className="w-full border border-[#1B2A4A]/20 rounded-lg pl-9 pr-8 py-2 text-sm bg-white/60 outline-none focus:border-[#FF6B35]" />
+              <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#1B2A4A]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 10.5A6.5 6.5 0 114 10.5a6.5 6.5 0 0113 0z" /></svg>
+              {librarySearch && (
+                <button onClick={() => setLibrarySearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={14} /></button>
+              )}
+            </div>
             {(() => {
               const anyFilter = filterTheme.length + filterFormat.length + filterPhase.length + filterCategorie.length > 0;
               const filterSections = [
@@ -5895,6 +5906,14 @@ function CoachingProBoost({ session }) {
                 </div>
               </div>
             )}
+            <div className="relative mb-3">
+              <input value={playbookSearch} onChange={e => setPlaybookSearch(e.target.value)} placeholder="Rechercher un play par nom..."
+                className="w-full border border-[#1B2A4A]/20 rounded-lg pl-9 pr-8 py-2 text-sm bg-white/60 outline-none focus:border-[#FF6B35]" />
+              <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#1B2A4A]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 10.5A6.5 6.5 0 114 10.5a6.5 6.5 0 0113 0z" /></svg>
+              {playbookSearch && (
+                <button onClick={() => setPlaybookSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={14} /></button>
+              )}
+            </div>
             <div className="space-y-2 mb-5">
               <div className="flex flex-wrap gap-1.5 items-center">
                 <span className="text-xs text-[#1B2A4A]/40 mr-1">Type :</span>
@@ -5944,7 +5963,8 @@ function CoachingProBoost({ session }) {
             {plays.filter(p =>
               (filterPlayType.length === 0 || filterPlayType.includes(p.type)) &&
               (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t))) &&
-                  (!filterScoutedTeam || p.scoutedTeam === filterScoutedTeam)
+              (!filterScoutedTeam || p.scoutedTeam === filterScoutedTeam) &&
+              (!playbookSearch.trim() || p.titre?.toLowerCase().includes(playbookSearch.trim().toLowerCase()))
             ).length === 0 ? (
               <div className="text-center py-16 text-[#1B2A4A]/40">
                 <BookOpen size={40} className="mx-auto mb-3 opacity-30" />
@@ -5956,8 +5976,9 @@ function CoachingProBoost({ session }) {
                 {plays.filter(p =>
                   (filterPlayType.length === 0 || filterPlayType.includes(p.type)) &&
                   (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t))) &&
-                  (!filterScoutedTeam || p.scoutedTeam === filterScoutedTeam)
-                ).map(play => (
+                  (!filterScoutedTeam || p.scoutedTeam === filterScoutedTeam) &&
+                  (!playbookSearch.trim() || p.titre?.toLowerCase().includes(playbookSearch.trim().toLowerCase()))
+                ).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).map(play => (
                   <PlayCard key={play.id} play={play}
                     onView={() => setViewingPlay(play)}
                     onShare={() => sharePlay(play)}
