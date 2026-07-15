@@ -3496,13 +3496,16 @@ function PerspectiveCorrectionView({ imageData, onConfirm, onSkip }) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-function CropPhotoView({ imageData, onCancel, onCrop, multiMode = false, cropCount = 0 }) {
+function CropPhotoView({ imageData, onCancel, onCrop, multiMode = false, cropCount = 0, courtType = "basketball" }) {
   const canvasRef = useRef();
   const imgRef = useRef(null);
   const scaleRef = useRef(1);
   const dragging = useRef(false);
   const startRef = useRef({ x: 0, y: 0 });
   const [cropRect, setCropRect] = useState(null);
+  // Ratio des terrains fournis dans /public (largeur/hauteur) — aide à cadrer pile sur les lignes
+  const TERRAIN_RATIO = 330 / 410;
+  const [aspect, setAspect] = useState(null); // null = libre, sinon ratio largeur/hauteur
 
   const normalizeRect = (r) => ({
     x: Math.min(r.x, r.x + r.w), y: Math.min(r.y, r.y + r.h),
@@ -3569,7 +3572,13 @@ function CropPhotoView({ imageData, onCancel, onCrop, multiMode = false, cropCou
     if (!dragging.current) return;
     e.preventDefault();
     const pos = getPos(e);
-    const r = { x: startRef.current.x, y: startRef.current.y, w: pos.x - startRef.current.x, h: pos.y - startRef.current.y };
+    let w = pos.x - startRef.current.x;
+    let h = pos.y - startRef.current.y;
+    if (aspect) {
+      // Contraint la hauteur au ratio choisi, en gardant le sens du glissement
+      h = (Math.abs(w) / aspect) * Math.sign(h || 1);
+    }
+    const r = { x: startRef.current.x, y: startRef.current.y, w, h };
     setCropRect(r);
     redraw(r);
   };
@@ -3605,6 +3614,16 @@ function CropPhotoView({ imageData, onCancel, onCrop, multiMode = false, cropCou
           className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white transition-opacity"
           style={{ backgroundColor: "#FF6B35", opacity: canCrop ? 1 : 0.4 }}>
           {multiMode ? "Ajouter" : "Rogner"}
+        </button>
+      </div>
+      <div className="flex items-center justify-center gap-2 pb-2 flex-shrink-0">
+        <button onClick={() => setAspect(null)}
+          className={`px-3 py-1 rounded-full text-xs font-medium ${aspect === null ? "bg-white text-[#1B2A4A]" : "bg-white/10 text-white/60"}`}>
+          Libre
+        </button>
+        <button onClick={() => setAspect(TERRAIN_RATIO)}
+          className={`px-3 py-1 rounded-full text-xs font-medium ${aspect === TERRAIN_RATIO ? "bg-white text-[#1B2A4A]" : "bg-white/10 text-white/60"}`}>
+          🏀 Terrain
         </button>
       </div>
       <div className="flex-1 flex items-center justify-center overflow-hidden px-2 pb-4">
@@ -4440,6 +4459,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
           imageData={cropSource}
           multiMode={true}
           cropCount={cropCount}
+          courtType={courtType}
           onCrop={handleCropResult}
           onCancel={() => { setCropSource(null); setCropCount(0); }}
         />
