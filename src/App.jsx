@@ -4862,13 +4862,12 @@ function CoachingProBoost({ session }) {
   const [sharedPlayCollection, setSharedPlayCollection] = useState(null);
   const [showHistoryRestore, setShowHistoryRestore] = useState(false);
 
-  const restoreFromHistory = async (hoursAgo) => {
+  const restoreAt = async (before, label) => {
     const confirmed = await cpbAlert(
-      `Restaurer tes données à leur état d'il y a ${hoursAgo < 24 ? hoursAgo + "h" : Math.round(hoursAgo / 24) + " jour(s)"} ? Cela remplacera tes exercices, séances, thèmes, équipes et plays actuels.`,
+      `Restaurer tes données à leur état ${label} ? Cela remplacera tes exercices, séances, thèmes, équipes et plays actuels.`,
       { confirm: true }
     );
     if (!confirmed) return;
-    const before = new Date(Date.now() - hoursAgo * 60 * 60 * 1000);
     let restoredAny = false;
     const apply = async (key, applyFn) => {
       const snap = await storage.getHistorySnapshot(key, before);
@@ -4891,6 +4890,17 @@ function CoachingProBoost({ session }) {
     } catch (e) { await cpbAlert("Erreur lors de la restauration : " + e.message); return; }
     setShowHistoryRestore(false);
     await cpbAlert(restoredAny ? "✓ Données restaurées !" : "Aucun historique disponible pour cette période (moins de 3 jours conservés).");
+  };
+  const restoreFromHistory = (hoursAgo) => restoreAt(
+    new Date(Date.now() - hoursAgo * 60 * 60 * 1000),
+    `d'il y a ${hoursAgo < 24 ? hoursAgo + "h" : Math.round(hoursAgo / 24) + " jour(s)"}`
+  );
+  const [customRestoreDate, setCustomRestoreDate] = useState("");
+  const restoreAtCustomDate = () => {
+    if (!customRestoreDate) return;
+    const d = new Date(customRestoreDate);
+    if (isNaN(d)) return;
+    restoreAt(d, `du ${d.toLocaleString("fr-FR")}`);
   };
 
   // Fix dictée vocale iOS : les événements compositionend ne déclenchent pas onChange dans React
@@ -5617,6 +5627,19 @@ function CoachingProBoost({ session }) {
                   {opt.label}
                 </button>
               ))}
+              <div className="flex items-center gap-2 my-1">
+                <div className="flex-1 h-px bg-[#1B2A4A]/10" />
+                <span className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/40">ou une date précise</span>
+                <div className="flex-1 h-px bg-[#1B2A4A]/10" />
+              </div>
+              <input type="datetime-local" value={customRestoreDate} onChange={e => setCustomRestoreDate(e.target.value)}
+                max={new Date().toISOString().slice(0, 16)}
+                className="w-full border border-[#1B2A4A]/20 rounded-xl px-3 py-2.5 text-sm text-[#1B2A4A] outline-none focus:border-[#FF6B35]" />
+              <button onClick={restoreAtCustomDate} disabled={!customRestoreDate}
+                className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors disabled:opacity-40"
+                style={{ fontFamily: "Oswald, sans-serif" }}>
+                Restaurer à cette date
+              </button>
               <button onClick={() => setShowHistoryRestore(false)}
                 className="w-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A] transition-colors mt-2">
                 Annuler
