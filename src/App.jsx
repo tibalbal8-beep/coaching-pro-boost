@@ -1663,6 +1663,17 @@ function generateBasketballCourtDataUrl(variant) {
 
 // ─── Fonctions utilitaires de dessin canvas (partagées entre DrawSheetView et DrawTacticalView) ───
 
+function SizeSlider({ value, onChange, min, max, step = 0.1, width = 80 }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(Number(e.target.value))}
+        style={{ width, accentColor: "#FF6B35" }} />
+      <span className="text-xs text-[#1B2A4A]/60 w-8 text-right tabular-nums">{value}</span>
+    </div>
+  );
+}
+
 function _zigzagify(points, amplitude = 7, step = 12) {
   if (points.length < 2) return points;
   const resampled = [points[0]];
@@ -2382,11 +2393,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
             {["#1B2A4A", "#D62828", "#2563EB"].map(c => (
               <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />
             ))}
-            <select value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-              <option value={1.5}>Fin</option>
-              <option value={2.5}>Moyen</option>
-              <option value={4}>Épais</option>
-            </select>
+            <SizeSlider value={lineWidth} onChange={setLineWidth} min={1} max={10} step={0.5} />
             <select value={lineStyle} onChange={e => setLineStyle(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
               <option value="simple">Déplacement</option>
               <option value="pointille">Passe</option>
@@ -2401,9 +2408,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         ) : tool === "curve" ? (
           <>
             {["#1B2A4A","#D62828","#2563EB"].map(c => <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />)}
-            <select value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-              <option value={1.5}>Fin</option><option value={2.5}>Moyen</option><option value={4}>Épais</option>
-            </select>
+            <SizeSlider value={lineWidth} onChange={setLineWidth} min={1} max={10} step={0.5} />
             <select value={lineStyle} onChange={e => setLineStyle(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
               <option value="simple">Déplacement</option><option value="pointille">Passe</option><option value="zigzag">Dribble</option><option value="ecran">Écran</option>
             </select>
@@ -2474,14 +2479,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
                 }} /> Défenseur
               </label>
             </>}
-            <div className="flex items-center gap-1 bg-[#1B2A4A]/5 rounded-full px-1 py-0.5">
-              {[{v:0.6,l:"S"},{v:1,l:"M"},{v:1.5,l:"L"}].map(sz => (
-                <button key={sz.v} type="button" onClick={() => setPlayerSize(sz.v)}
-                  className={`w-6 h-6 rounded-full text-xs font-bold transition-colors ${playerSize === sz.v ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>
-                  {sz.l}
-                </button>
-              ))}
-            </div>
+            <SizeSlider value={playerSize} onChange={setPlayerSize} min={0.4} max={2.2} step={0.1} />
             <span className="text-xs text-[#1B2A4A]/40">Touche le terrain pour placer</span>
           </>
         ) : tool === "text" ? (
@@ -3110,7 +3108,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
         ) : tool === "pen" ? (
           <>
             {["#1B2A4A","#D62828","#2563EB"].map(c => <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />)}
-            <select value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white"><option value={1.5}>Fin</option><option value={2.5}>Moyen</option><option value={4}>Épais</option></select>
+            <SizeSlider value={lineWidth} onChange={setLineWidth} min={1} max={10} step={0.5} />
             <select value={lineStyle} onChange={e => setLineStyle(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
               <option value="simple">Déplacement</option><option value="pointille">Passe</option><option value="zigzag">Dribble</option><option value="ecran">Écran</option><option value="tir">Tir</option>
             </select>
@@ -3119,7 +3117,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
         ) : tool === "curve" ? (
           <>
             {["#1B2A4A","#D62828","#2563EB"].map(c => <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />)}
-            <select value={lineWidth} onChange={e => setLineWidth(Number(e.target.value))} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white"><option value={1.5}>Fin</option><option value={2.5}>Moyen</option><option value={4}>Épais</option></select>
+            <SizeSlider value={lineWidth} onChange={setLineWidth} min={1} max={10} step={0.5} />
             <select value={lineStyle} onChange={e => setLineStyle(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
               <option value="simple">Déplacement</option><option value="pointille">Passe</option><option value="zigzag">Dribble</option><option value="ecran">Écran</option>
             </select>
@@ -3156,9 +3154,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={playerHasBall} onChange={e => setPlayerHasBall(e.target.checked)} disabled={playerIsDefender} /> Ballon</label>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={playerIsDefender} onChange={e => { const def=e.target.checked; setPlayerIsDefender(def); const nums=["1","2","3","4","5","6","7","8","9","10","11","12"],xNums=["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"]; if(def){const i=nums.indexOf(playerLabel);if(i>=0)setPlayerLabel(xNums[i]);else setPlayerLabel("X1");}else{const i=xNums.indexOf(playerLabel);if(i>=0)setPlayerLabel(nums[i]);else setPlayerLabel("1");} }} /> Défenseur</label>
             </>}
-            <div className="flex items-center gap-1 bg-[#1B2A4A]/5 rounded-full px-1 py-0.5">
-              {[{v:0.6,l:"S"},{v:1,l:"M"},{v:1.5,l:"L"}].map(sz=><button key={sz.v} type="button" onClick={() => setPlayerSize(sz.v)} className={`w-6 h-6 rounded-full text-xs font-bold transition-colors ${playerSize===sz.v?"bg-white text-[#1B2A4A] shadow-sm":"text-[#1B2A4A]/50"}`}>{sz.l}</button>)}
-            </div>
+            <SizeSlider value={playerSize} onChange={setPlayerSize} min={0.4} max={2.2} step={0.1} />
           </>
         ) : tool === "text" ? (
           <>
