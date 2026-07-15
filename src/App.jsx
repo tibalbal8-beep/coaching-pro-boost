@@ -5203,6 +5203,12 @@ function CoachingProBoost({ session }) {
   const [filterScoutedTeam, setFilterScoutedTeam] = useState("");
   const [playbookSearch, setPlaybookSearch] = useState("");
   const [playbookTagsOpen, setPlaybookTagsOpen] = useState(false);
+  const filteredPlays = plays.filter(p =>
+    (filterPlayType.length === 0 || filterPlayType.includes(p.type)) &&
+    (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t))) &&
+    (!filterScoutedTeam || p.scoutedTeam === filterScoutedTeam) &&
+    (!playbookSearch.trim() || p.titre?.toLowerCase().includes(playbookSearch.trim().toLowerCase()))
+  ).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   const [activeSession, setActiveSession] = useState(null);
   const activeSessionRef = useRef(null);
   useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
@@ -5995,12 +6001,23 @@ function CoachingProBoost({ session }) {
                 </div>
               )}
             </div>
-            {plays.filter(p =>
-              (filterPlayType.length === 0 || filterPlayType.includes(p.type)) &&
-              (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t))) &&
-              (!filterScoutedTeam || p.scoutedTeam === filterScoutedTeam) &&
-              (!playbookSearch.trim() || p.titre?.toLowerCase().includes(playbookSearch.trim().toLowerCase()))
-            ).length === 0 ? (
+            {isPremium && filteredPlays.length > 0 && (
+              <div className="flex items-center justify-between mb-3 -mt-2">
+                <span className="text-xs text-[#1B2A4A]/40">{filteredPlays.length} play{filteredPlays.length > 1 ? "s" : ""} affiché{filteredPlays.length > 1 ? "s" : ""}</span>
+                {filteredPlays.every(p => selectedPlays.includes(p.id)) ? (
+                  <button onClick={() => setSelectedPlays(prev => prev.filter(id => !filteredPlays.some(p => p.id === id)))}
+                    className="text-xs font-medium text-[#FF6B35] hover:underline">
+                    Tout désélectionner
+                  </button>
+                ) : (
+                  <button onClick={() => setSelectedPlays(prev => [...new Set([...prev, ...filteredPlays.map(p => p.id)])])}
+                    className="text-xs font-medium text-[#FF6B35] hover:underline">
+                    Tout sélectionner ({filteredPlays.length})
+                  </button>
+                )}
+              </div>
+            )}
+            {filteredPlays.length === 0 ? (
               <div className="text-center py-16 text-[#1B2A4A]/40">
                 <BookOpen size={40} className="mx-auto mb-3 opacity-30" />
                 <p>Ton Play Book est vide.</p>
@@ -6008,12 +6025,7 @@ function CoachingProBoost({ session }) {
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {plays.filter(p =>
-                  (filterPlayType.length === 0 || filterPlayType.includes(p.type)) &&
-                  (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t))) &&
-                  (!filterScoutedTeam || p.scoutedTeam === filterScoutedTeam) &&
-                  (!playbookSearch.trim() || p.titre?.toLowerCase().includes(playbookSearch.trim().toLowerCase()))
-                ).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).map(play => (
+                {filteredPlays.map(play => (
                   <PlayCard key={play.id} play={play}
                     onView={() => setViewingPlay(play)}
                     onShare={() => sharePlay(play)}
