@@ -2711,7 +2711,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
 }
 
 // ─── Dessinateur tactique (bibliothèque + playbook) — terrains fixes, sans gabarits Supabase ───
-function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", initialImage = null }) {
+function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", initialImage = null, allSchemas = [], currentSchemaIdx = null }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const bgImgRef = useRef(null);
@@ -3048,6 +3048,22 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
           </>
         )}
       </div>
+      {allSchemas.length > 0 && (
+        <div className="flex items-center gap-2 mb-3 overflow-x-auto pb-1">
+          <span className="text-xs text-[#1B2A4A]/40 flex-shrink-0">Déjà fait :</span>
+          {allSchemas.map((s, i) => (
+            <div key={i} className={`relative flex-shrink-0 w-14 h-10 rounded-md overflow-hidden border-2 ${i === currentSchemaIdx ? "border-[#FF6B35]" : "border-[#1B2A4A]/15"}`}>
+              <img src={s} alt="" className="w-full h-full object-cover" />
+              <span className="absolute bottom-0 right-0 bg-black/60 text-white text-[9px] px-1 leading-tight">{i + 1}</span>
+            </div>
+          ))}
+          {currentSchemaIdx === allSchemas.length && (
+            <div className="flex-shrink-0 w-14 h-10 rounded-md border-2 border-dashed border-[#FF6B35] flex items-center justify-center text-[#FF6B35] text-[10px] font-bold">
+              {allSchemas.length + 1}
+            </div>
+          )}
+        </div>
+      )}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
         <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>DESSINER UN SCHÉMA</h2>
         <div className="flex items-center gap-1 bg-[#1B2A4A]/5 rounded-full p-1">
@@ -4527,6 +4543,8 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
           <DrawTacticalView
             courtType={courtType}
             initialImage={editingSchemaIdx < schemas.length ? schemas[editingSchemaIdx] : null}
+            allSchemas={schemas}
+            currentSchemaIdx={editingSchemaIdx}
             onCancel={() => setEditingSchemaIdx(null)}
             onValidate={(dataUrl) => {
               if (editingSchemaIdx < schemas.length) {
