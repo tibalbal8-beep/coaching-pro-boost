@@ -4858,6 +4858,16 @@ function CoachingProBoost({ session }) {
   const cpbAlert = useAlert();
   const [paywallReason, setPaywallReason] = useState(null);
   const toast = useToast();
+
+  // Répare le catalogue playTags s'il est vide/désynchronisé alors que des plays ont des tags
+  // (ex: après une restauration qui ne couvrait pas cette clé).
+  useEffect(() => {
+    if (!loaded) return;
+    const used = [...new Set(plays.flatMap(p => p.tags || []))];
+    const missing = used.filter(t => !playTags.includes(t));
+    if (missing.length > 0) savePlayTags([...playTags, ...missing]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, plays]);
   const [premiumSuccess, setPremiumSuccess] = useState(() => {
     const p = new URLSearchParams(window.location.search).get("premium");
     if (p === "success") { window.history.replaceState({}, "", "/"); return true; }
@@ -5221,12 +5231,16 @@ function CoachingProBoost({ session }) {
   const [filterScoutedTeam, setFilterScoutedTeam] = useState("");
   const [playbookSearch, setPlaybookSearch] = useState("");
   const [playbookTagsOpen, setPlaybookTagsOpen] = useState(false);
-  const filteredPlays = plays.filter(p =>
-    (filterPlayType.length === 0 || filterPlayType.includes(p.type)) &&
-    (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t))) &&
-    (!filterScoutedTeam || p.scoutedTeam === filterScoutedTeam) &&
-    (!playbookSearch.trim() || p.titre?.toLowerCase().includes(playbookSearch.trim().toLowerCase()))
-  ).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  // Catalogue des mots-clés reconstruit à partir des tags réellement présents sur les plays
+  // (plus fiable que la liste playTags séparée, qui peut se désynchroniser).
+  const usedPlayTags = [...new Set(plays.flatMap(p => p.tags || []))].sort();
+  const filteredPlays = plays.filter(p => {
+    const q = playbookSearch.trim().toLowerCase();
+    return (filterPlayType.length === 0 || filterPlayType.includes(p.type)) &&
+      (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t))) &&
+      (!filterScoutedTeam || p.scoutedTeam === filterScoutedTeam) &&
+      (!q || p.titre?.toLowerCase().includes(q) || (p.tags || []).some(t => t.toLowerCase().includes(q)));
+  }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   const [activeSession, setActiveSession] = useState(null);
   const activeSessionRef = useRef(null);
   useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
@@ -5992,7 +6006,7 @@ function CoachingProBoost({ session }) {
                   </select>
                 </div>
               )}
-              {playTags.length > 0 && (
+              {usedPlayTags.length > 0 && (
                 <div className="border border-[#1B2A4A]/15 rounded-xl overflow-hidden">
                   <button type="button" onClick={() => setPlaybookTagsOpen(o => !o)}
                     className="w-full flex items-center justify-between px-4 py-3 bg-white/40 hover:bg-white/70 transition-colors">
@@ -6010,7 +6024,7 @@ function CoachingProBoost({ session }) {
                   {playbookTagsOpen && (
                     <div className="px-4 py-3 bg-white/20 border-t border-[#1B2A4A]/10">
                       <div className="flex flex-wrap gap-1.5">
-                        {playTags.map(t => (
+                        {usedPlayTags.map(t => (
                           <Tag key={t} active={filterPlayTags.includes(t)} onClick={() => setFilterPlayTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])} color="orange">{t}</Tag>
                         ))}
                       </div>
