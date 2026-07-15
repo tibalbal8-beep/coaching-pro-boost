@@ -3507,6 +3507,27 @@ function CropPhotoView({ imageData, onCancel, onCrop, multiMode = false, cropCou
   const TERRAIN_RATIO = 330 / 410;
   const [aspect, setAspect] = useState(null); // null = libre, sinon ratio largeur/hauteur
 
+  // Mémorise le dernier cadrage (coordonnées relatives 0-1) pour le reproduire
+  // sur d'autres photos prises du même terrain/même angle de caméra.
+  const LAST_CROP_KEY = "cpb_last_crop_rect";
+  const [hasLastCrop, setHasLastCrop] = useState(() => {
+    try { return !!localStorage.getItem(LAST_CROP_KEY); } catch { return false; }
+  });
+  const applyLastCrop = () => {
+    const canvas = canvasRef.current;
+    if (!canvas || !imgRef.current) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem(LAST_CROP_KEY));
+      if (!saved) return;
+      const r = {
+        x: saved.rx * canvas.width, y: saved.ry * canvas.height,
+        w: saved.rw * canvas.width, h: saved.rh * canvas.height,
+      };
+      setCropRect(r);
+      redraw(r);
+    } catch {}
+  };
+
   const normalizeRect = (r) => ({
     x: Math.min(r.x, r.x + r.w), y: Math.min(r.y, r.y + r.h),
     w: Math.abs(r.w), h: Math.abs(r.h),
@@ -3594,6 +3615,14 @@ function CropPhotoView({ imageData, onCancel, onCrop, multiMode = false, cropCou
     out.height = Math.round(nr.h / s);
     out.getContext("2d").drawImage(imgRef.current, nr.x / s, nr.y / s, nr.w / s, nr.h / s, 0, 0, out.width, out.height);
     onCrop(out.toDataURL("image/jpeg", 0.85));
+    const canvas = canvasRef.current;
+    try {
+      localStorage.setItem(LAST_CROP_KEY, JSON.stringify({
+        rx: nr.x / canvas.width, ry: nr.y / canvas.height,
+        rw: nr.w / canvas.width, rh: nr.h / canvas.height,
+      }));
+      setHasLastCrop(true);
+    } catch {}
     if (multiMode) { setCropRect(null); redraw(null); }
   };
 
@@ -3625,6 +3654,12 @@ function CropPhotoView({ imageData, onCancel, onCrop, multiMode = false, cropCou
           className={`px-3 py-1 rounded-full text-xs font-medium ${aspect === TERRAIN_RATIO ? "bg-white text-[#1B2A4A]" : "bg-white/10 text-white/60"}`}>
           🏀 Terrain
         </button>
+        {hasLastCrop && (
+          <button onClick={applyLastCrop}
+            className="px-3 py-1 rounded-full text-xs font-medium bg-white/10 text-white/60 hover:bg-white/20 hover:text-white">
+            📍 Reproduire le dernier cadrage
+          </button>
+        )}
       </div>
       <div className="flex-1 flex items-center justify-center overflow-hidden px-2 pb-4">
         <canvas ref={canvasRef}
