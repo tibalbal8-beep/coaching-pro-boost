@@ -1302,18 +1302,22 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
   const blocks = sessionExos.map((ex, i) => {
     const hasDiagram = !!ex.diagram;
     const hasPhoto = !!(ex.file?.data && ex.file?.type?.startsWith("image/"));
-    const hasVisual = hasDiagram || hasPhoto;
+    const schemas = ex.schemas || [];
+    const hasVisual = hasDiagram || hasPhoto || schemas.length > 0;
 
     let visualHtml = "";
     if (hasDiagram) {
       // IDs uniques par exercice pour éviter les conflits entre plusieurs schémas
       const raw = diagramToSvgString(ex.diagram, 420, 400);
-      visualHtml = raw
+      visualHtml += raw
         .replace(/id="a"/g, `id="marr${i}"`)
         .replace(/url\(#a\)/g, `url(#marr${i})`);
     } else if (hasPhoto) {
-      visualHtml = `<img src="${ex.file.data}" alt="" style="width:100%;height:auto;display:block;border-radius:6px;border:1px solid #1B2A4A15" />`;
+      visualHtml += `<img src="${ex.file.data}" alt="" style="width:100%;height:auto;display:block;border-radius:6px;border:1px solid #1B2A4A15" />`;
     }
+    schemas.forEach(s => {
+      visualHtml += `<div style="margin-top:8px"><img src="${s}" alt="" style="width:100%;height:auto;display:block;border-radius:6px;border:1px solid #1B2A4A15" /></div>`;
+    });
 
     return `
     <div class="exo">
