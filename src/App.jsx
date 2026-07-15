@@ -2538,61 +2538,6 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         </div>
       </div>
 
-      <div ref={wrapRef} className="relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white mb-4" style={{ touchAction: "none" }}>
-        <canvas
-          ref={canvasRef}
-          width={dims.width}
-          height={dims.height}
-          style={{ width: "100%", height: "auto", display: "block", touchAction: "none" }}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerUp}
-        />
-        {pendingText && (() => {
-          const taRef = React.createRef();
-          const wrap = (marker) => {
-            const ta = taRef.current;
-            if (!ta) return;
-            const s = ta.selectionStart, e = ta.selectionEnd;
-            const val = pendingText.value;
-            const selected = val.slice(s, e);
-            const newVal = val.slice(0, s) + marker + selected + marker + val.slice(e);
-            setPendingText({ ...pendingText, value: newVal });
-            setTimeout(() => { ta.focus(); ta.setSelectionRange(s + marker.length, e + marker.length); }, 0);
-          };
-          return (
-          <div style={{ position: "absolute", left: pendingText.screenX, top: pendingText.screenY - textSize * 0.7 }} onPointerDown={e => e.stopPropagation()}>
-            <div style={{ display: "flex", gap: 3, marginBottom: 3 }}>
-              <button onPointerDown={e => { e.preventDefault(); wrap("**"); }} style={{ fontSize: 11, fontWeight: "bold", background: "white", border: "1px solid #ddd", borderRadius: 3, padding: "1px 6px", cursor: "pointer" }}>G</button>
-              <button onPointerDown={e => { e.preventDefault(); wrap("*"); }} style={{ fontSize: 11, fontStyle: "italic", background: "white", border: "1px solid #ddd", borderRadius: 3, padding: "1px 6px", cursor: "pointer" }}>I</button>
-              <span style={{ fontSize: 9, color: "#aaa", alignSelf: "center", marginLeft: 2 }}>Sélectionner puis G ou I</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 4 }}>
-            <textarea
-              ref={taRef}
-              autoFocus
-              rows={Math.max(1, pendingText.value.split("\n").length)}
-              value={pendingText.value}
-              onChange={e => setPendingText({ ...pendingText, value: e.target.value })}
-              onKeyDown={e => { if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); commitPendingText(); } if (e.key === "Escape") setPendingText(null); }}
-              style={{
-                fontSize: textSize, color,
-                fontWeight: textBold ? "bold" : "normal",
-                fontStyle: textItalic ? "italic" : "normal",
-                background: textHighlight ? "rgba(255,230,0,0.7)" : "rgba(255,255,255,0.9)",
-                border: "1px dashed #FF6B35", outline: "none", padding: "2px 4px", minWidth: 120,
-                resize: "both", lineHeight: 1.25, fontFamily: "sans-serif", borderRadius: 3,
-              }}
-            />
-            <button onClick={commitPendingText}
-              style={{ fontSize: 11, background: "#FF6B35", color: "white", border: "none", borderRadius: 4, padding: "3px 8px", cursor: "pointer", marginBottom: 2 }}>OK</button>
-            </div>
-          </div>
-          );
-        })()}
-      </div>
-
       {/* Toolbar de sélection */}
       {selectedEl && (
         <div className="mb-4 p-3 border border-[#FF6B35]/30 rounded-xl bg-[#FF6B35]/5 flex flex-wrap items-center gap-3">
@@ -2672,6 +2617,61 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           </button>
         </div>
       )}
+
+      <div ref={wrapRef} className="relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white mb-4" style={{ touchAction: "none" }}>
+        <canvas
+          ref={canvasRef}
+          width={dims.width}
+          height={dims.height}
+          style={{ width: "100%", height: "auto", display: "block", touchAction: "none" }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
+        />
+        {pendingText && (() => {
+          const taRef = React.createRef();
+          const wrap = (marker) => {
+            const ta = taRef.current;
+            if (!ta) return;
+            const s = ta.selectionStart, e = ta.selectionEnd;
+            const val = pendingText.value;
+            const selected = val.slice(s, e);
+            const newVal = val.slice(0, s) + marker + selected + marker + val.slice(e);
+            setPendingText({ ...pendingText, value: newVal });
+            setTimeout(() => { ta.focus(); ta.setSelectionRange(s + marker.length, e + marker.length); }, 0);
+          };
+          return (
+          <div style={{ position: "absolute", left: pendingText.screenX, top: pendingText.screenY - textSize * 0.7 }} onPointerDown={e => e.stopPropagation()}>
+            <div style={{ display: "flex", gap: 3, marginBottom: 3 }}>
+              <button onPointerDown={e => { e.preventDefault(); wrap("**"); }} style={{ fontSize: 11, fontWeight: "bold", background: "white", border: "1px solid #ddd", borderRadius: 3, padding: "1px 6px", cursor: "pointer" }}>G</button>
+              <button onPointerDown={e => { e.preventDefault(); wrap("*"); }} style={{ fontSize: 11, fontStyle: "italic", background: "white", border: "1px solid #ddd", borderRadius: 3, padding: "1px 6px", cursor: "pointer" }}>I</button>
+              <span style={{ fontSize: 9, color: "#aaa", alignSelf: "center", marginLeft: 2 }}>Sélectionner puis G ou I</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 4 }}>
+            <textarea
+              ref={taRef}
+              autoFocus
+              rows={Math.max(1, pendingText.value.split("\n").length)}
+              value={pendingText.value}
+              onChange={e => setPendingText({ ...pendingText, value: e.target.value })}
+              onKeyDown={e => { if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); commitPendingText(); } if (e.key === "Escape") setPendingText(null); }}
+              style={{
+                fontSize: textSize, color,
+                fontWeight: textBold ? "bold" : "normal",
+                fontStyle: textItalic ? "italic" : "normal",
+                background: textHighlight ? "rgba(255,230,0,0.7)" : "rgba(255,255,255,0.9)",
+                border: "1px dashed #FF6B35", outline: "none", padding: "2px 4px", minWidth: 120,
+                resize: "both", lineHeight: 1.25, fontFamily: "sans-serif", borderRadius: 3,
+              }}
+            />
+            <button onClick={commitPendingText}
+              style={{ fontSize: 11, background: "#FF6B35", color: "white", border: "none", borderRadius: 4, padding: "3px 8px", cursor: "pointer", marginBottom: 2 }}>OK</button>
+            </div>
+          </div>
+          );
+        })()}
+      </div>
 
       {/* Notes structurées */}
       <div className="mb-4 border border-[#1B2A4A]/15 rounded-lg bg-white/60 overflow-hidden">
@@ -3174,25 +3174,6 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
         <button onClick={undo} className="px-3 py-1.5 rounded-md text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5 ml-auto">Annuler</button>
         <button onClick={clearAll} className="px-3 py-1.5 rounded-md text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5">Effacer tout</button>
       </div>
-      <div ref={wrapRef} className="relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white mb-4" style={{ touchAction: "none" }}>
-        <canvas ref={canvasRef} width={dims.width} height={dims.height}
-          style={{ width: "100%", height: "auto", display: "block", touchAction: "none" }}
-          onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp} />
-        {pendingText && (() => {
-          const taRef = React.createRef();
-          return (
-            <div style={{ position: "absolute", left: pendingText.screenX, top: pendingText.screenY - textSize * 0.7 }} onPointerDown={e => e.stopPropagation()}>
-              <div style={{ display: "flex", alignItems: "flex-end", gap: 4 }}>
-                <textarea ref={taRef} autoFocus rows={Math.max(1, pendingText.value.split("\n").length)} value={pendingText.value}
-                  onChange={e => setPendingText({ ...pendingText, value: e.target.value })}
-                  onKeyDown={e => { if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); commitPendingText(); } if (e.key === "Escape") setPendingText(null); }}
-                  style={{ fontSize: textSize, color, fontWeight: textBold?"bold":"normal", fontStyle: textItalic?"italic":"normal", background: textHighlight?"rgba(255,230,0,0.7)":"rgba(255,255,255,0.9)", border: "1px dashed #FF6B35", outline: "none", padding: "2px 4px", minWidth: 120, resize: "both", lineHeight: 1.25, fontFamily: "sans-serif", borderRadius: 3 }} />
-                <button onClick={commitPendingText} style={{ fontSize: 11, background: "#FF6B35", color: "white", border: "none", borderRadius: 4, padding: "3px 8px", cursor: "pointer", marginBottom: 2 }}>OK</button>
-              </div>
-            </div>
-          );
-        })()}
-      </div>
       {selectedEl && (
         <div className="mb-4 p-3 border border-[#FF6B35]/30 rounded-xl bg-[#FF6B35]/5 flex flex-wrap items-center gap-3">
           <span className="text-xs font-semibold text-[#FF6B35] uppercase tracking-wide">{selectedEl.type === "stroke" ? "Trait sélectionné" : "Élément sélectionné"}</span>
@@ -3223,6 +3204,25 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
             className="px-3 py-1.5 rounded-lg text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5">✕ Désélectionner</button>
         </div>
       )}
+      <div ref={wrapRef} className="relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white mb-4" style={{ touchAction: "none" }}>
+        <canvas ref={canvasRef} width={dims.width} height={dims.height}
+          style={{ width: "100%", height: "auto", display: "block", touchAction: "none" }}
+          onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp} />
+        {pendingText && (() => {
+          const taRef = React.createRef();
+          return (
+            <div style={{ position: "absolute", left: pendingText.screenX, top: pendingText.screenY - textSize * 0.7 }} onPointerDown={e => e.stopPropagation()}>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 4 }}>
+                <textarea ref={taRef} autoFocus rows={Math.max(1, pendingText.value.split("\n").length)} value={pendingText.value}
+                  onChange={e => setPendingText({ ...pendingText, value: e.target.value })}
+                  onKeyDown={e => { if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); commitPendingText(); } if (e.key === "Escape") setPendingText(null); }}
+                  style={{ fontSize: textSize, color, fontWeight: textBold?"bold":"normal", fontStyle: textItalic?"italic":"normal", background: textHighlight?"rgba(255,230,0,0.7)":"rgba(255,255,255,0.9)", border: "1px dashed #FF6B35", outline: "none", padding: "2px 4px", minWidth: 120, resize: "both", lineHeight: 1.25, fontFamily: "sans-serif", borderRadius: 3 }} />
+                <button onClick={commitPendingText} style={{ fontSize: 11, background: "#FF6B35", color: "white", border: "none", borderRadius: 4, padding: "3px 8px", cursor: "pointer", marginBottom: 2 }}>OK</button>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
       <div className="flex justify-end gap-2">
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
         <button onClick={() => { commitPendingText(); setTimeout(() => { let q = canvasRef.current.toDataURL("image/jpeg", 0.75); if (q.length > 400000) q = canvasRef.current.toDataURL("image/jpeg", 0.55); onValidate(q); }, 0); }}
