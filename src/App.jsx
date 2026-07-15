@@ -2132,6 +2132,36 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       pointerDownPtRef.current = toCanvasPoint(e);
       return;
     }
+    if (tool === "text") {
+      if (pendingText) commitPendingText();
+      const pt = toCanvasPoint(e);
+      const wrapRect = wrapRef.current.getBoundingClientRect();
+      setPendingText({ x: pt.x, y: pt.y, screenX: e.clientX - wrapRect.left, screenY: e.clientY - wrapRect.top, value: "" });
+      return;
+    }
+    // Cliquer sur un élément déjà posé (joueur, mouvement, matériel) le sélectionne
+    // pour le déplacer/supprimer — quel que soit l'outil actif (sauf gomme/texte/courbe).
+    if (tool !== "eraser") {
+      const pt = toCanvasPoint(e);
+      if (tool === "select") {
+        const sel = selectedElRef.current;
+        if (sel?.type === "stroke" && sel.isCurve) {
+          const pidx = sel.points.findIndex(p => Math.hypot(pt.x - p.x, pt.y - p.y) <= 14);
+          if (pidx >= 0) { draggingRef.current = { el: sel, pointIdx: pidx, startX: pt.x, startY: pt.y, moved: false }; return; }
+        }
+      }
+      const el = findElementAt(pt);
+      if (el) {
+        draggingRef.current = { el, startX: pt.x, startY: pt.y, origX: pt.x, origY: pt.y, moved: false };
+        return;
+      }
+      if (tool === "select") {
+        selectedElRef.current = null;
+        setSelectedEl(null);
+        redraw();
+        return;
+      }
+    }
     if (tool === "player") {
       const pt = toCanvasPoint(e);
       const equipKinds = ["plot", "chaise", "cerceau", "handball"];
@@ -2149,39 +2179,13 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       else if (idxX >= 0 && idxX < xSeq.length - 1) setPlayerLabel(xSeq[idxX + 1]);
       return;
     }
-    if (tool === "text") {
-      if (pendingText) commitPendingText();
-      const pt = toCanvasPoint(e);
-      const wrapRect = wrapRef.current.getBoundingClientRect();
-      setPendingText({ x: pt.x, y: pt.y, screenX: e.clientX - wrapRect.left, screenY: e.clientY - wrapRect.top, value: "" });
-      return;
-    }
-    if (tool === "select") {
-      const pt = toCanvasPoint(e);
-      // Glisser un point de contrôle d'une courbe sélectionnée
-      const sel = selectedElRef.current;
-      if (sel?.type === "stroke" && sel.isCurve) {
-        const pidx = sel.points.findIndex(p => Math.hypot(pt.x - p.x, pt.y - p.y) <= 14);
-        if (pidx >= 0) { draggingRef.current = { el: sel, pointIdx: pidx, startX: pt.x, startY: pt.y, moved: false }; return; }
-      }
-      const el = findElementAt(pt);
-      if (el) {
-        draggingRef.current = { el, startX: pt.x, startY: pt.y, origX: pt.x, origY: pt.y, moved: false };
-      } else {
-        selectedElRef.current = null;
-        setSelectedEl(null);
-        redraw();
-      }
-      return;
-    }
     currentRef.current = tool === "eraser"
       ? { type: "stroke", erase: true, width: eraserSize, points: [toCanvasPoint(e)] }
       : { type: "stroke", color, width: lineWidth, style: lineStyle, arrow: arrowEnd, points: [toCanvasPoint(e)] };
   };
   const handlePointerMove = (e) => {
     if (tool === "curve") { e.preventDefault(); return; }
-    if (tool === "select") {
-      if (!draggingRef.current) return;
+    if (draggingRef.current) {
       e.preventDefault();
       const pt = toCanvasPoint(e);
       const d = draggingRef.current;
@@ -2195,7 +2199,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       redraw();
       return;
     }
-    if (tool === "player" || !currentRef.current) return;
+    if (tool === "select" || tool === "player" || !currentRef.current) return;
     e.preventDefault();
     const pt = toCanvasPoint(e);
     currentRef.current.points.push(pt);
@@ -2245,7 +2249,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       }
       return;
     }
-    if (tool === "select") {
+    if (draggingRef.current) {
       const d = draggingRef.current;
       draggingRef.current = null;
       if (d && !d.moved) {
@@ -2270,7 +2274,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       }
       return;
     }
-    if (tool === "player") return;
+    if (tool === "select" || tool === "player") return;
     const stroke = currentRef.current;
     currentRef.current = null;
     if (!stroke || stroke.points.length < 2) return;
@@ -2434,15 +2438,26 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
               </button>
             ))}
             <div className="w-px h-5 bg-[#1B2A4A]/15 mx-0.5" />
-            {/* Numéro : 1-12 attaque, X1-X12 défense */}
+            {/* Accès rapide aux 5 joueurs (clic direct pour choisir le numéro) */}
             {!["plot","chaise","cerceau","handball"].includes(playerLabel) && (
-              <select value={playerLabel} onChange={e => setPlayerLabel(e.target.value)}
-                className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white w-16">
-                {(playerIsDefender
-                  ? ["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"]
-                  : ["1","2","3","4","5","6","7","8","9","10","11","12"]
-                ).map(n => <option key={n} value={n}>{n}</option>)}
-              </select>
+              <div className="flex items-center gap-1">
+                {["1","2","3","4","5"].map(n => {
+                  const lbl = playerIsDefender ? "X" + n : n;
+                  return (
+                    <button key={n} type="button" onClick={() => setPlayerLabel(lbl)}
+                      className={`w-7 h-7 rounded-md text-xs font-bold border transition-colors ${playerLabel === lbl ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5"}`}>
+                      {lbl}
+                    </button>
+                  );
+                })}
+                <select value={playerLabel} onChange={e => setPlayerLabel(e.target.value)}
+                  className="border border-[#1B2A4A]/20 rounded-md px-1.5 py-1 text-xs bg-white w-14">
+                  {(playerIsDefender
+                    ? ["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"]
+                    : ["1","2","3","4","5","6","7","8","9","10","11","12"]
+                  ).map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
             )}
             {!["plot","chaise","cerceau","handball"].includes(playerLabel) && <>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
@@ -2889,6 +2904,36 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       pointerDownPtRef.current = toCanvasPoint(e);
       return;
     }
+    if (tool === "text") {
+      if (pendingText) commitPendingText();
+      const pt = toCanvasPoint(e);
+      const wrapRect = wrapRef.current.getBoundingClientRect();
+      setPendingText({ x: pt.x, y: pt.y, screenX: e.clientX - wrapRect.left, screenY: e.clientY - wrapRect.top, value: "" });
+      return;
+    }
+    // Cliquer sur un élément déjà posé (joueur, mouvement, matériel) le sélectionne
+    // pour le déplacer/supprimer — quel que soit l'outil actif (sauf gomme/texte/courbe).
+    if (tool !== "eraser") {
+      const pt = toCanvasPoint(e);
+      if (tool === "select") {
+        const sel = selectedElRef.current;
+        if (sel?.type === "stroke" && sel.isCurve) {
+          const pidx = sel.points.findIndex(p => Math.hypot(pt.x - p.x, pt.y - p.y) <= 14);
+          if (pidx >= 0) { draggingRef.current = { el: sel, pointIdx: pidx, startX: pt.x, startY: pt.y, moved: false }; return; }
+        }
+      }
+      const el = findElementAt(pt);
+      if (el) {
+        draggingRef.current = { el, startX: pt.x, startY: pt.y, origX: pt.x, origY: pt.y, moved: false };
+        return;
+      }
+      if (tool === "select") {
+        selectedElRef.current = null;
+        setSelectedEl(null);
+        redraw();
+        return;
+      }
+    }
     if (tool === "player") {
       const pt = toCanvasPoint(e);
       const equipKinds = ["plot", "chaise", "cerceau", "handball"];
@@ -2904,25 +2949,6 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       else if (idxX >= 0 && idxX < xSeq.length - 1) setPlayerLabel(xSeq[idxX + 1]);
       return;
     }
-    if (tool === "text") {
-      if (pendingText) commitPendingText();
-      const pt = toCanvasPoint(e);
-      const wrapRect = wrapRef.current.getBoundingClientRect();
-      setPendingText({ x: pt.x, y: pt.y, screenX: e.clientX - wrapRect.left, screenY: e.clientY - wrapRect.top, value: "" });
-      return;
-    }
-    if (tool === "select") {
-      const pt = toCanvasPoint(e);
-      const sel = selectedElRef.current;
-      if (sel?.type === "stroke" && sel.isCurve) {
-        const pidx = sel.points.findIndex(p => Math.hypot(pt.x - p.x, pt.y - p.y) <= 14);
-        if (pidx >= 0) { draggingRef.current = { el: sel, pointIdx: pidx, startX: pt.x, startY: pt.y, moved: false }; return; }
-      }
-      const el = findElementAt(pt);
-      if (el) { draggingRef.current = { el, startX: pt.x, startY: pt.y, origX: pt.x, origY: pt.y, moved: false }; }
-      else { selectedElRef.current = null; setSelectedEl(null); redraw(); }
-      return;
-    }
     currentRef.current = tool === "eraser"
       ? { type: "stroke", erase: true, width: eraserSize, points: [toCanvasPoint(e)] }
       : { type: "stroke", color, width: lineWidth, style: lineStyle, arrow: arrowEnd, points: [toCanvasPoint(e)] };
@@ -2930,8 +2956,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
 
   const handlePointerMove = (e) => {
     if (tool === "curve") { e.preventDefault(); return; }
-    if (tool === "select") {
-      if (!draggingRef.current) return;
+    if (draggingRef.current) {
       e.preventDefault();
       const pt = toCanvasPoint(e);
       const d = draggingRef.current;
@@ -2944,7 +2969,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       if (Math.hypot(pt.x - d.origX, pt.y - d.origY) > 3) d.moved = true;
       redraw(); return;
     }
-    if (tool === "player" || !currentRef.current) return;
+    if (tool === "select" || tool === "player" || !currentRef.current) return;
     e.preventDefault();
     const pt = toCanvasPoint(e);
     currentRef.current.points.push(pt);
@@ -2983,7 +3008,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       }
       return;
     }
-    if (tool === "select") {
+    if (draggingRef.current) {
       const d = draggingRef.current; draggingRef.current = null;
       if (d && !d.moved) {
         if (d.el.type === "text") {
@@ -2994,7 +3019,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       } else if (d && d.moved) { selectedElRef.current = null; setSelectedEl(null); redraw(); }
       return;
     }
-    if (tool === "player") return;
+    if (tool === "select" || tool === "player") return;
     const stroke = currentRef.current; currentRef.current = null;
     if (!stroke || stroke.points.length < 2) return;
     if (stroke.style === "zigzag") stroke.points = _zigzagify(stroke.points);
@@ -3112,9 +3137,20 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
             ))}
             <div className="w-px h-5 bg-[#1B2A4A]/15 mx-0.5" />
             {!["plot","chaise","cerceau"].includes(playerLabel) && (
-              <select value={playerLabel} onChange={e => setPlayerLabel(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white w-16">
-                {(playerIsDefender?["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"]:["1","2","3","4","5","6","7","8","9","10","11","12"]).map(n=><option key={n} value={n}>{n}</option>)}
-              </select>
+              <div className="flex items-center gap-1">
+                {["1","2","3","4","5"].map(n => {
+                  const lbl = playerIsDefender ? "X" + n : n;
+                  return (
+                    <button key={n} type="button" onClick={() => setPlayerLabel(lbl)}
+                      className={`w-7 h-7 rounded-md text-xs font-bold border transition-colors ${playerLabel === lbl ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5"}`}>
+                      {lbl}
+                    </button>
+                  );
+                })}
+                <select value={playerLabel} onChange={e => setPlayerLabel(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-1.5 py-1 text-xs bg-white w-14">
+                  {(playerIsDefender?["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"]:["1","2","3","4","5","6","7","8","9","10","11","12"]).map(n=><option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
             )}
             {!["plot","chaise","cerceau"].includes(playerLabel) && <>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={playerHasBall} onChange={e => setPlayerHasBall(e.target.checked)} disabled={playerIsDefender} /> Ballon</label>
