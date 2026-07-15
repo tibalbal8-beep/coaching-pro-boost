@@ -626,13 +626,14 @@ function DictateButton({ onResult }) {
 function FileDrop({ file, onChange, cpbAlert }) {
   const inputRef = useRef();
   const cameraRef = useRef();
+  const [cropSource, setCropSource] = useState(null);
   const handleFile = async (f) => {
     if (!f) return;
     if (f.size > 20 * 1024 * 1024) { cpbAlert?.("Fichier trop lourd (max 20 Mo)."); return; }
     if (f.type.startsWith("image/")) {
       try {
-        const data = await readImageAsJpeg(f, 1200, 0.72);
-        onChange({ name: f.name.replace(/\.[^.]+$/, ".jpg"), type: "image/jpeg", data });
+        const data = await readImageAsJpeg(f, 1600, 0.8);
+        setCropSource(data);
       } catch { cpbAlert?.("Impossible de lire l'image."); }
     } else {
       const reader = new FileReader();
@@ -640,6 +641,13 @@ function FileDrop({ file, onChange, cpbAlert }) {
       reader.readAsDataURL(f);
     }
   };
+  const handleCropped = (dataUrl) => {
+    setCropSource(null);
+    onChange({ name: "photo.jpg", type: "image/jpeg", data: dataUrl });
+  };
+  if (cropSource) {
+    return <CropPhotoView imageData={cropSource} onCancel={() => setCropSource(null)} onCrop={handleCropped} />;
+  }
   return (
     <div>
       <input ref={inputRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => handleFile(e.target.files?.[0])} />
@@ -661,7 +669,12 @@ function FileDrop({ file, onChange, cpbAlert }) {
             {file.type === "application/pdf" ? <FileText size={16} /> : <ImageIcon size={16} />}
             <span className="truncate max-w-[180px]">{file.name}</span>
           </div>
-          <button type="button" onClick={() => onChange(null)} className="text-[#1B2A4A]/50 hover:text-red-600"><X size={16} /></button>
+          <div className="flex items-center gap-2">
+            {file.type?.startsWith("image/") && file.data && (
+              <button type="button" onClick={() => setCropSource(file.data)} className="text-[#1B2A4A]/50 hover:text-[#FF6B35]" title="Rogner"><ImageIcon size={16} /></button>
+            )}
+            <button type="button" onClick={() => onChange(null)} className="text-[#1B2A4A]/50 hover:text-red-600"><X size={16} /></button>
+          </div>
         </div>
       )}
     </div>
@@ -816,6 +829,11 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
             {editingSchemaIdx !== null && (
               <DrawTacticalView
                 courtType={courtType}
+                initialImage={
+                  editingSchemaIdx < schemas.length
+                    ? schemas[editingSchemaIdx]
+                    : (file?.data || null)
+                }
                 onCancel={() => setEditingSchemaIdx(null)}
                 onValidate={(dataUrl) => {
                   if (editingSchemaIdx < schemas.length) {
