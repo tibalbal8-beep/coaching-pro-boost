@@ -3910,6 +3910,11 @@ function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare, onS
           <div className="min-w-0">
             <div className="font-semibold text-[#1B2A4A] text-sm truncate">{play.titre}</div>
             <div className="text-xs font-medium mt-0.5" style={{ color: "#FF6B35" }}>{play.type}</div>
+            {play.scoutedTeam && (
+              <div className="inline-flex items-center gap-1 text-[10px] font-medium bg-[#1B2A4A] text-white rounded-full px-2 py-0.5 mt-1">
+                🔍 {play.scoutedTeam}
+              </div>
+            )}
             {play.description && <div className="text-xs text-[#1B2A4A]/50 mt-0.5 line-clamp-2">{play.description}</div>}
             {(play.tags || []).length > 0 && (
               <div className="flex flex-wrap gap-1 mt-1.5">
@@ -4338,6 +4343,7 @@ function PlayImageSlot({ img, playId, onChange, onRemove }) {
 function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType = "basketball" }) {
   const [titre, setTitre] = useState(initial?.titre || "");
   const [type, setType] = useState(initial?.type || PLAY_TYPES[0]);
+  const [scoutedTeam, setScoutedTeam] = useState(initial?.scoutedTeam || "");
   const [description, setDescription] = useState(initial?.description || "");
   const [notes, setNotes] = useState(initial?.notes || "");
   const [images, setImages] = useState(
@@ -4388,6 +4394,11 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
         <div className="flex flex-wrap gap-1.5">
           {PLAY_TYPES.map(t => <Tag key={t} active={type === t} onClick={() => setType(t)}>{t}</Tag>)}
         </div>
+      </div>
+      <div>
+        <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Équipe scoutée</div>
+        <input value={scoutedTeam} onChange={e => setScoutedTeam(e.target.value)} placeholder="Ex: US Munster (facultatif)"
+          className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm bg-white/60" />
       </div>
       <div className="border border-[#1B2A4A]/15 rounded-xl overflow-hidden">
         <button type="button" onClick={() => setTagsOpen(o => !o)}
@@ -4514,7 +4525,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
         <button onClick={() => {
           if (!titre.trim()) { cpbAlert?.("Donne un titre au play."); return; }
-          onSave({ id: initial?.id || uid(), titre, type, description, notes, tags: selectedTags, images, schemas, createdAt: initial?.createdAt || new Date().toISOString() });
+          onSave({ id: initial?.id || uid(), titre, type, scoutedTeam: scoutedTeam.trim(), description, notes, tags: selectedTags, images, schemas, createdAt: initial?.createdAt || new Date().toISOString() });
         }} className="px-5 py-2 text-sm font-medium rounded-md bg-[#FF6B35] text-white hover:bg-[#e85a28]">Enregistrer</button>
       </div>
     </div>
@@ -5154,6 +5165,7 @@ function CoachingProBoost({ session }) {
   const [viewingPlay, setViewingPlay] = useState(null);
   const [filterPlayType, setFilterPlayType] = useState([]);
   const [filterPlayTags, setFilterPlayTags] = useState([]);
+  const [filterScoutedTeam, setFilterScoutedTeam] = useState("");
   const [playbookTagsOpen, setPlaybookTagsOpen] = useState(false);
   const [activeSession, setActiveSession] = useState(null);
   const activeSessionRef = useRef(null);
@@ -5890,6 +5902,18 @@ function CoachingProBoost({ session }) {
                   <Tag key={t} active={filterPlayType.includes(t)} onClick={() => setFilterPlayType(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}>{t}</Tag>
                 ))}
               </div>
+              {[...new Set(plays.map(p => p.scoutedTeam).filter(Boolean))].length > 0 && (
+                <div className="flex flex-wrap gap-1.5 items-center">
+                  <span className="text-xs text-[#1B2A4A]/40 mr-1">Équipe scoutée :</span>
+                  <select value={filterScoutedTeam} onChange={e => setFilterScoutedTeam(e.target.value)}
+                    className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white text-[#1B2A4A]">
+                    <option value="">Toutes</option>
+                    {[...new Set(plays.map(p => p.scoutedTeam).filter(Boolean))].sort().map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {playTags.length > 0 && (
                 <div className="border border-[#1B2A4A]/15 rounded-xl overflow-hidden">
                   <button type="button" onClick={() => setPlaybookTagsOpen(o => !o)}
@@ -5919,7 +5943,8 @@ function CoachingProBoost({ session }) {
             </div>
             {plays.filter(p =>
               (filterPlayType.length === 0 || filterPlayType.includes(p.type)) &&
-              (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t)))
+              (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t))) &&
+                  (!filterScoutedTeam || p.scoutedTeam === filterScoutedTeam)
             ).length === 0 ? (
               <div className="text-center py-16 text-[#1B2A4A]/40">
                 <BookOpen size={40} className="mx-auto mb-3 opacity-30" />
@@ -5930,7 +5955,8 @@ function CoachingProBoost({ session }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {plays.filter(p =>
                   (filterPlayType.length === 0 || filterPlayType.includes(p.type)) &&
-                  (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t)))
+                  (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t))) &&
+                  (!filterScoutedTeam || p.scoutedTeam === filterScoutedTeam)
                 ).map(play => (
                   <PlayCard key={play.id} play={play}
                     onView={() => setViewingPlay(play)}
