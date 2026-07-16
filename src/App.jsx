@@ -813,7 +813,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
         <button type="button" onClick={() => { setShowDraw(o => !o); setEditingSchemaIdx(null); }}
           className="w-full flex items-center justify-between px-4 py-3 bg-white/40 hover:bg-white/70 transition-colors">
           <div className="flex items-center gap-2">
-            <span>🏀</span>
+            <span>{Object.values(SPORTS_CONFIG).find(s => s.court === courtType)?.emoji || "🏀"}</span>
             <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/60 font-semibold">Schémas tactiques</span>
             {schemas.length > 0 && <span className="text-[10px] font-bold bg-[#FF6B35] text-white rounded-full px-1.5 py-0.5">{schemas.length}</span>}
           </div>
