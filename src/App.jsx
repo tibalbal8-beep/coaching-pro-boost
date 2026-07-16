@@ -2519,8 +2519,8 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
               <option value="simple">{styleLabel(courtType, "simple")}</option>
               <option value="pointille">{styleLabel(courtType, "pointille")}</option>
               <option value="zigzag">{styleLabel(courtType, "zigzag")}</option>
-              <option value="ecran">{styleLabel(courtType, "ecran")}</option>
-              <option value="tir">{styleLabel(courtType, "tir")}</option>
+              {courtType !== "football" && <option value="ecran">{styleLabel(courtType, "ecran")}</option>}
+              {courtType !== "football" && <option value="tir">{styleLabel(courtType, "tir")}</option>}
             </select>
             <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
               <input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche
@@ -2531,7 +2531,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
             {["#1B2A4A","#D62828","#2563EB"].map(c => <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />)}
             <SizeSlider value={lineWidth} onChange={setLineWidth} min={1} max={10} step={0.5} presets={[{v:1.5,l:"S"},{v:2.5,l:"M"},{v:4,l:"L"}]} />
             <select value={lineStyle} onChange={e => setLineStyle(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-              <option value="simple">{styleLabel(courtType, "simple")}</option><option value="pointille">{styleLabel(courtType, "pointille")}</option><option value="zigzag">{styleLabel(courtType, "zigzag")}</option><option value="ecran">{styleLabel(courtType, "ecran")}</option>
+              <option value="simple">{styleLabel(courtType, "simple")}</option><option value="pointille">{styleLabel(courtType, "pointille")}</option><option value="zigzag">{styleLabel(courtType, "zigzag")}</option>{courtType !== "football" && <option value="ecran">{styleLabel(courtType, "ecran")}</option>}
             </select>
             <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche</label>
             {curvePoints.length >= 2 && (
@@ -2703,7 +2703,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
                 <option value="simple">{styleLabel(courtType, "simple")}</option>
                 <option value="pointille">{styleLabel(courtType, "pointille")}</option>
                 <option value="zigzag">{styleLabel(courtType, "zigzag")}</option>
-                <option value="ecran">{styleLabel(courtType, "ecran")}</option>
+                {courtType !== "football" && <option value="ecran">{styleLabel(courtType, "ecran")}</option>}
               </select>
               {/* Flèche */}
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
@@ -3288,7 +3288,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
             {["#1B2A4A","#D62828","#2563EB"].map(c => <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />)}
             <SizeSlider value={lineWidth} onChange={setLineWidth} min={1} max={10} step={0.5} presets={[{v:1.5,l:"S"},{v:2.5,l:"M"},{v:4,l:"L"}]} />
             <select value={lineStyle} onChange={e => setLineStyle(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-              <option value="simple">{styleLabel(courtType, "simple")}</option><option value="pointille">{styleLabel(courtType, "pointille")}</option><option value="zigzag">{styleLabel(courtType, "zigzag")}</option><option value="ecran">{styleLabel(courtType, "ecran")}</option><option value="tir">{styleLabel(courtType, "tir")}</option>
+              <option value="simple">{styleLabel(courtType, "simple")}</option><option value="pointille">{styleLabel(courtType, "pointille")}</option><option value="zigzag">{styleLabel(courtType, "zigzag")}</option>{courtType !== "football" && <option value="ecran">{styleLabel(courtType, "ecran")}</option>}{courtType !== "football" && <option value="tir">{styleLabel(courtType, "tir")}</option>}
             </select>
             <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche</label>
           </>
@@ -3297,7 +3297,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
             {["#1B2A4A","#D62828","#2563EB"].map(c => <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />)}
             <SizeSlider value={lineWidth} onChange={setLineWidth} min={1} max={10} step={0.5} presets={[{v:1.5,l:"S"},{v:2.5,l:"M"},{v:4,l:"L"}]} />
             <select value={lineStyle} onChange={e => setLineStyle(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-              <option value="simple">{styleLabel(courtType, "simple")}</option><option value="pointille">{styleLabel(courtType, "pointille")}</option><option value="zigzag">{styleLabel(courtType, "zigzag")}</option><option value="ecran">{styleLabel(courtType, "ecran")}</option>
+              <option value="simple">{styleLabel(courtType, "simple")}</option><option value="pointille">{styleLabel(courtType, "pointille")}</option><option value="zigzag">{styleLabel(courtType, "zigzag")}</option>{courtType !== "football" && <option value="ecran">{styleLabel(courtType, "ecran")}</option>}
             </select>
             <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche</label>
             {curvePoints.length >= 2 && (
@@ -3384,7 +3384,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
               </div>
               <select value={selectedEl.style} onChange={e => { selectedEl.style=e.target.value; selectedElRef.current=selectedEl; redraw(); setSelectedEl({...selectedEl,style:e.target.value}); }}
                 className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-                <option value="simple">{styleLabel(courtType, "simple")}</option><option value="pointille">{styleLabel(courtType, "pointille")}</option><option value="zigzag">{styleLabel(courtType, "zigzag")}</option><option value="ecran">{styleLabel(courtType, "ecran")}</option>
+                <option value="simple">{styleLabel(courtType, "simple")}</option><option value="pointille">{styleLabel(courtType, "pointille")}</option><option value="zigzag">{styleLabel(courtType, "zigzag")}</option>{courtType !== "football" && <option value="ecran">{styleLabel(courtType, "ecran")}</option>}
               </select>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
                 <input type="checkbox" checked={!!selectedEl.arrow} onChange={e => { selectedEl.arrow=e.target.checked; selectedElRef.current=selectedEl; redraw(); setSelectedEl({...selectedEl,arrow:e.target.checked}); }} /> Flèche
