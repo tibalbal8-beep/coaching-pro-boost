@@ -1812,6 +1812,9 @@ function _drawArrowHead(ctx, from, to, color, size) {
 // derrière chaque valeur ne change pas, seul le nom affiché change).
 const LINE_STYLE_LABELS = {
   football: { simple: "Passe / Tir", pointille: "Déplacement", zigzag: "Conduite", ecran: "Écran", tir: "Tir" },
+  handball: { simple: "Passe", pointille: "Course sans ballon", zigzag: "Dribble", ecran: "Écran", tir: "Tir" },
+  rugby: { simple: "Passe", pointille: "Soutien", zigzag: "Évitement", ecran: "Percussion", tir: "Coup de pied" },
+  volleyball: { simple: "Passe / Manchette", pointille: "Déplacement", zigzag: "Feinte", ecran: "Bloc", tir: "Attaque" },
   default: { simple: "Déplacement", pointille: "Passe", zigzag: "Dribble", ecran: "Écran", tir: "Tir" },
 };
 function styleLabel(courtType, key) {
