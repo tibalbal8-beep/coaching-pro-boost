@@ -2491,7 +2491,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       )}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
         <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>DESSINER UNE FICHE</h2>
-        <div className="flex items-center gap-1 bg-[#1B2A4A]/5 rounded-full p-1">
+        <div className="flex items-center gap-1 bg-[#1B2A4A]/5 rounded-full p-1 overflow-x-auto max-w-full [&>button]:flex-shrink-0 [&>button]:whitespace-nowrap">
           <button onClick={() => setTool("pen")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "pen" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>✏️ Stylo</button>
           <button onClick={() => { curvePointsRef.current = []; setCurvePoints([]); setTool("curve"); }} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "curve" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>〜 Courbe</button>
           <button onClick={() => setTool("player")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "player" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🧍 Joueur</button>
@@ -3266,7 +3266,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       )}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
         <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>DESSINER UN SCHÉMA</h2>
-        <div className="flex items-center gap-1 bg-[#1B2A4A]/5 rounded-full p-1">
+        <div className="flex items-center gap-1 bg-[#1B2A4A]/5 rounded-full p-1 overflow-x-auto max-w-full [&>button]:flex-shrink-0 [&>button]:whitespace-nowrap">
           <button onClick={() => setTool("pen")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "pen" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>✏️ Stylo</button>
           <button onClick={() => { curvePointsRef.current = []; setCurvePoints([]); setTool("curve"); }} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "curve" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>〜 Courbe</button>
           <button onClick={() => setTool("player")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "player" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🧍 Joueur</button>
