@@ -4213,7 +4213,7 @@ function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare, onS
         <div className="flex items-start justify-between gap-1">
           <div className="min-w-0">
             <div className="font-semibold text-[#1B2A4A] text-sm truncate">{play.titre}</div>
-            <div className="text-xs font-medium mt-0.5" style={{ color: "#FF6B35" }}>{play.type}</div>
+            <div className="text-xs font-medium mt-0.5" style={{ color: "var(--sport-accent)" }}>{play.type}</div>
             {play.scoutedTeam && (
               <div className="inline-flex items-center gap-1 text-[10px] font-medium bg-[#1B2A4A] text-white rounded-full px-2 py-0.5 mt-1">
                 🔍 {play.scoutedTeam}
@@ -4512,7 +4512,7 @@ function PlayViewer({ play, onClose, onEdit, onUpdatePlay }) {
         <button onClick={onClose} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><X size={18} /> Fermer</button>
         <div className="text-center">
           <div className="text-white font-semibold">{play.titre}</div>
-          <div className="text-xs font-medium" style={{ color: "#FF6B35" }}>{play.type}</div>
+          <div className="text-xs font-medium" style={{ color: "var(--sport-accent)" }}>{play.type}</div>
         </div>
         <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white">
           <Pencil size={16} /> Modifier
@@ -5797,7 +5797,7 @@ function CoachingProBoost({ session }) {
   if (!loaded) return <div className="p-8 text-[#1B2A4A]/50 text-sm">Chargement...</div>;
 
   return (
-    <div className="min-h-screen bg-[#F2EDE4]" style={{ fontFamily: "Inter, sans-serif" }}>
+    <div className="min-h-screen bg-[#F2EDE4]" style={{ fontFamily: "Inter, sans-serif", "--sport-accent": SPORT_COLOR }}>
       <style>{`@media print { .no-print { display: none !important; } body { background: white; } }`}</style>
       {paywallReason && <PaywallModal reason={paywallReason} onClose={() => setPaywallReason(null)} />}
       {premiumSuccess && (
@@ -6114,7 +6114,7 @@ function CoachingProBoost({ session }) {
                 <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>BIBLIOTHÈQUE D'EXERCICES</h2>
                 <p className="text-sm text-[#1B2A4A]/50">{exercises.length} exercice{exercises.length !== 1 ? "s" : ""} enregistré{exercises.length !== 1 ? "s" : ""}</p>
               </div>
-              <button data-tour="add-exercise" onClick={() => setShowForm(true)} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvel exercice</button>
+              <button data-tour="add-exercise" onClick={() => setShowForm(true)} className="flex items-center gap-1.5 text-white px-4 py-2 rounded-md text-sm font-medium hover:brightness-90 transition-[filter]" style={{ backgroundColor: "var(--sport-accent)" }}><Plus size={16} /> Nouvel exercice</button>
             </div>
 
             {addBanner && (
@@ -6211,12 +6211,12 @@ function CoachingProBoost({ session }) {
               </div>
               {isPremium ? (
                 <button onClick={() => { setEditingPlay(null); setPlaybookForm(true); }}
-                  className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]">
+                  className="flex items-center gap-1.5 text-white px-4 py-2 rounded-md text-sm font-medium hover:brightness-90 transition-[filter]" style={{ backgroundColor: "var(--sport-accent)" }}>
                   <Plus size={16} /> Nouveau play
                 </button>
               ) : (
                 <button onClick={() => setPaywallReason("Le Play Book est en lecture seule en version gratuite. Passez en Premium pour créer et modifier vos plays.")}
-                  className="flex items-center gap-1.5 border border-[#FF6B35] text-[#FF6B35] px-4 py-2 rounded-md text-sm font-medium hover:bg-[#FF6B35]/5">
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium" style={{ border: "1px solid var(--sport-accent)", color: "var(--sport-accent)" }}>
                   🔒 Premium
                 </button>
               )}
@@ -6292,12 +6292,12 @@ function CoachingProBoost({ session }) {
                 <span className="text-xs text-[#1B2A4A]/40">{filteredPlays.length} play{filteredPlays.length > 1 ? "s" : ""} affiché{filteredPlays.length > 1 ? "s" : ""}</span>
                 {filteredPlays.every(p => selectedPlays.includes(p.id)) ? (
                   <button onClick={() => setSelectedPlays(prev => prev.filter(id => !filteredPlays.some(p => p.id === id)))}
-                    className="text-xs font-medium text-[#FF6B35] hover:underline">
+                    className="text-xs font-medium hover:underline" style={{ color: "var(--sport-accent)" }}>
                     Tout désélectionner
                   </button>
                 ) : (
                   <button onClick={() => setSelectedPlays(prev => [...new Set([...prev, ...filteredPlays.map(p => p.id)])])}
-                    className="text-xs font-medium text-[#FF6B35] hover:underline">
+                    className="text-xs font-medium hover:underline" style={{ color: "var(--sport-accent)" }}>
                     Tout sélectionner ({filteredPlays.length})
                   </button>
                 )}
@@ -6479,8 +6479,8 @@ function CoachingProBoost({ session }) {
                             <span className="text-[#1B2A4A] font-medium">{t}</span>
                             <span className="text-[#1B2A4A]/50">{h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`} · {pct}%</span>
                           </div>
-                          <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: "#1B2A4A" }}>
-                            <div className="h-full rounded-full" style={{ width: `${Math.max(pct, 2)}%`, backgroundColor: "#FF6B35" }} />
+                          <div className="h-3 rounded-full overflow-hidden" style={{ backgroundColor: "#1B2A4A1A" }}>
+                            <div className="h-full rounded-full" style={{ width: `${Math.max(pct, 2)}%`, backgroundColor: "var(--sport-accent)" }} />
                           </div>
                         </div>
                       );
@@ -6790,7 +6790,7 @@ function CoachingProBoost({ session }) {
                 ) : (
                   <button onClick={() => setNewTeamOpen(true)} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 text-[#1B2A4A] px-3 py-2 rounded-md text-sm font-medium hover:bg-[#1B2A4A]/5"><Users size={16} /> Nouvelle équipe</button>
                 )}
-                <button data-tour="new-session" onClick={handleNewSession} className="flex items-center gap-1.5 bg-[#FF6B35] text-white px-3 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]"><Plus size={16} /> Nouvelle séance</button>
+                <button data-tour="new-session" onClick={handleNewSession} className="flex items-center gap-1.5 text-white px-3 py-2 rounded-md text-sm font-medium hover:brightness-90 transition-[filter]" style={{ backgroundColor: "var(--sport-accent)" }}><Plus size={16} /> Nouvelle séance</button>
               </div>
             </div>
 
@@ -6842,7 +6842,7 @@ function CoachingProBoost({ session }) {
                         }, {});
                         return (
                           <div key={season} className="mb-4">
-                            <div className="text-xs text-[#FF6B35] uppercase tracking-widest font-semibold mb-2 ml-1">{season}</div>
+                            <div className="text-xs uppercase tracking-widest font-semibold mb-2 ml-1" style={{ color: "var(--sport-accent)" }}>{season}</div>
                             <div className="space-y-1.5">
                               {Object.entries(mGroups).map(([month, mSessions]) => (
                                 <MonthRow key={month} month={month} monthSessions={mSessions} totalDuree={totalDuree}
@@ -7063,7 +7063,7 @@ function CoachingProBoost({ session }) {
                         <div key={id} className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3 flex items-center justify-between">
                           <div className="flex-1 min-w-0">
                             <div className="font-medium text-[#1B2A4A] truncate">{play.titre}</div>
-                            <div className="text-xs font-medium mt-0.5" style={{ color: "#FF6B35" }}>{play.type}</div>
+                            <div className="text-xs font-medium mt-0.5" style={{ color: "var(--sport-accent)" }}>{play.type}</div>
                           </div>
                           <button onClick={() => updateSession({ ...activeSession, playIds: (activeSession.playIds || []).filter(x => x !== id) })}
                             className="text-[#1B2A4A]/40 hover:text-red-600 no-print ml-2 flex-shrink-0"><X size={16} /></button>
@@ -7078,7 +7078,7 @@ function CoachingProBoost({ session }) {
                     <div key={play.id} onClick={() => updateSession({ ...activeSession, playIds: [...(activeSession.playIds || []), play.id] })}
                       className="flex-shrink-0 w-40 border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3 cursor-pointer hover:shadow-md hover:border-[#FF6B35]/40 transition-all">
                       <div className="font-medium text-[#1B2A4A] text-sm leading-tight mb-1 line-clamp-2">{play.titre}</div>
-                      <div className="text-xs font-medium" style={{ color: "#FF6B35" }}>{play.type}</div>
+                      <div className="text-xs font-medium" style={{ color: "var(--sport-accent)" }}>{play.type}</div>
                     </div>
                   ))}
                 </div>
