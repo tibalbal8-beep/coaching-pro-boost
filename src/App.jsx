@@ -99,7 +99,7 @@ const SPORTS_CONFIG = {
   },
   volleyball: {
     label: "Volleyball", emoji: "🏐",
-    themes: ["Service","Réception","Passe","Attaque","Contre","Défense","Couverture","Rotation","Système 5-1","Système 4-2","Lecture de jeu","Smasher","Libéro"],
+    themes: ["Service","Réception","Passe","Attaque","Contre","Défense","Couverture","Rotation","Système 5-1","Système 4-2","Lecture de jeu","Smasher","Libéro","Manchette","Service flottant","Service smashé","Feinte","Bloc à deux/trois","Pipe","Combinaison d'attaque","Transition","Relance","Placement défensif"],
     phases: ["Échauffement","Technique individuelle","Combinaisons","Système de jeu","Fin de séance","Autre"],
     formats: ["1c0","1c1","2c2","3c3","4c4","6c6"],
     categories: ["U11","U13","U15","U17","U18","U20","Seniors"],
@@ -108,7 +108,7 @@ const SPORTS_CONFIG = {
   },
   rugby: {
     label: "Rugby", emoji: "🏉",
-    themes: ["Plaquage","Ruck","Maul","Touche","Mêlée","Pénalité","En-avant","Jeu au pied","Soutien","Défense en ligne","Défense en rideau","Jeu dans l'axe","Jeu au large","Contre-attaque","Drives"],
+    themes: ["Plaquage","Ruck","Maul","Touche","Mêlée","Pénalité","En-avant","Jeu au pied","Soutien","Défense en ligne","Défense en rideau","Jeu dans l'axe","Jeu au large","Contre-attaque","Drives","Percussion","Cadrage-débordement","Franchissement","Chandelle","Turnover","Sortie de camp","Jeu de transformation","Regroupement offensif","Passe au large","Passe sautée"],
     phases: ["Échauffement","Préparation physique","Technique individuelle","Lignes avants","Trois-quarts","Collectif","Fin de séance","Autre"],
     formats: ["1c0","1c1","2c1","2c2","3c2","3c3","5c4","7c7","15c15"],
     categories: ["U8","U10","U12","U14","U16","U18","U20","Seniors"],
