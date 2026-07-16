@@ -90,7 +90,7 @@ const SPORTS_CONFIG = {
   },
   handball: {
     label: "Handball", emoji: "🤾",
-    themes: ["Montée de balle","Jeu en pivot","Jeu en aile","Tir en suspension","Tir en appui","Contre-attaque","Défense 6-0","Défense 5-1","Défense 3-2-1","Repli défensif","Fautes tactiques","Jeu de puissance","Jeu en infériorité","Écran","Pivot"],
+    themes: ["Montée de balle","Jeu en pivot","Jeu en aile","Tir en suspension","Tir en appui","Contre-attaque","Défense 6-0","Défense 5-1","Défense 3-2-1","Repli défensif","Fautes tactiques","Jeu de puissance","Jeu en infériorité","Écran","Pivot","Jet de 7 mètres","Bras roulé","Tir en extension","Défense étagée","Croisement","Permutation","Feinte de tir","Jeu placé","Relance gardien","Tir en cloche"],
     phases: ["Échauffement","Préparation physique","Technique individuelle","Pré-collectif","Collectif","Fin de séance","Autre"],
     formats: ["1c0","1c1","2c1","2c2","3c2","3c3","4c3","5c4","6c5","6c6","4c4+GB","6c6+GB"],
     categories: ["U9","U11","U13","U15","U17","U18","U20","Seniors"],
