@@ -5115,7 +5115,7 @@ function CoachingProBoost({ session }) {
 
   const sharePlay = async (play) => {
     try {
-      const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const token = crypto.randomUUID().replace(/-/g, "");
       const playData = { ...play };
       // Charger toutes les images embarquées
       if (play.images?.length) {
@@ -5232,7 +5232,7 @@ function CoachingProBoost({ session }) {
 
   const sharePlayCollection = async (selectedIds, title) => {
     try {
-      const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const token = crypto.randomUUID().replace(/-/g, "");
       const selectedPlaysData = await Promise.all(
         plays.filter(p => selectedIds.includes(p.id)).map(async (play) => {
           const playData = { ...play };
@@ -5262,7 +5262,7 @@ function CoachingProBoost({ session }) {
 
   const shareExercise = async (ex) => {
     try {
-      const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const token = crypto.randomUUID().replace(/-/g, "");
       const exData = { ...ex };
       // Charger l'image si besoin
       if (ex.file && !ex.file.data) {

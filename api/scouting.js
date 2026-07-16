@@ -1,8 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 
+function esc(str) {
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
 export default async function handler(req, res) {
   const { token } = req.query;
-  if (!token) return res.status(400).send("Token manquant");
+  if (!token || !/^[a-z0-9]+$/i.test(token)) return res.status(400).send("Token manquant");
 
   const supabase = createClient(
     process.env.SUPABASE_URL,
@@ -21,16 +25,18 @@ export default async function handler(req, res) {
   const plays = data.plays || [];
   const title = data.title || "Scouting Report";
 
+  const isSafeImage = (src) => typeof src === "string" && /^data:image\/(png|jpe?g|webp|gif);base64,/.test(src);
+
   const playsHtml = plays.map((play, idx) => {
-    const images = (play.images || []).filter(img => img.file?.data);
-    const schemaImgsHtml = (play.schemas || []).map(s => `
+    const images = (play.images || []).filter(img => img.file?.data && isSafeImage(img.file.data));
+    const schemaImgsHtml = (play.schemas || []).filter(isSafeImage).map(s => `
       <div style="flex:1;min-width:200px;max-width:280px;">
         <img src="${s}" style="width:100%;border-radius:8px;border:1px solid #e0d8d0;" />
       </div>
     `).join("");
     const imgsHtml = schemaImgsHtml + images.map(img => `
       <div style="flex:1;min-width:200px;max-width:280px;">
-        ${img.annotation ? `<div style="font-size:11px;color:#666;margin-bottom:4px;font-style:italic;">${img.annotation}</div>` : ""}
+        ${img.annotation ? `<div style="font-size:11px;color:#666;margin-bottom:4px;font-style:italic;">${esc(img.annotation)}</div>` : ""}
         <img src="${img.file.data}" style="width:100%;border-radius:8px;border:1px solid #e0d8d0;" />
       </div>
     `).join("");
@@ -39,15 +45,15 @@ export default async function handler(req, res) {
       <div style="background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.08);page-break-inside:avoid;">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;">
           <div>
-            <div style="font-size:11px;color:#FF6B35;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">${play.type || ""}</div>
-            <div style="font-size:18px;font-weight:800;color:#1B2A4A;font-family:'Oswald',sans-serif;">${play.titre || "Sans titre"}</div>
-            ${play.description ? `<div style="font-size:13px;color:#666;margin-top:4px;">${play.description}</div>` : ""}
+            <div style="font-size:11px;color:#FF6B35;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">${esc(play.type || "")}</div>
+            <div style="font-size:18px;font-weight:800;color:#1B2A4A;font-family:'Oswald',sans-serif;">${esc(play.titre || "Sans titre")}</div>
+            ${play.description ? `<div style="font-size:13px;color:#666;margin-top:4px;">${esc(play.description)}</div>` : ""}
           </div>
           <div style="background:#1B2A4A;color:#fff;font-size:20px;font-weight:800;font-family:'Oswald',sans-serif;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${idx + 1}</div>
         </div>
         ${(play.tags || []).length > 0 ? `
           <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
-            ${play.tags.map(t => `<span style="font-size:11px;padding:2px 8px;background:#FF6B35/15;background-color:rgba(255,107,53,0.12);color:#FF6B35;border-radius:20px;">${t}</span>`).join("")}
+            ${play.tags.map(t => `<span style="font-size:11px;padding:2px 8px;background:#FF6B35/15;background-color:rgba(255,107,53,0.12);color:#FF6B35;border-radius:20px;">${esc(t)}</span>`).join("")}
           </div>
         ` : ""}
         ${(images.length > 0 || (play.schemas || []).length > 0) ? `
@@ -64,7 +70,7 @@ export default async function handler(req, res) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} — Coaching Pro Boost</title>
+  <title>${esc(title)} — Coaching Pro Boost</title>
   <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -84,7 +90,7 @@ export default async function handler(req, res) {
   <div class="container">
     <div class="header">
       <div style="font-size:36px;margin-bottom:10px;">🏀</div>
-      <h1>${title}</h1>
+      <h1>${esc(title)}</h1>
       <p>${plays.length} play${plays.length > 1 ? "s" : ""} • Coaching Pro Boost</p>
     </div>
     <div class="no-print">
