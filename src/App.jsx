@@ -77,6 +77,7 @@ const SPORTS_CONFIG = {
     formats: ["1c0","1c1","2c1","2c2","3c1","3c2","3c3","4c1","4c2","4c3","4c4","5c3","5c4","5c5","2c1+1","3c2+1","4c3+1","5c4+1"],
     categories: ["U7","U9","U11","U13","U15","U17","U18","U20","Seniors"],
     court: "basketball",
+    color: "#FF6B35",
   },
   football: {
     label: "Football", emoji: "⚽",
@@ -85,6 +86,7 @@ const SPORTS_CONFIG = {
     formats: ["1c0","1c1","2c1","2c2","3c2","3c3","4c3","4c4","5c4","5c5","6c5","7c6","8c7","9c8","10c9","11c11"],
     categories: ["U6","U7","U8","U9","U10","U11","U12","U13","U14","U15","U16","U17","U18","U19","U20","Seniors"],
     court: "football",
+    color: "#2E8B57",
   },
   handball: {
     label: "Handball", emoji: "🤾",
@@ -93,6 +95,7 @@ const SPORTS_CONFIG = {
     formats: ["1c0","1c1","2c1","2c2","3c2","3c3","4c3","5c4","6c5","6c6","4c4+GB","6c6+GB"],
     categories: ["U9","U11","U13","U15","U17","U18","U20","Seniors"],
     court: "handball",
+    color: "#993C1D",
   },
   volleyball: {
     label: "Volleyball", emoji: "🏐",
@@ -101,6 +104,7 @@ const SPORTS_CONFIG = {
     formats: ["1c0","1c1","2c2","3c3","4c4","6c6"],
     categories: ["U11","U13","U15","U17","U18","U20","Seniors"],
     court: "volleyball",
+    color: "#EF9F27",
   },
   rugby: {
     label: "Rugby", emoji: "🏉",
@@ -109,6 +113,7 @@ const SPORTS_CONFIG = {
     formats: ["1c0","1c1","2c1","2c2","3c2","3c3","5c4","7c7","15c15"],
     categories: ["U8","U10","U12","U14","U16","U18","U20","Seniors"],
     court: "rugby",
+    color: "#712B13",
   },
   autre: {
     label: "Autre sport", emoji: "🏅",
@@ -117,6 +122,7 @@ const SPORTS_CONFIG = {
     formats: ["1c0","1c1","2c1","2c2","3c3","Groupe","Équipe"],
     categories: ["U10","U12","U14","U16","U18","U20","Seniors"],
     court: "generic",
+    color: "#5F5E5A",
   },
 };
 
@@ -5102,6 +5108,7 @@ function CoachingProBoost({ session }) {
   const SPORT_FORMATS = sportConfig.formats;
   const SPORT_CATEGORIES = sportConfig.categories;
   const SPORT_COURT = sportConfig.court;
+  const SPORT_COLOR = sportConfig.color;
   const cpbAlert = useAlert();
   const [paywallReason, setPaywallReason] = useState(null);
   const toast = useToast();
@@ -6027,10 +6034,11 @@ function CoachingProBoost({ session }) {
         />
       )}
 
-      <header className="border-b border-[#1B2A4A]/10 px-6 py-4 flex items-center gap-3 no-print">
+      <header className="px-6 py-4 flex items-center gap-3 no-print" style={{ borderBottom: `3px solid ${SPORT_COLOR}` }}>
         <button onClick={() => setSidebarOpen(true)} className="text-[#1B2A4A] p-1 -ml-1" aria-label="Ouvrir le menu"><Menu size={22} /></button>
         <img src="/logo-icon.png" alt="CPB" className="w-9 h-9 rounded-xl object-contain" />
         <h1 className="font-bold text-[#1B2A4A] tracking-tight flex-1" style={{ fontFamily: "Oswald, sans-serif" }}>COACHING PRO BOOST</h1>
+        <span className="text-lg" title={sportConfig.label}>{sportConfig.emoji}</span>
         {lastSaved && (
           <span className="text-[10px] text-[#1B2A4A]/30 hidden sm:block">
             ✓ Sauvegardé {lastSaved.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
@@ -6058,7 +6066,7 @@ function CoachingProBoost({ session }) {
               return (
                 <button key={item.key} onClick={() => { setViewPersist(item.key); setSidebarOpen(false); }}
                   className={`flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-left transition-colors ${active ? "" : "text-[#1B2A4A] hover:bg-[#1B2A4A]/8"}`}
-                  style={active ? { backgroundColor: "#2563EB", color: "#ffffff" } : undefined}>
+                  style={active ? { backgroundColor: SPORT_COLOR, color: "#ffffff" } : undefined}>
                   <Icon size={19} /> {item.label}
                 </button>
               );
