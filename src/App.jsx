@@ -80,7 +80,7 @@ const SPORTS_CONFIG = {
   },
   football: {
     label: "Football", emoji: "⚽",
-    themes: ["Pressing","Contre-pressing","Transition offensive","Transition défensive","Bloc bas","Bloc haut","Jeu en profondeur","Jeu court","Centres","Corners","Coup franc","Repli défensif","Hors-jeu","Dribble","Tir","Passe","Jeu aérien","Duels","Organisation défensive","Organisation offensive"],
+    themes: ["Finition","Conduite de balle","Contrôle du pied","Passes","Amortis","Jeu de tête","Centres","Tir au but"],
     phases: ["Échauffement","Préparation physique","Technique individuelle","Pré-collectif","Collectif","Situations","Fin de séance","Autre"],
     formats: ["1c0","1c1","2c1","2c2","3c2","3c3","4c3","4c4","5c4","5c5","6c5","7c6","8c7","9c8","10c9","11c11"],
     categories: ["U6","U7","U8","U9","U10","U11","U12","U13","U14","U15","U16","U17","U18","U19","U20","Seniors"],
@@ -303,10 +303,11 @@ function getSeason(dateStr) {
   return m >= 7 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
 }
 
-function useStore() {
+function useStore(sport = DEFAULT_SPORT) {
   const [exercises, setExercises] = useState([]);
   const [sessions, setSessions] = useState([]);
-  const [themes, setThemes] = useState(DEFAULT_THEMES);
+  const [themes, setThemes] = useState(SPORTS_CONFIG[sport]?.themes || DEFAULT_THEMES);
+  const themesKey = `themes:${sport}`;
   const [teams, setTeams] = useState([]);
   const [activeTeamId, setActiveTeamId] = useState(null);
   const [players, setPlayers] = useState([]);
@@ -323,7 +324,6 @@ function useStore() {
         setExercises(list.map(e => e.hasFile ? { ...e, file: { name: e.fileName, type: e.fileType, data: null } } : e));
       } catch {}
       try { const se = await storage.get("sessions"); setSessions(se ? JSON.parse(se.value) : []); } catch {}
-      try { const th = await storage.get("themes"); setThemes(th ? JSON.parse(th.value) : DEFAULT_THEMES); } catch {}
       try { const tm = await storage.get("teams"); if (tm) setTeams(JSON.parse(tm.value)); } catch {}
       try { const at = await storage.get("activeTeamId"); if (at) setActiveTeamId(JSON.parse(at.value)); } catch {}
       try { const pl = await storage.get("players"); setPlayers(pl ? JSON.parse(pl.value) : []); } catch {}
@@ -336,6 +336,25 @@ function useStore() {
       setLoaded(true);
     })();
   }, []);
+
+  // Thèmes chargés séparément, sous une clé propre à chaque sport, pour ne pas
+  // mélanger les thèmes basket/foot/etc. d'un coach qui gère plusieurs équipes.
+  useEffect(() => {
+    (async () => {
+      try {
+        const th = await storage.get(themesKey);
+        if (th) {
+          setThemes(JSON.parse(th.value));
+        } else if (sport === "basketball") {
+          // Compat : les thèmes basket existants étaient stockés sous la clé générique "themes"
+          const legacy = await storage.get("themes");
+          setThemes(legacy ? JSON.parse(legacy.value) : SPORTS_CONFIG.basketball.themes);
+        } else {
+          setThemes(SPORTS_CONFIG[sport]?.themes || []);
+        }
+      } catch {}
+    })();
+  }, [sport]);
 
   const persist = useCallback(async (key, value) => {
     try { const r = await storage.set(key, value); if (!r) console.error("Storage set returned null for", key); } catch (e) { console.error("Storage error", key, e); }
@@ -361,7 +380,7 @@ function useStore() {
     persist("exercises", JSON.stringify(stripFiles(next)));
   };
   const saveSessions = (next) => { setSessions(next); persist("sessions", JSON.stringify(next)); };
-  const saveThemes = (next) => { setThemes(next); persist("themes", JSON.stringify(next)); };
+  const saveThemes = (next) => { setThemes(next); persist(themesKey, JSON.stringify(next)); };
   const saveTeams = (next) => { setTeams(next); persist("teams", JSON.stringify(next)); };
   const saveActiveTeamId = (next) => { setActiveTeamId(next); persist("activeTeamId", JSON.stringify(next)); };
   const savePlayers = (next) => { setPlayers(next); persist("players", JSON.stringify(next)); };
@@ -5081,8 +5100,8 @@ function ScrollToTopButton() {
 }
 
 function CoachingProBoost({ session }) {
-  const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore();
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
+  const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
   const SPORT_FORMATS = sportConfig.formats;
@@ -5485,13 +5504,12 @@ function CoachingProBoost({ session }) {
         await Promise.all([
           persist("exercises", JSON.stringify(exercises.map(({ file, ...rest }) => ({ ...rest, hasFile: !!file, fileName: file?.name, fileType: file?.type })))),
           persist("sessions", JSON.stringify(sessions)),
-          persist("themes", JSON.stringify(themes)),
         ]);
         setLastSaved(new Date());
       } catch {}
     }, 30000);
     return () => clearInterval(interval);
-  }, [exercises, sessions, themes]);
+  }, [exercises, sessions]);
   const [newThemeInput, setNewThemeInput] = useState("");
   const [lastSaved, setLastSaved] = useState(null);
   const [newTeamOpen, setNewTeamOpen] = useState(false);
