@@ -1783,6 +1783,30 @@ function _drawArrowHead(ctx, from, to, color, size) {
   ctx.fill();
 }
 
+// Libellés des styles de trait, adaptés au vocabulaire du sport (le rendu visuel
+// derrière chaque valeur ne change pas, seul le nom affiché change).
+const LINE_STYLE_LABELS = {
+  football: { simple: "Passe / Tir", pointille: "Déplacement", zigzag: "Conduite", ecran: "Écran", tir: "Tir" },
+  default: { simple: "Déplacement", pointille: "Passe", zigzag: "Dribble", ecran: "Écran", tir: "Tir" },
+};
+function styleLabel(courtType, key) {
+  return (LINE_STYLE_LABELS[courtType] || LINE_STYLE_LABELS.default)[key] || key;
+}
+
+function _drawZone(ctx, z) {
+  const x = Math.min(z.x, z.x + z.w), y = Math.min(z.y, z.y + z.h);
+  const w = Math.abs(z.w), h = Math.abs(z.h);
+  ctx.save();
+  ctx.fillStyle = (z.color || "#1B2A4A") + "26";
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = z.color || "#1B2A4A";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([7, 5]);
+  ctx.strokeRect(x, y, w, h);
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
 function _drawStroke(ctx, stroke) {
   const pts = stroke.points;
   if (pts.length < 2) return;
@@ -1864,6 +1888,43 @@ function _drawPlayerToken(ctx, t) {
     ctx.beginPath(); ctx.moveTo(t.x - br, t.y); ctx.lineTo(t.x + br, t.y); ctx.strokeStyle = "rgba(0,0,0,0.2)"; ctx.lineWidth = sc; ctx.stroke();
     ctx.beginPath(); ctx.moveTo(t.x, t.y - br); ctx.lineTo(t.x, t.y + br); ctx.stroke();
     ctx.beginPath(); ctx.arc(t.x, t.y, br * 0.6, Math.PI * 0.2, Math.PI * 0.9); ctx.stroke();
+  } else if (t.kind === "ballonfoot") {
+    const br = 11 * sc;
+    ctx.beginPath(); ctx.arc(t.x, t.y, br, 0, Math.PI * 2); ctx.fillStyle = "white"; ctx.fill(); ctx.strokeStyle = "#1B2A4A"; ctx.lineWidth = 1.3 * sc; ctx.stroke();
+    ctx.fillStyle = "#1B2A4A";
+    ctx.beginPath(); ctx.arc(t.x, t.y, br * 0.34, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 5; i++) {
+      const a = -Math.PI / 2 + i * (Math.PI * 2 / 5);
+      const px = t.x + Math.cos(a) * br * 0.62, py = t.y + Math.sin(a) * br * 0.62;
+      ctx.beginPath(); ctx.moveTo(t.x + Math.cos(a) * br * 0.34, t.y + Math.sin(a) * br * 0.34); ctx.lineTo(px, py); ctx.stroke();
+      ctx.beginPath(); ctx.arc(px, py, br * 0.16, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (t.kind === "cage") {
+    const w = 30 * sc, h = 20 * sc;
+    const x0 = t.x - w / 2, y0 = t.y - h;
+    ctx.strokeStyle = "#1B2A4A"; ctx.lineWidth = 2 * sc; ctx.lineJoin = "round";
+    ctx.strokeRect(x0, y0, w, h);
+    ctx.strokeStyle = "rgba(27,42,74,0.35)"; ctx.lineWidth = 0.8 * sc;
+    for (let i = 1; i < 4; i++) { const gx = x0 + (w / 4) * i; ctx.beginPath(); ctx.moveTo(gx, y0); ctx.lineTo(gx, y0 + h); ctx.stroke(); }
+    for (let i = 1; i < 3; i++) { const gy = y0 + (h / 3) * i; ctx.beginPath(); ctx.moveTo(x0, gy); ctx.lineTo(x0 + w, gy); ctx.stroke(); }
+    ctx.strokeStyle = "#1B2A4A"; ctx.lineWidth = 2 * sc;
+    ctx.beginPath(); ctx.moveTo(t.x, y0 + h); ctx.lineTo(t.x, y0 + h + 4 * sc); ctx.stroke();
+  } else if (t.kind === "haie") {
+    const w = 22 * sc, h = 14 * sc;
+    ctx.strokeStyle = "#D62828"; ctx.lineWidth = 2.5 * sc; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(t.x - w / 2, t.y + h / 2); ctx.lineTo(t.x - w / 2, t.y - h / 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(t.x + w / 2, t.y + h / 2); ctx.lineTo(t.x + w / 2, t.y - h / 2); ctx.stroke();
+    ctx.strokeStyle = "#F2B705"; ctx.lineWidth = 3 * sc;
+    ctx.beginPath(); ctx.moveTo(t.x - w / 2, t.y - h / 2); ctx.lineTo(t.x + w / 2, t.y - h / 2); ctx.stroke();
+  } else if (t.kind === "jalon") {
+    const h = 26 * sc;
+    ctx.strokeStyle = "#1B2A4A"; ctx.lineWidth = 2 * sc; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(t.x, t.y + h / 2); ctx.lineTo(t.x, t.y - h / 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(t.x, t.y - h / 2, 4.5 * sc, 0, Math.PI * 2); ctx.fillStyle = "#D62828"; ctx.fill();
+  } else if (t.kind === "coupelle") {
+    const w = 20 * sc, h = 6 * sc;
+    ctx.beginPath(); ctx.ellipse(t.x, t.y, w / 2, h / 2, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#FF6B35"; ctx.fill(); ctx.strokeStyle = "#c0440a"; ctx.lineWidth = 1.3 * sc; ctx.stroke();
   } else if (t.role === "defender") {
     ctx.font = `bold ${Math.round(17 * sc)}px sans-serif`; ctx.fillStyle = "#D62828"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t.label, t.x, t.y);
   } else if (t.hasBall) {
@@ -2057,6 +2118,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const zigzagify = _zigzagify;
   const drawArrowHead = _drawArrowHead;
   const drawStroke = _drawStroke;
+  const drawZone = _drawZone;
   const drawPlayerToken = _drawPlayerToken;
   const parseInline = _parseInline;
   const segFont = _segFont;
@@ -2095,6 +2157,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     elementsRef.current.forEach(el => {
       if (el.type === "token") drawPlayerToken(bctx, el);
       else if (el.type === "text") drawTextElement(bctx, el);
+      else if (el.type === "zone") drawZone(bctx, el);
       else drawStroke(bctx, el);
       // Highlight selected element
       if (el === selectedElRef.current) {
@@ -2203,7 +2266,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     }
     if (tool === "player") {
       const pt = toCanvasPoint(e);
-      const equipKinds = ["plot", "chaise", "cerceau", "handball"];
+      const equipKinds = ["plot", "chaise", "cerceau", "handball", "cage", "haie", "jalon", "coupelle", "ballonfoot"];
       const isEquip = equipKinds.includes(playerLabel);
       elementsRef.current.push(isEquip
         ? { type: "token", x: pt.x, y: pt.y, kind: playerLabel, size: playerSize }
@@ -2216,6 +2279,11 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       const idxX = xSeq.indexOf(playerLabel);
       if (idxNum >= 0 && idxNum < numSeq.length - 1) setPlayerLabel(numSeq[idxNum + 1]);
       else if (idxX >= 0 && idxX < xSeq.length - 1) setPlayerLabel(xSeq[idxX + 1]);
+      return;
+    }
+    if (tool === "zone") {
+      const pt = toCanvasPoint(e);
+      currentRef.current = { type: "zone", x: pt.x, y: pt.y, w: 0, h: 0, color };
       return;
     }
     currentRef.current = tool === "eraser"
@@ -2236,6 +2304,16 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       d.startX = pt.x; d.startY = pt.y;
       if (Math.hypot(pt.x - d.origX, pt.y - d.origY) > 3) d.moved = true;
       redraw();
+      return;
+    }
+    if (tool === "zone") {
+      if (!currentRef.current) return;
+      e.preventDefault();
+      const pt = toCanvasPoint(e);
+      currentRef.current.w = pt.x - currentRef.current.x;
+      currentRef.current.h = pt.y - currentRef.current.y;
+      redraw();
+      drawZone(canvasRef.current.getContext("2d"), currentRef.current);
       return;
     }
     if (tool === "select" || tool === "player" || !currentRef.current) return;
@@ -2313,6 +2391,14 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       }
       return;
     }
+    if (tool === "zone") {
+      const zone = currentRef.current;
+      currentRef.current = null;
+      if (!zone || (Math.abs(zone.w) < 6 && Math.abs(zone.h) < 6)) { redraw(); return; }
+      elementsRef.current.push(zone);
+      redraw();
+      return;
+    }
     if (tool === "select" || tool === "player") return;
     const stroke = currentRef.current;
     currentRef.current = null;
@@ -2335,6 +2421,12 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         const w = Math.max(...lines.map(l => ctx.measureText(l).width));
         const h = lines.length * el.size * 1.25;
         if (pt.x >= el.x - 4 && pt.x <= el.x + w + 4 && pt.y >= el.y - 4 && pt.y <= el.y + h + 4) return el;
+      } else if (el.type === "zone") {
+        const zx = Math.min(el.x, el.x + el.w), zy = Math.min(el.y, el.y + el.h);
+        const zw = Math.abs(el.w), zh = Math.abs(el.h);
+        const onBorder = pt.x >= zx - 8 && pt.x <= zx + zw + 8 && pt.y >= zy - 8 && pt.y <= zy + zh + 8
+          && (pt.x <= zx + 8 || pt.x >= zx + zw - 8 || pt.y <= zy + 8 || pt.y >= zy + zh - 8);
+        if (onBorder) return el;
       } else if (el.type === "stroke") {
         const tolerance = el.width / 2 + 10;
         for (let j = 0; j < el.points.length - 1; j++) {
@@ -2405,6 +2497,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           <button onClick={() => setTool("player")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "player" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🧍 Joueur</button>
           <button onClick={() => setTool("text")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "text" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🔤 Texte</button>
           <button onClick={() => setTool("eraser")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "eraser" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🧹 Gomme</button>
+          <button onClick={() => setTool("zone")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "zone" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>▭ Zone</button>
           <button onClick={() => setTool("select")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "select" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🖐 Déplacer</button>
         </div>
       </div>
@@ -2423,11 +2516,11 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
             ))}
             <SizeSlider value={lineWidth} onChange={setLineWidth} min={1} max={10} step={0.5} presets={[{v:1.5,l:"S"},{v:2.5,l:"M"},{v:4,l:"L"}]} />
             <select value={lineStyle} onChange={e => setLineStyle(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-              <option value="simple">Déplacement</option>
-              <option value="pointille">Passe</option>
-              <option value="zigzag">Dribble</option>
-              <option value="ecran">Écran</option>
-              <option value="tir">Tir</option>
+              <option value="simple">{styleLabel(courtType, "simple")}</option>
+              <option value="pointille">{styleLabel(courtType, "pointille")}</option>
+              <option value="zigzag">{styleLabel(courtType, "zigzag")}</option>
+              <option value="ecran">{styleLabel(courtType, "ecran")}</option>
+              <option value="tir">{styleLabel(courtType, "tir")}</option>
             </select>
             <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
               <input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche
@@ -2438,7 +2531,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
             {["#1B2A4A","#D62828","#2563EB"].map(c => <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />)}
             <SizeSlider value={lineWidth} onChange={setLineWidth} min={1} max={10} step={0.5} presets={[{v:1.5,l:"S"},{v:2.5,l:"M"},{v:4,l:"L"}]} />
             <select value={lineStyle} onChange={e => setLineStyle(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-              <option value="simple">Déplacement</option><option value="pointille">Passe</option><option value="zigzag">Dribble</option><option value="ecran">Écran</option>
+              <option value="simple">{styleLabel(courtType, "simple")}</option><option value="pointille">{styleLabel(courtType, "pointille")}</option><option value="zigzag">{styleLabel(courtType, "zigzag")}</option><option value="ecran">{styleLabel(courtType, "ecran")}</option>
             </select>
             <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche</label>
             {curvePoints.length >= 2 && (
@@ -2462,6 +2555,11 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
                   <path d="M 11 2 Q 11 11 11 20" fill="none" stroke="rgba(0,0,0,0.2)" strokeWidth="1" strokeLinecap="round"/>
                 </svg>
               )},
+              {v:"ballonfoot", icon: <span className="text-base">⚽</span>},
+              {v:"cage", icon: <span className="text-base">🥅</span>},
+              {v:"haie", icon: <span className="text-base">🚧</span>},
+              {v:"jalon", icon: <span className="text-base">📍</span>},
+              {v:"coupelle", icon: <span className="text-base">🟠</span>},
             ].map(eq => (
               <button key={eq.v} type="button"
                 onClick={() => setPlayerLabel(playerLabel === eq.v ? (playerIsDefender ? "X1" : "1") : eq.v)}
@@ -2472,7 +2570,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
             ))}
             <div className="w-px h-5 bg-[#1B2A4A]/15 mx-0.5" />
             {/* Accès rapide aux 5 joueurs (clic direct pour choisir le numéro) */}
-            {!["plot","chaise","cerceau","handball"].includes(playerLabel) && (
+            {!["plot","chaise","cerceau","handball","cage","haie","jalon","coupelle","ballonfoot"].includes(playerLabel) && (
               <div className="flex items-center gap-1">
                 {["1","2","3","4","5"].map(n => {
                   const lbl = playerIsDefender ? "X" + n : n;
@@ -2492,7 +2590,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
                 </select>
               </div>
             )}
-            {!["plot","chaise","cerceau","handball"].includes(playerLabel) && <>
+            {!["plot","chaise","cerceau","handball","cage","haie","jalon","coupelle","ballonfoot"].includes(playerLabel) && <>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
                 <input type="checkbox" checked={playerHasBall} onChange={e => setPlayerHasBall(e.target.checked)} disabled={playerIsDefender} /> Ballon
               </label>
@@ -2526,6 +2624,13 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
             <button onClick={() => setTextItalic(b => !b)} className={`px-2.5 py-1 rounded text-sm italic border transition-colors ${textItalic ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A]"}`}>I</button>
             <button onClick={() => setTextHighlight(b => !b)} title="Surligner" className={`px-2.5 py-1 rounded text-sm border transition-colors ${textHighlight ? "bg-yellow-300 border-yellow-400 text-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A]"}`} style={{ background: textHighlight ? "rgba(255,230,0,0.7)" : undefined }}>🖊</button>
             <span className="text-xs text-[#1B2A4A]/40">Touche le terrain pour écrire</span>
+          </>
+        ) : tool === "zone" ? (
+          <>
+            {["#1B2A4A", "#D62828", "#2563EB", "#16a34a", "#FF6B35"].map(c => (
+              <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2 flex-shrink-0" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />
+            ))}
+            <span className="text-xs text-[#1B2A4A]/40">Glisse pour tracer une zone</span>
           </>
         ) : (
           <span className="text-xs text-[#1B2A4A]/40">
@@ -2595,10 +2700,10 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
                   setSelectedEl({ ...selectedEl, style: e.target.value });
                 }}
                 className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-                <option value="simple">Déplacement</option>
-                <option value="pointille">Passe</option>
-                <option value="zigzag">Dribble</option>
-                <option value="ecran">Écran</option>
+                <option value="simple">{styleLabel(courtType, "simple")}</option>
+                <option value="pointille">{styleLabel(courtType, "pointille")}</option>
+                <option value="zigzag">{styleLabel(courtType, "zigzag")}</option>
+                <option value="ecran">{styleLabel(courtType, "ecran")}</option>
               </select>
               {/* Flèche */}
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
@@ -2868,6 +2973,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
     elementsRef.current.forEach(el => {
       if (el.type === "token") _drawPlayerToken(bctx, el);
       else if (el.type === "text") _drawTextElement(bctx, el);
+      else if (el.type === "zone") _drawZone(bctx, el);
       else _drawStroke(bctx, el);
     });
     elementsRef.current.forEach(el => {
@@ -2921,6 +3027,13 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       const el = elementsRef.current[i];
       if (el.type === "token") { if (Math.hypot(pt.x - el.x, pt.y - el.y) <= 20) return el; }
       else if (el.type === "text") { ctx.font = `${el.size}px sans-serif`; const lines = el.value.split("\n"); const w = Math.max(...lines.map(l => ctx.measureText(l).width)); const h = lines.length * el.size * 1.25; if (pt.x >= el.x - 4 && pt.x <= el.x + w + 4 && pt.y >= el.y - 4 && pt.y <= el.y + h + 4) return el; }
+      else if (el.type === "zone") {
+        const zx = Math.min(el.x, el.x + el.w), zy = Math.min(el.y, el.y + el.h);
+        const zw = Math.abs(el.w), zh = Math.abs(el.h);
+        const onBorder = pt.x >= zx - 8 && pt.x <= zx + zw + 8 && pt.y >= zy - 8 && pt.y <= zy + zh + 8
+          && (pt.x <= zx + 8 || pt.x >= zx + zw - 8 || pt.y <= zy + 8 || pt.y >= zy + zh - 8);
+        if (onBorder) return el;
+      }
       else if (el.type === "stroke") { const tol = el.width / 2 + 10; for (let j = 0; j < el.points.length - 1; j++) { const a = el.points[j], b = el.points[j + 1]; const len2 = (b.x-a.x)**2+(b.y-a.y)**2; let t = len2===0?0:((pt.x-a.x)*(b.x-a.x)+(pt.y-a.y)*(b.y-a.y))/len2; t=Math.max(0,Math.min(1,t)); if (Math.hypot(pt.x-a.x-t*(b.x-a.x), pt.y-a.y-t*(b.y-a.y))<=tol) return el; } }
     }
     return null;
@@ -2977,7 +3090,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
     }
     if (tool === "player") {
       const pt = toCanvasPoint(e);
-      const equipKinds = ["plot", "chaise", "cerceau", "handball"];
+      const equipKinds = ["plot", "chaise", "cerceau", "handball", "cage", "haie", "jalon", "coupelle", "ballonfoot"];
       const isEquip = equipKinds.includes(playerLabel);
       elementsRef.current.push(isEquip
         ? { type: "token", x: pt.x, y: pt.y, kind: playerLabel, size: playerSize }
@@ -2988,6 +3101,11 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       const idxNum = numSeq.indexOf(playerLabel), idxX = xSeq.indexOf(playerLabel);
       if (idxNum >= 0 && idxNum < numSeq.length - 1) setPlayerLabel(numSeq[idxNum + 1]);
       else if (idxX >= 0 && idxX < xSeq.length - 1) setPlayerLabel(xSeq[idxX + 1]);
+      return;
+    }
+    if (tool === "zone") {
+      const pt = toCanvasPoint(e);
+      currentRef.current = { type: "zone", x: pt.x, y: pt.y, w: 0, h: 0, color };
       return;
     }
     currentRef.current = tool === "eraser"
@@ -3009,6 +3127,16 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       d.startX = pt.x; d.startY = pt.y;
       if (Math.hypot(pt.x - d.origX, pt.y - d.origY) > 3) d.moved = true;
       redraw(); return;
+    }
+    if (tool === "zone") {
+      if (!currentRef.current) return;
+      e.preventDefault();
+      const pt = toCanvasPoint(e);
+      currentRef.current.w = pt.x - currentRef.current.x;
+      currentRef.current.h = pt.y - currentRef.current.y;
+      redraw();
+      _drawZone(canvasRef.current.getContext("2d"), currentRef.current);
+      return;
     }
     if (tool === "select" || tool === "player" || !currentRef.current) return;
     e.preventDefault();
@@ -3058,6 +3186,12 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
           setPendingText({ x: d.el.x, y: d.el.y, screenX: d.el.x * scale, screenY: d.el.y * scale, value: d.el.value }); redraw();
         } else { selectedElRef.current = d.el; setSelectedEl(d.el); redraw(); }
       } else if (d && d.moved) { selectedElRef.current = null; setSelectedEl(null); redraw(); }
+      return;
+    }
+    if (tool === "zone") {
+      const zone = currentRef.current; currentRef.current = null;
+      if (!zone || (Math.abs(zone.w) < 6 && Math.abs(zone.h) < 6)) { redraw(); return; }
+      elementsRef.current.push(zone); redraw();
       return;
     }
     if (tool === "select" || tool === "player") return;
@@ -3138,6 +3272,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
           <button onClick={() => setTool("player")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "player" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🧍 Joueur</button>
           <button onClick={() => setTool("text")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "text" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🔤 Texte</button>
           <button onClick={() => setTool("eraser")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "eraser" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🧹 Gomme</button>
+          <button onClick={() => setTool("zone")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "zone" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>▭ Zone</button>
           <button onClick={() => setTool("select")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "select" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🖐 Déplacer</button>
         </div>
       </div>
@@ -3153,7 +3288,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
             {["#1B2A4A","#D62828","#2563EB"].map(c => <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />)}
             <SizeSlider value={lineWidth} onChange={setLineWidth} min={1} max={10} step={0.5} presets={[{v:1.5,l:"S"},{v:2.5,l:"M"},{v:4,l:"L"}]} />
             <select value={lineStyle} onChange={e => setLineStyle(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-              <option value="simple">Déplacement</option><option value="pointille">Passe</option><option value="zigzag">Dribble</option><option value="ecran">Écran</option><option value="tir">Tir</option>
+              <option value="simple">{styleLabel(courtType, "simple")}</option><option value="pointille">{styleLabel(courtType, "pointille")}</option><option value="zigzag">{styleLabel(courtType, "zigzag")}</option><option value="ecran">{styleLabel(courtType, "ecran")}</option><option value="tir">{styleLabel(courtType, "tir")}</option>
             </select>
             <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche</label>
           </>
@@ -3162,7 +3297,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
             {["#1B2A4A","#D62828","#2563EB"].map(c => <button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />)}
             <SizeSlider value={lineWidth} onChange={setLineWidth} min={1} max={10} step={0.5} presets={[{v:1.5,l:"S"},{v:2.5,l:"M"},{v:4,l:"L"}]} />
             <select value={lineStyle} onChange={e => setLineStyle(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-              <option value="simple">Déplacement</option><option value="pointille">Passe</option><option value="zigzag">Dribble</option><option value="ecran">Écran</option>
+              <option value="simple">{styleLabel(courtType, "simple")}</option><option value="pointille">{styleLabel(courtType, "pointille")}</option><option value="zigzag">{styleLabel(courtType, "zigzag")}</option><option value="ecran">{styleLabel(courtType, "ecran")}</option>
             </select>
             <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche</label>
             {curvePoints.length >= 2 && (
@@ -3172,12 +3307,30 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
           </>
         ) : tool === "player" ? (
           <>
-            {[{v:"plot",icon:<span className="text-base">🔶</span>},{v:"chaise",icon:<span className="text-base">🪑</span>},{v:"cerceau",icon:<span className="text-base">⭕</span>}].map(eq => (
+            {[
+              {v:"plot",icon:<span className="text-base">🔶</span>},
+              {v:"chaise",icon:<span className="text-base">🪑</span>},
+              {v:"cerceau",icon:<span className="text-base">⭕</span>},
+              {v:"handball", icon: (
+                <svg viewBox="0 0 22 22" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="11" cy="11" r="9" fill="#c0392b" stroke="#7b241c" strokeWidth="1.2"/>
+                  <path d="M 5 8 Q 11 5 17 8" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round"/>
+                  <path d="M 3.5 12 Q 11 9.5 18.5 12" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round"/>
+                  <path d="M 5 16 Q 11 14 17 16" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round"/>
+                  <path d="M 11 2 Q 11 11 11 20" fill="none" stroke="rgba(0,0,0,0.2)" strokeWidth="1" strokeLinecap="round"/>
+                </svg>
+              )},
+              {v:"ballonfoot",icon:<span className="text-base">⚽</span>},
+              {v:"cage",icon:<span className="text-base">🥅</span>},
+              {v:"haie",icon:<span className="text-base">🚧</span>},
+              {v:"jalon",icon:<span className="text-base">📍</span>},
+              {v:"coupelle",icon:<span className="text-base">🟠</span>},
+            ].map(eq => (
               <button key={eq.v} type="button" onClick={() => setPlayerLabel(playerLabel === eq.v ? (playerIsDefender ? "X1" : "1") : eq.v)}
                 className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${playerLabel === eq.v ? "bg-[#1B2A4A] border-[#1B2A4A]" : "border-[#1B2A4A]/20 hover:bg-[#1B2A4A]/5"}`}>{eq.icon}</button>
             ))}
             <div className="w-px h-5 bg-[#1B2A4A]/15 mx-0.5" />
-            {!["plot","chaise","cerceau"].includes(playerLabel) && (
+            {!["plot","chaise","cerceau","handball","cage","haie","jalon","coupelle","ballonfoot"].includes(playerLabel) && (
               <div className="flex items-center gap-1">
                 {["1","2","3","4","5"].map(n => {
                   const lbl = playerIsDefender ? "X" + n : n;
@@ -3193,7 +3346,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
                 </select>
               </div>
             )}
-            {!["plot","chaise","cerceau"].includes(playerLabel) && <>
+            {!["plot","chaise","cerceau","handball","cage","haie","jalon","coupelle","ballonfoot"].includes(playerLabel) && <>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={playerHasBall} onChange={e => setPlayerHasBall(e.target.checked)} disabled={playerIsDefender} /> Ballon</label>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={playerIsDefender} onChange={e => { const def=e.target.checked; setPlayerIsDefender(def); const nums=["1","2","3","4","5","6","7","8","9","10","11","12"],xNums=["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"]; if(def){const i=nums.indexOf(playerLabel);if(i>=0)setPlayerLabel(xNums[i]);else setPlayerLabel("X1");}else{const i=xNums.indexOf(playerLabel);if(i>=0)setPlayerLabel(nums[i]);else setPlayerLabel("1");} }} /> Défenseur</label>
             </>}
@@ -3206,6 +3359,11 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
             <button onClick={() => setTextBold(b=>!b)} className={`px-2.5 py-1 rounded text-sm font-bold border ${textBold?"bg-[#1B2A4A] text-white border-[#1B2A4A]":"border-[#1B2A4A]/20 text-[#1B2A4A]"}`}>G</button>
             <button onClick={() => setTextItalic(b=>!b)} className={`px-2.5 py-1 rounded text-sm italic border ${textItalic?"bg-[#1B2A4A] text-white border-[#1B2A4A]":"border-[#1B2A4A]/20 text-[#1B2A4A]"}`}>I</button>
             <button onClick={() => setTextHighlight(b=>!b)} className={`px-2.5 py-1 rounded text-sm border ${textHighlight?"bg-yellow-300 border-yellow-400 text-[#1B2A4A]":"border-[#1B2A4A]/20 text-[#1B2A4A]"}`}>🖊</button>
+          </>
+        ) : tool === "zone" ? (
+          <>
+            {["#1B2A4A","#D62828","#2563EB","#16a34a","#FF6B35"].map(c=><button key={c} onClick={() => setColor(c)} className="w-7 h-7 rounded-full border-2 flex-shrink-0" style={{ backgroundColor:c, borderColor:color===c?"#FF6B35":"transparent" }} />)}
+            <span className="text-xs text-[#1B2A4A]/40">Glisse pour tracer une zone</span>
           </>
         ) : (
           <span className="text-xs text-[#1B2A4A]/40">{selectedEl ? "Élément sélectionné" : "Tap = sélectionner · Glisser = déplacer"}</span>
@@ -3226,7 +3384,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
               </div>
               <select value={selectedEl.style} onChange={e => { selectedEl.style=e.target.value; selectedElRef.current=selectedEl; redraw(); setSelectedEl({...selectedEl,style:e.target.value}); }}
                 className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white">
-                <option value="simple">Déplacement</option><option value="pointille">Passe</option><option value="zigzag">Dribble</option><option value="ecran">Écran</option>
+                <option value="simple">{styleLabel(courtType, "simple")}</option><option value="pointille">{styleLabel(courtType, "pointille")}</option><option value="zigzag">{styleLabel(courtType, "zigzag")}</option><option value="ecran">{styleLabel(courtType, "ecran")}</option>
               </select>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
                 <input type="checkbox" checked={!!selectedEl.arrow} onChange={e => { selectedEl.arrow=e.target.checked; selectedElRef.current=selectedEl; redraw(); setSelectedEl({...selectedEl,arrow:e.target.checked}); }} /> Flèche
