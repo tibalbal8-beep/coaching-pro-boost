@@ -2782,17 +2782,32 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
   const lastClickTimeRef = useRef(0);
   const pointerDownPtRef = useRef(null);
 
-  const TERRAIN_DEFS = courtType === "handball"
-    ? [
-        { label: "Terrain complet", file: "/handball-terrain-complet.png" },
-        { label: "Attaque", file: "/handball-terrain-attaque.png" },
-        { label: "Défense", file: "/handball-terrain-defense.png" },
-      ]
-    : [
-        { label: "Terrain complet", file: "/basketball-terrain-complet.png" },
-        { label: "Demi-terrain ↑", file: "/basketball-demi-terrain-haut.png" },
-        { label: "Demi-terrain ↓", file: "/basketball-demi-terrain-bas.png" },
-      ];
+  const TERRAIN_DEFS_BY_SPORT = {
+    handball: [
+      { label: "Terrain complet", file: "/handball-terrain-complet.png" },
+      { label: "Attaque", file: "/handball-terrain-attaque.png" },
+      { label: "Défense", file: "/handball-terrain-defense.png" },
+    ],
+    football: [
+      { label: "Terrain complet", file: "/football-terrain-complet.png" },
+      { label: "Demi-terrain ↑", file: "/football-demi-terrain-haut.png" },
+      { label: "Demi-terrain ↓", file: "/football-demi-terrain-bas.png" },
+    ],
+    rugby: [
+      { label: "Terrain complet", file: "/rugby-terrain-complet.png" },
+      { label: "Demi-terrain ↑", file: "/rugby-demi-terrain-haut.png" },
+      { label: "Demi-terrain ↓", file: "/rugby-demi-terrain-bas.png" },
+    ],
+    volleyball: [
+      { label: "Terrain complet", file: "/volleyball-terrain-complet.png" },
+    ],
+    basketball: [
+      { label: "Terrain complet", file: "/basketball-terrain-complet.png" },
+      { label: "Demi-terrain ↑", file: "/basketball-demi-terrain-haut.png" },
+      { label: "Demi-terrain ↓", file: "/basketball-demi-terrain-bas.png" },
+    ],
+  };
+  const TERRAIN_DEFS = TERRAIN_DEFS_BY_SPORT[courtType] || TERRAIN_DEFS_BY_SPORT.basketball;
 
   const [activeTerrain, setActiveTerrain] = useState(0);
   const [bgReady, setBgReady] = useState(false);
