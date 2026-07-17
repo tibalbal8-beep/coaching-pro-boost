@@ -719,55 +719,6 @@ function FileDrop({ file, onChange, cpbAlert }) {
   );
 }
 
-function StarRating({ value, onChange, size = 16 }) {
-  return (
-    <div className="flex gap-0.5">
-      {[1, 2, 3, 4, 5].map(n => (
-        <button key={n} type="button" onClick={() => onChange(n)} className="text-[#FF6B35]">
-          <Star size={size} fill={n <= value ? "#FF6B35" : "none"} strokeWidth={1.5} />
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function RatingBlock({ avis = [], onAdd, label = "Noter cette séance" }) {
-  const [note, setNote] = useState(0);
-  const [commentaire, setCommentaire] = useState("");
-  const moyenne = avis.length ? (avis.reduce((s, a) => s + a.note, 0) / avis.length).toFixed(1) : null;
-  return (
-    <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-[#1B2A4A]/70 uppercase tracking-wide">Avis</h3>
-        {moyenne && <span className="text-xs text-[#1B2A4A]/50 flex items-center gap-1"><Star size={12} fill="#FF6B35" strokeWidth={0} /> {moyenne} ({avis.length})</span>}
-      </div>
-      {avis.length > 0 && (
-        <div className="space-y-2 mb-3 max-h-40 overflow-y-auto">
-          {[...avis].reverse().map((a, i) => (
-            <div key={i} className="text-xs border-b border-[#1B2A4A]/10 pb-2">
-              <div className="flex items-center gap-2 mb-0.5">
-                <StarRating value={a.note} onChange={() => {}} size={11} />
-                <span className="text-[#1B2A4A]/40">{a.date}</span>
-              </div>
-              {a.commentaire && <p className="text-[#1B2A4A]/70">{a.commentaire}</p>}
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="flex items-center gap-3 mb-2">
-        <StarRating value={note} onChange={setNote} />
-        <span className="text-xs text-[#1B2A4A]/40">{label}</span>
-      </div>
-      <textarea value={commentaire} onChange={e => setCommentaire(e.target.value)} placeholder="Commentaire (optionnel)" rows={2}
-        className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-xs bg-white/60 mb-2" />
-      <button onClick={() => { if (!note) return; onAdd({ note, commentaire, date: new Date().toISOString().slice(0, 10) }); setNote(0); setCommentaire(""); }}
-        disabled={!note} className="text-xs font-medium text-[#FF6B35] hover:underline disabled:opacity-30 disabled:no-underline">
-        Enregistrer l'avis
-      </button>
-    </div>
-  );
-}
-
 function useSchemasData(ex) {
   const [schemas, setSchemas] = React.useState(ex.schemas || []);
   React.useEffect(() => {
@@ -955,10 +906,6 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
         <div className="absolute right-1 top-1"><DictateButton onResult={(t) => setNotes(prev => prev ? prev + " " + t : t)} /></div>
       </div>
       <FileDrop file={file} onChange={setFile} cpbAlert={cpbAlert} />
-      {initial?.id && (
-        <RatingBlock avis={initial.avis || []} label="Noter cet exercice"
-          onAdd={(a) => onSave({ id: initial.id, titre, themes: sel, phases, format, niveau, categorie, duree, objectif, notes, file, diagram: initial?.diagram, avis: [...(initial.avis || []), a], createdAt: initial.createdAt, _staySaved: true })} />
-      )}
       <div className="flex justify-end gap-2 pt-2">
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
         <button
@@ -7199,10 +7146,6 @@ function CoachingProBoost({ session }) {
               </div>
             )}
 
-            {/* Avis en bas */}
-            <div className="mb-6 no-print">
-              <RatingBlock avis={activeSession.avis || []} onAdd={(a) => updateSession({ ...activeSession, avis: [...(activeSession.avis || []), a] })} />
-            </div>
           </div>
         )}
 
