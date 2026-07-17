@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.coachingproboost.twa",
+    "sha256_cert_fingerprints": ["ED:FB:61:D2:C7:1F:CD:17:60:B2:76:01:BD:9B:18:0F:88:BF:F5:CB:5F:1B:B2:EE:94:4E:51:2C:F2:A2:9E:9E"]
+  }
+}]
