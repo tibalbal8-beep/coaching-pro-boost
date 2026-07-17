@@ -1330,7 +1330,22 @@ function diagramToSvgString(diagram, width = 320, height = 305) {
   return s;
 }
 
-function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = [], sport = "basketball", plays = [] } = {}) {
+// Ordre combiné exercices + plays d'une séance, pour l'organisateur/aperçu et l'impression.
+// Additif et non-destructif : session.itemOrder est un champ nouveau, calculé automatiquement
+// à partir de exerciseIds/playIds (qui restent la source de vérité pour l'appartenance à la séance).
+// Les items retirés de exerciseIds/playIds disparaissent de l'ordre ; les items ajoutés ailleurs
+// (bouton +, suggestions...) sont ajoutés en fin d'ordre automatiquement au prochain calcul.
+function getSessionOrder(session) {
+  const known = [
+    ...(session.exerciseIds || []).map(id => ({ type: "exercise", id })),
+    ...(session.playIds || []).map(id => ({ type: "play", id })),
+  ];
+  const stored = (session.itemOrder || []).filter(it => known.some(k => k.type === it.type && k.id === it.id));
+  const missing = known.filter(k => !stored.some(it => it.type === k.type && it.id === k.id));
+  return [...stored, ...missing];
+}
+
+function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = [], sport = "basketball", plays = [], textScale = 1, imageScale = 1 } = {}) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const total = session.exerciseIds.reduce((sum, id) => sum + (exercises.find(e => e.id === id)?.duree || 0), 0);
   const h = Math.floor(total / 60), m = total % 60;
@@ -1340,53 +1355,60 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
   const team = teams.find(t => t.id === session.teamId);
   const teamStr = team ? `${team.nom}${team.niveau ? ` · ${team.niveau}` : ""}` : null;
   const sessionExos = session.exerciseIds.map(id => exercises.find(e => e.id === id)).filter(Boolean);
-  const allThemes = [...new Set(sessionExos.flatMap(e => e.themes || []))];
-
-  const blocks = sessionExos.map((ex, i) => {
-    const hasDiagram = !!ex.diagram;
-    const hasPhoto = !!(ex.file?.data && ex.file?.type?.startsWith("image/"));
-    const schemas = ex.schemas || [];
-    const hasVisual = hasDiagram || hasPhoto || schemas.length > 0;
-
-    let visualHtml = "";
-    if (hasDiagram) {
-      // IDs uniques par exercice pour éviter les conflits entre plusieurs schémas
-      const raw = diagramToSvgString(ex.diagram, 420, 400);
-      visualHtml += raw
-        .replace(/id="a"/g, `id="marr${i}"`)
-        .replace(/url\(#a\)/g, `url(#marr${i})`);
-    } else if (hasPhoto) {
-      visualHtml += `<img src="${ex.file.data}" alt="" style="width:100%;height:auto;display:block;border-radius:6px;border:1px solid #1B2A4A15" />`;
-    }
-    schemas.forEach(s => {
-      visualHtml += `<div style="margin-top:8px"><img src="${s}" alt="" style="width:100%;height:auto;display:block;border-radius:6px;border:1px solid #1B2A4A15" /></div>`;
-    });
-
-    return `
-    <div class="exo">
-      <div class="exo-header">
-        <span class="exo-num">${String(i + 1).padStart(2, "0")}</span>
-        <span class="exo-title">${esc(ex.titre)}</span>
-        <span class="exo-meta">${esc(ex.duree)} min · ${esc(ex.format)} · ${esc(ex.niveau)}${ex.categorie ? " · " + esc(ex.categorie) : ""}</span>
-      </div>
-      <div class="exo-body${hasVisual ? "" : " no-visual"}">
-        ${hasVisual ? `<div class="exo-visual"><div class="visual-inner">${visualHtml}</div></div>` : ""}
-        <div class="exo-text">
-          ${ex.themes?.length ? `<div class="tags">${ex.themes.map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
-          ${ex.objectif ? `<div class="field"><div class="field-label">Objectif</div><p class="field-val">${esc(ex.objectif)}</p></div>` : ""}
-          ${ex.notes ? `<div class="field"><div class="field-label">Consignes</div><p class="field-val notes">${esc(ex.notes)}</p></div>` : ""}
-          ${!ex.objectif && !ex.notes && !ex.themes?.length ? `<p class="empty-text">Aucune consigne renseignée.</p>` : ""}
-        </div>
-      </div>
-    </div>`;
-  }).join("");
-
   const sessionPlays = (session.playIds || []).map(id => plays.find(p => p.id === id)).filter(Boolean);
-  const playsBlocks = sessionPlays.map((play, i) => {
+  const allThemes = [...new Set(sessionExos.flatMap(e => e.themes || []))];
+  const imgPct = Math.round(imageScale * 100);
+
+  let exoCount = 0, playCount = 0;
+  const combinedBlocks = getSessionOrder(session).map((item, gi) => {
+    if (item.type === "exercise") {
+      const ex = exercises.find(e => e.id === item.id);
+      if (!ex) return "";
+      const i = exoCount++;
+      const hasDiagram = !!ex.diagram;
+      const hasPhoto = !!(ex.file?.data && ex.file?.type?.startsWith("image/"));
+      const schemas = ex.schemas || [];
+      const hasVisual = hasDiagram || hasPhoto || schemas.length > 0;
+
+      let visualHtml = "";
+      if (hasDiagram) {
+        // IDs uniques par exercice pour éviter les conflits entre plusieurs schémas
+        const raw = diagramToSvgString(ex.diagram, 420, 400);
+        visualHtml += raw
+          .replace(/id="a"/g, `id="marr${gi}"`)
+          .replace(/url\(#a\)/g, `url(#marr${gi})`);
+      } else if (hasPhoto) {
+        visualHtml += `<img src="${ex.file.data}" alt="" style="width:${imgPct}%;margin:0 auto;height:auto;display:block;border-radius:6px;border:1px solid #1B2A4A15" />`;
+      }
+      schemas.forEach(s => {
+        visualHtml += `<div style="margin-top:8px"><img src="${s}" alt="" style="width:${imgPct}%;margin:0 auto;height:auto;display:block;border-radius:6px;border:1px solid #1B2A4A15" /></div>`;
+      });
+
+      return `
+      <div class="exo">
+        <div class="exo-header">
+          <span class="exo-num">${String(i + 1).padStart(2, "0")}</span>
+          <span class="exo-title">${esc(ex.titre)}</span>
+          <span class="exo-meta">${esc(ex.duree)} min · ${esc(ex.format)} · ${esc(ex.niveau)}${ex.categorie ? " · " + esc(ex.categorie) : ""}</span>
+        </div>
+        <div class="exo-body${hasVisual ? "" : " no-visual"}">
+          ${hasVisual ? `<div class="exo-visual"><div class="visual-inner">${visualHtml}</div></div>` : ""}
+          <div class="exo-text">
+            ${ex.themes?.length ? `<div class="tags">${ex.themes.map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
+            ${ex.objectif ? `<div class="field"><div class="field-label">Objectif</div><p class="field-val">${esc(ex.objectif)}</p></div>` : ""}
+            ${ex.notes ? `<div class="field"><div class="field-label">Consignes</div><p class="field-val notes">${esc(ex.notes)}</p></div>` : ""}
+            ${!ex.objectif && !ex.notes && !ex.themes?.length ? `<p class="empty-text">Aucune consigne renseignée.</p>` : ""}
+          </div>
+        </div>
+      </div>`;
+    }
+    const play = plays.find(p => p.id === item.id);
+    if (!play) return "";
+    const i = playCount++;
     const schemas = play.schemas || [];
     const photos = (play.images || []).filter(img => img.file?.data || img.data).map(img => img.file?.data || img.data);
     const visuals = [...schemas, ...photos];
-    const imgsHtml = visuals.map(v => `<div class="play-img"><img src="${v}" alt="" /></div>`).join("");
+    const imgsHtml = visuals.map(v => `<div class="play-img" style="width:${imgPct}%"><img src="${v}" alt="" /></div>`).join("");
     return `
     <div class="play-block">
       <div class="play-block-header">
@@ -1526,8 +1548,8 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
     .exo{border:1px solid #1B2A4A20;border-radius:10px;overflow:hidden;margin-bottom:16px;break-inside:avoid;page-break-inside:avoid}
     .exo-header{background:#1B2A4A;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px}
     .exo-num{background:#FF6B35;color:#fff;font-size:11px;font-weight:700;border-radius:4px;padding:2px 8px;font-family:monospace;letter-spacing:1px;flex-shrink:0}
-    .exo-title{font-family:'Oswald',sans-serif;font-size:15px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .exo-meta{font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;flex-shrink:0}
+    .exo-title{font-family:'Oswald',sans-serif;font-size:calc(15px * var(--ts, 1));flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .exo-meta{font-size:calc(11px * var(--ts, 1));color:rgba(255,255,255,.6);white-space:nowrap;flex-shrink:0}
 
     .exo-body{display:grid;grid-template-columns:56% 44%;min-height:200px}
     .exo-body.no-visual{grid-template-columns:1fr;min-height:unset}
@@ -1538,17 +1560,17 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
     .exo-text{padding:16px;display:flex;flex-direction:column;gap:12px}
 
     .tags{display:flex;flex-wrap:wrap;gap:4px}
-    .tags span{font-size:10px;background:#FF6B3520;color:#FF6B35;border-radius:10px;padding:2px 8px;font-weight:600}
-    .field-label{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:#1B2A4A60;font-weight:600;margin-bottom:3px}
-    .field-val{font-size:12px;line-height:1.55;color:#1B2A4A}
+    .tags span{font-size:calc(10px * var(--ts, 1));background:#FF6B3520;color:#FF6B35;border-radius:10px;padding:2px 8px;font-weight:600}
+    .field-label{font-size:calc(10px * var(--ts, 1));text-transform:uppercase;letter-spacing:.7px;color:#1B2A4A60;font-weight:600;margin-bottom:3px}
+    .field-val{font-size:calc(12px * var(--ts, 1));line-height:1.55;color:#1B2A4A}
     .notes{white-space:pre-wrap;color:#1B2A4A90}
-    .empty-text{font-size:12px;color:#1B2A4A40;font-style:italic}
+    .empty-text{font-size:calc(12px * var(--ts, 1));color:#1B2A4A40;font-style:italic}
 
     /* ── SYSTEMES (un bloc par play, images complètes 4 par ligne) ── */
     .play-block{border:1px solid #1B2A4A20;border-radius:10px;overflow:hidden;margin-bottom:16px;break-inside:avoid;page-break-inside:avoid}
     .play-block-header{background:#1B2A4A;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px}
-    .play-block-title{font-family:'Oswald',sans-serif;font-size:15px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .play-block-type{font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;flex-shrink:0}
+    .play-block-title{font-family:'Oswald',sans-serif;font-size:calc(15px * var(--ts, 1));flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .play-block-type{font-size:calc(11px * var(--ts, 1));color:rgba(255,255,255,.6);white-space:nowrap;flex-shrink:0}
     .plays-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px}
     .play-img{background:#eef2f7;border-radius:6px;overflow:hidden;border:1px solid #1B2A4A12}
     .play-img img{width:100%;height:auto;display:block}
@@ -1586,9 +1608,8 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
 
   ${sessionPhoto ? `<div class="session-photo-wrap"><img src="${sessionPhoto}" alt="Photo de séance" /></div>` : ""}
 
-  <div class="content">
-    ${blocks}
-    ${sessionPlays.length ? `<h2 style="font-family:'Oswald',sans-serif;font-size:16px;margin:8px 0 12px;color:#1B2A4A">Systèmes</h2>${playsBlocks}` : ""}
+  <div class="content" style="--ts:${textScale}">
+    ${combinedBlocks}
   </div>
 
 </body></html>`;
@@ -5096,6 +5117,120 @@ function ScrollToTopButton() {
   );
 }
 
+// Miniature d'un item (exercice ou play) pour l'organisateur de séance.
+function organizerThumb(item, exercises, plays) {
+  if (item.type === "exercise") {
+    const ex = exercises.find(e => e.id === item.id);
+    if (!ex) return null;
+    if (ex.file?.data && ex.file?.type?.startsWith("image/")) return ex.file.data;
+    if (ex.schemas?.[0]) return ex.schemas[0];
+    return null;
+  }
+  const play = plays.find(p => p.id === item.id);
+  if (!play) return null;
+  if (play.schemas?.[0]) return play.schemas[0];
+  const img = (play.images || []).find(i => i.file?.data || i.data);
+  return img ? (img.file?.data || img.data) : null;
+}
+
+function SessionOrganizerModal({ session, exercises, plays, onClose, onDownload, onUpdateSession }) {
+  const [order, setOrder] = useState(() => getSessionOrder(session));
+  const [textScale, setTextScale] = useState(session.printTextScale || 1);
+  const [imageScale, setImageScale] = useState(session.printImageScale || 1);
+  const [dragIdx, setDragIdx] = useState(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const move = (from, to) => {
+    if (to < 0 || to >= order.length) return;
+    setOrder(prev => {
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+  };
+
+  const label = (item) => {
+    if (item.type === "exercise") return exercises.find(e => e.id === item.id)?.titre || "Exercice";
+    return plays.find(p => p.id === item.id)?.titre || "Play";
+  };
+
+  const handleConfirm = async () => {
+    setDownloading(true);
+    const updated = { ...session, itemOrder: order, printTextScale: textScale, printImageScale: imageScale };
+    onUpdateSession(updated);
+    await onDownload(updated, { textScale, imageScale });
+    setDownloading(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[600] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 no-print">
+      <div className="bg-white rounded-3xl w-full max-w-lg max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+        <div className="px-5 py-4 border-b border-[#1B2A4A]/10 flex items-center justify-between flex-shrink-0">
+          <h3 className="font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>APERÇU DE LA SÉANCE</h3>
+          <button onClick={onClose} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A] p-1"><X size={20} /></button>
+        </div>
+
+        <div className="px-5 py-4 overflow-y-auto flex-1 space-y-4">
+          <p className="text-xs text-[#1B2A4A]/50">Glisse-dépose une carte pour réorganiser, ou utilise les flèches. L'ordre est le même pour l'écran et l'impression.</p>
+
+          <div className="space-y-2">
+            {order.length === 0 && <p className="text-sm text-[#1B2A4A]/40 text-center py-6">Aucun exercice ni play dans cette séance.</p>}
+            {order.map((item, i) => {
+              const thumb = organizerThumb(item, exercises, plays);
+              return (
+                <div key={`${item.type}:${item.id}`}
+                  draggable
+                  onDragStart={() => setDragIdx(i)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => { e.preventDefault(); if (dragIdx !== null && dragIdx !== i) move(dragIdx, i); setDragIdx(null); }}
+                  onDragEnd={() => setDragIdx(null)}
+                  className="flex items-center gap-2.5 border border-[#1B2A4A]/15 rounded-xl bg-white p-2 cursor-grab active:cursor-grabbing">
+                  <div className="w-9 h-9 rounded-lg overflow-hidden bg-[#F2EDE4] flex items-center justify-center flex-shrink-0 border border-[#1B2A4A]/10">
+                    {thumb ? <img src={thumb} alt="" className="w-full h-full object-cover" /> : <span className="text-[10px] text-[#1B2A4A]/30">{item.type === "exercise" ? "EX" : "PL"}</span>}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-[#1B2A4A] truncate">{label(item)}</div>
+                    <div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/40">{item.type === "exercise" ? "Exercice" : "Play"}</div>
+                  </div>
+                  <div className="flex flex-col gap-0.5 flex-shrink-0">
+                    <button onClick={() => move(i, i - 1)} disabled={i === 0} className="text-[#1B2A4A]/50 hover:text-[#1B2A4A] disabled:opacity-20 p-0.5"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg></button>
+                    <button onClick={() => move(i, i + 1)} disabled={i === order.length - 1} className="text-[#1B2A4A]/50 hover:text-[#1B2A4A] disabled:opacity-20 p-0.5"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="border-t border-[#1B2A4A]/10 pt-4 space-y-3">
+            <div>
+              <div className="flex items-center justify-between text-xs text-[#1B2A4A]/60 mb-1">
+                <span>Taille du texte</span><span>{Math.round(textScale * 100)}%</span>
+              </div>
+              <input type="range" min="0.8" max="1.4" step="0.05" value={textScale} onChange={e => setTextScale(parseFloat(e.target.value))} className="w-full" />
+            </div>
+            <div>
+              <div className="flex items-center justify-between text-xs text-[#1B2A4A]/60 mb-1">
+                <span>Taille des images</span><span>{Math.round(imageScale * 100)}%</span>
+              </div>
+              <input type="range" min="0.5" max="1" step="0.05" value={imageScale} onChange={e => setImageScale(parseFloat(e.target.value))} className="w-full" />
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 border-t border-[#1B2A4A]/10 flex gap-2 flex-shrink-0">
+          <button onClick={onClose} className="flex-1 border border-[#1B2A4A]/20 text-[#1B2A4A] py-2.5 rounded-xl text-sm font-medium hover:bg-[#1B2A4A]/5">Annuler</button>
+          <button onClick={handleConfirm} disabled={downloading}
+            className="flex-1 text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>
+            {downloading ? "Génération..." : "Imprimer"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
   const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore(sport);
@@ -5649,6 +5784,7 @@ function CoachingProBoost({ session }) {
   const [quickCropData, setQuickCropData] = useState(null);
   const [currentSessionPhoto, setCurrentSessionPhoto] = useState(null);
   const [showSessionDrawer, setShowSessionDrawer] = useState(false);
+  const [showSessionOrganizer, setShowSessionOrganizer] = useState(false);
   const [pendingPerspectivePhoto, setPendingPerspectivePhoto] = useState(null);
   const sessionPhotoInputRef = useRef();
   const sessionCameraRef = useRef();
@@ -5967,6 +6103,16 @@ function CoachingProBoost({ session }) {
             }}
           />
         </div>
+      )}
+      {showSessionOrganizer && activeSession && (
+        <SessionOrganizerModal
+          session={activeSession}
+          exercises={exercises}
+          plays={plays}
+          onClose={() => setShowSessionOrganizer(false)}
+          onUpdateSession={updateSession}
+          onDownload={(sess, scaleOpts) => downloadSessionHTML(sess, exercises, { clubLogo, sessionPhoto: currentSessionPhoto, teams, sport, plays, ...scaleOpts })}
+        />
       )}
       {showHistoryRestore && (
         <div className="fixed inset-0 z-[700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
@@ -6886,7 +7032,7 @@ function CoachingProBoost({ session }) {
               <button onClick={() => setViewPersist("sessions")} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Retour aux séances</button>
               <div className="flex items-center gap-2">
                 <button onClick={() => setShowSessionDrawer(true)} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Pencil size={14} /> Dessiner la séance</button>
-                <button onClick={() => downloadSessionHTML(activeSession, exercises, { clubLogo, sessionPhoto: currentSessionPhoto, teams, sport, plays })} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Imprimer la séance</button>
+                <button onClick={() => setShowSessionOrganizer(true)} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Aperçu / Imprimer</button>
               </div>
             </div>
             <div className="flex items-start gap-4 mb-4">
