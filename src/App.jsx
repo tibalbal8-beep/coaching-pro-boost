@@ -1982,13 +1982,8 @@ function _drawPlayerToken(ctx, t) {
     ctx.beginPath(); ctx.ellipse(t.x, t.y, w / 2, h / 2, 0, 0, Math.PI * 2);
     ctx.fillStyle = "#FF6B35"; ctx.fill(); ctx.strokeStyle = "#c0440a"; ctx.lineWidth = 1.3 * sc; ctx.stroke();
   } else if (t.kind === "ballonbasket") {
-    const br = 11 * sc;
-    ctx.beginPath(); ctx.arc(t.x, t.y, br, 0, Math.PI * 2); ctx.fillStyle = "#e77817"; ctx.fill(); ctx.strokeStyle = "#1B2A4A"; ctx.lineWidth = 1.3 * sc; ctx.stroke();
-    ctx.strokeStyle = "#1B2A4A"; ctx.lineWidth = sc;
-    ctx.beginPath(); ctx.moveTo(t.x - br, t.y); ctx.lineTo(t.x + br, t.y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(t.x, t.y - br); ctx.lineTo(t.x, t.y + br); ctx.stroke();
-    ctx.beginPath(); ctx.arc(t.x - br * 0.55, t.y, br * 0.85, -Math.PI * 0.35, Math.PI * 0.35); ctx.stroke();
-    ctx.beginPath(); ctx.arc(t.x + br * 0.55, t.y, br * 0.85, Math.PI * 0.65, Math.PI * 1.35); ctx.stroke();
+    ctx.font = `${Math.round(24 * sc)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("🏀", t.x, t.y + 1 * sc);
   } else if (t.kind === "ballonvolley") {
     const br = 11 * sc;
     ctx.beginPath(); ctx.arc(t.x, t.y, br, 0, Math.PI * 2); ctx.fillStyle = "white"; ctx.fill(); ctx.strokeStyle = "#1B2A4A"; ctx.lineWidth = 1.3 * sc; ctx.stroke();
