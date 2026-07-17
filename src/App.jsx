@@ -4643,30 +4643,18 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
       <div>
         <div className="flex items-center justify-between mb-2">
           <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50">Images ({images.length})</div>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => { setCropCount(0); cropInputRef.current.click(); }}
-              className="flex items-center gap-1 text-xs text-[#1B2A4A]/60 hover:text-[#FF6B35] font-medium border border-[#1B2A4A]/20 hover:border-[#FF6B35]/40 rounded-full px-2.5 py-1 transition-colors">
-              <ImageIcon size={12} /> Rogner une photo
-            </button>
-            <button type="button" onClick={addImage}
-              className="flex items-center gap-1 text-xs text-[#FF6B35] hover:underline font-medium">
-              <Plus size={13} /> Ajouter une image
-            </button>
-          </div>
         </div>
         <input ref={cropInputRef} type="file" accept="image/*" className="hidden" onChange={e => handleCropFile(e.target.files?.[0])} />
-        {images.length === 0 && (
-          <div className="grid grid-cols-2 gap-3">
-            <button type="button" onClick={() => { setCropCount(0); cropInputRef.current.click(); }}
-              className="border-2 border-dashed border-[#1B2A4A]/20 rounded-lg py-5 flex flex-col items-center gap-1.5 text-[#1B2A4A]/40 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
-              <ImageIcon size={20} /><span className="text-xs text-center">Rogner depuis une photo</span>
-            </button>
-            <button type="button" onClick={addImage}
-              className="border-2 border-dashed border-[#1B2A4A]/20 rounded-lg py-5 flex flex-col items-center gap-1.5 text-[#1B2A4A]/40 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
-              <Plus size={20} /><span className="text-xs text-center">Ajouter une image</span>
-            </button>
-          </div>
-        )}
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <button type="button" onClick={() => { setCropCount(0); cropInputRef.current.click(); }}
+            className="border-2 border-dashed border-[#1B2A4A]/20 rounded-lg py-5 flex flex-col items-center gap-1.5 text-[#1B2A4A]/40 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
+            <ImageIcon size={20} /><span className="text-xs text-center">Rogner depuis une photo</span>
+          </button>
+          <button type="button" onClick={addImage}
+            className="border-2 border-dashed border-[#1B2A4A]/20 rounded-lg py-5 flex flex-col items-center gap-1.5 text-[#1B2A4A]/40 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
+            <Plus size={20} /><span className="text-xs text-center">Ajouter une image</span>
+          </button>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {images.map(img => (
             <PlayImageSlot key={img.id} img={img} playId={initial?.id} onChange={updated => updateImage(img.id, updated)} onRemove={() => removeImage(img.id)} />
