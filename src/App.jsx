@@ -780,73 +780,6 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
       <input value={titre} onChange={e => setTitre(e.target.value)} placeholder="Titre de l'exercice"
         className="w-full text-lg font-semibold bg-transparent border-b-2 border-[#1B2A4A]/20 focus:border-[#FF6B35] outline-none pb-1 text-[#1B2A4A]" />
       <div className="border border-[#1B2A4A]/15 rounded-xl overflow-hidden">
-        <button type="button" onClick={() => { setShowDraw(o => !o); setEditingSchemaIdx(null); }}
-          className="w-full flex items-center justify-between px-4 py-3 bg-white/40 hover:bg-white/70 transition-colors">
-          <div className="flex items-center gap-2">
-            <span>{Object.values(SPORTS_CONFIG).find(s => s.court === courtType)?.emoji || "🏀"}</span>
-            <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/60 font-semibold">Schémas tactiques</span>
-            {schemas.length > 0 && <span className="text-[10px] font-bold bg-[#FF6B35] text-white rounded-full px-1.5 py-0.5">{schemas.length}</span>}
-          </div>
-          <svg className={`w-4 h-4 text-[#1B2A4A]/40 transition-transform ${showDraw ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-        </button>
-        {showDraw && (
-          <div className="border-t border-[#1B2A4A]/10 p-3 bg-white/20 space-y-3">
-            {/* Carrousel des schémas existants */}
-            {schemas.length > 0 && editingSchemaIdx === null && (
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <button type="button" disabled={activeSchemaIdx === 0}
-                    onClick={() => setActiveSchemaIdx(i => i - 1)}
-                    className="w-7 h-7 flex items-center justify-center rounded-full border border-[#1B2A4A]/20 text-[#1B2A4A] disabled:opacity-30 hover:bg-[#1B2A4A]/5">‹</button>
-                  <span className="text-xs font-medium text-[#1B2A4A]/60 flex-1 text-center">Schéma {activeSchemaIdx + 1} / {schemas.length}</span>
-                  <button type="button" disabled={activeSchemaIdx === schemas.length - 1}
-                    onClick={() => setActiveSchemaIdx(i => i + 1)}
-                    className="w-7 h-7 flex items-center justify-center rounded-full border border-[#1B2A4A]/20 text-[#1B2A4A] disabled:opacity-30 hover:bg-[#1B2A4A]/5">›</button>
-                </div>
-                <img src={schemas[activeSchemaIdx]} alt="" className="w-full rounded-lg border border-[#1B2A4A]/10 mb-2" />
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => setEditingSchemaIdx(activeSchemaIdx)}
-                    className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5">Modifier</button>
-                  <button type="button" onClick={() => {
-                    setSchemas(s => s.filter((_, i) => i !== activeSchemaIdx));
-                    setActiveSchemaIdx(i => Math.max(0, i - 1));
-                  }} className="py-1.5 px-3 rounded-lg text-xs font-medium border border-red-200 text-red-500 hover:bg-red-50">Supprimer</button>
-                </div>
-              </div>
-            )}
-            {/* DrawTacticalView pour éditer ou ajouter un schéma */}
-            {editingSchemaIdx !== null && (
-              <DrawTacticalView
-                courtType={courtType}
-                initialImage={
-                  editingSchemaIdx < schemas.length
-                    ? schemas[editingSchemaIdx]
-                    : (file?.data || null)
-                }
-                onCancel={() => setEditingSchemaIdx(null)}
-                onValidate={(dataUrl) => {
-                  if (editingSchemaIdx < schemas.length) {
-                    setSchemas(s => s.map((x, i) => i === editingSchemaIdx ? dataUrl : x));
-                  } else {
-                    setSchemas(s => [...s, dataUrl]);
-                    setActiveSchemaIdx(schemas.length);
-                  }
-                  setEditingSchemaIdx(null);
-                }}
-              />
-            )}
-            {/* Bouton ajouter (visible quand on ne dessine pas) */}
-            {editingSchemaIdx === null && (
-              <button type="button"
-                onClick={() => setEditingSchemaIdx(schemas.length)}
-                className="w-full py-2 rounded-lg text-xs font-semibold border-2 border-dashed border-[#FF6B35]/40 text-[#FF6B35] hover:border-[#FF6B35] hover:bg-[#FF6B35]/5 transition-colors">
-                + Ajouter un schéma
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-      <div className="border border-[#1B2A4A]/15 rounded-xl overflow-hidden">
         <button type="button" onClick={() => setThemesOpen(o => !o)}
           className="w-full flex items-center justify-between px-4 py-3 bg-white/40 hover:bg-white/70 transition-colors">
           <div className="flex items-center gap-2">
@@ -906,6 +839,84 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
         <div className="absolute right-1 top-1"><DictateButton onResult={(t) => setNotes(prev => prev ? prev + " " + t : t)} /></div>
       </div>
       <FileDrop file={file} onChange={setFile} cpbAlert={cpbAlert} />
+      <div>
+        {schemas.length === 0 && !showDraw && (
+          <button type="button" onClick={() => setShowDraw(true)}
+            className="w-full border-2 border-dashed border-[#1B2A4A]/30 rounded-lg py-5 flex flex-col items-center gap-2 text-[#1B2A4A]/60 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
+            <span className="text-xl leading-none">{Object.values(SPORTS_CONFIG).find(s => s.court === courtType)?.emoji || "🏀"}</span>
+            <span className="text-xs">Schémas tactiques</span>
+          </button>
+        )}
+        {(schemas.length > 0 || showDraw) && (
+          <div className="border-2 border-dashed border-[#1B2A4A]/30 rounded-lg p-3">
+            <button type="button" onClick={() => { setShowDraw(o => !o); setEditingSchemaIdx(null); }}
+              className="w-full flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span>{Object.values(SPORTS_CONFIG).find(s => s.court === courtType)?.emoji || "🏀"}</span>
+                <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/60 font-semibold">Schémas tactiques</span>
+                {schemas.length > 0 && <span className="text-[10px] font-bold bg-[#FF6B35] text-white rounded-full px-1.5 py-0.5">{schemas.length}</span>}
+              </div>
+              <svg className={`w-4 h-4 text-[#1B2A4A]/40 transition-transform ${showDraw ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            {showDraw && (
+              <div className="space-y-3">
+                {/* Carrousel des schémas existants */}
+                {schemas.length > 0 && editingSchemaIdx === null && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <button type="button" disabled={activeSchemaIdx === 0}
+                        onClick={() => setActiveSchemaIdx(i => i - 1)}
+                        className="w-7 h-7 flex items-center justify-center rounded-full border border-[#1B2A4A]/20 text-[#1B2A4A] disabled:opacity-30 hover:bg-[#1B2A4A]/5">‹</button>
+                      <span className="text-xs font-medium text-[#1B2A4A]/60 flex-1 text-center">Schéma {activeSchemaIdx + 1} / {schemas.length}</span>
+                      <button type="button" disabled={activeSchemaIdx === schemas.length - 1}
+                        onClick={() => setActiveSchemaIdx(i => i + 1)}
+                        className="w-7 h-7 flex items-center justify-center rounded-full border border-[#1B2A4A]/20 text-[#1B2A4A] disabled:opacity-30 hover:bg-[#1B2A4A]/5">›</button>
+                    </div>
+                    <img src={schemas[activeSchemaIdx]} alt="" className="w-full rounded-lg border border-[#1B2A4A]/10 mb-2" />
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setEditingSchemaIdx(activeSchemaIdx)}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-medium border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5">Modifier</button>
+                      <button type="button" onClick={() => {
+                        setSchemas(s => s.filter((_, i) => i !== activeSchemaIdx));
+                        setActiveSchemaIdx(i => Math.max(0, i - 1));
+                      }} className="py-1.5 px-3 rounded-lg text-xs font-medium border border-red-200 text-red-500 hover:bg-red-50">Supprimer</button>
+                    </div>
+                  </div>
+                )}
+                {/* DrawTacticalView pour éditer ou ajouter un schéma */}
+                {editingSchemaIdx !== null && (
+                  <DrawTacticalView
+                    courtType={courtType}
+                    initialImage={
+                      editingSchemaIdx < schemas.length
+                        ? schemas[editingSchemaIdx]
+                        : (file?.data || null)
+                    }
+                    onCancel={() => setEditingSchemaIdx(null)}
+                    onValidate={(dataUrl) => {
+                      if (editingSchemaIdx < schemas.length) {
+                        setSchemas(s => s.map((x, i) => i === editingSchemaIdx ? dataUrl : x));
+                      } else {
+                        setSchemas(s => [...s, dataUrl]);
+                        setActiveSchemaIdx(schemas.length);
+                      }
+                      setEditingSchemaIdx(null);
+                    }}
+                  />
+                )}
+                {/* Bouton ajouter (visible quand on ne dessine pas) */}
+                {editingSchemaIdx === null && (
+                  <button type="button"
+                    onClick={() => setEditingSchemaIdx(schemas.length)}
+                    className="w-full py-2 rounded-lg text-xs font-semibold border-2 border-dashed border-[#FF6B35]/40 text-[#FF6B35] hover:border-[#FF6B35] hover:bg-[#FF6B35]/5 transition-colors">
+                    + Ajouter un schéma
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       <div className="flex justify-end gap-2 pt-2">
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
         <button
