@@ -1903,7 +1903,7 @@ const HANDBALL_ICON = (
   </svg>
 );
 // Matériel générique disponible pour tous les sports (préparation physique) + ballon/but
-// propre au sport actif uniquement (pas d'icône dédiée pour basket/volley/rugby pour l'instant).
+// propre au sport actif uniquement.
 function EQUIPMENT_ITEMS(courtType) {
   const generic = [
     {v:"plot", icon: <span className="text-base">🔶</span>},
@@ -1915,6 +1915,9 @@ function EQUIPMENT_ITEMS(courtType) {
   ];
   if (courtType === "handball") return [...generic, {v:"handball", icon: HANDBALL_ICON}];
   if (courtType === "football") return [...generic, {v:"ballonfoot", icon: <span className="text-base">⚽</span>}, {v:"cage", icon: <span className="text-base">🥅</span>}];
+  if (courtType === "basketball") return [...generic, {v:"ballonbasket", icon: <span className="text-base">🏀</span>}];
+  if (courtType === "volleyball") return [...generic, {v:"ballonvolley", icon: <span className="text-base">🏐</span>}];
+  if (courtType === "rugby") return [...generic, {v:"ballonrugby", icon: <span className="text-base">🏉</span>}];
   return generic;
 }
 
@@ -1978,6 +1981,32 @@ function _drawPlayerToken(ctx, t) {
     const w = 20 * sc, h = 6 * sc;
     ctx.beginPath(); ctx.ellipse(t.x, t.y, w / 2, h / 2, 0, 0, Math.PI * 2);
     ctx.fillStyle = "#FF6B35"; ctx.fill(); ctx.strokeStyle = "#c0440a"; ctx.lineWidth = 1.3 * sc; ctx.stroke();
+  } else if (t.kind === "ballonbasket") {
+    const br = 11 * sc;
+    ctx.beginPath(); ctx.arc(t.x, t.y, br, 0, Math.PI * 2); ctx.fillStyle = "#e77817"; ctx.fill(); ctx.strokeStyle = "#1B2A4A"; ctx.lineWidth = 1.3 * sc; ctx.stroke();
+    ctx.strokeStyle = "#1B2A4A"; ctx.lineWidth = sc;
+    ctx.beginPath(); ctx.moveTo(t.x - br, t.y); ctx.lineTo(t.x + br, t.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(t.x, t.y - br); ctx.lineTo(t.x, t.y + br); ctx.stroke();
+    ctx.beginPath(); ctx.arc(t.x - br * 0.55, t.y, br * 0.85, -Math.PI * 0.35, Math.PI * 0.35); ctx.stroke();
+    ctx.beginPath(); ctx.arc(t.x + br * 0.55, t.y, br * 0.85, Math.PI * 0.65, Math.PI * 1.35); ctx.stroke();
+  } else if (t.kind === "ballonvolley") {
+    const br = 11 * sc;
+    ctx.beginPath(); ctx.arc(t.x, t.y, br, 0, Math.PI * 2); ctx.fillStyle = "white"; ctx.fill(); ctx.strokeStyle = "#1B2A4A"; ctx.lineWidth = 1.3 * sc; ctx.stroke();
+    ctx.strokeStyle = "#378ADD"; ctx.lineWidth = sc;
+    ctx.beginPath(); ctx.arc(t.x, t.y - br * 0.3, br * 0.75, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+    ctx.beginPath(); ctx.arc(t.x - br * 0.5, t.y + br * 0.4, br * 0.7, Math.PI * 1.6, Math.PI * 0.3); ctx.stroke();
+    ctx.beginPath(); ctx.arc(t.x + br * 0.5, t.y + br * 0.4, br * 0.7, Math.PI * 0.7, Math.PI * 1.4); ctx.stroke();
+  } else if (t.kind === "ballonrugby") {
+    const rw = 14 * sc, rh = 8 * sc;
+    ctx.translate(t.x, t.y); ctx.rotate(-Math.PI / 6);
+    ctx.beginPath(); ctx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#7b4a2d"; ctx.fill(); ctx.strokeStyle = "#4a2c19"; ctx.lineWidth = 1.3 * sc; ctx.stroke();
+    ctx.strokeStyle = "white"; ctx.lineWidth = 1.2 * sc;
+    ctx.beginPath(); ctx.moveTo(-rw * 0.5, 0); ctx.lineTo(rw * 0.5, 0); ctx.stroke();
+    for (let i = -1; i <= 1; i++) {
+      const lx = i * rw * 0.25;
+      ctx.beginPath(); ctx.moveTo(lx, -rh * 0.35); ctx.lineTo(lx, rh * 0.35); ctx.stroke();
+    }
   } else if (t.role === "defender") {
     ctx.font = `bold ${Math.round(17 * sc)}px sans-serif`; ctx.fillStyle = "#D62828"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t.label, t.x, t.y);
   } else if (t.hasBall) {
@@ -2314,7 +2343,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     }
     if (tool === "player") {
       const pt = toCanvasPoint(e);
-      const equipKinds = ["plot", "chaise", "cerceau", "handball", "cage", "haie", "jalon", "coupelle", "ballonfoot"];
+      const equipKinds = ["plot", "chaise", "cerceau", "handball", "cage", "haie", "jalon", "coupelle", "ballonfoot", "ballonbasket", "ballonvolley", "ballonrugby"];
       const isEquip = equipKinds.includes(playerLabel);
       elementsRef.current.push(isEquip
         ? { type: "token", x: pt.x, y: pt.y, kind: playerLabel, size: playerSize }
@@ -2600,7 +2629,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
             ))}
             <div className="w-px h-5 bg-[#1B2A4A]/15 mx-0.5" />
             {/* Accès rapide aux 5 joueurs (clic direct pour choisir le numéro) */}
-            {!["plot","chaise","cerceau","handball","cage","haie","jalon","coupelle","ballonfoot"].includes(playerLabel) && (
+            {!["plot","chaise","cerceau","handball","cage","haie","jalon","coupelle","ballonfoot","ballonbasket","ballonvolley","ballonrugby"].includes(playerLabel) && (
               <div className="flex items-center gap-1">
                 {["1","2","3","4","5"].map(n => {
                   const lbl = playerIsDefender ? "X" + n : n;
@@ -2620,7 +2649,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
                 </select>
               </div>
             )}
-            {!["plot","chaise","cerceau","handball","cage","haie","jalon","coupelle","ballonfoot"].includes(playerLabel) && <>
+            {!["plot","chaise","cerceau","handball","cage","haie","jalon","coupelle","ballonfoot","ballonbasket","ballonvolley","ballonrugby"].includes(playerLabel) && <>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
                 <input type="checkbox" checked={playerHasBall} onChange={e => setPlayerHasBall(e.target.checked)} disabled={playerIsDefender} /> Ballon
               </label>
@@ -3120,7 +3149,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
     }
     if (tool === "player") {
       const pt = toCanvasPoint(e);
-      const equipKinds = ["plot", "chaise", "cerceau", "handball", "cage", "haie", "jalon", "coupelle", "ballonfoot"];
+      const equipKinds = ["plot", "chaise", "cerceau", "handball", "cage", "haie", "jalon", "coupelle", "ballonfoot", "ballonbasket", "ballonvolley", "ballonrugby"];
       const isEquip = equipKinds.includes(playerLabel);
       elementsRef.current.push(isEquip
         ? { type: "token", x: pt.x, y: pt.y, kind: playerLabel, size: playerSize }
@@ -3342,7 +3371,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
                 className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${playerLabel === eq.v ? "bg-[#1B2A4A] border-[#1B2A4A]" : "border-[#1B2A4A]/20 hover:bg-[#1B2A4A]/5"}`}>{eq.icon}</button>
             ))}
             <div className="w-px h-5 bg-[#1B2A4A]/15 mx-0.5" />
-            {!["plot","chaise","cerceau","handball","cage","haie","jalon","coupelle","ballonfoot"].includes(playerLabel) && (
+            {!["plot","chaise","cerceau","handball","cage","haie","jalon","coupelle","ballonfoot","ballonbasket","ballonvolley","ballonrugby"].includes(playerLabel) && (
               <div className="flex items-center gap-1">
                 {["1","2","3","4","5"].map(n => {
                   const lbl = playerIsDefender ? "X" + n : n;
@@ -3358,7 +3387,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
                 </select>
               </div>
             )}
-            {!["plot","chaise","cerceau","handball","cage","haie","jalon","coupelle","ballonfoot"].includes(playerLabel) && <>
+            {!["plot","chaise","cerceau","handball","cage","haie","jalon","coupelle","ballonfoot","ballonbasket","ballonvolley","ballonrugby"].includes(playerLabel) && <>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={playerHasBall} onChange={e => setPlayerHasBall(e.target.checked)} disabled={playerIsDefender} /> Ballon</label>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={playerIsDefender} onChange={e => { const def=e.target.checked; setPlayerIsDefender(def); const nums=["1","2","3","4","5","6","7","8","9","10","11","12"],xNums=["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"]; if(def){const i=nums.indexOf(playerLabel);if(i>=0)setPlayerLabel(xNums[i]);else setPlayerLabel("X1");}else{const i=xNums.indexOf(playerLabel);if(i>=0)setPlayerLabel(nums[i]);else setPlayerLabel("1");} }} /> Défenseur</label>
             </>}
