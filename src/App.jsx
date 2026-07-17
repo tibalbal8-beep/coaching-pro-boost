@@ -1945,16 +1945,8 @@ function _drawPlayerToken(ctx, t) {
     ctx.beginPath(); ctx.moveTo(t.x, t.y - br); ctx.lineTo(t.x, t.y + br); ctx.stroke();
     ctx.beginPath(); ctx.arc(t.x, t.y, br * 0.6, Math.PI * 0.2, Math.PI * 0.9); ctx.stroke();
   } else if (t.kind === "ballonfoot") {
-    const br = 11 * sc;
-    ctx.beginPath(); ctx.arc(t.x, t.y, br, 0, Math.PI * 2); ctx.fillStyle = "white"; ctx.fill(); ctx.strokeStyle = "#1B2A4A"; ctx.lineWidth = 1.3 * sc; ctx.stroke();
-    ctx.fillStyle = "#1B2A4A";
-    ctx.beginPath(); ctx.arc(t.x, t.y, br * 0.34, 0, Math.PI * 2); ctx.fill();
-    for (let i = 0; i < 5; i++) {
-      const a = -Math.PI / 2 + i * (Math.PI * 2 / 5);
-      const px = t.x + Math.cos(a) * br * 0.62, py = t.y + Math.sin(a) * br * 0.62;
-      ctx.beginPath(); ctx.moveTo(t.x + Math.cos(a) * br * 0.34, t.y + Math.sin(a) * br * 0.34); ctx.lineTo(px, py); ctx.stroke();
-      ctx.beginPath(); ctx.arc(px, py, br * 0.16, 0, Math.PI * 2); ctx.fill();
-    }
+    ctx.font = `${Math.round(24 * sc)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("⚽", t.x, t.y + 1 * sc);
   } else if (t.kind === "cage") {
     const w = 30 * sc, h = 20 * sc;
     const x0 = t.x - w / 2, y0 = t.y - h;
@@ -1985,23 +1977,11 @@ function _drawPlayerToken(ctx, t) {
     ctx.font = `${Math.round(24 * sc)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText("🏀", t.x, t.y + 1 * sc);
   } else if (t.kind === "ballonvolley") {
-    const br = 11 * sc;
-    ctx.beginPath(); ctx.arc(t.x, t.y, br, 0, Math.PI * 2); ctx.fillStyle = "white"; ctx.fill(); ctx.strokeStyle = "#1B2A4A"; ctx.lineWidth = 1.3 * sc; ctx.stroke();
-    ctx.strokeStyle = "#378ADD"; ctx.lineWidth = sc;
-    ctx.beginPath(); ctx.arc(t.x, t.y - br * 0.3, br * 0.75, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
-    ctx.beginPath(); ctx.arc(t.x - br * 0.5, t.y + br * 0.4, br * 0.7, Math.PI * 1.6, Math.PI * 0.3); ctx.stroke();
-    ctx.beginPath(); ctx.arc(t.x + br * 0.5, t.y + br * 0.4, br * 0.7, Math.PI * 0.7, Math.PI * 1.4); ctx.stroke();
+    ctx.font = `${Math.round(24 * sc)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("🏐", t.x, t.y + 1 * sc);
   } else if (t.kind === "ballonrugby") {
-    const rw = 14 * sc, rh = 8 * sc;
-    ctx.translate(t.x, t.y); ctx.rotate(-Math.PI / 6);
-    ctx.beginPath(); ctx.ellipse(0, 0, rw, rh, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "#7b4a2d"; ctx.fill(); ctx.strokeStyle = "#4a2c19"; ctx.lineWidth = 1.3 * sc; ctx.stroke();
-    ctx.strokeStyle = "white"; ctx.lineWidth = 1.2 * sc;
-    ctx.beginPath(); ctx.moveTo(-rw * 0.5, 0); ctx.lineTo(rw * 0.5, 0); ctx.stroke();
-    for (let i = -1; i <= 1; i++) {
-      const lx = i * rw * 0.25;
-      ctx.beginPath(); ctx.moveTo(lx, -rh * 0.35); ctx.lineTo(lx, rh * 0.35); ctx.stroke();
-    }
+    ctx.font = `${Math.round(24 * sc)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("🏉", t.x, t.y + 1 * sc);
   } else if (t.role === "defender") {
     ctx.font = `bold ${Math.round(17 * sc)}px sans-serif`; ctx.fillStyle = "#D62828"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t.label, t.x, t.y);
   } else if (t.hasBall) {
