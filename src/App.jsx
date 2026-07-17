@@ -1893,6 +1893,31 @@ function _drawStroke(ctx, stroke) {
   }
 }
 
+const HANDBALL_ICON = (
+  <svg viewBox="0 0 22 22" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="11" cy="11" r="9" fill="#c0392b" stroke="#7b241c" strokeWidth="1.2"/>
+    <path d="M 5 8 Q 11 5 17 8" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round"/>
+    <path d="M 3.5 12 Q 11 9.5 18.5 12" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round"/>
+    <path d="M 5 16 Q 11 14 17 16" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round"/>
+    <path d="M 11 2 Q 11 11 11 20" fill="none" stroke="rgba(0,0,0,0.2)" strokeWidth="1" strokeLinecap="round"/>
+  </svg>
+);
+// Matériel générique disponible pour tous les sports (préparation physique) + ballon/but
+// propre au sport actif uniquement (pas d'icône dédiée pour basket/volley/rugby pour l'instant).
+function EQUIPMENT_ITEMS(courtType) {
+  const generic = [
+    {v:"plot", icon: <span className="text-base">🔶</span>},
+    {v:"chaise", icon: <span className="text-base">🪑</span>},
+    {v:"cerceau", icon: <span className="text-base">⭕</span>},
+    {v:"haie", icon: <span className="text-base">🚧</span>},
+    {v:"jalon", icon: <span className="text-base">📍</span>},
+    {v:"coupelle", icon: <span className="text-base">🟠</span>},
+  ];
+  if (courtType === "handball") return [...generic, {v:"handball", icon: HANDBALL_ICON}];
+  if (courtType === "football") return [...generic, {v:"ballonfoot", icon: <span className="text-base">⚽</span>}, {v:"cage", icon: <span className="text-base">🥅</span>}];
+  return generic;
+}
+
 function _drawPlayerToken(ctx, t) {
   const sc = t.size ?? 1; const r = 16 * sc;
   ctx.save();
@@ -2565,25 +2590,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         ) : tool === "player" ? (
           <>
             {/* Équipements en boutons icône — re-cliquer désélectionne */}
-            {[
-              {v:"plot", icon: <span className="text-base">🔶</span>},
-              {v:"chaise", icon: <span className="text-base">🪑</span>},
-              {v:"cerceau", icon: <span className="text-base">⭕</span>},
-              {v:"handball", icon: (
-                <svg viewBox="0 0 22 22" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="11" cy="11" r="9" fill="#c0392b" stroke="#7b241c" strokeWidth="1.2"/>
-                  <path d="M 5 8 Q 11 5 17 8" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round"/>
-                  <path d="M 3.5 12 Q 11 9.5 18.5 12" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round"/>
-                  <path d="M 5 16 Q 11 14 17 16" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round"/>
-                  <path d="M 11 2 Q 11 11 11 20" fill="none" stroke="rgba(0,0,0,0.2)" strokeWidth="1" strokeLinecap="round"/>
-                </svg>
-              )},
-              {v:"ballonfoot", icon: <span className="text-base">⚽</span>},
-              {v:"cage", icon: <span className="text-base">🥅</span>},
-              {v:"haie", icon: <span className="text-base">🚧</span>},
-              {v:"jalon", icon: <span className="text-base">📍</span>},
-              {v:"coupelle", icon: <span className="text-base">🟠</span>},
-            ].map(eq => (
+            {EQUIPMENT_ITEMS(courtType).map(eq => (
               <button key={eq.v} type="button"
                 onClick={() => setPlayerLabel(playerLabel === eq.v ? (playerIsDefender ? "X1" : "1") : eq.v)}
                 title={eq.v.charAt(0).toUpperCase()+eq.v.slice(1)}
@@ -3330,25 +3337,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
           </>
         ) : tool === "player" ? (
           <>
-            {[
-              {v:"plot",icon:<span className="text-base">🔶</span>},
-              {v:"chaise",icon:<span className="text-base">🪑</span>},
-              {v:"cerceau",icon:<span className="text-base">⭕</span>},
-              {v:"handball", icon: (
-                <svg viewBox="0 0 22 22" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="11" cy="11" r="9" fill="#c0392b" stroke="#7b241c" strokeWidth="1.2"/>
-                  <path d="M 5 8 Q 11 5 17 8" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round"/>
-                  <path d="M 3.5 12 Q 11 9.5 18.5 12" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round"/>
-                  <path d="M 5 16 Q 11 14 17 16" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.1" strokeLinecap="round"/>
-                  <path d="M 11 2 Q 11 11 11 20" fill="none" stroke="rgba(0,0,0,0.2)" strokeWidth="1" strokeLinecap="round"/>
-                </svg>
-              )},
-              {v:"ballonfoot",icon:<span className="text-base">⚽</span>},
-              {v:"cage",icon:<span className="text-base">🥅</span>},
-              {v:"haie",icon:<span className="text-base">🚧</span>},
-              {v:"jalon",icon:<span className="text-base">📍</span>},
-              {v:"coupelle",icon:<span className="text-base">🟠</span>},
-            ].map(eq => (
+            {EQUIPMENT_ITEMS(courtType).map(eq => (
               <button key={eq.v} type="button" onClick={() => setPlayerLabel(playerLabel === eq.v ? (playerIsDefender ? "X1" : "1") : eq.v)}
                 className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${playerLabel === eq.v ? "bg-[#1B2A4A] border-[#1B2A4A]" : "border-[#1B2A4A]/20 hover:bg-[#1B2A4A]/5"}`}>{eq.icon}</button>
             ))}
