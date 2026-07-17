@@ -1360,6 +1360,8 @@ function getSessionOrder(session) {
 
 function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = [], sport = "basketball", plays = [], textScale = 1, imageScale = 1 } = {}) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const sportColor = SPORTS_CONFIG[sport]?.color || "#FF6B35";
+  const sportEmoji = SPORTS_CONFIG[sport]?.emoji || "🏀";
   const total = session.exerciseIds.reduce((sum, id) => sum + (exercises.find(e => e.id === id)?.duree || 0), 0);
   const h = Math.floor(total / 60), m = total % 60;
   const totalStr = h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`;
@@ -1433,91 +1435,6 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
     </div>`;
   }).join("");
 
-  // ── HANDBALL FICHE ──────────────────────────────────────────────────────────
-  if (sport === "handball") {
-    const team = teams.find(t => t.id === session.teamId);
-    const teamStr = team ? `${team.nom}${team.niveau ? ` · ${team.niveau}` : ""}` : "";
-    const d2 = new Date(session.date);
-    const dateShort = isNaN(d2) ? esc(session.date) : d2.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
-
-    const blankTerrain = `<svg viewBox="0 0 200 130" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
-      <rect width="200" height="130" fill="#f8f6f0"/>
-      <rect x="2" y="2" width="196" height="126" fill="none" stroke="#1B2A4A" stroke-width="1.5"/>
-      <line x1="100" y1="2" x2="100" y2="128" stroke="#1B2A4A" stroke-width="1.5"/>
-      <rect x="80" y="2" width="40" height="8" fill="none" stroke="#1B2A4A" stroke-width="1.2"/>
-      <path d="M 40 80 A 60 60 0 0 1 160 80" fill="none" stroke="#1B2A4A" stroke-width="1.2"/>
-      <path d="M 25 80 A 75 75 0 0 1 175 80" fill="none" stroke="#1B2A4A" stroke-width="1.2" stroke-dasharray="4,3"/>
-      <line x1="40" y1="80" x2="40" y2="128" stroke="#1B2A4A" stroke-width="1.2"/>
-      <line x1="160" y1="80" x2="160" y2="128" stroke="#1B2A4A" stroke-width="1.2"/>
-      <rect x="75" y="120" width="50" height="8" fill="none" stroke="#1B2A4A" stroke-width="1.2"/>
-    </svg>`;
-
-    const hbBlocks = sessionExos.map((ex, i) => {
-      const schemas = ex.schemas || [];
-      const terrains = [0,1,2,3].map(j => {
-        if (schemas[j]) return `<img src="${schemas[j]}" style="width:100%;height:auto;display:block" />`;
-        return blankTerrain;
-      });
-      return `<div class="hb-exo">
-        <div class="hb-left">
-          <div class="hb-num">${String(i+1).padStart(2,"0")}</div>
-          <div class="hb-desc">
-            <div class="hb-titre">${esc(ex.titre)}</div>
-            <div class="hb-meta">${esc(ex.duree)} min · ${esc(ex.format)}${ex.categorie ? " · " + esc(ex.categorie) : ""}</div>
-            ${ex.objectif ? `<div class="hb-field"><span class="hb-lbl">Objectif :</span> ${esc(ex.objectif)}</div>` : ""}
-            ${ex.notes ? `<div class="hb-field hb-notes">${esc(ex.notes)}</div>` : ""}
-            ${ex.themes?.length ? `<div class="hb-technique-box">${ex.themes.map(t => esc(t)).join(" · ")}</div>` : `<div class="hb-technique-box">Technique</div>`}
-          </div>
-        </div>
-        <div class="hb-right">
-          <div class="hb-terrain-grid">
-            ${terrains.map(t => `<div class="hb-terrain">${t}</div>`).join("")}
-          </div>
-        </div>
-      </div>`;
-    }).join("");
-
-    return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8">
-  <title>${esc(session.titre)}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Inter',sans-serif;color:#1B2A4A;font-size:12px;background:#fff;padding:12px}
-    .hb-header{display:grid;grid-template-columns:1fr 1fr 2fr 1fr;border:1.5px solid #1B2A4A;margin-bottom:14px}
-    .hb-header-cell{padding:8px 10px;border-right:1.5px solid #1B2A4A}
-    .hb-header-cell:last-child{border-right:none}
-    .hb-header-cell label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px}
-    .hb-header-cell .val{font-size:13px;min-height:22px}
-    .hb-exo{display:grid;grid-template-columns:42% 58%;border:1.5px solid #1B2A4A;margin-bottom:12px;break-inside:avoid;page-break-inside:avoid}
-    .hb-left{display:flex;border-right:1.5px solid #1B2A4A}
-    .hb-num{width:24px;flex-shrink:0;border-right:1.5px solid #1B2A4A;display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;font-size:14px;writing-mode:vertical-rl;text-orientation:mixed;background:#1B2A4A08}
-    .hb-desc{flex:1;padding:10px;display:flex;flex-direction:column;gap:6px}
-    .hb-titre{font-family:'Oswald',sans-serif;font-size:14px;font-weight:600}
-    .hb-meta{font-size:10px;color:#1B2A4A70}
-    .hb-field{font-size:11px;line-height:1.5}
-    .hb-lbl{font-weight:600}
-    .hb-notes{white-space:pre-wrap;color:#1B2A4A90;font-size:11px;flex:1}
-    .hb-technique-box{margin-top:auto;border:1.5px solid #1B2A4A;padding:6px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;min-height:28px}
-    .hb-right{padding:8px}
-    .hb-terrain-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:6px;height:100%}
-    .hb-terrain{border:1px solid #1B2A4A30;overflow:hidden;border-radius:2px}
-    @media print{@page{margin:8mm;size:A4} body{padding:0} *{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  </style>
-</head>
-<body>
-  <div class="hb-header">
-    <div class="hb-header-cell"><label>Team</label><div class="val">${esc(teamStr)}</div></div>
-    <div class="hb-header-cell"><label>Date</label><div class="val">${esc(dateShort)}</div></div>
-    <div class="hb-header-cell"><label>Objectif séance</label><div class="val">${esc(session.objectif || session.titre)}</div></div>
-    <div class="hb-header-cell"><label>Cycle</label><div class="val">${esc(session.cycle || "")}</div></div>
-  </div>
-  ${hbBlocks}
-</body></html>`;
-  }
-  // ── FIN HANDBALL ────────────────────────────────────────────────────────────
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -1532,7 +1449,7 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
     /* ── HEADER ── */
     .header{background:#1B2A4A;color:#fff;padding:20px 28px;display:flex;align-items:center;gap:18px}
     .header-logo{width:64px;height:64px;object-fit:contain;border-radius:10px;flex-shrink:0}
-    .header-divider{width:3px;height:56px;background:#FF6B35;border-radius:2px;flex-shrink:0}
+    .header-divider{width:3px;height:56px;background:${sportColor};border-radius:2px;flex-shrink:0}
     .header-info{flex:1}
     .header-info h1{font-family:'Oswald',sans-serif;font-size:26px;letter-spacing:.5px;line-height:1.1}
     .header-date{font-size:12px;color:rgba(255,255,255,.65);margin-top:4px;text-transform:capitalize}
@@ -1540,7 +1457,7 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
     .header-meta span{font-size:11px;color:rgba(255,255,255,.75);background:rgba(255,255,255,.12);border-radius:20px;padding:2px 10px}
 
     /* ── STATS BAR ── */
-    .stats-bar{background:#FF6B35;display:flex;padding:12px 28px;gap:0}
+    .stats-bar{background:${sportColor};display:flex;padding:12px 28px;gap:0}
     .stat{flex:1;text-align:center;border-right:1px solid rgba(255,255,255,.25);padding:0 12px}
     .stat:last-child{border-right:none}
     .stat-val{font-family:'Oswald',sans-serif;font-size:22px;color:#fff;line-height:1}
@@ -1560,7 +1477,7 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
     /* ── EXERCISE CARD ── */
     .exo{border:1px solid #1B2A4A20;border-radius:10px;overflow:hidden;margin-bottom:16px;break-inside:avoid;page-break-inside:avoid}
     .exo-header{background:#1B2A4A;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px}
-    .exo-num{background:#FF6B35;color:#fff;font-size:11px;font-weight:700;border-radius:4px;padding:2px 8px;font-family:monospace;letter-spacing:1px;flex-shrink:0}
+    .exo-num{background:${sportColor};color:#fff;font-size:11px;font-weight:700;border-radius:4px;padding:2px 8px;font-family:monospace;letter-spacing:1px;flex-shrink:0}
     .exo-title{font-family:'Oswald',sans-serif;font-size:calc(15px * var(--ts, 1));flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .exo-meta{font-size:calc(11px * var(--ts, 1));color:rgba(255,255,255,.6);white-space:nowrap;flex-shrink:0}
 
@@ -1573,7 +1490,7 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
     .exo-text{padding:16px;display:flex;flex-direction:column;gap:12px}
 
     .tags{display:flex;flex-wrap:wrap;gap:4px}
-    .tags span{font-size:calc(10px * var(--ts, 1));background:#FF6B3520;color:#FF6B35;border-radius:10px;padding:2px 8px;font-weight:600}
+    .tags span{font-size:calc(10px * var(--ts, 1));background:${sportColor}20;color:${sportColor};border-radius:10px;padding:2px 8px;font-weight:600}
     .field-label{font-size:calc(10px * var(--ts, 1));text-transform:uppercase;letter-spacing:.7px;color:#1B2A4A60;font-weight:600;margin-bottom:3px}
     .field-val{font-size:calc(12px * var(--ts, 1));line-height:1.55;color:#1B2A4A}
     .notes{white-space:pre-wrap;color:#1B2A4A90}
@@ -1603,7 +1520,7 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
       <h1>${esc(session.titre)}</h1>
       <div class="header-date">${dateStr}</div>
       <div class="header-meta">
-        ${teamStr ? `<span>🏀 ${esc(teamStr)}</span>` : ""}
+        ${teamStr ? `<span>${sportEmoji} ${esc(teamStr)}</span>` : ""}
         ${session.lieu ? `<span>📍 ${esc(session.lieu)}</span>` : ""}
       </div>
     </div>
