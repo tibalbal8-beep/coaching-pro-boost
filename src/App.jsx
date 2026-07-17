@@ -5227,6 +5227,11 @@ function CoachingProBoost({ session }) {
     const saved = localStorage.getItem("cpb_view");
     return ["library","sessions","stats","playbook","account"].includes(saved) ? saved : "library";
   });
+  // Toujours à jour, contrairement à `view` capturé dans la closure de l'effet ci-dessous
+  // (qui ne tourne qu'une fois au montage) — évite qu'un retour arrière égaré (ex: swipe
+  // iPad accidentel pendant un rognage) ne renvoie vers l'onglet du tout premier chargement.
+  const viewRef = useRef(view);
+  useEffect(() => { viewRef.current = view; }, [view]);
   const setViewPersist = (v) => {
     setView(v);
     localStorage.setItem("cpb_view", v);
@@ -5243,9 +5248,14 @@ function CoachingProBoost({ session }) {
       } else if (v && ["library","sessions","stats","playbook","account"].includes(v)) {
         setView(v);
         localStorage.setItem("cpb_view", v);
+      } else if (activeSessionRef.current) {
+        // Retour arrière sans état connu pendant qu'une séance est ouverte (ex: rognage
+        // en cours) → on reste sur la séance plutôt que de sauter vers un autre onglet.
+        setView("session");
+        history.pushState({ view: "session" }, "", "#session");
       } else {
         // Pas d'état connu → repousse une entrée pour éviter de quitter
-        history.pushState({ view }, "", "#" + view);
+        history.pushState({ view: viewRef.current }, "", "#" + viewRef.current);
       }
     };
     window.addEventListener("popstate", onPop);
@@ -5738,7 +5748,9 @@ function CoachingProBoost({ session }) {
   };
 
   const handleCropDone = (dataUrl) => {
-    if (cropContext === "session") {
+    // On se base aussi sur activeSession en filet de sécurité (pas seulement cropContext) :
+    // si une séance est ouverte, un exercice rogné doit lui revenir, jamais partir en bibliothèque.
+    if (cropContext === "session" || activeSession) {
       setQuickCropData(dataUrl);
       return;
     }
