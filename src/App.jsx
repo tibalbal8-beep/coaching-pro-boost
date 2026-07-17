@@ -1615,8 +1615,9 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
 </body></html>`;
 }
 
-async function downloadSessionHTML(session, exercises, opts) {
-  // Les images sont stockées séparément sous file:{id} — on les pré-charge toutes
+// Précharge les images/schémas stockés séparément (file:{id}, schemas:{id}, playimg:{playId}:{imgId})
+// afin que buildSessionHTML puisse générer un rendu complet (téléchargement final ou aperçu live).
+async function enrichSessionAssets(session, exercises, opts) {
   const sessionExos = session.exerciseIds.map(id => exercises.find(e => e.id === id)).filter(Boolean);
   const enriched = await Promise.all(sessionExos.map(async (ex) => {
     let result = ex;
@@ -1660,6 +1661,16 @@ async function downloadSessionHTML(session, exercises, opts) {
   );
   const playsEnriched = plays.map(p => enrichedPlays.find(e => e.id === p.id) || p);
 
+  return { exercisesEnriched, playsEnriched };
+}
+
+async function buildSessionPreviewHTML(session, exercises, opts) {
+  const { exercisesEnriched, playsEnriched } = await enrichSessionAssets(session, exercises, opts);
+  return buildSessionHTML(session, exercisesEnriched, { ...opts, plays: playsEnriched });
+}
+
+async function downloadSessionHTML(session, exercises, opts) {
+  const { exercisesEnriched, playsEnriched } = await enrichSessionAssets(session, exercises, opts);
   const html = buildSessionHTML(session, exercisesEnriched, { ...opts, plays: playsEnriched });
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -5133,12 +5144,14 @@ function organizerThumb(item, exercises, plays) {
   return img ? (img.file?.data || img.data) : null;
 }
 
-function SessionOrganizerModal({ session, exercises, plays, onClose, onDownload, onUpdateSession }) {
+function SessionOrganizerModal({ session, exercises, plays, onClose, onDownload, onUpdateSession, onBuildPreview }) {
   const [order, setOrder] = useState(() => getSessionOrder(session));
   const [textScale, setTextScale] = useState(session.printTextScale || 1);
   const [imageScale, setImageScale] = useState(session.printImageScale || 1);
   const [dragIdx, setDragIdx] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [previewLoading, setPreviewLoading] = useState(true);
 
   const move = (from, to) => {
     if (to < 0 || to >= order.length) return;
@@ -5155,6 +5168,19 @@ function SessionOrganizerModal({ session, exercises, plays, onClose, onDownload,
     return plays.find(p => p.id === item.id)?.titre || "Play";
   };
 
+  // Aperçu live : régénéré (avec un léger délai) à chaque changement d'ordre ou de taille,
+  // pour que Thibaud voie immédiatement l'effet des curseurs avant de télécharger.
+  useEffect(() => {
+    let cancelled = false;
+    setPreviewLoading(true);
+    const t = setTimeout(async () => {
+      const draft = { ...session, itemOrder: order, printTextScale: textScale, printImageScale: imageScale };
+      const html = await onBuildPreview(draft, { textScale, imageScale });
+      if (!cancelled) { setPreviewHtml(html); setPreviewLoading(false); }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [order, textScale, imageScale]);
+
   const handleConfirm = async () => {
     setDownloading(true);
     const updated = { ...session, itemOrder: order, printTextScale: textScale, printImageScale: imageScale };
@@ -5166,14 +5192,15 @@ function SessionOrganizerModal({ session, exercises, plays, onClose, onDownload,
 
   return (
     <div className="fixed inset-0 z-[600] bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 no-print">
-      <div className="bg-white rounded-3xl w-full max-w-lg max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+      <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col">
         <div className="px-5 py-4 border-b border-[#1B2A4A]/10 flex items-center justify-between flex-shrink-0">
           <h3 className="font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>APERÇU DE LA SÉANCE</h3>
           <button onClick={onClose} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A] p-1"><X size={20} /></button>
         </div>
 
-        <div className="px-5 py-4 overflow-y-auto flex-1 space-y-4">
-          <p className="text-xs text-[#1B2A4A]/50">Glisse-dépose une carte pour réorganiser, ou utilise les flèches. L'ordre est le même pour l'écran et l'impression.</p>
+        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[minmax(0,320px)_1fr]">
+          <div className="px-5 py-4 overflow-y-auto space-y-4 border-b md:border-b-0 md:border-r border-[#1B2A4A]/10">
+          <p className="text-xs text-[#1B2A4A]/50">Glisse-dépose une carte pour réorganiser, ou utilise les flèches. L'aperçu à droite se met à jour automatiquement.</p>
 
           <div className="space-y-2">
             {order.length === 0 && <p className="text-sm text-[#1B2A4A]/40 text-center py-6">Aucun exercice ni play dans cette séance.</p>}
@@ -5216,6 +5243,18 @@ function SessionOrganizerModal({ session, exercises, plays, onClose, onDownload,
               </div>
               <input type="range" min="0.5" max="1" step="0.05" value={imageScale} onChange={e => setImageScale(parseFloat(e.target.value))} className="w-full" />
             </div>
+          </div>
+          </div>
+
+          <div className="relative bg-[#F2EDE4] min-h-[300px] md:min-h-0">
+            {previewLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-[#F2EDE4]/80 text-sm text-[#1B2A4A]/50 z-10">Mise à jour de l'aperçu...</div>
+            )}
+            {previewHtml ? (
+              <iframe title="Aperçu de la séance" srcDoc={previewHtml} className="w-full h-full min-h-[300px] md:min-h-[500px] border-0" />
+            ) : (
+              <div className="flex items-center justify-center h-full min-h-[300px] text-sm text-[#1B2A4A]/40">Génération de l'aperçu...</div>
+            )}
           </div>
         </div>
 
@@ -6112,6 +6151,7 @@ function CoachingProBoost({ session }) {
           onClose={() => setShowSessionOrganizer(false)}
           onUpdateSession={updateSession}
           onDownload={(sess, scaleOpts) => downloadSessionHTML(sess, exercises, { clubLogo, sessionPhoto: currentSessionPhoto, teams, sport, plays, ...scaleOpts })}
+          onBuildPreview={(sess, scaleOpts) => buildSessionPreviewHTML(sess, exercises, { clubLogo, sessionPhoto: currentSessionPhoto, teams, sport, plays, ...scaleOpts })}
         />
       )}
       {showHistoryRestore && (
