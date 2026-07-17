@@ -3,6 +3,9 @@
   "target": {
     "namespace": "android_app",
     "package_name": "com.coachingproboost.twa",
-    "sha256_cert_fingerprints": ["ED:FB:61:D2:C7:1F:CD:17:60:B2:76:01:BD:9B:18:0F:88:BF:F5:CB:5F:1B:B2:EE:94:4E:51:2C:F2:A2:9E:9E"]
+    "sha256_cert_fingerprints": [
+      "ED:FB:61:D2:C7:1F:CD:17:60:B2:76:01:BD:9B:18:0F:88:BF:F5:CB:5F:1B:B2:EE:94:4E:51:2C:F2:A2:9E:9E",
+      "B4:3A:20:39:A1:55:E9:2F:C3:27:57:84:1C:95:F8:C8:49:5A:30:20:92:CB:02:58:A0:F3:25:80:EE:E1:53:88"
+    ]
   }
 }]
