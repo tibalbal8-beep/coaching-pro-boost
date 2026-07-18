@@ -928,7 +928,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
                 {editingSchemaIdx !== null && (
                   <DrawTacticalView
                     courtType={courtType}
-                    referencePhoto={file?.data || null}
+                    referencePhotoOptions={file?.data ? [{ label: "Photo importée", src: file.data }] : []}
                     initialImage={
                       editingSchemaIdx < schemas.length
                         ? schemas[editingSchemaIdx]
@@ -2871,7 +2871,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
 }
 
 // ─── Dessinateur tactique (bibliothèque + playbook) — terrains fixes, sans gabarits Supabase ───
-function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", initialImage = null, allSchemas = [], currentSchemaIdx = null, referencePhoto = null }) {
+function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", initialImage = null, allSchemas = [], currentSchemaIdx = null, referencePhotoOptions = [] }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const bgImgRef = useRef(null);
@@ -2882,6 +2882,8 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
   const [eraserSize, setEraserSize] = useState(24);
   const [refPhotoCollapsed, setRefPhotoCollapsed] = useState(false);
   const [refPhotoZoomed, setRefPhotoZoomed] = useState(false);
+  const [refPhotoIdx, setRefPhotoIdx] = useState(0);
+  const referencePhoto = referencePhotoOptions[refPhotoIdx]?.src || null;
   const [lineStyle, setLineStyle] = useState("simple");
   const [arrowEnd, setArrowEnd] = useState(true);
   const [tool, setTool] = useState("pen");
@@ -3437,7 +3439,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
             );
           })()}
         </div>
-        {referencePhoto && (
+        {referencePhotoOptions.length > 0 && (
           <div className={`hidden lg:flex lg:flex-col flex-shrink-0 ${refPhotoCollapsed ? "lg:w-8" : "lg:w-64"}`}>
             <button type="button" onClick={() => setRefPhotoCollapsed(c => !c)}
               className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-[#1B2A4A]/40 hover:text-[#1B2A4A]/70 mb-1.5">
@@ -3445,8 +3447,23 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
               {!refPhotoCollapsed && "Photo de référence"}
             </button>
             {!refPhotoCollapsed && (
-              <img src={referencePhoto} alt="Photo de référence" onClick={() => setRefPhotoZoomed(true)}
-                className="w-full rounded-lg border border-[#1B2A4A]/15 object-contain bg-[#F2EDE4] cursor-zoom-in" />
+              <>
+                {referencePhotoOptions.length > 1 && (
+                  <div className="flex gap-1.5 flex-wrap mb-1.5">
+                    {referencePhotoOptions.map((opt, i) => (
+                      <button key={i} type="button" onClick={() => setRefPhotoIdx(i)}
+                        className={`text-[10px] px-2 py-1 rounded-full border transition-colors ${i === refPhotoIdx ? "text-white" : "text-[#1B2A4A]/60 border-[#1B2A4A]/20 hover:border-[#1B2A4A]/40"}`}
+                        style={i === refPhotoIdx ? { backgroundColor: "#FF6B35", borderColor: "#FF6B35" } : undefined}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {referencePhoto && (
+                  <img src={referencePhoto} alt="Photo de référence" onClick={() => setRefPhotoZoomed(true)}
+                    className="w-full rounded-lg border border-[#1B2A4A]/15 object-contain bg-[#F2EDE4] cursor-zoom-in" />
+                )}
+              </>
             )}
           </div>
         )}
@@ -4801,7 +4818,11 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
         {editingSchemaIdx !== null && (
           <DrawTacticalView
             courtType={courtType}
-            referencePhoto={images.find(img => img.file?.data || img.data)?.file?.data || images.find(img => img.data)?.data || null}
+            referencePhotoOptions={[
+              ...(editingSchemaIdx > 0 && editingSchemaIdx <= schemas.length ? [{ label: "Vignette précédente", src: schemas[editingSchemaIdx - 1] }] : []),
+              ...images.filter(img => img.file?.data || img.data).map((img, i) => ({ label: `Photo ${i + 1}`, src: img.file?.data || img.data })),
+              ...schemas.map((s, i) => ({ label: `Vignette ${i + 1}`, src: s })).filter((_, i) => i !== editingSchemaIdx && i !== editingSchemaIdx - 1),
+            ]}
             initialImage={editingSchemaIdx < schemas.length ? schemas[editingSchemaIdx] : null}
             allSchemas={schemas}
             currentSchemaIdx={editingSchemaIdx}
