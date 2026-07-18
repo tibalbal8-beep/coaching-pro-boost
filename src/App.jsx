@@ -1361,6 +1361,185 @@ function getSessionOrder(session) {
   return [...stored, ...missing];
 }
 
+// ─── Cahier technique (export PDF de toute la bibliothèque) ────────────────────────────────
+// Fonctionnalité réservée aux comptes admin (voir isAdmin/profiles.is_admin) : génère un
+// document soigné (couverture, sommaire par thème, une fiche par exercice) pensé pour être
+// vendu tel quel à des coachs n'utilisant pas l'app, en plus d'être un outil de conversion
+// (donner envie de passer à l'app / au Premium).
+async function enrichExercisesAssets(exercises) {
+  return Promise.all(exercises.map(async (ex) => {
+    let result = ex;
+    if (ex.file && !ex.file.data) {
+      try {
+        const r = await storage.get(`file:${ex.id}`);
+        if (r) { const parsed = JSON.parse(r.value); result = { ...result, file: { ...ex.file, data: parsed.data } }; }
+      } catch {}
+    }
+    if (!result.schemas?.length && result.schemaCount) {
+      try {
+        const r = await storage.get(`schemas:${ex.id}`);
+        if (r) result = { ...result, schemas: JSON.parse(r.value) || [] };
+      } catch {}
+    }
+    return result;
+  }));
+}
+
+function buildExerciseBookletHTML(exercises, { clubLogo, sport = "basketball", coachName = "" } = {}) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const sportColor = SPORTS_CONFIG[sport]?.color || "#FF6B35";
+  const sportEmoji = SPORTS_CONFIG[sport]?.emoji || "🏀";
+  const sportLabel = SPORTS_CONFIG[sport]?.label || "Basketball";
+  const dateStr = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+
+  // Regroupement par thème (un exercice sans thème atterrit dans "Autres")
+  const groups = {};
+  exercises.forEach(ex => {
+    const themesList = ex.themes?.length ? ex.themes : ["Autres"];
+    themesList.forEach(t => { (groups[t] = groups[t] || []).push(ex); });
+  });
+  const themeNames = Object.keys(groups).sort((a, b) => a === "Autres" ? 1 : b === "Autres" ? -1 : a.localeCompare(b));
+
+  let exNumber = 0;
+  const sections = themeNames.map(theme => {
+    const cards = groups[theme].map(ex => {
+      exNumber++;
+      const hasDiagram = !!ex.diagram;
+      const hasPhoto = !!(ex.file?.data && ex.file?.type?.startsWith("image/"));
+      const schemas = ex.schemas || [];
+      const hasVisual = hasDiagram || hasPhoto || schemas.length > 0;
+      let visualHtml = "";
+      if (hasDiagram) {
+        const raw = diagramToSvgString(ex.diagram, 420, 400);
+        visualHtml += raw.replace(/id="a"/g, `id="bk${exNumber}"`).replace(/url\(#a\)/g, `url(#bk${exNumber})`);
+      } else if (hasPhoto) {
+        visualHtml += `<img src="${ex.file.data}" alt="" style="width:100%;height:auto;display:block;border-radius:6px;border:1px solid #1B2A4A15" />`;
+      }
+      schemas.forEach(s => {
+        visualHtml += `<div style="margin-top:8px"><img src="${s}" alt="" style="width:100%;height:auto;display:block;border-radius:6px;border:1px solid #1B2A4A15" /></div>`;
+      });
+      return `
+      <div class="exo">
+        <div class="exo-header">
+          <span class="exo-num">${String(exNumber).padStart(2, "0")}</span>
+          <span class="exo-title">${esc(ex.titre)}</span>
+          <span class="exo-meta">${esc(ex.duree)} min · ${esc(ex.format)} · ${esc(ex.niveau)}${ex.categorie ? " · " + esc(ex.categorie) : ""}</span>
+        </div>
+        <div class="exo-body${hasVisual ? "" : " no-visual"}">
+          ${hasVisual ? `<div class="exo-visual"><div class="visual-inner">${visualHtml}</div></div>` : ""}
+          <div class="exo-text">
+            ${ex.themes?.length ? `<div class="tags">${ex.themes.map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
+            ${ex.objectif ? `<div class="field"><div class="field-label">Objectif</div><p class="field-val">${esc(ex.objectif)}</p></div>` : ""}
+            ${ex.notes ? `<div class="field"><div class="field-label">Consignes</div><p class="field-val notes">${esc(ex.notes)}</p></div>` : ""}
+            ${!ex.objectif && !ex.notes && !ex.themes?.length ? `<p class="empty-text">Aucune consigne renseignée.</p>` : ""}
+          </div>
+        </div>
+      </div>`;
+    }).join("");
+    return `<div class="theme-section"><h2 class="theme-title">${esc(theme)}</h2>${cards}</div>`;
+  }).join("");
+
+  const toc = themeNames.map(t => `<div class="toc-row"><span>${esc(t)}</span><span class="toc-count">${groups[t].length}</span></div>`).join("");
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Cahier technique — ${esc(sportLabel)}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Inter',sans-serif;background:#fff;color:#1B2A4A;font-size:13px}
+
+    /* ── COUVERTURE ── */
+    .cover{min-height:100vh;background:#1B2A4A;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;page-break-after:always}
+    .cover-logo{width:96px;height:96px;object-fit:contain;border-radius:20px;margin-bottom:24px;background:#fff;padding:8px}
+    .cover-emoji{font-size:56px;margin-bottom:16px}
+    .cover-kicker{font-size:13px;letter-spacing:3px;text-transform:uppercase;color:${sportColor};font-weight:700;margin-bottom:14px}
+    .cover-title{font-family:'Oswald',sans-serif;font-size:44px;font-weight:800;letter-spacing:1px;line-height:1.15;margin-bottom:10px}
+    .cover-sub{font-size:15px;color:rgba(255,255,255,.65);margin-bottom:40px}
+    .cover-meta{display:flex;gap:24px;font-size:12px;color:rgba(255,255,255,.5)}
+    .cover-divider{width:60px;height:3px;background:${sportColor};border-radius:2px;margin:28px 0}
+
+    /* ── SOMMAIRE ── */
+    .toc-page{padding:48px;page-break-after:always}
+    .toc-page h1{font-family:'Oswald',sans-serif;font-size:24px;margin-bottom:24px;color:#1B2A4A}
+    .toc-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #1B2A4A15;font-size:14px}
+    .toc-count{font-family:monospace;font-size:12px;color:#1B2A4A60;background:#1B2A4A08;border-radius:10px;padding:2px 10px}
+
+    /* ── CONTENU ── */
+    .content{padding:20px 28px}
+    .theme-section{margin-bottom:8px}
+    .theme-title{font-family:'Oswald',sans-serif;font-size:18px;color:${sportColor};letter-spacing:.5px;margin:28px 0 14px;padding-bottom:8px;border-bottom:2px solid ${sportColor}30}
+
+    .exo{border:1px solid #1B2A4A20;border-radius:10px;overflow:hidden;margin-bottom:16px;break-inside:avoid;page-break-inside:avoid}
+    .exo-header{background:#1B2A4A;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px}
+    .exo-num{background:${sportColor};color:#fff;font-size:11px;font-weight:700;border-radius:4px;padding:2px 8px;font-family:monospace;letter-spacing:1px;flex-shrink:0}
+    .exo-title{font-family:'Oswald',sans-serif;font-size:15px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .exo-meta{font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;flex-shrink:0}
+
+    .exo-body{display:grid;grid-template-columns:56% 44%;min-height:200px}
+    .exo-body.no-visual{grid-template-columns:1fr;min-height:unset}
+    .exo-visual{padding:12px;border-right:2px solid #1B2A4A12;background:#eef2f7;display:flex;align-items:center;justify-content:center}
+    .visual-inner{width:100%;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+    .visual-inner svg{width:100%;height:auto;display:block;background:#f8f6f0}
+    .visual-inner img{width:100%;height:auto;display:block}
+    .exo-text{padding:16px;display:flex;flex-direction:column;gap:12px}
+
+    .tags{display:flex;flex-wrap:wrap;gap:4px}
+    .tags span{font-size:10px;background:${sportColor}20;color:${sportColor};border-radius:10px;padding:2px 8px;font-weight:600}
+    .field-label{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:#1B2A4A60;font-weight:600;margin-bottom:3px}
+    .field-val{font-size:12px;line-height:1.55;color:#1B2A4A}
+    .notes{white-space:pre-wrap;color:#1B2A4A90}
+    .empty-text{font-size:12px;color:#1B2A4A40;font-style:italic}
+
+    .footer{text-align:center;padding:24px;font-size:11px;color:#1B2A4A40}
+
+    @media print{
+      @page{margin:0;size:A4}
+      body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    }
+  </style>
+</head>
+<body>
+
+  <div class="cover">
+    ${clubLogo ? `<img class="cover-logo" src="${clubLogo}" alt="Logo" />` : `<div class="cover-emoji">${sportEmoji}</div>`}
+    <div class="cover-kicker">Cahier technique · ${esc(sportLabel)}</div>
+    <div class="cover-title">${exercises.length} EXERCICE${exercises.length > 1 ? "S" : ""}<br/>D'ENTRAÎNEMENT</div>
+    <div class="cover-sub">${esc(coachName || "Coaching Pro Boost")}</div>
+    <div class="cover-divider"></div>
+    <div class="cover-meta"><span>${themeNames.length} thème${themeNames.length > 1 ? "s" : ""}</span><span>${dateStr}</span></div>
+  </div>
+
+  <div class="toc-page">
+    <h1>Sommaire</h1>
+    ${toc}
+  </div>
+
+  <div class="content">
+    ${sections}
+  </div>
+
+  <div class="footer">Coaching Pro Boost — coachingproboost.com</div>
+
+</body></html>`;
+}
+
+async function downloadExerciseBooklet(exercises, opts) {
+  const enriched = await enrichExercisesAssets(exercises);
+  const html = buildExerciseBookletHTML(enriched, opts);
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `cahier-technique-${(opts?.sport || "basketball")}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = [], sport = "basketball", plays = [], textScale = 1, imageScale = 1 } = {}) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const sportColor = SPORTS_CONFIG[sport]?.color || "#FF6B35";
@@ -6754,6 +6933,18 @@ function CoachingProBoost({ session }) {
             <h2 className="text-2xl font-bold text-[#1B2A4A] mb-6" style={{ fontFamily: "Oswald, sans-serif" }}>MON COMPTE</h2>
 
             {isAdmin && <AnnouncementAdminPanel currentMessage={announcement?.message} onPublish={publishAnnouncement} onDeactivate={deactivateAnnouncement} cpbAlert={cpbAlert} />}
+
+            {isAdmin && (
+              <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">
+                <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Cahier technique (admin)</div>
+                <p className="text-xs text-[#1B2A4A]/50 mb-3">Exporte toute ta bibliothèque ({exercises.length} exercice{exercises.length !== 1 ? "s" : ""}) en cahier PDF prêt à imprimer/vendre.</p>
+                <button onClick={() => downloadExerciseBooklet(exercises, { clubLogo, sport, coachName: "Coaching Pro Boost" })}
+                  disabled={exercises.length === 0}
+                  className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>
+                  Exporter le cahier technique
+                </button>
+              </div>
+            )}
 
             {/* Statut abonnement */}
             <div className={`rounded-2xl p-5 mb-4 ${isPremium ? "bg-[#FF6B35]" : "bg-[#1B2A4A]"}`}>
