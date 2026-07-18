@@ -2160,6 +2160,14 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           el.points.forEach((p, i) => { if (i === 0) bctx.moveTo(p.x, p.y); else bctx.lineTo(p.x, p.y); });
           bctx.stroke();
           bctx.restore();
+          // Poignées aux extrémités pour montrer où glisser pour rallonger/raccourcir
+          if (tool === "select" && el.points.length > 1) {
+            [el.points[0], el.points[el.points.length - 1]].forEach(p => {
+              bctx.beginPath(); bctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+              bctx.fillStyle = "rgba(255,107,53,0.9)"; bctx.fill();
+              bctx.strokeStyle = "white"; bctx.lineWidth = 2; bctx.stroke();
+            });
+          }
         }
       }
     });
@@ -2954,6 +2962,14 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
         } else if (el.type === "stroke") {
           bctx.save(); bctx.strokeStyle = "#FF6B35"; bctx.lineWidth = el.width + 6; bctx.lineCap = "round"; bctx.lineJoin = "round"; bctx.globalAlpha = 0.35;
           bctx.beginPath(); el.points.forEach((p, i) => { if (i === 0) bctx.moveTo(p.x, p.y); else bctx.lineTo(p.x, p.y); }); bctx.stroke(); bctx.restore();
+          // Poignées aux extrémités pour montrer où glisser pour rallonger/raccourcir
+          if (tool === "select" && el.points.length > 1) {
+            [el.points[0], el.points[el.points.length - 1]].forEach(p => {
+              bctx.beginPath(); bctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+              bctx.fillStyle = "rgba(255,107,53,0.9)"; bctx.fill();
+              bctx.strokeStyle = "white"; bctx.lineWidth = 2; bctx.stroke();
+            });
+          }
         }
       }
     });
