@@ -931,7 +931,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
                     initialImage={
                       editingSchemaIdx < schemas.length
                         ? schemas[editingSchemaIdx]
-                        : (file?.data || null)
+                        : null
                     }
                     onCancel={() => setEditingSchemaIdx(null)}
                     onValidate={(dataUrl) => {
