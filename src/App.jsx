@@ -841,7 +841,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
       <FileDrop file={file} onChange={setFile} cpbAlert={cpbAlert} />
       <div>
         {schemas.length === 0 && !showDraw && (
-          <button type="button" onClick={() => setShowDraw(true)}
+          <button type="button" onClick={() => { setShowDraw(true); setEditingSchemaIdx(0); }}
             className="w-full border-2 border-dashed border-[#1B2A4A]/30 rounded-lg py-5 flex flex-col items-center gap-2 text-[#1B2A4A]/60 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
             <span className="text-xl leading-none">{Object.values(SPORTS_CONFIG).find(s => s.court === courtType)?.emoji || "🏀"}</span>
             <span className="text-xs">Schémas tactiques</span>
