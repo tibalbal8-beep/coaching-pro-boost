@@ -171,6 +171,47 @@ function useSubscription(userId) {
   return { isPremium, loadingPremium, sport, setSport };
 }
 
+// Annonce globale (bannière visible par tous les utilisateurs) + statut admin.
+// Table `announcements` distincte de kv_store (qui est scopé par utilisateur) : ici on veut
+// un message unique lu par tout le monde, publié uniquement par un compte admin (voir
+// supabase_announcements.sql pour les policies RLS).
+function useAnnouncement(userId) {
+  const [announcement, setAnnouncement] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    supabase.from("announcements").select("id, message").eq("active", true)
+      .order("created_at", { ascending: false }).limit(1).maybeSingle()
+      .then(({ data }) => {
+        if (data && localStorage.getItem("cpb_announcement_dismissed") !== data.id) {
+          setAnnouncement(data);
+        }
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    supabase.from("profiles").select("is_admin").eq("id", userId).maybeSingle()
+      .then(({ data }) => setIsAdmin(!!data?.is_admin));
+  }, [userId]);
+
+  const dismiss = () => {
+    if (announcement) localStorage.setItem("cpb_announcement_dismissed", announcement.id);
+    setAnnouncement(null);
+  };
+
+  const publish = async (message) => {
+    await supabase.from("announcements").update({ active: false }).eq("active", true);
+    await supabase.from("announcements").insert({ message, active: true });
+  };
+
+  const deactivate = async () => {
+    await supabase.from("announcements").update({ active: false }).eq("active", true);
+  };
+
+  return { announcement, dismiss, isAdmin, publish, deactivate };
+}
+
 async function startCheckout(priceId) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Non connecté.");
@@ -5182,8 +5223,39 @@ function SessionOrganizerModal({ session, exercises, plays, onClose, onDownload,
   );
 }
 
+function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAlert }) {
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const publish = async () => {
+    if (!message.trim()) { cpbAlert?.("Écris un message avant de publier."); return; }
+    setBusy(true);
+    try { await onPublish(message.trim()); setMessage(""); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">
+      <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-2">Annonce à tous les utilisateurs (admin)</div>
+      {currentMessage && (
+        <div className="flex items-start justify-between gap-2 bg-[#1B2A4A]/5 rounded-lg px-3 py-2 mb-2">
+          <span className="text-xs text-[#1B2A4A]/70">Actuellement affichée : « {currentMessage} »</span>
+          <button onClick={() => onDeactivate()} className="text-xs text-red-500 hover:underline flex-shrink-0">Retirer</button>
+        </div>
+      )}
+      <textarea value={message} onChange={e => setMessage(e.target.value)} placeholder="Nouveau message à afficher à tous les utilisateurs..." rows={2}
+        className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm bg-white/60 mb-2" />
+      <button onClick={publish} disabled={busy}
+        className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>
+        {busy ? "Publication..." : "Publier"}
+      </button>
+    </div>
+  );
+}
+
 function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
+  const { announcement, dismiss: dismissAnnouncement, isAdmin, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
   const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
@@ -5896,6 +5968,12 @@ function CoachingProBoost({ session }) {
   return (
     <div className="min-h-screen bg-[#F2EDE4]" style={{ fontFamily: "Inter, sans-serif", "--sport-accent": SPORT_COLOR }}>
       <style>{`@media print { .no-print { display: none !important; } body { background: white; } }`}</style>
+      {announcement && (
+        <div className="no-print px-4 py-2.5 flex items-center gap-3 text-sm text-white" style={{ backgroundColor: "var(--sport-accent)" }}>
+          <span className="flex-1">📣 {announcement.message}</span>
+          <button onClick={dismissAnnouncement} className="flex-shrink-0 text-white/80 hover:text-white text-lg leading-none">✕</button>
+        </div>
+      )}
       {paywallReason && <PaywallModal reason={paywallReason} onClose={() => setPaywallReason(null)} />}
       {premiumSuccess && (
         <div className="fixed inset-0 z-[700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
@@ -6604,6 +6682,8 @@ function CoachingProBoost({ session }) {
         {view === "account" && (
           <div className="max-w-md">
             <h2 className="text-2xl font-bold text-[#1B2A4A] mb-6" style={{ fontFamily: "Oswald, sans-serif" }}>MON COMPTE</h2>
+
+            {isAdmin && <AnnouncementAdminPanel currentMessage={announcement?.message} onPublish={publishAnnouncement} onDeactivate={deactivateAnnouncement} cpbAlert={cpbAlert} />}
 
             {/* Statut abonnement */}
             <div className={`rounded-2xl p-5 mb-4 ${isPremium ? "bg-[#FF6B35]" : "bg-[#1B2A4A]"}`}>
