@@ -928,6 +928,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
                 {editingSchemaIdx !== null && (
                   <DrawTacticalView
                     courtType={courtType}
+                    referencePhoto={file?.data || null}
                     initialImage={
                       editingSchemaIdx < schemas.length
                         ? schemas[editingSchemaIdx]
@@ -2870,7 +2871,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
 }
 
 // ─── Dessinateur tactique (bibliothèque + playbook) — terrains fixes, sans gabarits Supabase ───
-function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", initialImage = null, allSchemas = [], currentSchemaIdx = null }) {
+function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", initialImage = null, allSchemas = [], currentSchemaIdx = null, referencePhoto = null }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const bgImgRef = useRef(null);
@@ -3414,24 +3415,32 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
             className="px-3 py-1.5 rounded-lg text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5">✕ Désélectionner</button>
         </div>
       )}
-      <div ref={wrapRef} className="relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white mb-4" style={{ touchAction: "none" }}>
-        <canvas ref={canvasRef} width={dims.width} height={dims.height}
-          style={{ width: "100%", height: "auto", display: "block", touchAction: "none" }}
-          onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp} />
-        {pendingText && (() => {
-          const taRef = React.createRef();
-          return (
-            <div style={{ position: "absolute", left: pendingText.screenX, top: pendingText.screenY - textSize * 0.7 }} onPointerDown={e => e.stopPropagation()}>
-              <div style={{ display: "flex", alignItems: "flex-end", gap: 4 }}>
-                <textarea ref={taRef} autoFocus rows={Math.max(1, pendingText.value.split("\n").length)} value={pendingText.value}
-                  onChange={e => setPendingText({ ...pendingText, value: e.target.value })}
-                  onKeyDown={e => { if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); commitPendingText(); } if (e.key === "Escape") setPendingText(null); }}
-                  style={{ fontSize: textSize, color, fontWeight: textBold?"bold":"normal", fontStyle: textItalic?"italic":"normal", background: textHighlight?"rgba(255,230,0,0.7)":"rgba(255,255,255,0.9)", border: "1px dashed #FF6B35", outline: "none", padding: "2px 4px", minWidth: 120, resize: "both", lineHeight: 1.25, fontFamily: "sans-serif", borderRadius: 3 }} />
-                <button onClick={commitPendingText} style={{ fontSize: 11, background: "#FF6B35", color: "white", border: "none", borderRadius: 4, padding: "3px 8px", cursor: "pointer", marginBottom: 2 }}>OK</button>
+      <div className="lg:flex lg:gap-4 lg:items-start mb-4">
+        <div ref={wrapRef} className="relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white lg:flex-1 min-w-0" style={{ touchAction: "none" }}>
+          <canvas ref={canvasRef} width={dims.width} height={dims.height}
+            style={{ width: "100%", height: "auto", display: "block", touchAction: "none" }}
+            onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp} />
+          {pendingText && (() => {
+            const taRef = React.createRef();
+            return (
+              <div style={{ position: "absolute", left: pendingText.screenX, top: pendingText.screenY - textSize * 0.7 }} onPointerDown={e => e.stopPropagation()}>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 4 }}>
+                  <textarea ref={taRef} autoFocus rows={Math.max(1, pendingText.value.split("\n").length)} value={pendingText.value}
+                    onChange={e => setPendingText({ ...pendingText, value: e.target.value })}
+                    onKeyDown={e => { if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); commitPendingText(); } if (e.key === "Escape") setPendingText(null); }}
+                    style={{ fontSize: textSize, color, fontWeight: textBold?"bold":"normal", fontStyle: textItalic?"italic":"normal", background: textHighlight?"rgba(255,230,0,0.7)":"rgba(255,255,255,0.9)", border: "1px dashed #FF6B35", outline: "none", padding: "2px 4px", minWidth: 120, resize: "both", lineHeight: 1.25, fontFamily: "sans-serif", borderRadius: 3 }} />
+                  <button onClick={commitPendingText} style={{ fontSize: 11, background: "#FF6B35", color: "white", border: "none", borderRadius: 4, padding: "3px 8px", cursor: "pointer", marginBottom: 2 }}>OK</button>
+                </div>
               </div>
-            </div>
-          );
-        })()}
+            );
+          })()}
+        </div>
+        {referencePhoto && (
+          <div className="hidden lg:block lg:w-64 flex-shrink-0">
+            <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Photo de référence</div>
+            <img src={referencePhoto} alt="Photo de référence" className="w-full rounded-lg border border-[#1B2A4A]/15 object-contain bg-[#F2EDE4]" />
+          </div>
+        )}
       </div>
       <div className="flex justify-end gap-2">
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
@@ -4776,6 +4785,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
         {editingSchemaIdx !== null && (
           <DrawTacticalView
             courtType={courtType}
+            referencePhoto={images.find(img => img.file?.data || img.data)?.file?.data || images.find(img => img.data)?.data || null}
             initialImage={editingSchemaIdx < schemas.length ? schemas[editingSchemaIdx] : null}
             allSchemas={schemas}
             currentSchemaIdx={editingSchemaIdx}
