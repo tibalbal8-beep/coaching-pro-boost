@@ -2214,14 +2214,24 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       return;
     }
     // Cliquer sur un élément déjà posé (joueur, mouvement, matériel) le sélectionne
-    // pour le déplacer/supprimer — quel que soit l'outil actif (sauf gomme/texte/courbe).
-    if (tool !== "eraser") {
+    // pour le déplacer/supprimer — quel que soit l'outil actif (sauf gomme/texte/courbe/stylo :
+    // avec le stylo, cliquer sur un joueur doit démarrer un trait depuis lui, pas le déplacer).
+    if (tool !== "eraser" && tool !== "pen") {
       const pt = toCanvasPoint(e);
       if (tool === "select") {
         const sel = selectedElRef.current;
         if (sel?.type === "stroke" && sel.isCurve) {
           const pidx = sel.points.findIndex(p => Math.hypot(pt.x - p.x, pt.y - p.y) <= 14);
           if (pidx >= 0) { draggingRef.current = { el: sel, pointIdx: pidx, startX: pt.x, startY: pt.y, moved: false }; return; }
+        } else if (sel?.type === "stroke" && sel.points?.length > 1) {
+          // Permet de rallonger/raccourcir un trait simple en glissant l'une de ses extrémités
+          for (const idx of [0, sel.points.length - 1]) {
+            const p = sel.points[idx];
+            if (p && Math.hypot(pt.x - p.x, pt.y - p.y) <= 14) {
+              draggingRef.current = { el: sel, pointIdx: idx, startX: pt.x, startY: pt.y, moved: false };
+              return;
+            }
+          }
         }
       }
       const el = findElementAt(pt);
@@ -3020,14 +3030,24 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       return;
     }
     // Cliquer sur un élément déjà posé (joueur, mouvement, matériel) le sélectionne
-    // pour le déplacer/supprimer — quel que soit l'outil actif (sauf gomme/texte/courbe).
-    if (tool !== "eraser") {
+    // pour le déplacer/supprimer — quel que soit l'outil actif (sauf gomme/texte/courbe/stylo :
+    // avec le stylo, cliquer sur un joueur doit démarrer un trait depuis lui, pas le déplacer).
+    if (tool !== "eraser" && tool !== "pen") {
       const pt = toCanvasPoint(e);
       if (tool === "select") {
         const sel = selectedElRef.current;
         if (sel?.type === "stroke" && sel.isCurve) {
           const pidx = sel.points.findIndex(p => Math.hypot(pt.x - p.x, pt.y - p.y) <= 14);
           if (pidx >= 0) { draggingRef.current = { el: sel, pointIdx: pidx, startX: pt.x, startY: pt.y, moved: false }; return; }
+        } else if (sel?.type === "stroke" && sel.points?.length > 1) {
+          // Permet de rallonger/raccourcir un trait simple en glissant l'une de ses extrémités
+          for (const idx of [0, sel.points.length - 1]) {
+            const p = sel.points[idx];
+            if (p && Math.hypot(pt.x - p.x, pt.y - p.y) <= 14) {
+              draggingRef.current = { el: sel, pointIdx: idx, startX: pt.x, startY: pt.y, moved: false };
+              return;
+            }
+          }
         }
       }
       const el = findElementAt(pt);
