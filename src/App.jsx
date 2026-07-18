@@ -2967,7 +2967,9 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
   // pas une image aplatie : ce sont les mêmes éléments vectoriels, toujours déplaçables.
   const usePreviousMaterial = () => {
     if (!previousMaterial) return;
-    const tokens = (previousMaterial.elements || []).filter(el => el.type === "token").map(el => ({ ...el }));
+    // Uniquement le matériel (plot/chaise/cerceau/haie/jalon/coupelle...), jamais les joueurs :
+    // les tokens joueurs n'ont pas de `kind`, contrairement aux tokens de matériel.
+    const tokens = (previousMaterial.elements || []).filter(el => el.type === "token" && el.kind).map(el => ({ ...el }));
     elementsRef.current = tokens;
     if (activeTerrain === previousMaterial.terrainIdx) redraw();
     else setActiveTerrain(previousMaterial.terrainIdx);
