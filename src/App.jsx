@@ -2880,6 +2880,8 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
   const [color, setColor] = useState("#1B2A4A");
   const [lineWidth, setLineWidth] = useState(2.5);
   const [eraserSize, setEraserSize] = useState(24);
+  const [refPhotoCollapsed, setRefPhotoCollapsed] = useState(false);
+  const [refPhotoZoomed, setRefPhotoZoomed] = useState(false);
   const [lineStyle, setLineStyle] = useState("simple");
   const [arrowEnd, setArrowEnd] = useState(true);
   const [tool, setTool] = useState("pen");
@@ -3436,12 +3438,26 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
           })()}
         </div>
         {referencePhoto && (
-          <div className="hidden lg:block lg:w-64 flex-shrink-0">
-            <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Photo de référence</div>
-            <img src={referencePhoto} alt="Photo de référence" className="w-full rounded-lg border border-[#1B2A4A]/15 object-contain bg-[#F2EDE4]" />
+          <div className={`hidden lg:flex lg:flex-col flex-shrink-0 ${refPhotoCollapsed ? "lg:w-8" : "lg:w-64"}`}>
+            <button type="button" onClick={() => setRefPhotoCollapsed(c => !c)}
+              className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-[#1B2A4A]/40 hover:text-[#1B2A4A]/70 mb-1.5">
+              <span className={`transition-transform ${refPhotoCollapsed ? "-rotate-90" : ""}`}>▾</span>
+              {!refPhotoCollapsed && "Photo de référence"}
+            </button>
+            {!refPhotoCollapsed && (
+              <img src={referencePhoto} alt="Photo de référence" onClick={() => setRefPhotoZoomed(true)}
+                className="w-full rounded-lg border border-[#1B2A4A]/15 object-contain bg-[#F2EDE4] cursor-zoom-in" />
+            )}
           </div>
         )}
       </div>
+      {refPhotoZoomed && (
+        <div className="fixed inset-0 z-[400] bg-black/80 flex items-center justify-center p-4" onClick={() => setRefPhotoZoomed(false)}>
+          <img src={referencePhoto} alt="Photo de référence" className="max-w-full max-h-full object-contain rounded-lg" />
+          <button type="button" onClick={() => setRefPhotoZoomed(false)}
+            className="absolute top-4 right-4 text-white bg-white/10 hover:bg-white/20 rounded-full w-9 h-9 flex items-center justify-center">✕</button>
+        </div>
+      )}
       <div className="flex justify-end gap-2">
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
         <button onClick={() => { commitPendingText(); setTimeout(() => { let q = canvasRef.current.toDataURL("image/jpeg", 0.75); if (q.length > 400000) q = canvasRef.current.toDataURL("image/jpeg", 0.55); onValidate(q); }, 0); }}
