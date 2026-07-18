@@ -801,6 +801,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
   });
   const [activeSchemaIdx, setActiveSchemaIdx] = useState(0);
   const [editingSchemaIdx, setEditingSchemaIdx] = useState(null);
+  const [lastMaterial, setLastMaterial] = useState(null);
   const [newTheme, setNewTheme] = useState("");
   const [themesOpen, setThemesOpen] = useState(false);
   const [showDraw, setShowDraw] = useState(false);
@@ -929,13 +930,15 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
                   <DrawTacticalView
                     courtType={courtType}
                     referencePhotoOptions={file?.data ? [{ label: "Photo importée", src: file.data }] : []}
+                    previousMaterial={lastMaterial}
                     initialImage={
                       editingSchemaIdx < schemas.length
                         ? schemas[editingSchemaIdx]
                         : null
                     }
                     onCancel={() => setEditingSchemaIdx(null)}
-                    onValidate={(dataUrl) => {
+                    onValidate={(dataUrl, meta) => {
+                      if (meta) setLastMaterial(meta);
                       if (editingSchemaIdx < schemas.length) {
                         setSchemas(s => s.map((x, i) => i === editingSchemaIdx ? dataUrl : x));
                       } else {
@@ -2871,7 +2874,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
 }
 
 // ─── Dessinateur tactique (bibliothèque + playbook) — terrains fixes, sans gabarits Supabase ───
-function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", initialImage = null, allSchemas = [], currentSchemaIdx = null, referencePhotoOptions = [] }) {
+function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", initialImage = null, allSchemas = [], currentSchemaIdx = null, referencePhotoOptions = [], previousMaterial = null }) {
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const bgImgRef = useRef(null);
@@ -2957,6 +2960,17 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
   const switchTerrain = (idx) => {
     elementsRef.current = [];
     setActiveTerrain(idx);
+  };
+
+  // Reprend le même terrain que la vignette précédente, avec uniquement son matériel
+  // (plots, joueurs...) conservé au même endroit — pas les traits/flèches, et surtout
+  // pas une image aplatie : ce sont les mêmes éléments vectoriels, toujours déplaçables.
+  const usePreviousMaterial = () => {
+    if (!previousMaterial) return;
+    const tokens = (previousMaterial.elements || []).filter(el => el.type === "token").map(el => ({ ...el }));
+    elementsRef.current = tokens;
+    if (activeTerrain === previousMaterial.terrainIdx) redraw();
+    else setActiveTerrain(previousMaterial.terrainIdx);
   };
 
   // Buffer hors-écran pour les éléments (tokens/traits/textes), séparé du fond.
@@ -3281,6 +3295,13 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
                 {d.label}
               </button>
             ))}
+            {previousMaterial && (
+              <button type="button" onClick={usePreviousMaterial}
+                className="px-3 py-1.5 rounded-full text-xs font-medium border transition-colors text-[#1B2A4A] hover:bg-[#1B2A4A]/5"
+                style={{ borderColor: "#FF6B35", color: "#FF6B35" }}>
+                ↺ Terrain précédent (matériel conservé)
+              </button>
+            )}
           </>
         )}
       </div>
@@ -3477,7 +3498,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       )}
       <div className="flex justify-end gap-2">
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
-        <button onClick={() => { commitPendingText(); setTimeout(() => { let q = canvasRef.current.toDataURL("image/jpeg", 0.75); if (q.length > 400000) q = canvasRef.current.toDataURL("image/jpeg", 0.55); onValidate(q); }, 0); }}
+        <button onClick={() => { commitPendingText(); setTimeout(() => { let q = canvasRef.current.toDataURL("image/jpeg", 0.75); if (q.length > 400000) q = canvasRef.current.toDataURL("image/jpeg", 0.55); onValidate(q, { elements: elementsRef.current, terrainIdx: activeTerrain }); }, 0); }}
           className="bg-[#FF6B35] text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]">
           Utiliser ce schéma
         </button>
