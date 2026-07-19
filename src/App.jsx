@@ -799,6 +799,19 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
     if (initial?.file?.name === "schema.png" && initial.file.data) return [initial.file.data];
     return [];
   });
+  // Un exercice rouvert pour édition n'a que `schemaCount` (les schémas sont stockés à part,
+  // schemas:{id}) — sans ce chargement lazy, les schémas déjà dessinés semblent avoir disparu.
+  useEffect(() => {
+    if (!initial?.id || initial?.schemas?.length || !initial?.schemaCount) return;
+    let active = true;
+    (async () => {
+      try {
+        const r = await storage.get(`schemas:${initial.id}`);
+        if (r && active) setSchemas(JSON.parse(r.value) || []);
+      } catch {}
+    })();
+    return () => { active = false; };
+  }, [initial?.id, initial?.schemaCount]);
   const [activeSchemaIdx, setActiveSchemaIdx] = useState(0);
   const [editingSchemaIdx, setEditingSchemaIdx] = useState(null);
   const [lastMaterial, setLastMaterial] = useState(null);
