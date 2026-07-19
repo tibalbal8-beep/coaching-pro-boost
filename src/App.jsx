@@ -416,10 +416,28 @@ function useStore(sport = DEFAULT_SPORT) {
     })();
   }, [sport]);
 
+  const persistAlert = useAlert();
   const persist = useCallback(async (key, value) => {
-    try { const r = await storage.set(key, value); if (!r) console.error("Storage set returned null for", key); } catch (e) { console.error("Storage error", key, e); }
+    const attempt = async () => {
+      const r = await storage.set(key, value);
+      if (!r) throw new Error("Storage set returned null for " + key);
+    };
+    try {
+      await attempt();
+    } catch (e) {
+      console.error("Storage error", key, e);
+      // Une coupure réseau (partage de connexion perdu, etc.) peut faire échouer
+      // l'enregistrement silencieusement — une tentative de retry, puis on prévient
+      // clairement l'utilisateur plutôt que de perdre sa modification sans le dire.
+      try {
+        await attempt();
+      } catch (e2) {
+        console.error("Storage retry failed", key, e2);
+        persistAlert?.("⚠️ Échec de l'enregistrement (connexion perdue). Vérifie ta connexion internet et refais la modification si besoin — sinon elle risque de ne pas être sauvegardée.");
+      }
+    }
     storage.snapshot(key, value).catch(() => {});
-  }, []);
+  }, [persistAlert]);
 
   const stripFiles = (list) => list.map(({ file, schemas, ...rest }) => ({
     ...rest,
