@@ -2371,6 +2371,40 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const drawTextElement = _drawTextElement;
 
   const selectedElRef = useRef(null);
+
+  // Raccourcis clavier : Suppr/Backspace supprime l'élément sélectionné, Cmd/Ctrl+C copie,
+  // Cmd/Ctrl+V colle (léger décalage). Même logique que DrawTacticalView.
+  const clipboardRef = useRef(null);
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      const tag = e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      const sel = selectedElRef.current;
+      if ((e.key === "Delete" || e.key === "Backspace") && sel) {
+        e.preventDefault();
+        elementsRef.current = elementsRef.current.filter(x => x !== sel);
+        selectedElRef.current = null; setSelectedEl(null); redraw();
+        return;
+      }
+      const cmd = e.metaKey || e.ctrlKey;
+      if (cmd && e.key === "c" && sel) {
+        e.preventDefault();
+        clipboardRef.current = JSON.parse(JSON.stringify(sel));
+        return;
+      }
+      if (cmd && e.key === "v" && clipboardRef.current) {
+        e.preventDefault();
+        const clone = JSON.parse(JSON.stringify(clipboardRef.current));
+        if (clone.points) clone.points = clone.points.map(p => ({ x: p.x + 15, y: p.y + 15 }));
+        else { clone.x += 15; clone.y += 15; }
+        elementsRef.current.push(clone);
+        selectedElRef.current = clone; setSelectedEl(clone); redraw();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   // Buffer hors-écran pour les éléments (tokens/traits/textes), séparé du fond.
   // La gomme applique un destination-out sur CE buffer uniquement, jamais sur
   // le fond du terrain, pour éviter de créer une zone transparente qui
@@ -2660,6 +2694,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       currentRef.current = null;
       if (!zone || (Math.abs(zone.w) < 6 && Math.abs(zone.h) < 6)) { redraw(); return; }
       elementsRef.current.push(zone);
+      selectedElRef.current = zone; setSelectedEl(zone);
       redraw();
       return;
     }
@@ -2669,6 +2704,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     if (!stroke || stroke.points.length < 2) return;
     if (stroke.style === "zigzag") stroke.points = zigzagify(stroke.points);
     elementsRef.current.push(stroke);
+    selectedElRef.current = stroke; setSelectedEl(stroke);
     redraw();
   };
 
@@ -3520,14 +3556,18 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
     if (tool === "zone") {
       const zone = currentRef.current; currentRef.current = null;
       if (!zone || (Math.abs(zone.w) < 6 && Math.abs(zone.h) < 6)) { redraw(); return; }
-      elementsRef.current.push(zone); redraw();
+      elementsRef.current.push(zone);
+      selectedElRef.current = zone; setSelectedEl(zone);
+      redraw();
       return;
     }
     if (tool === "select" || tool === "player") return;
     const stroke = currentRef.current; currentRef.current = null;
     if (!stroke || stroke.points.length < 2) return;
     if (stroke.style === "zigzag") stroke.points = _zigzagify(stroke.points);
-    elementsRef.current.push(stroke); redraw();
+    elementsRef.current.push(stroke);
+    selectedElRef.current = stroke; setSelectedEl(stroke);
+    redraw();
   };
 
   const commitPendingText = () => {
