@@ -136,6 +136,9 @@ const PLAY_TYPES = ["Système offensif", "ATO", "SLOB", "BLOB"];
 const JOURS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+// ex.categorie est un tableau depuis l'ajout de la sélection multiple ; les exercices
+// enregistrés avant avaient une simple chaîne — normalise pour rester compatible partout.
+const catList = (ex) => Array.isArray(ex?.categorie) ? ex.categorie : (ex?.categorie ? [ex.categorie] : []);
 
 const FREE_MAX_EXERCISES = 10;
 const FREE_MAX_SESSIONS = 3;
@@ -807,7 +810,12 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
   const [phases, setPhases] = useState(initial?.phases || []);
   const [format, setFormat] = useState(initial?.format || sportFormats[0]);
   const [niveau, setNiveau] = useState(initial?.niveau || NIVEAUX[1]);
-  const [categorie, setCategorie] = useState(initial?.categorie || "");
+  // categorie est un tableau (plusieurs catégories possibles, ex U13+U15+U18) ; les exercices
+  // enregistrés avant ce changement ont une simple chaîne, on la ramène en tableau à l'ouverture.
+  const [categorie, setCategorie] = useState(() => {
+    if (Array.isArray(initial?.categorie)) return initial.categorie;
+    return initial?.categorie ? [initial.categorie] : [];
+  });
   const [duree, setDuree] = useState(initial?.duree || 10);
   const [objectif, setObjectif] = useState(initial?.objectif || "");
   const [notes, setNotes] = useState(initial?.notes || "");
@@ -882,14 +890,11 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
         <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Phase de séance</div>
         <div className="flex flex-wrap gap-1.5">{sportPhases.map(p => <Tag key={p} active={phases.includes(p)} onClick={() => toggle(phases, setPhases, p)}>{p}</Tag>)}</div>
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div>
-          <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Catégorie</div>
-          <select value={categorie} onChange={e => setCategorie(e.target.value)} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60">
-            <option value="">—</option>
-            {sportCategories.map(c => <option key={c}>{c}</option>)}
-          </select>
-        </div>
+      <div>
+        <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Catégories</div>
+        <div className="flex flex-wrap gap-1.5">{sportCategories.map(c => <Tag key={c} active={categorie.includes(c)} onClick={() => toggle(categorie, setCategorie, c)}>{c}</Tag>)}</div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div>
           <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Format</div>
           <select value={format} onChange={e => setFormat(e.target.value)} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60">{sportFormats.map(f => <option key={f}>{f}</option>)}</select>
@@ -996,8 +1001,12 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
       <div className="flex justify-end gap-2 pt-2">
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
         <button
-          onClick={() => {
+          onClick={async () => {
             if (!titre.trim()) { cpbAlert?.("Donne un titre à l'exercice."); return; }
+            if (editingSchemaIdx !== null) {
+              const ok = await cpbAlert?.("Un schéma est en cours de dessin et n'a pas été validé (bouton \"Utiliser ce schéma\") — il sera perdu si tu enregistres maintenant. Continuer sans le sauvegarder ?", { confirm: true });
+              if (!ok) return;
+            }
             onSave({ id: initial?.id || uid(), titre, themes: sel, phases, format, niveau, categorie, duree, objectif, notes, file, schemas, diagram: initial?.diagram, avis: initial?.avis, createdAt: initial?.createdAt || new Date().toISOString() });
           }}
           className="px-5 py-2 text-sm font-medium rounded-md bg-[#FF6B35] text-white hover:bg-[#e85a28]"
@@ -1289,7 +1298,7 @@ function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage,
         ) : null}
         <div className="flex items-center gap-3 text-xs text-[#1B2A4A]/60 mb-2">
           <span className="flex items-center gap-1"><Clock size={12} />{ex.duree} min</span>
-          <span>{ex.format}</span><span>{ex.niveau}</span>{ex.categorie && <span className="px-1.5 py-0.5 rounded bg-[#1B2A4A]/8">{ex.categorie}</span>}
+          <span>{ex.format}</span><span>{ex.niveau}</span>{catList(ex).length > 0 && <span className="px-1.5 py-0.5 rounded bg-[#1B2A4A]/8">{catList(ex).join(", ")}</span>}
           {ex.avis?.length > 0 && <span className="flex items-center gap-0.5 text-[#FF6B35]"><Star size={12} fill="#FF6B35" strokeWidth={0} />{(ex.avis.reduce((s, a) => s + a.note, 0) / ex.avis.length).toFixed(1)}</span>}
         </div>
         <div className="flex flex-wrap gap-1 mb-2">
@@ -1454,7 +1463,7 @@ function buildExerciseBookletHTML(exercises, { clubLogo, sport = "basketball", c
         <div class="exo-header">
           <span class="exo-num">${String(exNumber).padStart(2, "0")}</span>
           <span class="exo-title">${esc(ex.titre)}</span>
-          <span class="exo-meta">${esc(ex.duree)} min · ${esc(ex.format)} · ${esc(ex.niveau)}${ex.categorie ? " · " + esc(ex.categorie) : ""}</span>
+          <span class="exo-meta">${esc(ex.duree)} min · ${esc(ex.format)} · ${esc(ex.niveau)}${catList(ex).length ? " · " + esc(catList(ex).join(", ")) : ""}</span>
         </div>
         <div class="exo-body${hasVisual ? "" : " no-visual"}">
           ${hasVisual ? `<div class="exo-visual"><div class="visual-inner">${visualHtml}</div></div>` : ""}
@@ -1617,7 +1626,7 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
         <div class="exo-header">
           <span class="exo-num">${String(i + 1).padStart(2, "0")}</span>
           <span class="exo-title">${esc(ex.titre)}</span>
-          <span class="exo-meta">${esc(ex.duree)} min · ${esc(ex.format)} · ${esc(ex.niveau)}${ex.categorie ? " · " + esc(ex.categorie) : ""}</span>
+          <span class="exo-meta">${esc(ex.duree)} min · ${esc(ex.format)} · ${esc(ex.niveau)}${catList(ex).length ? " · " + esc(catList(ex).join(", ")) : ""}</span>
         </div>
         <div class="exo-body${hasVisual ? "" : " no-visual"}">
           ${hasVisual ? `<div class="exo-visual"><div class="visual-inner">${visualHtml}</div></div>` : ""}
@@ -3167,6 +3176,54 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
     if (bgReady) redraw();
   }, [bgReady, dims]);
 
+  // Raccourcis clavier : Suppr/Backspace supprime l'élément sélectionné, Cmd/Ctrl+C copie,
+  // Cmd/Ctrl+V colle (léger décalage pour voir qu'il y a bien 2 éléments), Cmd/Ctrl+S valide
+  // le schéma (équivalent du bouton "Utiliser ce schéma").
+  const clipboardRef = useRef(null);
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      const tag = e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return; // ne pas interférer avec la saisie de texte
+      const sel = selectedElRef.current;
+      if ((e.key === "Delete" || e.key === "Backspace") && sel) {
+        e.preventDefault();
+        elementsRef.current = elementsRef.current.filter(x => x !== sel);
+        selectedElRef.current = null; setSelectedEl(null); redraw();
+        return;
+      }
+      const cmd = e.metaKey || e.ctrlKey;
+      if (cmd && e.key === "c" && sel) {
+        e.preventDefault();
+        clipboardRef.current = JSON.parse(JSON.stringify(sel));
+        return;
+      }
+      if (cmd && e.key === "v" && clipboardRef.current) {
+        e.preventDefault();
+        const clone = JSON.parse(JSON.stringify(clipboardRef.current));
+        if (clone.points) clone.points = clone.points.map(p => ({ x: p.x + 15, y: p.y + 15 }));
+        else { clone.x += 15; clone.y += 15; }
+        elementsRef.current.push(clone);
+        selectedElRef.current = clone; setSelectedEl(clone); redraw();
+        return;
+      }
+      if (cmd && e.key === "s") {
+        e.preventDefault();
+        validateSchema();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const validateSchema = () => {
+    commitPendingText();
+    setTimeout(() => {
+      let q = canvasRef.current.toDataURL("image/jpeg", 0.75);
+      if (q.length > 400000) q = canvasRef.current.toDataURL("image/jpeg", 0.55);
+      onValidate(q, { elements: elementsRef.current, terrainIdx: activeTerrain });
+    }, 0);
+  };
+
   const switchTerrain = (idx) => {
     elementsRef.current = [];
     setActiveTerrain(idx);
@@ -3710,7 +3767,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       )}
       <div className="flex justify-end gap-2">
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
-        <button onClick={() => { commitPendingText(); setTimeout(() => { let q = canvasRef.current.toDataURL("image/jpeg", 0.75); if (q.length > 400000) q = canvasRef.current.toDataURL("image/jpeg", 0.55); onValidate(q, { elements: elementsRef.current, terrainIdx: activeTerrain }); }, 0); }}
+        <button onClick={validateSchema}
           className="bg-[#FF6B35] text-white px-5 py-2 rounded-md text-sm font-medium hover:bg-[#e85a28]">
           Utiliser ce schéma
         </button>
@@ -5090,8 +5147,12 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <button onClick={onCancel} className="px-4 py-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">Annuler</button>
-        <button onClick={() => {
+        <button onClick={async () => {
           if (!titre.trim()) { cpbAlert?.("Donne un titre au play."); return; }
+          if (editingSchemaIdx !== null) {
+            const ok = await cpbAlert?.("Un schéma est en cours de dessin et n'a pas été validé (bouton \"Utiliser ce schéma\") — il sera perdu si tu enregistres maintenant. Continuer sans le sauvegarder ?", { confirm: true });
+            if (!ok) return;
+          }
           onSave({ id: initial?.id || uid(), titre, type, scoutedTeam: scoutedTeam.trim(), description, notes, tags: selectedTags, images, schemas, createdAt: initial?.createdAt || new Date().toISOString() });
         }} className="px-5 py-2 text-sm font-medium rounded-md bg-[#FF6B35] text-white hover:bg-[#e85a28]">Enregistrer</button>
       </div>
@@ -5972,7 +6033,7 @@ function CoachingProBoost({ session }) {
     (filterTheme.length === 0 || filterTheme.every(t => ex.themes?.includes(t))) &&
     (filterFormat.length === 0 || filterFormat.includes(ex.format)) &&
     (filterPhase.length === 0 || filterPhase.every(p => ex.phases?.includes(p))) &&
-    (filterCategorie.length === 0 || filterCategorie.includes(ex.categorie)) &&
+    (filterCategorie.length === 0 || catList(ex).some(c => filterCategorie.includes(c))) &&
     (!librarySearch.trim() || ex.titre?.toLowerCase().includes(librarySearch.trim().toLowerCase()))
   ).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
@@ -6086,7 +6147,7 @@ function CoachingProBoost({ session }) {
   statsSessions.forEach(s => s.exerciseIds.forEach(id => {
     const ex = exercises.find(e => e.id === id);
     if (!ex) return;
-    if (statsCatFilter.length > 0 && !statsCatFilter.includes(ex.categorie)) return;
+    if (statsCatFilter.length > 0 && !catList(ex).some(c => statsCatFilter.includes(c))) return;
     (ex.themes || []).forEach(t => { statsThemeMin[t] = (statsThemeMin[t] || 0) + (ex.duree || 0); });
   }));
   const statsThemeRows = Object.entries(statsThemeMin).sort((a, b) => b[1] - a[1]);
@@ -7596,7 +7657,7 @@ function CoachingProBoost({ session }) {
                   <span className="flex items-center gap-1"><Clock size={12} />{viewingSessionExercise.duree} min</span>
                   <span>{viewingSessionExercise.format}</span>
                   <span>{viewingSessionExercise.niveau}</span>
-                  {viewingSessionExercise.categorie && <span className="px-2 py-0.5 rounded bg-[#1B2A4A]/8">{viewingSessionExercise.categorie}</span>}
+                  {catList(viewingSessionExercise).length > 0 && <span className="px-2 py-0.5 rounded bg-[#1B2A4A]/8">{catList(viewingSessionExercise).join(", ")}</span>}
                 </div>
                 {viewingSessionExercise.themes?.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
