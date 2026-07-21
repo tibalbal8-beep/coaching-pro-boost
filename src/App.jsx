@@ -6031,6 +6031,40 @@ function CoachingProBoost({ session }) {
   }, [exercises, sessions, sport]);
   const [newThemeInput, setNewThemeInput] = useState("");
   const [lastSaved, setLastSaved] = useState(null);
+  const [repairingVisuals, setRepairingVisuals] = useState(false);
+
+  // Réparation ponctuelle du bug corrigé le 20/07/2026 (stripFiles écrasait hasFile/schemaCount
+  // à false/0 pour tous les exercices non touchés à chaque sauvegarde). Les données réelles
+  // (file:{id}, schemas:{id}) n'étaient jamais supprimées — on revérifie juste leur présence
+  // et on restaure le "pointeur" (hasFile/fileName/fileType/schemaCount) si elles existent.
+  const repairMissingVisuals = async () => {
+    setRepairingVisuals(true);
+    let fixed = 0;
+    try {
+      const repaired = await Promise.all(exercises.map(async (ex) => {
+        let next = ex;
+        if (!ex.hasFile) {
+          try {
+            const r = await storage.get(`file:${ex.id}`);
+            if (r) { const parsed = JSON.parse(r.value); next = { ...next, hasFile: true, fileName: parsed.name, fileType: parsed.type }; fixed++; }
+          } catch {}
+        }
+        if (!ex.schemaCount) {
+          try {
+            const r = await storage.get(`schemas:${ex.id}`);
+            const arr = r ? JSON.parse(r.value) : [];
+            if (arr?.length) { next = { ...next, schemaCount: arr.length }; fixed++; }
+          } catch {}
+        }
+        return next;
+      }));
+      await saveExercises(repaired);
+      await cpbAlert?.(fixed > 0 ? `✓ Réparation terminée : ${fixed} visuel(s) restauré(s).` : "Aucun visuel manquant trouvé — tout est déjà correct.");
+    } catch (e) {
+      await cpbAlert?.("Erreur pendant la réparation : " + e.message);
+    }
+    setRepairingVisuals(false);
+  };
   const [newTeamOpen, setNewTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
   const [confirmDeleteTeam, setConfirmDeleteTeam] = useState(false);
@@ -7033,6 +7067,15 @@ function CoachingProBoost({ session }) {
         {view === "account" && (
           <div className="max-w-md">
             <h2 className="text-2xl font-bold text-[#1B2A4A] mb-6" style={{ fontFamily: "Oswald, sans-serif" }}>MON COMPTE</h2>
+
+            <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">
+              <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Réparer les visuels manquants</div>
+              <p className="text-xs text-[#1B2A4A]/50 mb-3">Si des photos ou schémas d'exercices ont disparu récemment (bug corrigé le 20/07/2026), clique ici pour vérifier et les restaurer — tes données n'ont pas été supprimées, juste "perdues de vue".</p>
+              <button onClick={repairMissingVisuals} disabled={repairingVisuals}
+                className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>
+                {repairingVisuals ? "Vérification en cours..." : "Vérifier et réparer"}
+              </button>
+            </div>
 
             {isAdmin && <AnnouncementAdminPanel currentMessage={announcement?.message} onPublish={publishAnnouncement} onDeactivate={deactivateAnnouncement} cpbAlert={cpbAlert} />}
 
