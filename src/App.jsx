@@ -442,10 +442,20 @@ function useStore(sport = DEFAULT_SPORT) {
     storage.snapshot(key, value).catch(() => {});
   }, [persistAlert]);
 
+  // Bug corrigé le 20/07/2026 : la plupart des exercices en mémoire ne portent PAS `file`/
+  // `schemas` (chargés en lazy uniquement à l'affichage, jamais reversés dans l'état partagé
+  // `exercises`) — seuls ceux tout juste créés/édités dans cette session les ont. Écraser
+  // hasFile/fileName/fileType/schemaCount à chaque saveExercises() effaçait donc le "pointeur"
+  // vers la photo/les schémas de TOUS les autres exercices (les visuels restaient bien en base
+  // sous file:{id}/schemas:{id}, mais devenaient invisibles car plus jamais chargés).
+  // `file`/`schemas` undefined (clé absente) = pas de nouvelle donnée, on garde l'existant ;
+  // `null` explicite = l'utilisateur a bien retiré la photo/les schémas, on efface pour de vrai.
   const stripFiles = (list) => list.map(({ file, schemas, ...rest }) => ({
     ...rest,
-    hasFile: !!file, fileName: file?.name, fileType: file?.type,
-    schemaCount: schemas?.length || 0,
+    hasFile: file !== undefined ? !!file : rest.hasFile,
+    fileName: file !== undefined ? file?.name : rest.fileName,
+    fileType: file !== undefined ? file?.type : rest.fileType,
+    schemaCount: schemas !== undefined ? (schemas?.length || 0) : rest.schemaCount,
   }));
 
   const saveExercises = async (next) => {
