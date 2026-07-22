@@ -886,12 +886,22 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
         )}
         {themesOpen && (
           <div className="px-4 py-3 bg-white/20 border-t border-[#1B2A4A]/10 space-y-2.5">
-            <div className="flex flex-wrap gap-1.5">{themes.map(t => <Tag key={t} active={sel.includes(t)} onClick={() => toggle(sel, setSel, t)} color="orange">{t}</Tag>)}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {[...themes]
+                .sort((a, b) => a.localeCompare(b, "fr"))
+                .filter(t => t.toLowerCase().includes(newTheme.trim().toLowerCase()))
+                .map(t => <Tag key={t} active={sel.includes(t)} onClick={() => toggle(sel, setSel, t)} color="orange">{t}</Tag>)}
+              {newTheme.trim() && !themes.some(t => t.toLowerCase().includes(newTheme.trim().toLowerCase())) && (
+                <p className="text-xs text-[#1B2A4A]/40 w-full">Aucun thème existant ne correspond.</p>
+              )}
+            </div>
             <div className="flex gap-2">
               <input value={newTheme} onChange={e => setNewTheme(e.target.value)} onKeyDown={e => e.key === "Enter" && addTheme()}
-                placeholder="+ Nouveau thème..."
+                placeholder="Rechercher ou + nouveau thème..."
                 className="flex-1 text-xs border border-[#1B2A4A]/20 rounded-full px-3 py-1.5 focus:outline-none focus:border-[#FF6B35] bg-white/60" />
-              {newTheme.trim() && <button type="button" onClick={addTheme} className="text-xs px-3 py-1.5 bg-[#FF6B35]/10 text-[#FF6B35] rounded-full font-medium hover:bg-[#FF6B35]/20">Ajouter</button>}
+              {newTheme.trim() && !themes.some(t => t.toLowerCase() === newTheme.trim().toLowerCase()) && (
+                <button type="button" onClick={addTheme} className="text-xs px-3 py-1.5 bg-[#FF6B35]/10 text-[#FF6B35] rounded-full font-medium hover:bg-[#FF6B35]/20">+ Ajouter "{newTheme.trim()}"</button>
+              )}
             </div>
           </div>
         )}
