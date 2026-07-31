@@ -1,6 +1,8 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
 import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera, Share2 } from "lucide-react";
 import { storage, supabase, isPasswordRecoveryUrl } from "./storage";
+import JSZip from "jszip";
+import QRCode from "qrcode";
 
 const AlertCtx = createContext(null);
 function useAlert() { return useContext(AlertCtx); }
@@ -1598,6 +1600,103 @@ async function downloadExerciseBooklet(exercises, opts) {
   const a = document.createElement("a");
   a.href = url;
   a.download = `cahier-technique-${(opts?.sport || "basketball")}.html`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// ─── Export "pour Canva" : un dossier par exercice (terrain(s) PNG, explications.txt, qrcode.png) ──
+function slugifyForFile(str) {
+  return String(str || "exercice")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "exercice";
+}
+
+function svgStringToPngDataUrl(svgString, width, height) {
+  return new Promise((resolve, reject) => {
+    const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+    img.src = url;
+  });
+}
+
+// Crée (ou réutilise) un lien de partage permanent pour un exercice — même mécanisme que le
+// bouton "partager" (shared_exercises, aucune expires_at = jamais expiré), mais généré en masse
+// sans copier le lien à chaque fois.
+async function getOrCreatePermanentShareLink(ex) {
+  const token = crypto.randomUUID().replace(/-/g, "");
+  const { error } = await supabase.from("shared_exercises").insert({ token, exercise_data: ex });
+  if (error) throw error;
+  return `${window.location.origin}/app?share=${token}`;
+}
+
+async function exportExercisesForCanva(exercises, { sport = "basketball", onProgress } = {}) {
+  const enriched = await enrichExercisesAssets(exercises);
+  const zip = new JSZip();
+
+  for (let i = 0; i < enriched.length; i++) {
+    const ex = enriched[i];
+    onProgress?.(i + 1, enriched.length);
+    const folderName = `${String(i + 1).padStart(2, "0")} - ${slugifyForFile(ex.titre)}`;
+    const folder = zip.folder(folderName);
+
+    // Terrain(s) : diagramme structuré, photo, et/ou schémas dessinés
+    let terrainCount = 0;
+    if (ex.diagram) {
+      terrainCount++;
+      const svg = diagramToSvgString(ex.diagram, 900, 860);
+      const png = await svgStringToPngDataUrl(svg, 900, 860);
+      folder.file(`terrain-${terrainCount}.png`, png.split(",")[1], { base64: true });
+    }
+    if (ex.file?.data && ex.file?.type?.startsWith("image/")) {
+      terrainCount++;
+      folder.file(`terrain-${terrainCount}.${ex.file.type.includes("png") ? "png" : "jpg"}`, ex.file.data.split(",")[1], { base64: true });
+    }
+    (ex.schemas || []).forEach(s => {
+      terrainCount++;
+      folder.file(`terrain-${terrainCount}.png`, s.split(",")[1], { base64: true });
+    });
+
+    // Explications
+    const lines = [
+      ex.titre || "",
+      "",
+      [ex.duree ? `${ex.duree} min` : null, ex.format, ex.niveau].filter(Boolean).join(" · "),
+      ex.themes?.length ? `Thèmes : ${ex.themes.join(", ")}` : null,
+      "",
+      ex.objectif ? `OBJECTIF\n${ex.objectif}` : null,
+      "",
+      ex.notes ? `CONSIGNES\n${ex.notes}` : null,
+    ].filter(l => l !== null).join("\n");
+    folder.file("explications.txt", lines);
+
+    // QR code (lien de partage permanent vers l'app)
+    try {
+      const link = await getOrCreatePermanentShareLink(ex);
+      const qrDataUrl = await QRCode.toDataURL(link, { width: 512, margin: 1 });
+      folder.file("qrcode.png", qrDataUrl.split(",")[1], { base64: true });
+    } catch (e) {
+      folder.file("qrcode-erreur.txt", "QR code non généré : " + e.message);
+    }
+  }
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `exercices-canva-${sport}.zip`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -6093,6 +6192,8 @@ function CoachingProBoost({ session }) {
   const [lastSaved, setLastSaved] = useState(null);
   const [repairingVisuals, setRepairingVisuals] = useState(false);
   const [bookletPickerOpen, setBookletPickerOpen] = useState(false);
+  const [canvaExporting, setCanvaExporting] = useState(false);
+  const [canvaProgress, setCanvaProgress] = useState(null);
   const [bookletSelection, setBookletSelection] = useState(null); // null = tous sélectionnés (défaut)
   const bookletSelectedIds = bookletSelection ?? exercises.map(e => e.id);
   const toggleBookletExercise = (id) => {
@@ -7171,11 +7272,25 @@ function CoachingProBoost({ session }) {
                     ))}
                   </div>
                 )}
-                <button onClick={() => downloadExerciseBooklet(exercises.filter(e => bookletSelectedIds.includes(e.id)), { clubLogo, sport, coachName: "Coaching Pro Boost" })}
-                  disabled={bookletSelectedIds.length === 0}
-                  className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>
-                  Exporter le cahier technique ({bookletSelectedIds.length})
-                </button>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <button onClick={() => downloadExerciseBooklet(exercises.filter(e => bookletSelectedIds.includes(e.id)), { clubLogo, sport, coachName: "Coaching Pro Boost" })}
+                    disabled={bookletSelectedIds.length === 0}
+                    className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>
+                    Exporter le cahier technique ({bookletSelectedIds.length})
+                  </button>
+                  <button onClick={async () => {
+                      setCanvaExporting(true); setCanvaProgress({ done: 0, total: bookletSelectedIds.length });
+                      try {
+                        await exportExercisesForCanva(exercises.filter(e => bookletSelectedIds.includes(e.id)), { sport, onProgress: (done, total) => setCanvaProgress({ done, total }) });
+                      } catch (e) { await cpbAlert("Erreur lors de l'export : " + e.message); }
+                      setCanvaExporting(false); setCanvaProgress(null);
+                    }}
+                    disabled={bookletSelectedIds.length === 0 || canvaExporting}
+                    className="text-sm font-medium text-[#1B2A4A] px-4 py-2 rounded-md border border-[#1B2A4A]/20 disabled:opacity-50 hover:bg-[#1B2A4A]/5">
+                    {canvaExporting ? `Export en cours... (${canvaProgress?.done || 0}/${canvaProgress?.total || 0})` : `Exporter pour Canva (dossier ZIP)`}
+                  </button>
+                </div>
+                <p className="text-[11px] text-[#1B2A4A]/40 mt-2">Un dossier .zip avec, pour chaque exercice : le(s) terrain(s) en PNG, un fichier explications.txt, et un QR code (lien permanent d'import dans l'app).</p>
               </div>
             )}
 
