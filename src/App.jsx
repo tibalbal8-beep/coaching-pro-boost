@@ -366,6 +366,8 @@ function useStore(sport = DEFAULT_SPORT) {
   const [teams, setTeams] = useState([]);
   const [activeTeamId, setActiveTeamId] = useState(null);
   const [players, setPlayers] = useState([]);
+  const [individualSessions, setIndividualSessions] = useState([]);
+  const individualSessionsKey = `individualSessions:${sport}`;
   const [plays, setPlays] = useState([]);
   const [playTags, setPlayTags] = useState([]);
   const [clubLogo, setClubLogo] = useState(null);
@@ -416,6 +418,10 @@ function useStore(sport = DEFAULT_SPORT) {
         let pb = await storage.get(playsKey);
         if (!pb) { const legacy = await storage.get("plays"); if (legacy) pb = legacy; }
         setPlays(pb ? JSON.parse(pb.value) : []);
+      } catch {}
+      try {
+        const is = await storage.get(individualSessionsKey);
+        setIndividualSessions(is ? JSON.parse(is.value) : []);
       } catch {}
       setLoaded(true);
     })();
@@ -477,6 +483,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const saveTeams = (next) => { setTeams(next); persist("teams", JSON.stringify(next)); };
   const saveActiveTeamId = (next) => { setActiveTeamId(next); persist("activeTeamId", JSON.stringify(next)); };
   const savePlayers = (next) => { setPlayers(next); persist("players", JSON.stringify(next)); };
+  const saveIndividualSessions = (next) => { setIndividualSessions(next); persist(individualSessionsKey, JSON.stringify(next)); };
   const savePlays = async (next) => {
     for (const play of next) {
       for (const img of play.images || []) {
@@ -509,7 +516,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded, persist };
+  return { exercises, sessions, themes, teams, activeTeamId, players, individualSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist };
 }
 
 function usePdfJs() {
@@ -5784,7 +5791,7 @@ function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAl
 function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
   const { announcement, dismiss: dismissAnnouncement, isAdmin, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
-  const { exercises, sessions, themes, teams, activeTeamId, players, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore(sport);
+  const { exercises, sessions, themes, teams, activeTeamId, players, individualSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
   const SPORT_FORMATS = sportConfig.formats;
@@ -6226,6 +6233,10 @@ function CoachingProBoost({ session }) {
   const [bookletPickerOpen, setBookletPickerOpen] = useState(false);
   const [canvaExporting, setCanvaExporting] = useState(false);
   const [canvaProgress, setCanvaProgress] = useState(null);
+  const [selectedPlayerId, setSelectedPlayerId] = useState(null);
+  const [newPlayerOpen, setNewPlayerOpen] = useState(false);
+  const [newPlayerName, setNewPlayerName] = useState("");
+  const [indivForm, setIndivForm] = useState(null); // { date, duree, theme, contenu, notes } en cours d'ajout
   const [bookletSelection, setBookletSelection] = useState(null); // null = tous sélectionnés (défaut)
   const bookletSelectedIds = bookletSelection ?? exercises.map(e => e.id);
   const toggleBookletExercise = (id) => {
@@ -6869,6 +6880,7 @@ function CoachingProBoost({ session }) {
               { key: "library", label: "Bibliothèque", icon: Library },
               { key: "playbook", label: "Play Book", icon: BookOpen },
               { key: "stats", label: "Stats", icon: BarChart3 },
+              ...(isAdmin ? [{ key: "suivi", label: "Suivi individuel (admin)", icon: UserCheck }] : []),
               { key: "account", label: "Mon compte", icon: Users },
             ].map(item => {
               const active = view === item.key || view === item.alsoActive;
@@ -7216,6 +7228,137 @@ function CoachingProBoost({ session }) {
             </div>
           </div>
         )}
+
+        {view === "suivi" && isAdmin && (() => {
+          const selectedPlayer = players.find(p => p.id === selectedPlayerId);
+          const playerSessions = selectedPlayer
+            ? individualSessions.filter(s => s.playerId === selectedPlayer.id).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+            : [];
+          const totalMinutes = playerSessions.reduce((sum, s) => sum + (Number(s.duree) || 0), 0);
+          const byTheme = {};
+          playerSessions.forEach(s => { const t = s.theme || "Sans thème"; byTheme[t] = (byTheme[t] || 0) + (Number(s.duree) || 0); });
+
+          return (
+          <div className="max-w-3xl">
+            <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>SUIVI INDIVIDUEL</h2>
+            <p className="text-xs text-[#1B2A4A]/40 mb-5">Fonctionnalité en test, visible uniquement par toi (admin).</p>
+
+            <div className="flex flex-wrap items-center gap-1.5 mb-5">
+              {players.map(p => (
+                <button key={p.id} onClick={() => setSelectedPlayerId(p.id)}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium border ${selectedPlayerId === p.id ? "" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
+                  style={selectedPlayerId === p.id ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
+                  {p.nom}
+                </button>
+              ))}
+              {newPlayerOpen ? (
+                <div className="flex items-center gap-1.5">
+                  <input autoFocus value={newPlayerName} onChange={e => setNewPlayerName(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && newPlayerName.trim()) {
+                        const p = { id: uid(), nom: newPlayerName.trim() };
+                        savePlayers([...players, p]); setSelectedPlayerId(p.id); setNewPlayerName(""); setNewPlayerOpen(false);
+                      }
+                      if (e.key === "Escape") { setNewPlayerOpen(false); setNewPlayerName(""); }
+                    }}
+                    placeholder="Prénom Nom" className="px-3 py-1.5 rounded-full text-sm border border-[#FF6B35] outline-none w-44" />
+                  <button onClick={() => {
+                    if (newPlayerName.trim()) {
+                      const p = { id: uid(), nom: newPlayerName.trim() };
+                      savePlayers([...players, p]); setSelectedPlayerId(p.id); setNewPlayerName("");
+                    }
+                    setNewPlayerOpen(false);
+                  }} className="px-3 py-1.5 rounded-full text-sm font-medium bg-[#FF6B35] text-white">Ajouter</button>
+                </div>
+              ) : (
+                <button onClick={() => setNewPlayerOpen(true)}
+                  className="px-3 py-1.5 rounded-full text-sm font-medium border border-dashed border-[#FF6B35]/50 text-[#FF6B35] flex items-center gap-1"><Plus size={14} /> Ajouter un joueur</button>
+              )}
+            </div>
+
+            {!selectedPlayer ? (
+              <p className="text-sm text-[#1B2A4A]/40">Sélectionne ou ajoute un joueur pour voir son suivi.</p>
+            ) : (
+              <div>
+                <div className="flex items-center gap-4 mb-5 text-sm text-[#1B2A4A]/60">
+                  <span><strong className="text-[#1B2A4A]">{playerSessions.length}</strong> séance{playerSessions.length !== 1 ? "s" : ""} individuelle{playerSessions.length !== 1 ? "s" : ""}</span>
+                  <span><strong className="text-[#1B2A4A]">{Math.round(totalMinutes / 6) / 10}h</strong> cumulées</span>
+                </div>
+
+                {Object.keys(byTheme).length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    {Object.entries(byTheme).sort((a, b) => b[1] - a[1]).map(([theme, min]) => (
+                      <span key={theme} className="text-xs px-2.5 py-1 rounded-full bg-[#FF6B35]/15 text-[#FF6B35] font-medium">{theme} · {Math.round(min / 6) / 10}h</span>
+                    ))}
+                  </div>
+                )}
+
+                {indivForm ? (
+                  <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-4 mb-5">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Date</div>
+                        <input type="date" value={indivForm.date} onChange={e => setIndivForm({ ...indivForm, date: e.target.value })}
+                          className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                      </div>
+                      <div>
+                        <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Durée (min)</div>
+                        <input type="number" min={0} value={indivForm.duree} onChange={e => setIndivForm({ ...indivForm, duree: e.target.value })}
+                          className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                      </div>
+                      <div className="col-span-2">
+                        <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Thème</div>
+                        <input value={indivForm.theme} onChange={e => setIndivForm({ ...indivForm, theme: e.target.value })}
+                          placeholder="ex: Tir à 3 points" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                      </div>
+                    </div>
+                    <div className="mb-3">
+                      <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Contenu de la séance</div>
+                      <textarea value={indivForm.contenu} onChange={e => setIndivForm({ ...indivForm, contenu: e.target.value })} rows={2}
+                        className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                    </div>
+                    <div className="mb-4">
+                      <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Notes / points clés</div>
+                      <textarea value={indivForm.notes} onChange={e => setIndivForm({ ...indivForm, notes: e.target.value })} rows={2}
+                        className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => {
+                        const entry = { id: uid(), playerId: selectedPlayer.id, createdAt: new Date().toISOString(), ...indivForm };
+                        saveIndividualSessions([...individualSessions, entry]);
+                        setIndivForm(null);
+                      }} className="px-4 py-2 rounded-md text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>Enregistrer</button>
+                      <button onClick={() => setIndivForm(null)} className="px-4 py-2 rounded-md text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">Annuler</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setIndivForm({ date: new Date().toISOString().slice(0, 10), duree: "", theme: "", contenu: "", notes: "" })}
+                    className="mb-5 px-4 py-2 rounded-md text-sm font-semibold text-white flex items-center gap-1.5" style={{ backgroundColor: "var(--sport-accent)" }}>
+                    <Plus size={15} /> Nouvelle séance individuelle
+                  </button>
+                )}
+
+                <div className="flex flex-col gap-2">
+                  {playerSessions.map(s => (
+                    <div key={s.id} className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-semibold text-[#1B2A4A]">{s.date ? new Date(s.date).toLocaleDateString("fr-FR") : "Date inconnue"} {s.theme && `· ${s.theme}`}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-[#1B2A4A]/40">{s.duree || 0} min</span>
+                          <button onClick={() => saveIndividualSessions(individualSessions.filter(x => x.id !== s.id))} className="text-[#1B2A4A]/30 hover:text-red-600"><Trash2 size={14} /></button>
+                        </div>
+                      </div>
+                      {s.contenu && <p className="text-sm text-[#1B2A4A]/70 mb-1">{s.contenu}</p>}
+                      {s.notes && <p className="text-xs text-[#1B2A4A]/40 italic">{s.notes}</p>}
+                    </div>
+                  ))}
+                  {playerSessions.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucune séance individuelle enregistrée pour ce joueur.</p>}
+                </div>
+              </div>
+            )}
+          </div>
+          );
+        })()}
 
         {view === "stats" && (
           <div className="max-w-2xl">
