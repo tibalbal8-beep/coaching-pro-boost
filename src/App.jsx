@@ -7382,11 +7382,14 @@ function CoachingProBoost({ session }) {
                     <div className="flex gap-2">
                       <button onClick={() => {
                         if (indivForm.playerIds.length === 0) return;
-                        const entry = { id: uid(), createdAt: new Date().toISOString(), ...indivForm };
-                        saveIndividualSessions([...individualSessions, entry]);
+                        if (indivForm.id) {
+                          saveIndividualSessions(individualSessions.map(x => x.id === indivForm.id ? { ...x, ...indivForm } : x));
+                        } else {
+                          saveIndividualSessions([...individualSessions, { id: uid(), createdAt: new Date().toISOString(), ...indivForm }]);
+                        }
                         setIndivForm(null);
                       }} disabled={indivForm.playerIds.length === 0}
-                        className="px-4 py-2 rounded-md text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>Enregistrer</button>
+                        className="px-4 py-2 rounded-md text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>{indivForm.id ? "Enregistrer les modifications" : "Enregistrer"}</button>
                       <button onClick={() => setIndivForm(null)} className="px-4 py-2 rounded-md text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">Annuler</button>
                     </div>
                   </div>
@@ -7406,6 +7409,8 @@ function CoachingProBoost({ session }) {
                         <span className="text-sm font-semibold text-[#1B2A4A]">{s.date ? new Date(s.date).toLocaleDateString("fr-FR") : "Date inconnue"} {s.theme && `· ${s.theme}`}</span>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-[#1B2A4A]/40">{s.duree || 0} min</span>
+                          <button onClick={() => setIndivForm({ id: s.id, playerIds: sessionPlayerIds(s), date: s.date || "", duree: s.duree || "", theme: s.theme || "", contenu: s.contenu || "", notes: s.notes || "" })}
+                            className="text-[#1B2A4A]/30 hover:text-[#1B2A4A]"><Pencil size={14} /></button>
                           <button onClick={() => saveIndividualSessions(individualSessions.filter(x => x.id !== s.id))} className="text-[#1B2A4A]/30 hover:text-red-600"><Trash2 size={14} /></button>
                         </div>
                       </div>
