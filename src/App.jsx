@@ -6235,6 +6235,9 @@ function CoachingProBoost({ session }) {
   const [canvaProgress, setCanvaProgress] = useState(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState(null);
   const [newPlayerOpen, setNewPlayerOpen] = useState(false);
+  const [editingPlayerId, setEditingPlayerId] = useState(null);
+  const [editingPlayerName, setEditingPlayerName] = useState("");
+  const [confirmDeletePlayerId, setConfirmDeletePlayerId] = useState(null);
   const [newPlayerName, setNewPlayerName] = useState("");
   const [indivForm, setIndivForm] = useState(null); // { date, duree, theme, contenu, notes } en cours d'ajout
   const [bookletSelection, setBookletSelection] = useState(null); // null = tous sélectionnés (défaut)
@@ -7245,11 +7248,44 @@ function CoachingProBoost({ session }) {
 
             <div className="flex flex-wrap items-center gap-1.5 mb-5">
               {players.map(p => (
-                <button key={p.id} onClick={() => setSelectedPlayerId(p.id)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium border ${selectedPlayerId === p.id ? "" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
-                  style={selectedPlayerId === p.id ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
-                  {p.nom}
-                </button>
+                editingPlayerId === p.id ? (
+                  <div key={p.id} className="flex items-center gap-1.5">
+                    <input autoFocus value={editingPlayerName} onChange={e => setEditingPlayerName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && editingPlayerName.trim()) {
+                          savePlayers(players.map(x => x.id === p.id ? { ...x, nom: editingPlayerName.trim() } : x));
+                          setEditingPlayerId(null);
+                        }
+                        if (e.key === "Escape") setEditingPlayerId(null);
+                      }}
+                      className="px-3 py-1.5 rounded-full text-sm border border-[#FF6B35] outline-none w-44" />
+                    <button onClick={() => {
+                      if (editingPlayerName.trim()) savePlayers(players.map(x => x.id === p.id ? { ...x, nom: editingPlayerName.trim() } : x));
+                      setEditingPlayerId(null);
+                    }} className="px-3 py-1.5 rounded-full text-sm font-medium bg-[#FF6B35] text-white">OK</button>
+                    <button onClick={() => setEditingPlayerId(null)} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={16} /></button>
+                  </div>
+                ) : confirmDeletePlayerId === p.id ? (
+                  <span key={p.id} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full border border-red-200 bg-red-50">
+                    <span className="text-[#1B2A4A]/70">Supprimer {p.nom} et ses séances ?</span>
+                    <button onClick={() => {
+                      savePlayers(players.filter(x => x.id !== p.id));
+                      saveIndividualSessions(individualSessions.filter(s => s.playerId !== p.id));
+                      if (selectedPlayerId === p.id) setSelectedPlayerId(null);
+                      setConfirmDeletePlayerId(null);
+                    }} className="text-red-600 font-semibold">Oui</button>
+                    <button onClick={() => setConfirmDeletePlayerId(null)} className="text-[#1B2A4A]/40">Non</button>
+                  </span>
+                ) : (
+                  <span key={p.id} className={`flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-full text-sm font-medium border ${selectedPlayerId === p.id ? "" : "border-[#1B2A4A]/30 text-[#1B2A4A]"}`}
+                    style={selectedPlayerId === p.id ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
+                    <button onClick={() => setSelectedPlayerId(p.id)}>{p.nom}</button>
+                    <button onClick={() => { setEditingPlayerId(p.id); setEditingPlayerName(p.nom); }}
+                      className={selectedPlayerId === p.id ? "text-white/70 hover:text-white" : "text-[#1B2A4A]/30 hover:text-[#1B2A4A]"}><Pencil size={13} /></button>
+                    <button onClick={() => setConfirmDeletePlayerId(p.id)}
+                      className={selectedPlayerId === p.id ? "text-white/70 hover:text-white" : "text-[#1B2A4A]/30 hover:text-red-600"}><Trash2 size={13} /></button>
+                  </span>
+                )
               ))}
               {newPlayerOpen ? (
                 <div className="flex items-center gap-1.5">
