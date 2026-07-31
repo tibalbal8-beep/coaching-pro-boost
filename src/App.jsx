@@ -1606,7 +1606,7 @@ async function downloadExerciseBooklet(exercises, opts) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// ─── Export "pour Canva" : un dossier par exercice (terrain(s) PNG, explications.png, qrcode.png) ──
+// ─── Export "pour Canva" : un dossier par exercice (terrain(s) PNG, explications.txt, qrcode.png) ──
 function slugifyForFile(str) {
   return String(str || "exercice")
     .normalize("NFD").replace(/[̀-ͯ]/g, "")
@@ -1632,95 +1632,6 @@ function svgStringToPngDataUrl(svgString, width, height) {
   });
 }
 
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
-// Rend l'objectif/consignes d'un exercice en image PNG (plutôt qu'en .txt) — prête à glisser-
-// déposer dans Canva sans mise en forme à refaire.
-function explicationsToPngDataUrl(ex) {
-  const width = 900, padding = 50, contentWidth = width - padding * 2;
-  const navy = "#1B2A4A", coral = "#FF5C5C";
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-
-  const wrap = (text, font) => {
-    ctx.font = font;
-    const out = [];
-    String(text).split("\n").forEach(paragraph => {
-      if (!paragraph.trim()) { out.push(""); return; }
-      const words = paragraph.split(" ");
-      let line = "";
-      words.forEach(w => {
-        const test = line ? line + " " + w : w;
-        if (ctx.measureText(test).width > contentWidth && line) { out.push(line); line = w; }
-        else line = test;
-      });
-      if (line) out.push(line);
-    });
-    return out;
-  };
-
-  const titleFont = "bold 34px Arial, sans-serif";
-  const metaFont = "16px Arial, sans-serif";
-  const labelFont = "bold 14px Arial, sans-serif";
-  const bodyFont = "17px Arial, sans-serif";
-  const lineH = 24, titleLineH = 42;
-
-  const titleLines = wrap(ex.titre || "Exercice", titleFont);
-  const metaLine = [ex.duree ? `${ex.duree} min` : null, ex.format, ex.niveau].filter(Boolean).join("   ·   ");
-  const objectifLines = ex.objectif ? wrap(ex.objectif, bodyFont) : [];
-  const consignesLines = ex.notes ? wrap(ex.notes, bodyFont) : [];
-
-  const blocks = [];
-  let y = padding;
-  blocks.push({ type: "title", lines: titleLines, y }); y += titleLines.length * titleLineH + 8;
-  if (metaLine) { blocks.push({ type: "meta", text: metaLine, y }); y += 30; }
-  y += 16;
-  if (ex.themes?.length) { blocks.push({ type: "tags", tags: ex.themes, y }); y += 44; }
-  if (objectifLines.length) {
-    blocks.push({ type: "label", text: "OBJECTIF", y }); y += 22;
-    blocks.push({ type: "body", lines: objectifLines, y }); y += objectifLines.length * lineH + 28;
-  }
-  if (consignesLines.length) {
-    blocks.push({ type: "label", text: "CONSIGNES", y }); y += 22;
-    blocks.push({ type: "body", lines: consignesLines, y }); y += consignesLines.length * lineH + 28;
-  }
-  if (!objectifLines.length && !consignesLines.length) {
-    blocks.push({ type: "body", lines: ["Aucune consigne renseignée."], y }); y += lineH;
-  }
-  y += padding;
-
-  canvas.width = width; canvas.height = Math.max(y, 260);
-  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.textBaseline = "top";
-
-  blocks.forEach(b => {
-    if (b.type === "title") { ctx.font = titleFont; ctx.fillStyle = navy; b.lines.forEach((l, i) => ctx.fillText(l, padding, b.y + i * titleLineH)); }
-    else if (b.type === "meta") { ctx.font = metaFont; ctx.fillStyle = navy + "90"; ctx.fillText(b.text, padding, b.y); }
-    else if (b.type === "tags") {
-      let x = padding;
-      ctx.font = "bold 12px Arial, sans-serif";
-      b.tags.forEach(t => {
-        const tw = ctx.measureText(t).width + 24;
-        ctx.fillStyle = coral + "22"; roundRect(ctx, x, b.y, tw, 26, 13); ctx.fill();
-        ctx.fillStyle = coral; ctx.fillText(t, x + 12, b.y + 7);
-        x += tw + 8;
-      });
-    }
-    else if (b.type === "label") { ctx.font = labelFont; ctx.fillStyle = coral; ctx.fillText(b.text, padding, b.y); }
-    else if (b.type === "body") { ctx.font = bodyFont; ctx.fillStyle = navy; b.lines.forEach((l, i) => ctx.fillText(l, padding, b.y + i * lineH)); }
-  });
-
-  return canvas.toDataURL("image/png");
-}
-
 // Crée (ou réutilise) un lien de partage permanent pour un exercice — même mécanisme que le
 // bouton "partager" (shared_exercises, aucune expires_at = jamais expiré), mais généré en masse
 // sans copier le lien à chaque fois.
@@ -1729,6 +1640,15 @@ async function getOrCreatePermanentShareLink(ex) {
   const { error } = await supabase.from("shared_exercises").insert({ token, exercise_data: ex });
   if (error) throw error;
   return `${window.location.origin}/app?share=${token}`;
+}
+
+// Même principe mais pour tout un lot d'exercices (cahier technique) sous un seul token —
+// table shared_exercise_collections, voir supabase_shared_exercise_collections.sql.
+async function getOrCreatePermanentCollectionLink(exercises, title) {
+  const token = crypto.randomUUID().replace(/-/g, "");
+  const { error } = await supabase.from("shared_exercise_collections").insert({ token, title, exercises });
+  if (error) throw error;
+  return `${window.location.origin}/app?sharecollection=${token}`;
 }
 
 async function exportExercisesForCanva(exercises, { sport = "basketball", onProgress } = {}) {
@@ -1758,9 +1678,18 @@ async function exportExercisesForCanva(exercises, { sport = "basketball", onProg
       folder.file(`terrain-${terrainCount}.png`, s.split(",")[1], { base64: true });
     });
 
-    // Explications (image PNG prête à glisser dans Canva, plutôt qu'un .txt)
-    const explicationsPng = explicationsToPngDataUrl(ex);
-    folder.file("explications.png", explicationsPng.split(",")[1], { base64: true });
+    // Explications
+    const lines = [
+      ex.titre || "",
+      "",
+      [ex.duree ? `${ex.duree} min` : null, ex.format, ex.niveau].filter(Boolean).join(" · "),
+      ex.themes?.length ? `Thèmes : ${ex.themes.join(", ")}` : null,
+      "",
+      ex.objectif ? `OBJECTIF\n${ex.objectif}` : null,
+      "",
+      ex.notes ? `CONSIGNES\n${ex.notes}` : null,
+    ].filter(l => l !== null).join("\n");
+    folder.file("explications.txt", lines);
 
     // QR code (lien de partage permanent vers l'app)
     try {
@@ -1770,6 +1699,15 @@ async function exportExercisesForCanva(exercises, { sport = "basketball", onProg
     } catch (e) {
       folder.file("qrcode-erreur.txt", "QR code non généré : " + e.message);
     }
+  }
+
+  // QR code global : télécharge/importe tout le lot d'un coup (à placer sur la couverture du cahier)
+  try {
+    const link = await getOrCreatePermanentCollectionLink(enriched, `Cahier technique — ${sport}`);
+    const qrDataUrl = await QRCode.toDataURL(link, { width: 512, margin: 1 });
+    zip.file("qrcode-tout-le-cahier.png", qrDataUrl.split(",")[1], { base64: true });
+  } catch (e) {
+    zip.file("qrcode-tout-le-cahier-erreur.txt", "QR code non généré : " + e.message);
   }
 
   const blob = await zip.generateAsync({ type: "blob" });
@@ -5960,6 +5898,7 @@ function CoachingProBoost({ session }) {
   }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sharedExercise, setSharedExercise] = useState(null);
+  const [sharedExerciseCollection, setSharedExerciseCollection] = useState(null);
   const [sharedPlay, setSharedPlay] = useState(null);
   const [sharedPlayCollection, setSharedPlayCollection] = useState(null);
   const [showHistoryRestore, setShowHistoryRestore] = useState(false);
@@ -6060,6 +5999,19 @@ function CoachingProBoost({ session }) {
         if (!data) { cpbAlert("Ce lien de partage est invalide ou a expiré."); return; }
         if (data.expires_at && new Date(data.expires_at) < new Date()) { cpbAlert("Ce lien de partage a expiré."); return; }
         setSharedExercise(data.exercise_data);
+      });
+  }, []);
+
+  // Détection lien de partage d'un lot d'exercices ?sharecollection=TOKEN (cahier technique complet)
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("sharecollection");
+    if (!token) return;
+    window.history.replaceState({}, "", "/");
+    supabase.from("shared_exercise_collections").select("title, exercises, expires_at").eq("token", token).maybeSingle()
+      .then(({ data }) => {
+        if (!data) { cpbAlert("Ce lien de partage est invalide ou a expiré."); return; }
+        if (data.expires_at && new Date(data.expires_at) < new Date()) { cpbAlert("Ce lien de partage a expiré."); return; }
+        setSharedExerciseCollection(data);
       });
   }, []);
 
@@ -6665,6 +6617,45 @@ function CoachingProBoost({ session }) {
                 Ajouter à ma bibliothèque
               </button>
               <button onClick={() => setSharedExercise(null)}
+                className="w-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A] transition-colors">
+                Ignorer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {sharedExerciseCollection && (
+        <div className="fixed inset-0 z-[700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
+            <div className="bg-[#1B2A4A] px-6 py-5 text-center">
+              <div className="text-3xl mb-2">📚</div>
+              <div className="text-white font-bold text-xl" style={{ fontFamily: "Oswald, sans-serif" }}>CAHIER PARTAGÉ</div>
+              <div className="text-white/60 text-sm mt-1">{sharedExerciseCollection.exercises.length} exercice{sharedExerciseCollection.exercises.length > 1 ? "s" : ""} à ajouter</div>
+            </div>
+            <div className="px-6 py-5">
+              <div className="bg-[#F2EDE4] rounded-xl p-4 mb-4 max-h-56 overflow-y-auto">
+                {sharedExerciseCollection.exercises.map((ex, i) => (
+                  <div key={i} className="text-sm text-[#1B2A4A] py-1 border-b border-[#1B2A4A]/10 last:border-0 truncate">{ex.titre}</div>
+                ))}
+              </div>
+              <button onClick={() => {
+                const newExs = sharedExerciseCollection.exercises.map(ex => {
+                  const newEx = { ...ex, id: uid(), createdAt: new Date().toISOString() };
+                  if (newEx.file?.data) {
+                    storage.set(`file:${newEx.id}`, JSON.stringify(newEx.file)).catch(() => {});
+                    newEx.file = { name: newEx.file.name, type: newEx.file.type, data: null };
+                  }
+                  return newEx;
+                });
+                saveExercises([...exercises, ...newExs]);
+                setSharedExerciseCollection(null);
+                setViewPersist("library");
+                toast?.(`${newExs.length} exercice${newExs.length > 1 ? "s" : ""} ajouté${newExs.length > 1 ? "s" : ""} à ta bibliothèque !`);
+              }} className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors mb-3"
+                style={{ fontFamily: "Oswald, sans-serif" }}>
+                Tout ajouter à ma bibliothèque
+              </button>
+              <button onClick={() => setSharedExerciseCollection(null)}
                 className="w-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A] transition-colors">
                 Ignorer
               </button>
@@ -7370,7 +7361,7 @@ function CoachingProBoost({ session }) {
                     {canvaExporting ? `Export en cours... (${canvaProgress?.done || 0}/${canvaProgress?.total || 0})` : `Exporter pour Canva (dossier ZIP)`}
                   </button>
                 </div>
-                <p className="text-[11px] text-[#1B2A4A]/40 mt-2">Un dossier .zip avec, pour chaque exercice : le(s) terrain(s) en PNG, un fichier explications.png, et un QR code (lien permanent d'import dans l'app).</p>
+                <p className="text-[11px] text-[#1B2A4A]/40 mt-2">Un dossier .zip avec, pour chaque exercice : le(s) terrain(s) en PNG, un fichier explications.txt, et un QR code (lien permanent d'import dans l'app). Un QR code supplémentaire à la racine (qrcode-tout-le-cahier.png) permet d'importer tous les exercices du cahier en une fois.</p>
               </div>
             )}
 
