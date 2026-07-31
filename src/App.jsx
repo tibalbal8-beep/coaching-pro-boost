@@ -2860,10 +2860,11 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
               <option value="simple">{styleLabel(courtType, "simple")}</option><option value="pointille">{styleLabel(courtType, "pointille")}</option><option value="zigzag">{styleLabel(courtType, "zigzag")}</option>{courtType !== "football" && <option value="ecran">{styleLabel(courtType, "ecran")}</option>}
             </select>
             <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche</label>
-            {curvePoints.length >= 2 && (
+            {curvePoints.length >= 2 ? (
               <button onClick={commitCurve} className="px-3 py-1.5 rounded-md text-sm font-semibold bg-[#FF6B35] text-white hover:bg-[#e85a28]">✓ Terminer ({curvePoints.length} pts)</button>
+            ) : (
+              <span className="text-xs text-[#1B2A4A]/40">{curvePoints.length === 0 ? "Clique pour placer des points · double-clic pour terminer" : "1 point placé · clique pour continuer"}</span>
             )}
-            {curvePoints.length === 0 && <span className="text-xs text-[#1B2A4A]/40">Clique pour placer des points · double-clic pour terminer</span>}
           </>
         ) : tool === "player" ? (
           <>
@@ -3702,10 +3703,11 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
               <option value="simple">{styleLabel(courtType, "simple")}</option><option value="pointille">{styleLabel(courtType, "pointille")}</option><option value="zigzag">{styleLabel(courtType, "zigzag")}</option>{courtType !== "football" && <option value="ecran">{styleLabel(courtType, "ecran")}</option>}
             </select>
             <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche</label>
-            {curvePoints.length >= 2 && (
+            {curvePoints.length >= 2 ? (
               <button onClick={commitCurve} className="px-3 py-1.5 rounded-md text-sm font-semibold bg-[#FF6B35] text-white hover:bg-[#e85a28]">✓ Terminer ({curvePoints.length} pts)</button>
+            ) : (
+              <span className="text-xs text-[#1B2A4A]/40">{curvePoints.length === 0 ? "Clique pour placer des points · double-clic pour terminer" : "1 point placé · clique pour continuer"}</span>
             )}
-            {curvePoints.length === 0 && <span className="text-xs text-[#1B2A4A]/40">Clique pour placer des points · double-clic pour terminer</span>}
           </>
         ) : tool === "player" ? (
           <>
