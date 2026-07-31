@@ -6088,6 +6088,13 @@ function CoachingProBoost({ session }) {
   const [newThemeInput, setNewThemeInput] = useState("");
   const [lastSaved, setLastSaved] = useState(null);
   const [repairingVisuals, setRepairingVisuals] = useState(false);
+  const [bookletPickerOpen, setBookletPickerOpen] = useState(false);
+  const [bookletSelection, setBookletSelection] = useState(null); // null = tous sélectionnés (défaut)
+  const bookletSelectedIds = bookletSelection ?? exercises.map(e => e.id);
+  const toggleBookletExercise = (id) => {
+    const current = bookletSelection ?? exercises.map(e => e.id);
+    setBookletSelection(current.includes(id) ? current.filter(x => x !== id) : [...current, id]);
+  };
 
   // Réparation ponctuelle du bug corrigé le 20/07/2026 (stripFiles écrasait hasFile/schemaCount
   // à false/0 pour tous les exercices non touchés à chaque sauvegarde). Les données réelles
@@ -7138,11 +7145,32 @@ function CoachingProBoost({ session }) {
             {isAdmin && (
               <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">
                 <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Cahier technique (admin)</div>
-                <p className="text-xs text-[#1B2A4A]/50 mb-3">Exporte toute ta bibliothèque ({exercises.length} exercice{exercises.length !== 1 ? "s" : ""}) en cahier PDF prêt à imprimer/vendre.</p>
-                <button onClick={() => downloadExerciseBooklet(exercises, { clubLogo, sport, coachName: "Coaching Pro Boost" })}
-                  disabled={exercises.length === 0}
+                <p className="text-xs text-[#1B2A4A]/50 mb-3">Choisis les exercices à inclure ({bookletSelectedIds.length}/{exercises.length} sélectionné{bookletSelectedIds.length !== 1 ? "s" : ""}) puis exporte en cahier PDF prêt à imprimer/vendre.</p>
+                <button onClick={() => setBookletPickerOpen(o => !o)}
+                  className="text-sm font-medium text-[#1B2A4A] px-4 py-2 rounded-md border border-[#1B2A4A]/20 mb-3 hover:bg-[#1B2A4A]/5">
+                  {bookletPickerOpen ? "Masquer la liste" : "Choisir les exercices"}
+                </button>
+                {bookletPickerOpen && (
+                  <div className="border border-[#1B2A4A]/15 rounded-lg mb-3 max-h-72 overflow-y-auto">
+                    <div className="sticky top-0 bg-[#F2EDE4] px-3 py-2 border-b border-[#1B2A4A]/15">
+                      <button onClick={() => setBookletSelection(bookletSelectedIds.length === exercises.length ? [] : exercises.map(e => e.id))}
+                        className="text-xs font-semibold text-[#FF6B35]">
+                        {bookletSelectedIds.length === exercises.length ? "Tout désélectionner" : "Tout sélectionner"} ({exercises.length})
+                      </button>
+                    </div>
+                    {exercises.map(ex => (
+                      <label key={ex.id} className="flex items-center gap-2 px-3 py-2 border-b border-[#1B2A4A]/5 last:border-0 text-sm cursor-pointer hover:bg-[#1B2A4A]/5">
+                        <input type="checkbox" checked={bookletSelectedIds.includes(ex.id)} onChange={() => toggleBookletExercise(ex.id)} />
+                        <span className="flex-1 truncate">{ex.titre}</span>
+                        {ex.themes?.length > 0 && <span className="text-[10px] text-[#1B2A4A]/40 shrink-0">{ex.themes[0]}</span>}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <button onClick={() => downloadExerciseBooklet(exercises.filter(e => bookletSelectedIds.includes(e.id)), { clubLogo, sport, coachName: "Coaching Pro Boost" })}
+                  disabled={bookletSelectedIds.length === 0}
                   className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>
-                  Exporter le cahier technique
+                  Exporter le cahier technique ({bookletSelectedIds.length})
                 </button>
               </div>
             )}
