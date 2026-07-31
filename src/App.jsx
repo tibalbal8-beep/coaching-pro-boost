@@ -7234,8 +7234,9 @@ function CoachingProBoost({ session }) {
 
         {view === "suivi" && isAdmin && (() => {
           const selectedPlayer = players.find(p => p.id === selectedPlayerId);
+          const sessionPlayerIds = (s) => s.playerIds || (s.playerId ? [s.playerId] : []);
           const playerSessions = selectedPlayer
-            ? individualSessions.filter(s => s.playerId === selectedPlayer.id).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+            ? individualSessions.filter(s => sessionPlayerIds(s).includes(selectedPlayer.id)).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
             : [];
           const totalMinutes = playerSessions.reduce((sum, s) => sum + (Number(s.duree) || 0), 0);
           const byTheme = {};
@@ -7270,7 +7271,11 @@ function CoachingProBoost({ session }) {
                     <span className="text-[#1B2A4A]/70">Supprimer {p.nom} et ses séances ?</span>
                     <button onClick={() => {
                       savePlayers(players.filter(x => x.id !== p.id));
-                      saveIndividualSessions(individualSessions.filter(s => s.playerId !== p.id));
+                      saveIndividualSessions(individualSessions
+                        .map(s => (s.playerIds || (s.playerId ? [s.playerId] : [])).includes(p.id)
+                          ? { ...s, playerIds: (s.playerIds || (s.playerId ? [s.playerId] : [])).filter(id => id !== p.id) }
+                          : s)
+                        .filter(s => (s.playerIds || []).length > 0));
                       if (selectedPlayerId === p.id) setSelectedPlayerId(null);
                       setConfirmDeletePlayerId(null);
                     }} className="text-red-600 font-semibold">Oui</button>
@@ -7331,6 +7336,22 @@ function CoachingProBoost({ session }) {
 
                 {indivForm ? (
                   <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-4 mb-5">
+                    <div className="mb-3">
+                      <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Joueurs concernés (plusieurs si séance commune)</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {players.map(p => {
+                          const on = indivForm.playerIds.includes(p.id);
+                          return (
+                            <button key={p.id} type="button"
+                              onClick={() => setIndivForm({ ...indivForm, playerIds: on ? indivForm.playerIds.filter(id => id !== p.id) : [...indivForm.playerIds, p.id] })}
+                              className={`px-2.5 py-1 rounded-full text-xs font-medium border ${on ? "" : "border-[#1B2A4A]/25 text-[#1B2A4A]/60"}`}
+                              style={on ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
+                              {p.nom}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
                       <div>
                         <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Date</div>
@@ -7360,22 +7381,26 @@ function CoachingProBoost({ session }) {
                     </div>
                     <div className="flex gap-2">
                       <button onClick={() => {
-                        const entry = { id: uid(), playerId: selectedPlayer.id, createdAt: new Date().toISOString(), ...indivForm };
+                        if (indivForm.playerIds.length === 0) return;
+                        const entry = { id: uid(), createdAt: new Date().toISOString(), ...indivForm };
                         saveIndividualSessions([...individualSessions, entry]);
                         setIndivForm(null);
-                      }} className="px-4 py-2 rounded-md text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>Enregistrer</button>
+                      }} disabled={indivForm.playerIds.length === 0}
+                        className="px-4 py-2 rounded-md text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>Enregistrer</button>
                       <button onClick={() => setIndivForm(null)} className="px-4 py-2 rounded-md text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">Annuler</button>
                     </div>
                   </div>
                 ) : (
-                  <button onClick={() => setIndivForm({ date: new Date().toISOString().slice(0, 10), duree: "", theme: "", contenu: "", notes: "" })}
+                  <button onClick={() => setIndivForm({ playerIds: [selectedPlayer.id], date: new Date().toISOString().slice(0, 10), duree: "", theme: "", contenu: "", notes: "" })}
                     className="mb-5 px-4 py-2 rounded-md text-sm font-semibold text-white flex items-center gap-1.5" style={{ backgroundColor: "var(--sport-accent)" }}>
                     <Plus size={15} /> Nouvelle séance individuelle
                   </button>
                 )}
 
                 <div className="flex flex-col gap-2">
-                  {playerSessions.map(s => (
+                  {playerSessions.map(s => {
+                    const others = sessionPlayerIds(s).filter(id => id !== selectedPlayer.id).map(id => players.find(p => p.id === id)?.nom).filter(Boolean);
+                    return (
                     <div key={s.id} className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-semibold text-[#1B2A4A]">{s.date ? new Date(s.date).toLocaleDateString("fr-FR") : "Date inconnue"} {s.theme && `· ${s.theme}`}</span>
@@ -7384,10 +7409,12 @@ function CoachingProBoost({ session }) {
                           <button onClick={() => saveIndividualSessions(individualSessions.filter(x => x.id !== s.id))} className="text-[#1B2A4A]/30 hover:text-red-600"><Trash2 size={14} /></button>
                         </div>
                       </div>
+                      {others.length > 0 && <p className="text-xs text-[#2563EB] mb-1">Avec {others.join(", ")}</p>}
                       {s.contenu && <p className="text-sm text-[#1B2A4A]/70 mb-1">{s.contenu}</p>}
                       {s.notes && <p className="text-xs text-[#1B2A4A]/40 italic">{s.notes}</p>}
                     </div>
-                  ))}
+                    );
+                  })}
                   {playerSessions.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucune séance individuelle enregistrée pour ce joueur.</p>}
                 </div>
               </div>
