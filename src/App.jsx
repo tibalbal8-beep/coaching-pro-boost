@@ -2294,7 +2294,6 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const curvePointsRef = useRef([]);
   const [curvePoints, setCurvePoints] = useState([]);
   const lastClickTimeRef = useRef(0);
-  const pointerDownPtRef = useRef(null);
 
   const loadBackground = (src) => {
     const img = new Image();
@@ -2545,7 +2544,17 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     e.preventDefault();
     try { canvasRef.current.setPointerCapture?.(e.pointerId); } catch {}
     if (tool === "curve") {
-      pointerDownPtRef.current = { ...toCanvasPoint(e), sx: e.clientX, sy: e.clientY };
+      const pt = toCanvasPoint(e);
+      const now = Date.now();
+      const isDbl = (now - lastClickTimeRef.current) < 350;
+      lastClickTimeRef.current = now;
+      if (isDbl && curvePointsRef.current.length >= 1) {
+        commitCurve();
+      } else {
+        curvePointsRef.current = [...curvePointsRef.current, pt];
+        setCurvePoints([...curvePointsRef.current]);
+        redraw();
+      }
       return;
     }
     if (tool === "text") {
@@ -2674,22 +2683,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
     ctx.stroke();
   };
   const handlePointerUp = (e) => {
-    if (tool === "curve") {
-      const pt = toCanvasPoint(e);
-      const down = pointerDownPtRef.current;
-      if (!down || Math.hypot(e.clientX - down.sx, e.clientY - down.sy) > 20) return;
-      const now = Date.now();
-      const isDbl = (now - lastClickTimeRef.current) < 300;
-      lastClickTimeRef.current = now;
-      if (isDbl && curvePointsRef.current.length >= 1) {
-        commitCurve();
-      } else {
-        curvePointsRef.current = [...curvePointsRef.current, pt];
-        setCurvePoints([...curvePointsRef.current]);
-        redraw();
-      }
-      return;
-    }
+    if (tool === "curve") return;
     if (draggingRef.current) {
       const d = draggingRef.current;
       draggingRef.current = null;
@@ -3198,7 +3192,6 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
   const curvePointsRef = useRef([]);
   const [curvePoints, setCurvePoints] = useState([]);
   const lastClickTimeRef = useRef(0);
-  const pointerDownPtRef = useRef(null);
 
   const TERRAIN_DEFS_BY_SPORT = {
     handball: [
@@ -3437,7 +3430,17 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
     e.preventDefault();
     try { canvasRef.current.setPointerCapture?.(e.pointerId); } catch {}
     if (tool === "curve") {
-      pointerDownPtRef.current = { ...toCanvasPoint(e), sx: e.clientX, sy: e.clientY };
+      const pt = toCanvasPoint(e);
+      const now = Date.now();
+      const isDbl = (now - lastClickTimeRef.current) < 350;
+      lastClickTimeRef.current = now;
+      if (isDbl && curvePointsRef.current.length >= 1) {
+        commitCurve();
+      } else {
+        curvePointsRef.current = [...curvePointsRef.current, pt];
+        setCurvePoints([...curvePointsRef.current]);
+        redraw();
+      }
       return;
     }
     if (tool === "text") {
@@ -3553,22 +3556,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
   };
 
   const handlePointerUp = (e) => {
-    if (tool === "curve") {
-      const pt = toCanvasPoint(e);
-      const down = pointerDownPtRef.current;
-      if (!down || Math.hypot(e.clientX - down.sx, e.clientY - down.sy) > 20) return;
-      const now = Date.now();
-      const isDbl = (now - lastClickTimeRef.current) < 300;
-      lastClickTimeRef.current = now;
-      if (isDbl && curvePointsRef.current.length >= 1) {
-        commitCurve();
-      } else {
-        curvePointsRef.current = [...curvePointsRef.current, pt];
-        setCurvePoints([...curvePointsRef.current]);
-        redraw();
-      }
-      return;
-    }
+    if (tool === "curve") return;
     if (draggingRef.current) {
       const d = draggingRef.current; draggingRef.current = null;
       if (d && !d.moved) {
