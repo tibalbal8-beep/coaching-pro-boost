@@ -2197,6 +2197,22 @@ function _drawPlayerToken(ctx, t) {
   ctx.restore();
 }
 
+function _tokenHaloRadius(t) {
+  const sc = t.size ?? 1;
+  switch (t.kind) {
+    case "plot": return 17 * sc;
+    case "chaise": return 14 * sc;
+    case "cerceau": return 19 * sc;
+    case "handball": return 14 * sc;
+    case "ballonfoot": case "ballonbasket": case "ballonvolley": case "ballonrugby": return 15 * sc;
+    case "cage": return 19 * sc;
+    case "haie": return 15 * sc;
+    case "jalon": return 16 * sc;
+    case "coupelle": return 13 * sc;
+    default: return 16 * sc;
+  }
+}
+
 function _parseInline(text) {
   const segs = []; const re = /(\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|\*([^*]+?)\*)/g;
   let last = 0, m;
@@ -2457,7 +2473,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           bctx.lineWidth = 3;
           bctx.setLineDash([4, 3]);
           bctx.beginPath();
-          bctx.arc(el.x, el.y, 22, 0, Math.PI * 2);
+          bctx.arc(el.x, el.y, _tokenHaloRadius(el), 0, Math.PI * 2);
           bctx.stroke();
           bctx.setLineDash([]);
           bctx.restore();
@@ -3337,7 +3353,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       if (el === selectedElRef.current) {
         if (el.type === "token") {
           bctx.save(); bctx.strokeStyle = "#FF6B35"; bctx.lineWidth = 3; bctx.setLineDash([4, 3]);
-          bctx.beginPath(); bctx.arc(el.x, el.y, 22, 0, Math.PI * 2); bctx.stroke(); bctx.setLineDash([]); bctx.restore();
+          bctx.beginPath(); bctx.arc(el.x, el.y, _tokenHaloRadius(el), 0, Math.PI * 2); bctx.stroke(); bctx.setLineDash([]); bctx.restore();
         } else if (el.type === "stroke" && el.isCurve) {
           el.points.forEach(p => {
             bctx.beginPath(); bctx.arc(p.x, p.y, 8, 0, Math.PI * 2);
