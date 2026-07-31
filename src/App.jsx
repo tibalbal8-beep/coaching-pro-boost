@@ -844,6 +844,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
     if (initial?.file?.name === "schema.png" && initial.file.data) return [initial.file.data];
     return [];
   });
+  const extraPhotoInputRef = useRef();
   // Un exercice rouvert pour édition n'a que `schemaCount` (les schémas sont stockés à part,
   // schemas:{id}) — sans ce chargement lazy, les schémas déjà dessinés semblent avoir disparu.
   useEffect(() => {
@@ -1014,13 +1015,30 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
                     }}
                   />
                 )}
-                {/* Bouton ajouter (visible quand on ne dessine pas) */}
+                {/* Boutons ajouter (visibles quand on ne dessine pas) */}
                 {editingSchemaIdx === null && (
-                  <button type="button"
-                    onClick={() => setEditingSchemaIdx(schemas.length)}
-                    className="w-full py-2 rounded-lg text-xs font-semibold border-2 border-dashed border-[#FF6B35]/40 text-[#FF6B35] hover:border-[#FF6B35] hover:bg-[#FF6B35]/5 transition-colors">
-                    + Ajouter un schéma
-                  </button>
+                  <div className="flex gap-2">
+                    <button type="button"
+                      onClick={() => setEditingSchemaIdx(schemas.length)}
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold border-2 border-dashed border-[#FF6B35]/40 text-[#FF6B35] hover:border-[#FF6B35] hover:bg-[#FF6B35]/5 transition-colors">
+                      + Ajouter un schéma
+                    </button>
+                    <input ref={extraPhotoInputRef} type="file" accept="image/*" className="hidden"
+                      onChange={async (e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!f) return;
+                        try {
+                          const data = await readImageAsJpeg(f, 1600, 0.8);
+                          setSchemas(s => [...s, data]);
+                          setActiveSchemaIdx(schemas.length);
+                        } catch { cpbAlert?.("Impossible de lire l'image."); }
+                      }} />
+                    <button type="button" onClick={() => extraPhotoInputRef.current.click()}
+                      className="flex-1 py-2 rounded-lg text-xs font-semibold border-2 border-dashed border-[#1B2A4A]/30 text-[#1B2A4A]/60 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
+                      + Importer une photo
+                    </button>
+                  </div>
                 )}
               </div>
             )}
