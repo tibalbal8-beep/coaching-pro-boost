@@ -1606,7 +1606,7 @@ async function downloadExerciseBooklet(exercises, opts) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// ─── Export "pour Canva" : un dossier par exercice (terrain(s) PNG, explications.txt, qrcode.png) ──
+// ─── Export "pour Canva" : un dossier par exercice (terrain(s) PNG, explications.png, qrcode.png) ──
 function slugifyForFile(str) {
   return String(str || "exercice")
     .normalize("NFD").replace(/[̀-ͯ]/g, "")
@@ -1630,6 +1630,95 @@ function svgStringToPngDataUrl(svgString, width, height) {
     img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
     img.src = url;
   });
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// Rend l'objectif/consignes d'un exercice en image PNG (plutôt qu'en .txt) — prête à glisser-
+// déposer dans Canva sans mise en forme à refaire.
+function explicationsToPngDataUrl(ex) {
+  const width = 900, padding = 50, contentWidth = width - padding * 2;
+  const navy = "#1B2A4A", coral = "#FF5C5C";
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+
+  const wrap = (text, font) => {
+    ctx.font = font;
+    const out = [];
+    String(text).split("\n").forEach(paragraph => {
+      if (!paragraph.trim()) { out.push(""); return; }
+      const words = paragraph.split(" ");
+      let line = "";
+      words.forEach(w => {
+        const test = line ? line + " " + w : w;
+        if (ctx.measureText(test).width > contentWidth && line) { out.push(line); line = w; }
+        else line = test;
+      });
+      if (line) out.push(line);
+    });
+    return out;
+  };
+
+  const titleFont = "bold 34px Arial, sans-serif";
+  const metaFont = "16px Arial, sans-serif";
+  const labelFont = "bold 14px Arial, sans-serif";
+  const bodyFont = "17px Arial, sans-serif";
+  const lineH = 24, titleLineH = 42;
+
+  const titleLines = wrap(ex.titre || "Exercice", titleFont);
+  const metaLine = [ex.duree ? `${ex.duree} min` : null, ex.format, ex.niveau].filter(Boolean).join("   ·   ");
+  const objectifLines = ex.objectif ? wrap(ex.objectif, bodyFont) : [];
+  const consignesLines = ex.notes ? wrap(ex.notes, bodyFont) : [];
+
+  const blocks = [];
+  let y = padding;
+  blocks.push({ type: "title", lines: titleLines, y }); y += titleLines.length * titleLineH + 8;
+  if (metaLine) { blocks.push({ type: "meta", text: metaLine, y }); y += 30; }
+  y += 16;
+  if (ex.themes?.length) { blocks.push({ type: "tags", tags: ex.themes, y }); y += 44; }
+  if (objectifLines.length) {
+    blocks.push({ type: "label", text: "OBJECTIF", y }); y += 22;
+    blocks.push({ type: "body", lines: objectifLines, y }); y += objectifLines.length * lineH + 28;
+  }
+  if (consignesLines.length) {
+    blocks.push({ type: "label", text: "CONSIGNES", y }); y += 22;
+    blocks.push({ type: "body", lines: consignesLines, y }); y += consignesLines.length * lineH + 28;
+  }
+  if (!objectifLines.length && !consignesLines.length) {
+    blocks.push({ type: "body", lines: ["Aucune consigne renseignée."], y }); y += lineH;
+  }
+  y += padding;
+
+  canvas.width = width; canvas.height = Math.max(y, 260);
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.textBaseline = "top";
+
+  blocks.forEach(b => {
+    if (b.type === "title") { ctx.font = titleFont; ctx.fillStyle = navy; b.lines.forEach((l, i) => ctx.fillText(l, padding, b.y + i * titleLineH)); }
+    else if (b.type === "meta") { ctx.font = metaFont; ctx.fillStyle = navy + "90"; ctx.fillText(b.text, padding, b.y); }
+    else if (b.type === "tags") {
+      let x = padding;
+      ctx.font = "bold 12px Arial, sans-serif";
+      b.tags.forEach(t => {
+        const tw = ctx.measureText(t).width + 24;
+        ctx.fillStyle = coral + "22"; roundRect(ctx, x, b.y, tw, 26, 13); ctx.fill();
+        ctx.fillStyle = coral; ctx.fillText(t, x + 12, b.y + 7);
+        x += tw + 8;
+      });
+    }
+    else if (b.type === "label") { ctx.font = labelFont; ctx.fillStyle = coral; ctx.fillText(b.text, padding, b.y); }
+    else if (b.type === "body") { ctx.font = bodyFont; ctx.fillStyle = navy; b.lines.forEach((l, i) => ctx.fillText(l, padding, b.y + i * lineH)); }
+  });
+
+  return canvas.toDataURL("image/png");
 }
 
 // Crée (ou réutilise) un lien de partage permanent pour un exercice — même mécanisme que le
@@ -1669,18 +1758,9 @@ async function exportExercisesForCanva(exercises, { sport = "basketball", onProg
       folder.file(`terrain-${terrainCount}.png`, s.split(",")[1], { base64: true });
     });
 
-    // Explications
-    const lines = [
-      ex.titre || "",
-      "",
-      [ex.duree ? `${ex.duree} min` : null, ex.format, ex.niveau].filter(Boolean).join(" · "),
-      ex.themes?.length ? `Thèmes : ${ex.themes.join(", ")}` : null,
-      "",
-      ex.objectif ? `OBJECTIF\n${ex.objectif}` : null,
-      "",
-      ex.notes ? `CONSIGNES\n${ex.notes}` : null,
-    ].filter(l => l !== null).join("\n");
-    folder.file("explications.txt", lines);
+    // Explications (image PNG prête à glisser dans Canva, plutôt qu'un .txt)
+    const explicationsPng = explicationsToPngDataUrl(ex);
+    folder.file("explications.png", explicationsPng.split(",")[1], { base64: true });
 
     // QR code (lien de partage permanent vers l'app)
     try {
@@ -7290,7 +7370,7 @@ function CoachingProBoost({ session }) {
                     {canvaExporting ? `Export en cours... (${canvaProgress?.done || 0}/${canvaProgress?.total || 0})` : `Exporter pour Canva (dossier ZIP)`}
                   </button>
                 </div>
-                <p className="text-[11px] text-[#1B2A4A]/40 mt-2">Un dossier .zip avec, pour chaque exercice : le(s) terrain(s) en PNG, un fichier explications.txt, et un QR code (lien permanent d'import dans l'app).</p>
+                <p className="text-[11px] text-[#1B2A4A]/40 mt-2">Un dossier .zip avec, pour chaque exercice : le(s) terrain(s) en PNG, un fichier explications.png, et un QR code (lien permanent d'import dans l'app).</p>
               </div>
             )}
 
