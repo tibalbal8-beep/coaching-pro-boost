@@ -8034,6 +8034,19 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Revalidation périodique : détecte rapidement une session révoquée côté serveur
+  // (connexion sur un autre appareil = déconnexion des autres, voir "scope: others" plus haut)
+  // au lieu d'attendre jusqu'à 1h le renouvellement naturel du jeton JWT.
+  useEffect(() => {
+    if (!session) return;
+    const check = async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data?.user) await supabase.auth.signOut();
+    };
+    const id = setInterval(check, 2 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [session]);
+
   const shareplayToken = new URLSearchParams(window.location.search).get("shareplay");
   const scoutingToken = new URLSearchParams(window.location.search).get("scoutingtoken");
 
