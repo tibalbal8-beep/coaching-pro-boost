@@ -1447,10 +1447,10 @@ async function enrichExercisesAssets(exercises) {
 
 function buildExerciseBookletHTML(exercises, { clubLogo, sport = "basketball", coachName = "" } = {}) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-  const sportColor = SPORTS_CONFIG[sport]?.color || "#FF6B35";
+  const coral = "#FF5C5C";
+  const navy = "#1B2A4A";
   const sportEmoji = SPORTS_CONFIG[sport]?.emoji || "🏀";
   const sportLabel = SPORTS_CONFIG[sport]?.label || "Basketball";
-  const dateStr = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
 
   // Regroupement par thème (un exercice sans thème atterrit dans "Autres")
   const groups = {};
@@ -1461,8 +1461,8 @@ function buildExerciseBookletHTML(exercises, { clubLogo, sport = "basketball", c
   const themeNames = Object.keys(groups).sort((a, b) => a === "Autres" ? 1 : b === "Autres" ? -1 : a.localeCompare(b));
 
   let exNumber = 0;
-  const sections = themeNames.map(theme => {
-    const cards = groups[theme].map(ex => {
+  const sections = themeNames.map((theme, ti) => {
+    const cards = groups[theme].map((ex, ei) => {
       exNumber++;
       const hasDiagram = !!ex.diagram;
       const hasPhoto = !!(ex.file?.data && ex.file?.type?.startsWith("image/"));
@@ -1473,87 +1473,96 @@ function buildExerciseBookletHTML(exercises, { clubLogo, sport = "basketball", c
         const raw = diagramToSvgString(ex.diagram, 420, 400);
         visualHtml += raw.replace(/id="a"/g, `id="bk${exNumber}"`).replace(/url\(#a\)/g, `url(#bk${exNumber})`);
       } else if (hasPhoto) {
-        visualHtml += `<img src="${ex.file.data}" alt="" style="width:100%;height:auto;display:block;border-radius:6px;border:1px solid #1B2A4A15" />`;
+        visualHtml += `<img src="${ex.file.data}" alt="" style="width:100%;height:auto;display:block;border-radius:6px" />`;
       }
       schemas.forEach(s => {
-        visualHtml += `<div style="margin-top:8px"><img src="${s}" alt="" style="width:100%;height:auto;display:block;border-radius:6px;border:1px solid #1B2A4A15" /></div>`;
+        visualHtml += `<div style="margin-top:8px"><img src="${s}" alt="" style="width:100%;height:auto;display:block;border-radius:6px" /></div>`;
       });
+      const metaPills = [`${esc(ex.duree)} min`, ex.format, ex.niveau].filter(Boolean).join(" · ");
       return `
       <div class="exo">
-        <div class="exo-header">
-          <span class="exo-num">${String(exNumber).padStart(2, "0")}</span>
-          <span class="exo-title">${esc(ex.titre)}</span>
-          <span class="exo-meta">${esc(ex.duree)} min · ${esc(ex.format)} · ${esc(ex.niveau)}${catList(ex).length ? " · " + esc(catList(ex).join(", ")) : ""}</span>
-        </div>
-        <div class="exo-body${hasVisual ? "" : " no-visual"}">
-          ${hasVisual ? `<div class="exo-visual"><div class="visual-inner">${visualHtml}</div></div>` : ""}
-          <div class="exo-text">
-            ${ex.themes?.length ? `<div class="tags">${ex.themes.map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
-            ${ex.objectif ? `<div class="field"><div class="field-label">Objectif</div><p class="field-val">${esc(ex.objectif)}</p></div>` : ""}
-            ${ex.notes ? `<div class="field"><div class="field-label">Consignes</div><p class="field-val notes">${esc(ex.notes)}</p></div>` : ""}
-            ${!ex.objectif && !ex.notes && !ex.themes?.length ? `<p class="empty-text">Aucune consigne renseignée.</p>` : ""}
+        <div class="exo-label"><span>Exercice ${String(ei + 1).padStart(2, "0")}</span></div>
+        <div class="exo-card">
+          ${hasVisual ? `<div class="exo-visual"><div class="visual-inner">${visualHtml}</div></div>` : `<div class="exo-visual exo-visual-empty"></div>`}
+          <div class="exo-info">
+            <div class="exo-meta-bar">${esc(metaPills)}</div>
+            <div class="exo-info-body">
+              ${ex.themes?.length || catList(ex).length ? `<div class="tags">${[...ex.themes || [], ...catList(ex)].map(t => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
+              <div class="exo-title">${esc(ex.titre)}</div>
+              ${ex.objectif ? `<div class="field"><div class="field-label">Objectif</div><p class="field-val">${esc(ex.objectif)}</p></div>` : ""}
+              ${ex.notes ? `<div class="field"><div class="field-label">Consignes</div><p class="field-val notes">${esc(ex.notes)}</p></div>` : ""}
+              ${!ex.objectif && !ex.notes ? `<p class="empty-text">Aucune consigne renseignée.</p>` : ""}
+            </div>
           </div>
         </div>
       </div>`;
     }).join("");
-    return `<div class="theme-section"><h2 class="theme-title">${esc(theme)}</h2>${cards}</div>`;
+    return `<div class="section-page">
+      <div class="section-head"><span class="section-num">${String(ti + 1).padStart(2, "0")}</span><h2 class="section-title">${esc(theme)}</h2></div>
+      <div class="section-cards">${cards}</div>
+    </div>`;
   }).join("");
 
-  const toc = themeNames.map(t => `<div class="toc-row"><span>${esc(t)}</span><span class="toc-count">${groups[t].length}</span></div>`).join("");
+  const toc = themeNames.map((t, i) => `
+    <div class="toc-item">
+      <span class="toc-num">${String(i + 1).padStart(2, "0")}</span>
+      <div class="toc-text"><h3>${esc(t)}</h3><p>${groups[t].length} exercice${groups[t].length > 1 ? "s" : ""}</p></div>
+    </div>`).join("");
 
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="utf-8">
   <title>Cahier technique — ${esc(sportLabel)}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700;800&family=Kalam:wght@700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:'Inter',sans-serif;background:#fff;color:#1B2A4A;font-size:13px}
+    body{font-family:'Inter',sans-serif;background:#F2EDE4;color:${navy};font-size:13px}
+    .marker{font-family:'Kalam',cursive}
 
     /* ── COUVERTURE ── */
-    .cover{min-height:100vh;background:#1B2A4A;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;page-break-after:always}
-    .cover-logo{width:96px;height:96px;object-fit:contain;border-radius:20px;margin-bottom:24px;background:#fff;padding:8px}
-    .cover-emoji{font-size:56px;margin-bottom:16px}
-    .cover-kicker{font-size:13px;letter-spacing:3px;text-transform:uppercase;color:${sportColor};font-weight:700;margin-bottom:14px}
-    .cover-title{font-family:'Oswald',sans-serif;font-size:44px;font-weight:800;letter-spacing:1px;line-height:1.15;margin-bottom:10px}
-    .cover-sub{font-size:15px;color:rgba(255,255,255,.65);margin-bottom:40px}
-    .cover-meta{display:flex;gap:24px;font-size:12px;color:rgba(255,255,255,.5)}
-    .cover-divider{width:60px;height:3px;background:${sportColor};border-radius:2px;margin:28px 0}
+    .cover{min-height:100vh;background:#F2EDE4;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;page-break-after:always}
+    .cover-logo{width:120px;height:auto;object-fit:contain;margin-bottom:48px}
+    .cover-emoji{font-size:64px;margin-bottom:48px}
+    .cover-title{font-family:'Oswald',sans-serif;font-size:42px;font-weight:800;letter-spacing:.5px;margin-bottom:28px}
+    .cover-sub{font-family:'Oswald',sans-serif;font-size:26px;font-weight:700;color:${navy}}
 
     /* ── SOMMAIRE ── */
-    .toc-page{padding:48px;page-break-after:always}
-    .toc-page h1{font-family:'Oswald',sans-serif;font-size:24px;margin-bottom:24px;color:#1B2A4A}
-    .toc-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #1B2A4A15;font-size:14px}
-    .toc-count{font-family:monospace;font-size:12px;color:#1B2A4A60;background:#1B2A4A08;border-radius:10px;padding:2px 10px}
+    .toc-page{padding:48px;page-break-after:always;min-height:100vh}
+    .toc-kicker{font-family:'Oswald',sans-serif;font-size:26px;font-weight:800;color:${coral};text-transform:lowercase;border-bottom:3px solid ${coral};display:inline-block;padding-bottom:6px;margin-bottom:36px}
+    .toc-item{display:flex;align-items:center;gap:18px;margin-bottom:22px}
+    .toc-num{font-family:'Oswald',sans-serif;font-size:44px;font-weight:800;color:${coral};width:70px;flex-shrink:0}
+    .toc-text h3{font-family:'Oswald',sans-serif;font-size:15px;letter-spacing:.5px;color:${navy};margin-bottom:2px;text-transform:uppercase}
+    .toc-text p{font-size:12px;color:${navy}90}
 
-    /* ── CONTENU ── */
-    .content{padding:20px 28px}
-    .theme-section{margin-bottom:8px}
-    .theme-title{font-family:'Oswald',sans-serif;font-size:18px;color:${sportColor};letter-spacing:.5px;margin:28px 0 14px;padding-bottom:8px;border-bottom:2px solid ${sportColor}30}
+    /* ── PAGES DE SECTION ── */
+    .section-page{padding:36px;page-break-before:always}
+    .section-head{display:flex;align-items:baseline;gap:16px;margin-bottom:24px}
+    .section-num{font-family:'Oswald',sans-serif;font-size:48px;font-weight:800;color:${coral}}
+    .section-title{font-family:'Oswald',sans-serif;font-size:20px;letter-spacing:.5px;color:${navy};text-transform:uppercase}
 
-    .exo{border:1px solid #1B2A4A20;border-radius:10px;overflow:hidden;margin-bottom:16px;break-inside:avoid;page-break-inside:avoid}
-    .exo-header{background:#1B2A4A;color:#fff;padding:10px 16px;display:flex;align-items:center;gap:10px}
-    .exo-num{background:${sportColor};color:#fff;font-size:11px;font-weight:700;border-radius:4px;padding:2px 8px;font-family:monospace;letter-spacing:1px;flex-shrink:0}
-    .exo-title{font-family:'Oswald',sans-serif;font-size:15px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .exo-meta{font-size:11px;color:rgba(255,255,255,.6);white-space:nowrap;flex-shrink:0}
-
-    .exo-body{display:grid;grid-template-columns:56% 44%;min-height:200px}
-    .exo-body.no-visual{grid-template-columns:1fr;min-height:unset}
-    .exo-visual{padding:12px;border-right:2px solid #1B2A4A12;background:#eef2f7;display:flex;align-items:center;justify-content:center}
-    .visual-inner{width:100%;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+    .exo{margin-bottom:22px;break-inside:avoid;page-break-inside:avoid}
+    .exo-label{margin-bottom:-1px}
+    .exo-label span{display:inline-block;background:${coral};color:#fff;font-family:'Oswald',sans-serif;font-size:12px;font-weight:700;letter-spacing:.5px;padding:6px 14px;border-radius:6px 6px 0 0}
+    .exo-card{display:grid;grid-template-columns:52% 48%;background:#fff;border-radius:0 8px 8px 8px;overflow:hidden;box-shadow:0 1px 4px rgba(27,42,74,.08)}
+    .exo-visual{padding:14px;background:#F2EDE4;display:flex;align-items:center;justify-content:center}
+    .exo-visual-empty{background:repeating-linear-gradient(45deg,#F2EDE4,#F2EDE4 10px,#ece5d8 10px,#ece5d8 20px)}
+    .visual-inner{width:100%;background:#fff;border-radius:8px;overflow:hidden}
     .visual-inner svg{width:100%;height:auto;display:block;background:#f8f6f0}
     .visual-inner img{width:100%;height:auto;display:block}
-    .exo-text{padding:16px;display:flex;flex-direction:column;gap:12px}
+    .exo-info{display:flex;flex-direction:column}
+    .exo-meta-bar{background:${navy};color:rgba(255,255,255,.75);font-size:11px;text-align:right;padding:8px 14px}
+    .exo-info-body{padding:14px;display:flex;flex-direction:column;gap:8px}
+    .exo-title{font-family:'Oswald',sans-serif;font-size:14px;color:${navy};font-weight:700}
 
     .tags{display:flex;flex-wrap:wrap;gap:4px}
-    .tags span{font-size:10px;background:${sportColor}20;color:${sportColor};border-radius:10px;padding:2px 8px;font-weight:600}
-    .field-label{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:#1B2A4A60;font-weight:600;margin-bottom:3px}
-    .field-val{font-size:12px;line-height:1.55;color:#1B2A4A}
-    .notes{white-space:pre-wrap;color:#1B2A4A90}
-    .empty-text{font-size:12px;color:#1B2A4A40;font-style:italic}
+    .tags span{font-size:10px;background:${coral}18;color:${coral};border-radius:10px;padding:2px 8px;font-weight:600}
+    .field-label{font-size:10px;text-transform:uppercase;letter-spacing:.7px;color:${navy}60;font-weight:700;margin-bottom:3px}
+    .field-val{font-size:12px;line-height:1.55;color:${navy}}
+    .notes{white-space:pre-wrap;color:${navy}90}
+    .empty-text{font-size:12px;color:${navy}40;font-style:italic}
 
-    .footer{text-align:center;padding:24px;font-size:11px;color:#1B2A4A40}
+    .footer{text-align:center;padding:24px;font-size:11px;color:${navy}40}
 
     @media print{
       @page{margin:0;size:A4}
@@ -1565,21 +1574,16 @@ function buildExerciseBookletHTML(exercises, { clubLogo, sport = "basketball", c
 
   <div class="cover">
     ${clubLogo ? `<img class="cover-logo" src="${clubLogo}" alt="Logo" />` : `<div class="cover-emoji">${sportEmoji}</div>`}
-    <div class="cover-kicker">Cahier technique · ${esc(sportLabel)}</div>
-    <div class="cover-title">${exercises.length} EXERCICE${exercises.length > 1 ? "S" : ""}<br/>D'ENTRAÎNEMENT</div>
-    <div class="cover-sub">${esc(coachName || "Coaching Pro Boost")}</div>
-    <div class="cover-divider"></div>
-    <div class="cover-meta"><span>${themeNames.length} thème${themeNames.length > 1 ? "s" : ""}</span><span>${dateStr}</span></div>
+    <div class="cover-title">Cahier technique</div>
+    <div class="cover-sub">${esc(coachName || sportLabel)}</div>
   </div>
 
   <div class="toc-page">
-    <h1>Sommaire</h1>
+    <div class="toc-kicker marker">sommaire</div>
     ${toc}
   </div>
 
-  <div class="content">
-    ${sections}
-  </div>
+  ${sections}
 
   <div class="footer">Coaching Pro Boost — coachingproboost.com</div>
 
