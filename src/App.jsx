@@ -2527,7 +2527,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
 
   const handlePointerDown = (e) => {
     e.preventDefault();
-    canvasRef.current.setPointerCapture?.(e.pointerId);
+    try { canvasRef.current.setPointerCapture?.(e.pointerId); } catch {}
     if (tool === "curve") {
       pointerDownPtRef.current = toCanvasPoint(e);
       return;
@@ -3418,7 +3418,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
 
   const handlePointerDown = (e) => {
     e.preventDefault();
-    canvasRef.current.setPointerCapture?.(e.pointerId);
+    try { canvasRef.current.setPointerCapture?.(e.pointerId); } catch {}
     if (tool === "curve") {
       pointerDownPtRef.current = toCanvasPoint(e);
       return;
