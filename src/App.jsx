@@ -6176,14 +6176,10 @@ function CoachingProBoost({ session }) {
   const shareExercise = async (ex) => {
     try {
       const token = crypto.randomUUID().replace(/-/g, "");
-      const exData = { ...ex };
-      // Charger l'image si besoin
-      if (ex.file && !ex.file.data) {
-        try { const r = await storage.get(`file:${ex.id}`); if (r) exData.file = JSON.parse(r.value); } catch {}
-      }
+      const [exData] = await enrichExercisesAssets([ex]);
       const { error } = await supabase.from("shared_exercises").insert({ token, exercise_data: exData });
       if (error) throw error;
-      const link = `${window.location.origin}/app?share=${token}`;
+      const link = `${window.location.origin}/api/share-exercise?token=${token}`;
       await copyOrShow(link, "Lien copié ! Valable 30 jours.");
     } catch(e) { await cpbAlert("Erreur lors du partage : " + e.message); }
   };
