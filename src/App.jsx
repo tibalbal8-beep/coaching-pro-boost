@@ -360,6 +360,8 @@ function useStore(sport = DEFAULT_SPORT) {
   const [sessions, setSessions] = useState([]);
   const [themes, setThemes] = useState(SPORTS_CONFIG[sport]?.themes || DEFAULT_THEMES);
   const themesKey = `themes:${sport}`;
+  const [formats, setFormats] = useState(SPORTS_CONFIG[sport]?.formats || FORMATS);
+  const formatsKey = `formats:${sport}`;
   const exercisesKey = `exercises:${sport}`;
   const sessionsKey = `sessions:${sport}`;
   const playsKey = `plays:${sport}`;
@@ -402,6 +404,10 @@ function useStore(sport = DEFAULT_SPORT) {
         } else {
           setThemes(SPORTS_CONFIG[sport]?.themes || []);
         }
+      } catch {}
+      try {
+        const fm = await storage.get(formatsKey);
+        setFormats(fm ? JSON.parse(fm.value) : (SPORTS_CONFIG[sport]?.formats || FORMATS));
       } catch {}
       try {
         let ex = await storage.get(exercisesKey);
@@ -480,6 +486,7 @@ function useStore(sport = DEFAULT_SPORT) {
   };
   const saveSessions = (next) => { setSessions(next); persist(sessionsKey, JSON.stringify(next)); };
   const saveThemes = (next) => { setThemes(next); persist(themesKey, JSON.stringify(next)); };
+  const saveFormats = (next) => { setFormats(next); persist(formatsKey, JSON.stringify(next)); };
   const saveTeams = (next) => { setTeams(next); persist("teams", JSON.stringify(next)); };
   const saveActiveTeamId = (next) => { setActiveTeamId(next); persist("activeTeamId", JSON.stringify(next)); };
   const savePlayers = (next) => { setPlayers(next); persist("players", JSON.stringify(next)); };
@@ -516,7 +523,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, teams, activeTeamId, players, individualSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist };
+  return { exercises, sessions, themes, formats, teams, activeTeamId, players, individualSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist };
 }
 
 function usePdfJs() {
@@ -823,7 +830,7 @@ function ExerciseFormImagePreview({ ex }) {
   return <img src={fileImage} alt="" className="w-full rounded-lg border border-[#1B2A4A]/15" />;
 }
 
-function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes, sportPhases = PHASES, sportFormats = FORMATS, sportCategories = CATEGORIES, courtType = "basketball" }) {
+function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes, saveFormats, sportPhases = PHASES, sportFormats = FORMATS, sportCategories = CATEGORIES, courtType = "basketball" }) {
   const [titre, setTitre] = useState(initial?.titre || "");
   const [sel, setSel] = useState(initial?.themes || []);
   const [phases, setPhases] = useState(initial?.phases || []);
@@ -864,6 +871,8 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
   const [lastMaterial, setLastMaterial] = useState(null);
   const [newTheme, setNewTheme] = useState("");
   const [themesOpen, setThemesOpen] = useState(false);
+  const [newFormat, setNewFormat] = useState("");
+  const [newFormatOpen, setNewFormatOpen] = useState(false);
   const [showDraw, setShowDraw] = useState(false);
 
   const toggle = (arr, setArr, v) => setArr(arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
@@ -929,6 +938,33 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
         <div>
           <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Format</div>
           <select value={format} onChange={e => setFormat(e.target.value)} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60">{sportFormats.map(f => <option key={f}>{f}</option>)}</select>
+          {newFormatOpen ? (
+            <div className="flex items-center gap-1 mt-1">
+              <input autoFocus value={newFormat} onChange={e => setNewFormat(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter") {
+                    const f = newFormat.trim();
+                    if (f) {
+                      if (!sportFormats.includes(f) && saveFormats) saveFormats([...sportFormats, f]);
+                      setFormat(f);
+                    }
+                    setNewFormat(""); setNewFormatOpen(false);
+                  }
+                  if (e.key === "Escape") { setNewFormat(""); setNewFormatOpen(false); }
+                }}
+                placeholder="ex: 2c0" className="flex-1 min-w-0 border border-[#FF6B35] rounded-md px-2 py-1 text-xs outline-none" />
+              <button type="button" onClick={() => {
+                const f = newFormat.trim();
+                if (f) {
+                  if (!sportFormats.includes(f) && saveFormats) saveFormats([...sportFormats, f]);
+                  setFormat(f);
+                }
+                setNewFormat(""); setNewFormatOpen(false);
+              }} className="text-xs font-semibold text-[#FF6B35] px-1.5">OK</button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setNewFormatOpen(true)} className="text-[11px] text-[#FF6B35] mt-1 hover:underline">+ Ajouter un format</button>
+          )}
         </div>
         <div>
           <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Niveau</div>
@@ -5807,10 +5843,10 @@ function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAl
 function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
   const { announcement, dismiss: dismissAnnouncement, isAdmin, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
-  const { exercises, sessions, themes, teams, activeTeamId, players, individualSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore(sport);
+  const { exercises, sessions, themes, formats, teams, activeTeamId, players, individualSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
-  const SPORT_FORMATS = sportConfig.formats;
+  const SPORT_FORMATS = formats;
   const SPORT_CATEGORIES = sportConfig.categories;
   const SPORT_COURT = sportConfig.court;
   const SPORT_COLOR = sportConfig.color;
@@ -7035,7 +7071,7 @@ function CoachingProBoost({ session }) {
         {view === "library" && showForm && (
           <div className="max-w-xl">
             <h2 className="text-xl font-bold text-[#1B2A4A] mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>{editing ? "MODIFIER L'EXERCICE" : "NOUVEL EXERCICE"}</h2>
-            <ExerciseForm themes={themes} saveThemes={saveThemes} initial={editing} onSave={upsertExercise} onCancel={() => { setShowForm(false); setEditing(null); }} cpbAlert={cpbAlert} sportPhases={SPORT_PHASES} sportFormats={SPORT_FORMATS} sportCategories={SPORT_CATEGORIES} courtType={SPORT_COURT} />
+            <ExerciseForm themes={themes} saveThemes={saveThemes} saveFormats={saveFormats} initial={editing} onSave={upsertExercise} onCancel={() => { setShowForm(false); setEditing(null); }} cpbAlert={cpbAlert} sportPhases={SPORT_PHASES} sportFormats={SPORT_FORMATS} sportCategories={SPORT_CATEGORIES} courtType={SPORT_COURT} />
           </div>
         )}
 
