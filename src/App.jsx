@@ -859,6 +859,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
     return () => { active = false; };
   }, [initial?.id, initial?.schemaCount]);
   const [photoIdx, setPhotoIdx] = useState(0);
+  const [extraCropSource, setExtraCropSource] = useState(null);
   const [editingSchemaIdx, setEditingSchemaIdx] = useState(null);
   const [lastMaterial, setLastMaterial] = useState(null);
   const [newTheme, setNewTheme] = useState("");
@@ -947,6 +948,15 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
         <div className="absolute right-1 top-1"><DictateButton onResult={(t) => setNotes(prev => prev ? prev + " " + t : t)} /></div>
       </div>
       <FileDrop file={file} onChange={setFile} cpbAlert={cpbAlert} />
+      {extraCropSource && (
+        <CropPhotoView imageData={extraCropSource} courtType={courtType}
+          onCancel={() => setExtraCropSource(null)}
+          onCrop={(dataUrl) => {
+            setSchemas(s => [...s, dataUrl]);
+            setPhotoIdx(schemas.length + 1);
+            setExtraCropSource(null);
+          }} />
+      )}
 
       {/* Photos supplémentaires : carrousel direct, indépendant de l'outil de dessin */}
       {file?.type?.startsWith("image/") && file?.data && (
@@ -967,8 +977,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
                 if (!f) return;
                 try {
                   const data = await readImageAsJpeg(f, 1600, 0.8);
-                  setSchemas(s => [...s, data]);
-                  setPhotoIdx(schemas.length + 1);
+                  setExtraCropSource(data);
                 } catch { cpbAlert?.("Impossible de lire l'image."); }
               }} />
             <button type="button" onClick={() => extraPhotoInputRef.current.click()}
