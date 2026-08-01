@@ -1015,6 +1015,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
               referencePhotoOptions={file?.data ? [{ label: "Photo importée", src: file.data }] : []}
               previousMaterial={lastMaterial}
               initialImage={editingSchemaIdx < schemas.length ? schemas[editingSchemaIdx] : null}
+              previousSchemaGhost={editingSchemaIdx === schemas.length && schemas.length > 0 ? schemas[schemas.length - 1] : null}
               onCancel={() => { setShowDraw(false); setEditingSchemaIdx(null); }}
               onValidate={(dataUrl, meta) => {
                 if (meta) setLastMaterial(meta);
@@ -3292,7 +3293,8 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
 }
 
 // ─── Dessinateur tactique (bibliothèque + playbook) — terrains fixes, sans gabarits Supabase ───
-function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", initialImage = null, allSchemas = [], currentSchemaIdx = null, referencePhotoOptions = [], previousMaterial = null }) {
+function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", initialImage = null, allSchemas = [], currentSchemaIdx = null, referencePhotoOptions = [], previousMaterial = null, previousSchemaGhost = null }) {
+  const [showGhost, setShowGhost] = useState(true);
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const bgImgRef = useRef(null);
@@ -3874,7 +3876,12 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
         ) : (
           <span className="text-xs text-[#1B2A4A]/40">{selectedEl ? "Élément sélectionné" : "Tap = sélectionner · Glisser = déplacer"}</span>
         )}
-        <button onClick={undo} className="px-3 py-1.5 rounded-md text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5 ml-auto">Annuler</button>
+        {previousSchemaGhost && (
+          <label className="flex items-center gap-1.5 text-xs text-[#1B2A4A]/60 cursor-pointer select-none ml-auto">
+            <input type="checkbox" checked={showGhost} onChange={e => setShowGhost(e.target.checked)} /> Vignette précédente en repère
+          </label>
+        )}
+        <button onClick={undo} className={`px-3 py-1.5 rounded-md text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5 ${previousSchemaGhost ? "" : "ml-auto"}`}>Annuler</button>
         <button onClick={clearAll} className="px-3 py-1.5 rounded-md text-sm border border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5">Effacer tout</button>
       </div>
       {selectedEl && (
@@ -3912,6 +3919,10 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
           <canvas ref={canvasRef} width={dims.width} height={dims.height}
             style={{ width: "100%", height: "auto", display: "block", touchAction: "none" }}
             onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp} />
+          {previousSchemaGhost && showGhost && (
+            <img src={previousSchemaGhost} alt=""
+              style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", opacity: 0.25, pointerEvents: "none" }} />
+          )}
           {pendingText && (() => {
             const taRef = React.createRef();
             return (
@@ -5312,6 +5323,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
               ...schemas.map((s, i) => ({ label: `Vignette ${i + 1}`, src: s })).filter((_, i) => i !== editingSchemaIdx && i !== editingSchemaIdx - 1),
             ]}
             initialImage={editingSchemaIdx < schemas.length ? schemas[editingSchemaIdx] : null}
+            previousSchemaGhost={editingSchemaIdx === schemas.length && schemas.length > 0 ? schemas[schemas.length - 1] : null}
             allSchemas={schemas}
             currentSchemaIdx={editingSchemaIdx}
             onCancel={() => setEditingSchemaIdx(null)}
