@@ -867,6 +867,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
   }, [initial?.id, initial?.schemaCount]);
   const [photoIdx, setPhotoIdx] = useState(0);
   const [extraCropSource, setExtraCropSource] = useState(null);
+  const hasFilePhoto = file?.type?.startsWith("image/") && !!file?.data;
   const [editingSchemaIdx, setEditingSchemaIdx] = useState(null);
   const [lastMaterial, setLastMaterial] = useState(null);
   const [newTheme, setNewTheme] = useState("");
@@ -989,22 +990,29 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
           onCancel={() => setExtraCropSource(null)}
           onCrop={(dataUrl) => {
             setSchemas(s => [...s, dataUrl]);
-            setPhotoIdx(schemas.length + 1);
+            setPhotoIdx(schemas.length + (hasFilePhoto ? 1 : 0));
             setExtraCropSource(null);
           }} />
       )}
 
-      {/* Photos supplémentaires : carrousel direct, indépendant de l'outil de dessin */}
-      {file?.type?.startsWith("image/") && file?.data && (
+      {/* Photos supplémentaires : carrousel direct, indépendant de l'outil de dessin.
+          hasFilePhoto = la 1ère vignette (index 0) vient de FileDrop ; les suivantes viennent de
+          `schemas` (importées directement ici, ou dessinées via l'outil plus bas) — les deux
+          sources alimentent le même carrousel pour ne jamais perdre une vignette de vue. */}
+      {(() => {
+        const allPhotos = [...(hasFilePhoto ? [file.data] : []), ...schemas];
+        if (allPhotos.length === 0) return null;
+        const isFileSlide = hasFilePhoto && photoIdx === 0;
+        return (
         <div className="border border-[#1B2A4A]/15 rounded-lg p-3">
           <div className="flex items-center gap-2 mb-2">
             <button type="button" disabled={photoIdx === 0} onClick={() => setPhotoIdx(i => i - 1)}
               className="w-7 h-7 flex items-center justify-center rounded-full border border-[#1B2A4A]/20 text-[#1B2A4A] disabled:opacity-30 hover:bg-[#1B2A4A]/5">‹</button>
-            <span className="text-xs font-medium text-[#1B2A4A]/60 flex-1 text-center">Photo {photoIdx + 1} / {schemas.length + 1}</span>
-            <button type="button" disabled={photoIdx === schemas.length} onClick={() => setPhotoIdx(i => i + 1)}
+            <span className="text-xs font-medium text-[#1B2A4A]/60 flex-1 text-center">Photo {photoIdx + 1} / {allPhotos.length}</span>
+            <button type="button" disabled={photoIdx === allPhotos.length - 1} onClick={() => setPhotoIdx(i => i + 1)}
               className="w-7 h-7 flex items-center justify-center rounded-full border border-[#1B2A4A]/20 text-[#1B2A4A] disabled:opacity-30 hover:bg-[#1B2A4A]/5">›</button>
           </div>
-          <img src={photoIdx === 0 ? file.data : schemas[photoIdx - 1]} alt="" className="w-full rounded-lg border border-[#1B2A4A]/10 mb-2" />
+          <img src={allPhotos[Math.min(photoIdx, allPhotos.length - 1)]} alt="" className="w-full rounded-lg border border-[#1B2A4A]/10 mb-2" />
           <div className="flex gap-2">
             <input ref={extraPhotoInputRef} type="file" accept="image/*" className="hidden"
               onChange={async (e) => {
@@ -1020,15 +1028,17 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
               className="flex-1 py-1.5 rounded-lg text-xs font-semibold border-2 border-dashed border-[#FF6B35]/40 text-[#FF6B35] hover:border-[#FF6B35] hover:bg-[#FF6B35]/5 transition-colors">
               + Ajouter une photo
             </button>
-            {photoIdx > 0 && (
+            {!isFileSlide && (
               <button type="button" onClick={() => {
-                setSchemas(s => s.filter((_, i) => i !== photoIdx - 1));
+                const schemaIdx = hasFilePhoto ? photoIdx - 1 : photoIdx;
+                setSchemas(s => s.filter((_, i) => i !== schemaIdx));
                 setPhotoIdx(i => Math.max(0, i - 1));
               }} className="py-1.5 px-3 rounded-lg text-xs font-medium border border-red-200 text-red-500 hover:bg-red-50">Supprimer</button>
             )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Outil de dessin, séparé : schéma tactique dessiné par-dessus le terrain */}
       <div>
@@ -1059,7 +1069,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
                   setSchemas(s => s.map((x, i) => i === editingSchemaIdx ? dataUrl : x));
                 } else {
                   setSchemas(s => [...s, dataUrl]);
-                  setPhotoIdx(schemas.length + 1);
+                  setPhotoIdx(schemas.length + (hasFilePhoto ? 1 : 0));
                 }
                 setShowDraw(false);
                 setEditingSchemaIdx(null);
@@ -1340,32 +1350,35 @@ function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage,
         <h3 className="font-semibold text-[#1B2A4A] mb-1.5 leading-tight">{ex.titre}</h3>
         {ex.diagram ? (
           <div className="mb-2"><CourtDiagram players={ex.diagram.players} paths={ex.diagram.paths} screens={ex.diagram.screens} /></div>
-        ) : schemas.length > 0 ? (
-          <div className="mb-2 relative" onClick={e => e.stopPropagation()}>
-            <img src={schemas[carouselIdx]} alt="" className="w-full rounded border border-[#1B2A4A]/10 object-contain max-h-48" />
-            {schemas.length > 1 && (
-              <div className="absolute bottom-2 left-0 right-0 flex items-center justify-center gap-2">
-                <button onClick={() => setCarouselIdx(i => Math.max(0, i - 1))}
-                  disabled={carouselIdx === 0}
-                  className="w-6 h-6 flex items-center justify-center rounded-full bg-white/90 border border-[#1B2A4A]/20 text-[#1B2A4A] text-sm disabled:opacity-30 shadow-sm">‹</button>
-                <span className="text-[10px] font-medium bg-white/90 px-1.5 py-0.5 rounded-full text-[#1B2A4A]/60 shadow-sm">{carouselIdx + 1}/{schemas.length}</span>
-                <button onClick={() => setCarouselIdx(i => Math.min(schemas.length - 1, i + 1))}
-                  disabled={carouselIdx === schemas.length - 1}
-                  className="w-6 h-6 flex items-center justify-center rounded-full bg-white/90 border border-[#1B2A4A]/20 text-[#1B2A4A] text-sm disabled:opacity-30 shadow-sm">›</button>
-              </div>
-            )}
-          </div>
-        ) : fileImage && ex.file?.type?.startsWith("image/") ? (
-          <div className="mb-2 relative">
-            <img src={fileImage} alt="" className="w-full rounded border border-[#1B2A4A]/10 object-contain max-h-48" />
-            {onCropImage && (
-              <button onClick={(e) => { e.stopPropagation(); onCropImage(fileImage); }}
-                className="absolute bottom-2 right-2 flex items-center gap-1 bg-white/90 border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-xs font-medium text-[#1B2A4A] hover:bg-[#FF6B35] hover:text-white hover:border-[#FF6B35] transition-colors">
-                <ImageIcon size={12} /> Rogner
-              </button>
-            )}
-          </div>
-        ) : null}
+        ) : (() => {
+          const hasFile = fileImage && ex.file?.type?.startsWith("image/");
+          const allPhotos = [...(hasFile ? [fileImage] : []), ...schemas];
+          if (allPhotos.length === 0) return null;
+          const idx = Math.min(carouselIdx, allPhotos.length - 1);
+          const isFileSlide = hasFile && idx === 0;
+          return (
+            <div className="mb-2 relative" onClick={e => e.stopPropagation()}>
+              <img src={allPhotos[idx]} alt="" className="w-full rounded border border-[#1B2A4A]/10 object-contain max-h-48" />
+              {allPhotos.length > 1 && (
+                <div className="absolute bottom-2 left-0 right-0 flex items-center justify-center gap-2">
+                  <button onClick={() => setCarouselIdx(i => Math.max(0, i - 1))}
+                    disabled={idx === 0}
+                    className="w-6 h-6 flex items-center justify-center rounded-full bg-white/90 border border-[#1B2A4A]/20 text-[#1B2A4A] text-sm disabled:opacity-30 shadow-sm">‹</button>
+                  <span className="text-[10px] font-medium bg-white/90 px-1.5 py-0.5 rounded-full text-[#1B2A4A]/60 shadow-sm">{idx + 1}/{allPhotos.length}</span>
+                  <button onClick={() => setCarouselIdx(i => Math.min(allPhotos.length - 1, i + 1))}
+                    disabled={idx === allPhotos.length - 1}
+                    className="w-6 h-6 flex items-center justify-center rounded-full bg-white/90 border border-[#1B2A4A]/20 text-[#1B2A4A] text-sm disabled:opacity-30 shadow-sm">›</button>
+                </div>
+              )}
+              {isFileSlide && onCropImage && (
+                <button onClick={(e) => { e.stopPropagation(); onCropImage(fileImage); }}
+                  className="absolute bottom-2 right-2 flex items-center gap-1 bg-white/90 border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-xs font-medium text-[#1B2A4A] hover:bg-[#FF6B35] hover:text-white hover:border-[#FF6B35] transition-colors">
+                  <ImageIcon size={12} /> Rogner
+                </button>
+              )}
+            </div>
+          );
+        })()}
         <div className="flex items-center gap-3 text-xs text-[#1B2A4A]/60 mb-2">
           <span className="flex items-center gap-1"><Clock size={12} />{ex.duree} min</span>
           <span>{ex.format}</span><span>{ex.niveau}</span>{catList(ex).length > 0 && <span className="px-1.5 py-0.5 rounded bg-[#1B2A4A]/8">{catList(ex).join(", ")}</span>}
