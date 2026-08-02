@@ -244,8 +244,9 @@ async function startCheckout(priceId) {
   const data = await res.json();
   if (data.error) throw new Error(data.error);
 
-  // Sauvegarde le customerId si nouveau
-  if (data.customerId && !profile?.stripe_customer_id) {
+  // Sauvegarde le customerId s'il est nouveau ou a changé (ex: l'ancien client Stripe a été
+  // supprimé côté Stripe et l'API en a recréé un).
+  if (data.customerId && data.customerId !== profile?.stripe_customer_id) {
     await supabase.from("profiles").update({ stripe_customer_id: data.customerId }).eq("id", user.id);
   }
 

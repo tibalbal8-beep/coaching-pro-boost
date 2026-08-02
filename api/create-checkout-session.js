@@ -10,6 +10,16 @@ export default async function handler(req, res) {
 
     let customerId = existingCustomerId;
 
+    // Le client Stripe enregistré côté Supabase peut avoir été supprimé (nettoyage manuel,
+    // demande RGPD, test...) — sans vérification, Stripe renvoie "No such customer" et bloque
+    // tout abonnement. On vérifie qu'il existe encore avant de le réutiliser.
+    if (customerId) {
+      const checkRes = await fetch(`https://api.stripe.com/v1/customers/${customerId}`, {
+        headers: { "Authorization": `Bearer ${stripeKey}` },
+      });
+      if (!checkRes.ok) customerId = null;
+    }
+
     if (!customerId) {
       const customerRes = await fetch("https://api.stripe.com/v1/customers", {
         method: "POST",
