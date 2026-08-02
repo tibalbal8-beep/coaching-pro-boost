@@ -266,6 +266,7 @@ async function openBillingPortal() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       customerId: profile?.stripe_customer_id,
+      userId: user.id,
       returnUrl: window.location.origin,
     }),
   });
