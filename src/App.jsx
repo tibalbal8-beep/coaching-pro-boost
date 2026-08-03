@@ -7551,10 +7551,22 @@ function CoachingProBoost({ session }) {
           const scoutedTeams = [...new Set(plays.map(p => p.scoutedTeam).filter(Boolean))].sort();
           const activeMatch = matchSessions.find(m => m.id === activeMatchId) || null;
           const tfOf = (p) => Array.isArray(p.tempsFort) ? p.tempsFort : (p.tempsFort ? [p.tempsFort] : []);
+          // Repli sur les anciennes entrées (juste un nombre) enregistrées avant l'ajout du score.
+          const playedOf = (entry) => typeof entry === "number" ? entry : (entry?.played || 0);
+          const pointsOf = (entry) => typeof entry === "number" ? 0 : (entry?.points || 0);
+          const possibleOf = (entry) => typeof entry === "number" ? 0 : (entry?.possible || 0);
 
           const updateActiveMatch = (patch) => saveMatchSessions(matchSessions.map(m => m.id === activeMatchId ? { ...m, ...patch } : m));
-          const tallyPlay = (playId) => {
-            updateActiveMatch({ tally: { ...(activeMatch.tally || {}), [playId]: (activeMatch.tally?.[playId] || 0) + 1 } });
+          // value = null (juste compter, pas de tir) ou un nombre signé : positif = panier marqué
+          // de cette valeur, négatif = tir tenté de cette valeur mais manqué.
+          const recordOutcome = (playId, value) => {
+            const cur = activeMatch.tally?.[playId];
+            const next = {
+              played: playedOf(cur) + 1,
+              points: pointsOf(cur) + (value > 0 ? value : 0),
+              possible: possibleOf(cur) + (value ? Math.abs(value) : 0),
+            };
+            updateActiveMatch({ tally: { ...(activeMatch.tally || {}), [playId]: next } });
             setTfFilters([]);
             setNewPlayOpen(false); setNewPlayName("");
           };
@@ -7564,8 +7576,8 @@ function CoachingProBoost({ session }) {
             const teamPlays = plays.filter(p => p.scoutedTeam === activeMatch.scoutedTeam);
             const tfOptions = [...new Set(teamPlays.flatMap(tfOf))];
             const filteredPlays = teamPlays.filter(p => tfFilters.every(f => tfOf(p).includes(f)));
-            const sorted = [...teamPlays].sort((a, b) => (activeMatch.tally?.[b.id] || 0) - (activeMatch.tally?.[a.id] || 0));
-            const totalTally = teamPlays.reduce((sum, p) => sum + (activeMatch.tally?.[p.id] || 0), 0);
+            const sorted = [...teamPlays].sort((a, b) => playedOf(activeMatch.tally?.[b.id]) - playedOf(activeMatch.tally?.[a.id]));
+            const totalTally = teamPlays.reduce((sum, p) => sum + playedOf(activeMatch.tally?.[p.id]), 0);
 
             return (
               <div className="max-w-3xl">
@@ -7607,19 +7619,40 @@ function CoachingProBoost({ session }) {
                     {tfFilters.length > 0 ? `${filteredPlays.length} système${filteredPlays.length !== 1 ? "s" : ""} correspondant${filteredPlays.length !== 1 ? "s" : ""}` : "Tous les systèmes"}
                   </div>
                   <div className="flex flex-col gap-2">
-                    {filteredPlays.map(p => (
-                      <button key={p.id} onClick={() => tallyPlay(p.id)}
-                        className="flex items-center justify-between text-left border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-3 hover:border-[#FF6B35] hover:shadow-md transition-all active:scale-[0.98]">
-                        <div>
-                          <div className="font-semibold text-[#1B2A4A]">{p.titre}</div>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {tfOf(p).map((t, i) => <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-[#1B2A4A]/10 text-[#1B2A4A]/70">{t}</span>)}
-                            {p.intention && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35]">{p.intention}</span>}
+                    {filteredPlays.map(p => {
+                      const entry = activeMatch.tally?.[p.id];
+                      const played = playedOf(entry), points = pointsOf(entry), possible = possibleOf(entry);
+                      return (
+                      <div key={p.id} className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-3">
+                        <div className="flex items-start justify-between mb-2 gap-2">
+                          <div>
+                            <div className="font-semibold text-[#1B2A4A]">{p.titre}</div>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {tfOf(p).map((t, i) => <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-[#1B2A4A]/10 text-[#1B2A4A]/70">{t}</span>)}
+                              {p.intention && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35]">{p.intention}</span>}
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <div className="text-xl font-bold" style={{ color: "var(--sport-accent)" }}>{played}</div>
+                            {possible > 0 && <div className="text-[10px] text-[#1B2A4A]/40">{points}/{possible} pts</div>}
                           </div>
                         </div>
-                        <span className="text-2xl font-bold flex-shrink-0 ml-3" style={{ color: "var(--sport-accent)" }}>{activeMatch.tally?.[p.id] || 0}</span>
-                      </button>
-                    ))}
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <button onClick={() => recordOutcome(p.id, null)}
+                            className="px-2.5 py-1.5 rounded-md text-xs font-medium border border-[#1B2A4A]/20 text-[#1B2A4A]/60 hover:bg-[#1B2A4A]/5">Compter (sans tir)</button>
+                          <span className="w-px h-5 bg-[#1B2A4A]/10 mx-0.5" />
+                          {[-3, -2, -1].map(v => (
+                            <button key={v} onClick={() => recordOutcome(p.id, v)}
+                              className="w-9 h-8 rounded-md text-xs font-semibold border border-red-200 text-red-600 hover:bg-red-50">{v}</button>
+                          ))}
+                          {[1, 2, 3].map(v => (
+                            <button key={v} onClick={() => recordOutcome(p.id, v)}
+                              className="w-9 h-8 rounded-md text-xs font-semibold border border-green-300 text-green-700 hover:bg-green-50">+{v}</button>
+                          ))}
+                        </div>
+                      </div>
+                      );
+                    })}
                     {filteredPlays.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucun système ne correspond à ce filtre.</p>}
                   </div>
                 </div>
@@ -7631,7 +7664,7 @@ function CoachingProBoost({ session }) {
                         if (e.key === "Enter" && newPlayName.trim()) {
                           const np = { id: uid(), titre: newPlayName.trim(), type: PLAY_TYPES[0], scoutedTeam: activeMatch.scoutedTeam, tempsFort: tfFilters, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
                           savePlays([...plays, np]);
-                          tallyPlay(np.id);
+                          recordOutcome(np.id, null);
                         }
                         if (e.key === "Escape") { setNewPlayOpen(false); setNewPlayName(""); }
                       }}
@@ -7640,7 +7673,7 @@ function CoachingProBoost({ session }) {
                       if (!newPlayName.trim()) return;
                       const np = { id: uid(), titre: newPlayName.trim(), type: PLAY_TYPES[0], scoutedTeam: activeMatch.scoutedTeam, tempsFort: tfFilters, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
                       savePlays([...plays, np]);
-                      tallyPlay(np.id);
+                      recordOutcome(np.id, null);
                     }} className="text-sm font-semibold text-white px-3 py-2 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>Ajouter</button>
                     <button onClick={() => { setNewPlayOpen(false); setNewPlayName(""); }} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={18} /></button>
                   </div>
@@ -7651,7 +7684,7 @@ function CoachingProBoost({ session }) {
                 )}
 
                 <div className="flex items-center justify-between border-t border-[#1B2A4A]/10 pt-4">
-                  <span className="text-xs text-[#1B2A4A]/40">Classement par fréquence : {sorted.filter(p => activeMatch.tally?.[p.id]).map(p => `${p.titre} (${activeMatch.tally[p.id]})`).join(", ") || "aucun système compté pour l'instant"}</span>
+                  <span className="text-xs text-[#1B2A4A]/40">Classement par fréquence : {sorted.filter(p => playedOf(activeMatch.tally?.[p.id]) > 0).map(p => `${p.titre} (${playedOf(activeMatch.tally[p.id])})`).join(", ") || "aucun système compté pour l'instant"}</span>
                   <button onClick={async () => {
                     const ok = await cpbAlert?.("Réinitialiser le comptage de ce match ? Les valeurs actuelles seront perdues.", { confirm: true });
                     if (ok) updateActiveMatch({ tally: {} });
@@ -7706,9 +7739,10 @@ function CoachingProBoost({ session }) {
 
             <div className="flex flex-col gap-2">
               {[...matchSessions].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map(m => {
-                const topPlayId = Object.entries(m.tally || {}).sort((a, b) => b[1] - a[1])[0]?.[0];
+                const playedOfEntry = (entry) => typeof entry === "number" ? entry : (entry?.played || 0);
+                const topPlayId = Object.entries(m.tally || {}).sort((a, b) => playedOfEntry(b[1]) - playedOfEntry(a[1]))[0]?.[0];
                 const topPlay = plays.find(p => p.id === topPlayId);
-                const total = Object.values(m.tally || {}).reduce((s, n) => s + n, 0);
+                const total = Object.values(m.tally || {}).reduce((s, e) => s + playedOfEntry(e), 0);
                 return (
                   <div key={m.id} onClick={() => setActiveMatchId(m.id)}
                     className="flex items-center justify-between border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 cursor-pointer hover:border-[#FF6B35] hover:shadow-md transition-all">
