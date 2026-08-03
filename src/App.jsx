@@ -7129,7 +7129,14 @@ function CoachingProBoost({ session }) {
                 {filtered.map((ex, i) => (
                   <ExerciseCard key={ex.id} ex={ex} index={i}
                     onClick={() => { setEditing(ex); setShowForm(true); }}
-                    onRemove={() => saveExercises(exercises.filter(e => e.id !== ex.id))}
+                    onRemove={() => {
+                      saveExercises(exercises.filter(e => e.id !== ex.id));
+                      // Best-effort : la photo/les schémas de l'exercice restaient orphelins en
+                      // base indéfiniment (jamais nettoyés), ce qui gonflait inutilement la taille
+                      // de la base au fil des suppressions.
+                      storage.delete(`file:${ex.id}`).catch(() => {});
+                      storage.delete(`schemas:${ex.id}`).catch(() => {});
+                    }}
                     onAddToDraft={() => addExerciseToDraft(ex.id)}
                     onCropImage={(imgData) => { setCropImage(imgData); setView("crop"); }}
                     onShare={isPremium ? () => shareExercise(ex) : () => setPaywallReason("Le partage d'exercices est une fonctionnalité Premium.")} />
@@ -7262,7 +7269,12 @@ function CoachingProBoost({ session }) {
                     onSelect={isPremium ? () => setSelectedPlays(prev => prev.includes(play.id) ? prev.filter(id => id !== play.id) : [...prev, play.id]) : null}
                     selected={selectedPlays.includes(play.id)}
                     onEdit={isPremium ? () => { setEditingPlay(play); setPlaybookForm(true); } : () => setPaywallReason("Modifiez vos plays en passant en Premium.")}
-                    onRemove={isPremium ? () => savePlays(plays.filter(p => p.id !== play.id)) : () => setPaywallReason("Supprimez vos plays en passant en Premium.")} />
+                    onRemove={isPremium ? () => {
+                      savePlays(plays.filter(p => p.id !== play.id));
+                      // Best-effort : les photos du play restaient orphelines en base (jamais
+                      // nettoyées à la suppression), gonflant inutilement la taille de la base.
+                      (play.images || []).forEach(img => { storage.delete(`playimg:${play.id}:${img.id}`).catch(() => {}); });
+                    } : () => setPaywallReason("Supprimez vos plays en passant en Premium.")} />
                 ))}
               </div>
             )}
