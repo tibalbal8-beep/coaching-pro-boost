@@ -6349,10 +6349,14 @@ function CoachingProBoost({ session }) {
   const [confirmDeletePlayerId, setConfirmDeletePlayerId] = useState(null);
   const [newPlayerName, setNewPlayerName] = useState("");
   const [indivForm, setIndivForm] = useState(null); // { date, duree, theme, contenu, notes } en cours d'ajout
-  const [matchTeam, setMatchTeam] = useState(null);
-  const [matchTally, setMatchTally] = useState({}); // playId -> nombre de fois joué (remis à zéro par match)
-  const [matchDate, setMatchDate] = useState(new Date().toISOString().slice(0, 10));
-  const [matchChampionnat, setMatchChampionnat] = useState("");
+  const [activeMatchId, setActiveMatchId] = useState(null);
+  const [newMatchOpen, setNewMatchOpen] = useState(false);
+  const [newMatchDate, setNewMatchDate] = useState(new Date().toISOString().slice(0, 10));
+  const [newMatchChampionnat, setNewMatchChampionnat] = useState("");
+  const [newMatchScoutedTeam, setNewMatchScoutedTeam] = useState("");
+  const [tfFilters, setTfFilters] = useState([]);
+  const [newPlayOpen, setNewPlayOpen] = useState(false);
+  const [newPlayName, setNewPlayName] = useState("");
   const [bookletSelection, setBookletSelection] = useState(null); // null = tous sélectionnés (défaut)
   const bookletSelectedIds = bookletSelection ?? exercises.map(e => e.id);
   const toggleBookletExercise = (id) => {
@@ -7544,103 +7548,172 @@ function CoachingProBoost({ session }) {
 
         {view === "matchmode" && isAdmin && (() => {
           const scoutedTeams = [...new Set(plays.map(p => p.scoutedTeam).filter(Boolean))].sort();
-          const teamPlays = matchTeam ? plays.filter(p => p.scoutedTeam === matchTeam) : [];
-          const sorted = [...teamPlays].sort((a, b) => (matchTally[b.id] || 0) - (matchTally[a.id] || 0));
-          const totalTally = teamPlays.reduce((sum, p) => sum + (matchTally[p.id] || 0), 0);
-          return (
-          <div className="max-w-3xl">
-            <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>MODE MATCH</h2>
-            <p className="text-xs text-[#1B2A4A]/40 mb-5">Fonctionnalité en test, visible uniquement par toi (admin). Tape sur un système à chaque fois que l'équipe adverse le joue, pour voir en direct ce qu'elle utilise le plus.</p>
+          const activeMatch = matchSessions.find(m => m.id === activeMatchId) || null;
+          const tfOf = (p) => Array.isArray(p.tempsFort) ? p.tempsFort : (p.tempsFort ? [p.tempsFort] : []);
 
-            <div className="flex flex-wrap gap-1.5 mb-5">
-              {scoutedTeams.map(t => (
-                <button key={t} onClick={() => setMatchTeam(t)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium border ${matchTeam === t ? "" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
-                  style={matchTeam === t ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
-                  {t}
-                </button>
-              ))}
-              {scoutedTeams.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucune équipe scoutée dans le Playbook pour l'instant — renseigne "Équipe scoutée" sur un play.</p>}
-            </div>
+          const updateActiveMatch = (patch) => saveMatchSessions(matchSessions.map(m => m.id === activeMatchId ? { ...m, ...patch } : m));
+          const tallyPlay = (playId) => {
+            updateActiveMatch({ tally: { ...(activeMatch.tally || {}), [playId]: (activeMatch.tally?.[playId] || 0) + 1 } });
+            setTfFilters([]);
+            setNewPlayOpen(false); setNewPlayName("");
+          };
 
-            {matchTeam && (
-              <div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4 border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4">
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Date du match</div>
-                    <input type="date" value={matchDate} onChange={e => setMatchDate(e.target.value)}
-                      className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
-                  </div>
-                  <div className="col-span-2 sm:col-span-1">
-                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Championnat</div>
-                    <input value={matchChampionnat} onChange={e => setMatchChampionnat(e.target.value)} placeholder="Ex: NM1"
-                      className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Opposition</div>
-                    <div className="text-sm text-[#1B2A4A] px-2 py-1.5">{team?.nom || "—"} vs {matchTeam}</div>
-                  </div>
-                </div>
+          // ── Vue "saisie" : un match est actif ──────────────────────────────────
+          if (activeMatch) {
+            const teamPlays = plays.filter(p => p.scoutedTeam === activeMatch.scoutedTeam);
+            const tfOptions = [...new Set(teamPlays.flatMap(tfOf))];
+            const filteredPlays = teamPlays.filter(p => tfFilters.every(f => tfOf(p).includes(f)));
+            const sorted = [...teamPlays].sort((a, b) => (activeMatch.tally?.[b.id] || 0) - (activeMatch.tally?.[a.id] || 0));
+            const totalTally = teamPlays.reduce((sum, p) => sum + (activeMatch.tally?.[p.id] || 0), 0);
 
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-sm text-[#1B2A4A]/60"><strong className="text-[#1B2A4A]">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} comptabilisé{totalTally !== 1 ? "s" : ""}</span>
-                  <div className="flex items-center gap-3">
-                    <button onClick={async () => {
-                      const ok = await cpbAlert?.("Réinitialiser le comptage de ce match ? Les valeurs actuelles seront perdues si tu ne les as pas enregistrées.", { confirm: true });
-                      if (ok) setMatchTally({});
-                    }} className="text-xs text-red-500 hover:underline">Réinitialiser le comptage</button>
-                    {totalTally > 0 && (
-                      <button onClick={() => {
-                        saveMatchSessions([...matchSessions, {
-                          id: uid(), date: matchDate, championnat: matchChampionnat, ourTeam: team?.nom || "", scoutedTeam: matchTeam,
-                          tally: matchTally, createdAt: new Date().toISOString(),
-                        }]);
-                        setMatchTally({});
-                      }} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>
-                        Terminer et enregistrer ce match
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {sorted.map(p => (
-                    <button key={p.id} onClick={() => setMatchTally(t => ({ ...t, [p.id]: (t[p.id] || 0) + 1 }))}
-                      className="text-left border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 hover:border-[#FF6B35] hover:shadow-md transition-all active:scale-[0.98]">
-                      <div className="flex items-start justify-between mb-1.5 gap-2">
-                        <span className="font-semibold text-[#1B2A4A]">{p.titre}</span>
-                        <span className="text-2xl font-bold flex-shrink-0" style={{ color: "var(--sport-accent)" }}>{matchTally[p.id] || 0}</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {(Array.isArray(p.tempsFort) ? p.tempsFort : p.tempsFort ? [p.tempsFort] : []).map((t, i) => (
-                          <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-[#1B2A4A]/10 text-[#1B2A4A]/70">{t}</span>
-                        ))}
-                        {p.intention && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35]">{p.intention}</span>}
-                      </div>
-                    </button>
-                  ))}
-                  {sorted.length === 0 && <p className="text-sm text-[#1B2A4A]/40 sm:col-span-2">Aucun système enregistré pour {matchTeam}.</p>}
-                </div>
+            return (
+              <div className="max-w-3xl">
+                <button onClick={() => { setActiveMatchId(null); setTfFilters([]); setNewPlayOpen(false); }}
+                  className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] mb-3">← Retour aux matchs</button>
+                <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>{team?.nom || "Nous"} vs {activeMatch.scoutedTeam}</h2>
+                <p className="text-xs text-[#1B2A4A]/40 mb-5">
+                  {activeMatch.date ? new Date(activeMatch.date).toLocaleDateString("fr-FR") : "Date inconnue"}{activeMatch.championnat && ` · ${activeMatch.championnat}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} comptabilisé{totalTally !== 1 ? "s" : ""}
+                </p>
 
-                {matchSessions.filter(m => m.scoutedTeam === matchTeam).length > 0 && (
-                  <div className="mt-8">
-                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-2">Matchs enregistrés contre {matchTeam}</div>
-                    <div className="flex flex-col gap-2">
-                      {matchSessions.filter(m => m.scoutedTeam === matchTeam).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map(m => {
-                        const topPlayId = Object.entries(m.tally || {}).sort((a, b) => b[1] - a[1])[0]?.[0];
-                        const topPlay = plays.find(p => p.id === topPlayId);
-                        return (
-                          <div key={m.id} className="flex items-center justify-between border border-[#1B2A4A]/10 rounded-lg bg-white/50 px-3 py-2 text-sm">
-                            <span className="text-[#1B2A4A]">{m.date ? new Date(m.date).toLocaleDateString("fr-FR") : "Date inconnue"} {m.championnat && `· ${m.championnat}`}</span>
-                            <span className="text-[#1B2A4A]/50 text-xs">{topPlay ? `Le + joué : ${topPlay.titre}` : ""}</span>
-                            <button onClick={() => saveMatchSessions(matchSessions.filter(x => x.id !== m.id))} className="text-[#1B2A4A]/30 hover:text-red-600"><Trash2 size={14} /></button>
-                          </div>
-                        );
-                      })}
+                {tfOptions.length > 0 && (
+                  <div className="mb-3">
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Temps fort observé</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {tfOptions.map(tf => (
+                        <button key={tf} onClick={() => setTfFilters(f => f.includes(tf) ? f.filter(x => x !== tf) : [...f, tf])}
+                          className={`px-3 py-1.5 rounded-full text-sm font-medium border ${tfFilters.includes(tf) ? "" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
+                          style={tfFilters.includes(tf) ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
+                          {tf}
+                        </button>
+                      ))}
+                      {tfFilters.length > 0 && (
+                        <button onClick={() => setTfFilters([])} className="px-3 py-1.5 rounded-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A]">✕ Effacer</button>
+                      )}
                     </div>
                   </div>
                 )}
+
+                <div className="mb-6">
+                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">
+                    {tfFilters.length > 0 ? `${filteredPlays.length} système${filteredPlays.length !== 1 ? "s" : ""} correspondant${filteredPlays.length !== 1 ? "s" : ""}` : "Tous les systèmes"}
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {filteredPlays.map(p => (
+                      <button key={p.id} onClick={() => tallyPlay(p.id)}
+                        className="flex items-center justify-between text-left border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-3 hover:border-[#FF6B35] hover:shadow-md transition-all active:scale-[0.98]">
+                        <div>
+                          <div className="font-semibold text-[#1B2A4A]">{p.titre}</div>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {tfOf(p).map((t, i) => <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-[#1B2A4A]/10 text-[#1B2A4A]/70">{t}</span>)}
+                            {p.intention && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35]">{p.intention}</span>}
+                          </div>
+                        </div>
+                        <span className="text-2xl font-bold flex-shrink-0 ml-3" style={{ color: "var(--sport-accent)" }}>{activeMatch.tally?.[p.id] || 0}</span>
+                      </button>
+                    ))}
+                    {filteredPlays.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucun système ne correspond à ce filtre.</p>}
+                  </div>
+                </div>
+
+                {newPlayOpen ? (
+                  <div className="flex items-center gap-2 mb-6">
+                    <input autoFocus value={newPlayName} onChange={e => setNewPlayName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && newPlayName.trim()) {
+                          const np = { id: uid(), titre: newPlayName.trim(), type: PLAY_TYPES[0], scoutedTeam: activeMatch.scoutedTeam, tempsFort: tfFilters, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
+                          savePlays([...plays, np]);
+                          tallyPlay(np.id);
+                        }
+                        if (e.key === "Escape") { setNewPlayOpen(false); setNewPlayName(""); }
+                      }}
+                      placeholder="Nom du nouveau système" className="flex-1 border border-[#FF6B35] rounded-md px-3 py-2 text-sm outline-none" />
+                    <button onClick={() => {
+                      if (!newPlayName.trim()) return;
+                      const np = { id: uid(), titre: newPlayName.trim(), type: PLAY_TYPES[0], scoutedTeam: activeMatch.scoutedTeam, tempsFort: tfFilters, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
+                      savePlays([...plays, np]);
+                      tallyPlay(np.id);
+                    }} className="text-sm font-semibold text-white px-3 py-2 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>Ajouter</button>
+                    <button onClick={() => { setNewPlayOpen(false); setNewPlayName(""); }} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={18} /></button>
+                  </div>
+                ) : (
+                  <button onClick={() => setNewPlayOpen(true)} className="mb-6 px-4 py-2 rounded-md text-sm font-semibold border-2 border-dashed border-[#FF6B35]/40 text-[#FF6B35] hover:border-[#FF6B35] hover:bg-[#FF6B35]/5 transition-colors">
+                    + Nouveau play
+                  </button>
+                )}
+
+                <div className="flex items-center justify-between border-t border-[#1B2A4A]/10 pt-4">
+                  <span className="text-xs text-[#1B2A4A]/40">Classement par fréquence : {sorted.filter(p => activeMatch.tally?.[p.id]).map(p => `${p.titre} (${activeMatch.tally[p.id]})`).join(", ") || "aucun système compté pour l'instant"}</span>
+                  <button onClick={async () => {
+                    const ok = await cpbAlert?.("Réinitialiser le comptage de ce match ? Les valeurs actuelles seront perdues.", { confirm: true });
+                    if (ok) updateActiveMatch({ tally: {} });
+                  }} className="text-xs text-red-500 hover:underline flex-shrink-0 ml-3">Réinitialiser</button>
+                </div>
               </div>
+            );
+          }
+
+          // ── Vue "liste des matchs" ──────────────────────────────────────────────
+          return (
+          <div className="max-w-3xl">
+            <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>MODE MATCH</h2>
+            <p className="text-xs text-[#1B2A4A]/40 mb-5">Fonctionnalité en test, visible uniquement par toi (admin). Planifie un match, puis clique dessus pour activer la saisie en direct.</p>
+
+            {newMatchOpen ? (
+              <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-5">
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Date du match</div>
+                    <input type="date" value={newMatchDate} onChange={e => setNewMatchDate(e.target.value)}
+                      className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Championnat</div>
+                    <input value={newMatchChampionnat} onChange={e => setNewMatchChampionnat(e.target.value)} placeholder="Ex: NM1"
+                      className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                  </div>
+                </div>
+                <div className="mb-3">
+                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Équipe adverse (scoutée dans le Playbook)</div>
+                  <input value={newMatchScoutedTeam} onChange={e => setNewMatchScoutedTeam(e.target.value)} placeholder="Ex: Besançon"
+                    list="scouted-teams-list" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                  <datalist id="scouted-teams-list">{scoutedTeams.map(t => <option key={t} value={t} />)}</datalist>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => {
+                    if (!newMatchScoutedTeam.trim()) { cpbAlert?.("Indique l'équipe adverse."); return; }
+                    const m = { id: uid(), date: newMatchDate, championnat: newMatchChampionnat.trim(), ourTeam: team?.nom || "", scoutedTeam: newMatchScoutedTeam.trim(), tally: {}, createdAt: new Date().toISOString() };
+                    saveMatchSessions([...matchSessions, m]);
+                    setNewMatchOpen(false); setNewMatchChampionnat(""); setNewMatchScoutedTeam("");
+                    setActiveMatchId(m.id);
+                  }} className="text-sm font-semibold text-white px-4 py-2 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>Créer le match</button>
+                  <button onClick={() => setNewMatchOpen(false)} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] px-4 py-2">Annuler</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setNewMatchOpen(true)} className="mb-5 px-4 py-2 rounded-md text-sm font-semibold text-white flex items-center gap-1.5" style={{ backgroundColor: "var(--sport-accent)" }}>
+                <Plus size={15} /> Nouveau match
+              </button>
             )}
+
+            <div className="flex flex-col gap-2">
+              {[...matchSessions].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map(m => {
+                const topPlayId = Object.entries(m.tally || {}).sort((a, b) => b[1] - a[1])[0]?.[0];
+                const topPlay = plays.find(p => p.id === topPlayId);
+                const total = Object.values(m.tally || {}).reduce((s, n) => s + n, 0);
+                return (
+                  <div key={m.id} onClick={() => setActiveMatchId(m.id)}
+                    className="flex items-center justify-between border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 cursor-pointer hover:border-[#FF6B35] hover:shadow-md transition-all">
+                    <div>
+                      <div className="font-semibold text-[#1B2A4A]">{m.ourTeam || "Nous"} vs {m.scoutedTeam}</div>
+                      <div className="text-xs text-[#1B2A4A]/50">{m.date ? new Date(m.date).toLocaleDateString("fr-FR") : "Date inconnue"}{m.championnat && ` · ${m.championnat}`}{total > 0 && ` · ${total} système${total !== 1 ? "s" : ""} comptabilisé${total !== 1 ? "s" : ""}`}{topPlay && ` · Le + joué : ${topPlay.titre}`}</div>
+                    </div>
+                    <button onClick={(e) => { e.stopPropagation(); saveMatchSessions(matchSessions.filter(x => x.id !== m.id)); }}
+                      className="text-[#1B2A4A]/30 hover:text-red-600 flex-shrink-0 ml-3"><Trash2 size={16} /></button>
+                  </div>
+                );
+              })}
+              {matchSessions.length === 0 && !newMatchOpen && <p className="text-sm text-[#1B2A4A]/40">Aucun match planifié pour l'instant.</p>}
+            </div>
           </div>
           );
         })()}
