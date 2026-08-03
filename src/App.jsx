@@ -5233,7 +5233,12 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
   const [titre, setTitre] = useState(initial?.titre || "");
   const [type, setType] = useState(initial?.type || PLAY_TYPES[0]);
   const [scoutedTeam, setScoutedTeam] = useState(initial?.scoutedTeam || "");
-  const [tempsFort, setTempsFort] = useState(initial?.tempsFort || "");
+  const [tempsFort, setTempsFort] = useState(() => {
+    const t = initial?.tempsFort;
+    if (Array.isArray(t)) return t;
+    return t ? [t] : [];
+  });
+  const [newTempsFort, setNewTempsFort] = useState("");
   const [intention, setIntention] = useState(initial?.intention || "");
   const [description, setDescription] = useState(initial?.description || "");
   const [notes, setNotes] = useState(initial?.notes || "");
@@ -5293,9 +5298,29 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Temps fort</div>
-          <input value={tempsFort} onChange={e => setTempsFort(e.target.value)} placeholder="Ex: Horn, Ram pick..."
-            className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm bg-white/60" />
+          <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Temps fort <span className="normal-case text-[#1B2A4A]/40">(3 max)</span></div>
+          {tempsFort.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-1.5">
+              {tempsFort.map((t, i) => (
+                <span key={i} className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-[#1B2A4A]/10 text-[#1B2A4A]">
+                  {t}
+                  <button type="button" onClick={() => setTempsFort(arr => arr.filter((_, j) => j !== i))} className="text-[#1B2A4A]/50 hover:text-red-600">✕</button>
+                </span>
+              ))}
+            </div>
+          )}
+          {tempsFort.length < 3 && (
+            <input value={newTempsFort} onChange={e => setNewTempsFort(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && newTempsFort.trim()) {
+                  e.preventDefault();
+                  setTempsFort(arr => [...arr, newTempsFort.trim()]);
+                  setNewTempsFort("");
+                }
+              }}
+              placeholder="Ex: Horn, Ram pick... (Entrée pour ajouter)"
+              className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm bg-white/60" />
+          )}
         </div>
         <div>
           <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Intention</div>
@@ -5428,7 +5453,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
             const ok = await cpbAlert?.("Un schéma est en cours de dessin et n'a pas été validé (bouton \"Utiliser ce schéma\") — il sera perdu si tu enregistres maintenant. Continuer sans le sauvegarder ?", { confirm: true });
             if (!ok) return;
           }
-          onSave({ id: initial?.id || uid(), titre, type, scoutedTeam: scoutedTeam.trim(), tempsFort: tempsFort.trim(), intention: intention.trim(), description, notes, tags: selectedTags, images, schemas, createdAt: initial?.createdAt || new Date().toISOString() });
+          onSave({ id: initial?.id || uid(), titre, type, scoutedTeam: scoutedTeam.trim(), tempsFort, intention: intention.trim(), description, notes, tags: selectedTags, images, schemas, createdAt: initial?.createdAt || new Date().toISOString() });
         }} className="px-5 py-2 text-sm font-medium rounded-md bg-[#FF6B35] text-white hover:bg-[#e85a28]">Enregistrer</button>
       </div>
     </div>
@@ -7544,7 +7569,9 @@ function CoachingProBoost({ session }) {
                         <span className="text-2xl font-bold flex-shrink-0" style={{ color: "var(--sport-accent)" }}>{matchTally[p.id] || 0}</span>
                       </div>
                       <div className="flex flex-wrap gap-1">
-                        {p.tempsFort && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#1B2A4A]/10 text-[#1B2A4A]/70">{p.tempsFort}</span>}
+                        {(Array.isArray(p.tempsFort) ? p.tempsFort : p.tempsFort ? [p.tempsFort] : []).map((t, i) => (
+                          <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-[#1B2A4A]/10 text-[#1B2A4A]/70">{t}</span>
+                        ))}
                         {p.intention && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35]">{p.intention}</span>}
                       </div>
                     </button>
