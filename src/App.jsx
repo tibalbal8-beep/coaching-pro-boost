@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
-import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera, Share2 } from "lucide-react";
+import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera, Share2, Zap } from "lucide-react";
 import { storage, supabase, isPasswordRecoveryUrl } from "./storage";
 import JSZip from "jszip";
 import QRCode from "qrcode";
@@ -5233,6 +5233,8 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
   const [titre, setTitre] = useState(initial?.titre || "");
   const [type, setType] = useState(initial?.type || PLAY_TYPES[0]);
   const [scoutedTeam, setScoutedTeam] = useState(initial?.scoutedTeam || "");
+  const [tempsFort, setTempsFort] = useState(initial?.tempsFort || "");
+  const [intention, setIntention] = useState(initial?.intention || "");
   const [description, setDescription] = useState(initial?.description || "");
   const [notes, setNotes] = useState(initial?.notes || "");
   const [images, setImages] = useState(
@@ -5288,6 +5290,18 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
         <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Équipe scoutée</div>
         <input value={scoutedTeam} onChange={e => setScoutedTeam(e.target.value)} placeholder="Ex: US Munster (facultatif)"
           className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm bg-white/60" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Temps fort</div>
+          <input value={tempsFort} onChange={e => setTempsFort(e.target.value)} placeholder="Ex: Horn, Ram pick..."
+            className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm bg-white/60" />
+        </div>
+        <div>
+          <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Intention</div>
+          <input value={intention} onChange={e => setIntention(e.target.value)} placeholder="Ex: Top52..."
+            className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm bg-white/60" />
+        </div>
       </div>
       <div className="border border-[#1B2A4A]/15 rounded-xl overflow-hidden">
         <button type="button" onClick={() => setTagsOpen(o => !o)}
@@ -5414,7 +5428,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
             const ok = await cpbAlert?.("Un schéma est en cours de dessin et n'a pas été validé (bouton \"Utiliser ce schéma\") — il sera perdu si tu enregistres maintenant. Continuer sans le sauvegarder ?", { confirm: true });
             if (!ok) return;
           }
-          onSave({ id: initial?.id || uid(), titre, type, scoutedTeam: scoutedTeam.trim(), description, notes, tags: selectedTags, images, schemas, createdAt: initial?.createdAt || new Date().toISOString() });
+          onSave({ id: initial?.id || uid(), titre, type, scoutedTeam: scoutedTeam.trim(), tempsFort: tempsFort.trim(), intention: intention.trim(), description, notes, tags: selectedTags, images, schemas, createdAt: initial?.createdAt || new Date().toISOString() });
         }} className="px-5 py-2 text-sm font-medium rounded-md bg-[#FF6B35] text-white hover:bg-[#e85a28]">Enregistrer</button>
       </div>
     </div>
@@ -6303,6 +6317,8 @@ function CoachingProBoost({ session }) {
   const [confirmDeletePlayerId, setConfirmDeletePlayerId] = useState(null);
   const [newPlayerName, setNewPlayerName] = useState("");
   const [indivForm, setIndivForm] = useState(null); // { date, duree, theme, contenu, notes } en cours d'ajout
+  const [matchTeam, setMatchTeam] = useState(null);
+  const [matchTally, setMatchTally] = useState({}); // playId -> nombre de fois joué (remis à zéro par match)
   const [bookletSelection, setBookletSelection] = useState(null); // null = tous sélectionnés (défaut)
   const bookletSelectedIds = bookletSelection ?? exercises.map(e => e.id);
   const toggleBookletExercise = (id) => {
@@ -6947,6 +6963,7 @@ function CoachingProBoost({ session }) {
               { key: "playbook", label: "Play Book", icon: BookOpen },
               { key: "stats", label: "Stats", icon: BarChart3 },
               ...(isAdmin ? [{ key: "suivi", label: "Suivi individuel (admin)", icon: UserCheck }] : []),
+              ...(isAdmin ? [{ key: "matchmode", label: "Mode match (admin)", icon: Zap }] : []),
               { key: "account", label: "Mon compte", icon: Users },
             ].map(item => {
               const active = view === item.key || view === item.alsoActive;
@@ -7484,6 +7501,55 @@ function CoachingProBoost({ session }) {
                     );
                   })}
                   {playerSessions.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucune séance individuelle enregistrée pour ce joueur.</p>}
+                </div>
+              </div>
+            )}
+          </div>
+          );
+        })()}
+
+        {view === "matchmode" && isAdmin && (() => {
+          const scoutedTeams = [...new Set(plays.map(p => p.scoutedTeam).filter(Boolean))].sort();
+          const teamPlays = matchTeam ? plays.filter(p => p.scoutedTeam === matchTeam) : [];
+          const sorted = [...teamPlays].sort((a, b) => (matchTally[b.id] || 0) - (matchTally[a.id] || 0));
+          const totalTally = teamPlays.reduce((sum, p) => sum + (matchTally[p.id] || 0), 0);
+          return (
+          <div className="max-w-3xl">
+            <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>MODE MATCH</h2>
+            <p className="text-xs text-[#1B2A4A]/40 mb-5">Fonctionnalité en test, visible uniquement par toi (admin). Tape sur un système à chaque fois que l'équipe adverse le joue, pour voir en direct ce qu'elle utilise le plus.</p>
+
+            <div className="flex flex-wrap gap-1.5 mb-5">
+              {scoutedTeams.map(t => (
+                <button key={t} onClick={() => setMatchTeam(t)}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium border ${matchTeam === t ? "" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
+                  style={matchTeam === t ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
+                  {t}
+                </button>
+              ))}
+              {scoutedTeams.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucune équipe scoutée dans le Playbook pour l'instant — renseigne "Équipe scoutée" sur un play.</p>}
+            </div>
+
+            {matchTeam && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-sm text-[#1B2A4A]/60"><strong className="text-[#1B2A4A]">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} comptabilisé{totalTally !== 1 ? "s" : ""}</span>
+                  <button onClick={() => setMatchTally({})} className="text-xs text-red-500 hover:underline">Réinitialiser le comptage</button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {sorted.map(p => (
+                    <button key={p.id} onClick={() => setMatchTally(t => ({ ...t, [p.id]: (t[p.id] || 0) + 1 }))}
+                      className="text-left border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 hover:border-[#FF6B35] hover:shadow-md transition-all active:scale-[0.98]">
+                      <div className="flex items-start justify-between mb-1.5 gap-2">
+                        <span className="font-semibold text-[#1B2A4A]">{p.titre}</span>
+                        <span className="text-2xl font-bold flex-shrink-0" style={{ color: "var(--sport-accent)" }}>{matchTally[p.id] || 0}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {p.tempsFort && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#1B2A4A]/10 text-[#1B2A4A]/70">{p.tempsFort}</span>}
+                        {p.intention && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35]">{p.intention}</span>}
+                      </div>
+                    </button>
+                  ))}
+                  {sorted.length === 0 && <p className="text-sm text-[#1B2A4A]/40 sm:col-span-2">Aucun système enregistré pour {matchTeam}.</p>}
                 </div>
               </div>
             )}
