@@ -13,7 +13,7 @@ import sharp from "sharp";
 const CARD_W = 1200, CARD_H = 630, CARD_BG = "#F2EDE4";
 
 export default async function handler(req, res) {
-  const { token } = req.query;
+  const { token, index } = req.query;
   if (!token || !/^[a-z0-9]+$/i.test(token)) return res.status(400).send("Token manquant");
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -22,7 +22,12 @@ export default async function handler(req, res) {
 
   const ex = data.exercise_data || {};
   const isSafeImage = (src) => typeof src === "string" && /^data:image\/(png|jpe?g|webp);base64,/.test(src);
-  const source = (ex.schemas || []).find(isSafeImage) || (isSafeImage(ex.file?.data) ? ex.file.data : null);
+  const allImages = [
+    ...(isSafeImage(ex.file?.data) ? [ex.file.data] : []),
+    ...(ex.schemas || []).filter(isSafeImage),
+  ];
+  const idx = Math.min(Math.max(0, parseInt(index, 10) || 0), Math.max(0, allImages.length - 1));
+  const source = allImages[idx] || null;
   if (!source) return res.status(404).send("Pas d'image");
 
   const match = source.match(/^data:(image\/[a-z]+);base64,(.+)$/);
