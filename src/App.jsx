@@ -6355,6 +6355,7 @@ function CoachingProBoost({ session }) {
   const [newMatchChampionnat, setNewMatchChampionnat] = useState("");
   const [newMatchScoutedTeam, setNewMatchScoutedTeam] = useState("");
   const [tfFilters, setTfFilters] = useState([]);
+  const [newTfInput, setNewTfInput] = useState("");
   const [newPlayOpen, setNewPlayOpen] = useState(false);
   const [newPlayName, setNewPlayName] = useState("");
   const [bookletSelection, setBookletSelection] = useState(null); // null = tous sélectionnés (défaut)
@@ -7575,23 +7576,31 @@ function CoachingProBoost({ session }) {
                   {activeMatch.date ? new Date(activeMatch.date).toLocaleDateString("fr-FR") : "Date inconnue"}{activeMatch.championnat && ` · ${activeMatch.championnat}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} comptabilisé{totalTally !== 1 ? "s" : ""}
                 </p>
 
-                {tfOptions.length > 0 && (
-                  <div className="mb-3">
-                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Temps fort observé</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {tfOptions.map(tf => (
-                        <button key={tf} onClick={() => setTfFilters(f => f.includes(tf) ? f.filter(x => x !== tf) : [...f, tf])}
-                          className={`px-3 py-1.5 rounded-full text-sm font-medium border ${tfFilters.includes(tf) ? "" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
-                          style={tfFilters.includes(tf) ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
-                          {tf}
-                        </button>
-                      ))}
-                      {tfFilters.length > 0 && (
-                        <button onClick={() => setTfFilters([])} className="px-3 py-1.5 rounded-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A]">✕ Effacer</button>
-                      )}
-                    </div>
+                <div className="mb-3">
+                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Temps fort observé</div>
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    {[...new Set([...tfOptions, ...tfFilters])].map(tf => (
+                      <button key={tf} onClick={() => setTfFilters(f => f.includes(tf) ? f.filter(x => x !== tf) : [...f, tf])}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium border ${tfFilters.includes(tf) ? "" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
+                        style={tfFilters.includes(tf) ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
+                        {tf}
+                      </button>
+                    ))}
+                    {tfFilters.length > 0 && (
+                      <button onClick={() => setTfFilters([])} className="px-3 py-1.5 rounded-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A]">✕ Effacer</button>
+                    )}
+                    <input value={newTfInput} onChange={e => setNewTfInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && newTfInput.trim()) {
+                          e.preventDefault();
+                          const tf = newTfInput.trim();
+                          setTfFilters(f => f.includes(tf) ? f : [...f, tf]);
+                          setNewTfInput("");
+                        }
+                      }}
+                      placeholder="+ Écrire un temps fort..." className="px-3 py-1.5 rounded-full text-sm border border-dashed border-[#1B2A4A]/30 outline-none focus:border-[#FF6B35] w-44" />
                   </div>
-                )}
+                </div>
 
                 <div className="mb-6">
                   <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">
