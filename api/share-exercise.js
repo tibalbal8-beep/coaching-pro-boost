@@ -23,7 +23,8 @@ export default async function handler(req, res) {
   const isSafeImage = (src) => typeof src === "string" && /^data:image\/(png|jpe?g|webp);base64,/.test(src);
   const hasImage = (ex.schemas || []).some(isSafeImage) || isSafeImage(ex.file?.data);
   const imageUrl = hasImage ? `https://coachingproboost.com/api/share-exercise-image?token=${token}` : "https://coachingproboost.com/logo-full.png";
-  const desc = [ex.duree ? `${ex.duree} min` : null, ex.format, ex.niveau].filter(Boolean).join(" · ") || "Un exercice partagé depuis Coaching Pro Boost";
+  const themesList = (ex.themes || []).join(", ");
+  const desc = `Intègre cet exercice à ta bibliothèque Coaching Pro Boost${themesList ? `, tu travailleras ${themesList}` : ""}.`;
 
   const html = `<!DOCTYPE html>
 <html lang="fr">
