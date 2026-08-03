@@ -372,6 +372,8 @@ function useStore(sport = DEFAULT_SPORT) {
   const [players, setPlayers] = useState([]);
   const [individualSessions, setIndividualSessions] = useState([]);
   const individualSessionsKey = `individualSessions:${sport}`;
+  const [matchSessions, setMatchSessions] = useState([]);
+  const matchSessionsKey = `matchSessions:${sport}`;
   const [plays, setPlays] = useState([]);
   const [playTags, setPlayTags] = useState([]);
   const [clubLogo, setClubLogo] = useState(null);
@@ -430,6 +432,10 @@ function useStore(sport = DEFAULT_SPORT) {
       try {
         const is = await storage.get(individualSessionsKey);
         setIndividualSessions(is ? JSON.parse(is.value) : []);
+      } catch {}
+      try {
+        const ms = await storage.get(matchSessionsKey);
+        setMatchSessions(ms ? JSON.parse(ms.value) : []);
       } catch {}
       setLoaded(true);
     })();
@@ -493,6 +499,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const saveActiveTeamId = (next) => { setActiveTeamId(next); persist("activeTeamId", JSON.stringify(next)); };
   const savePlayers = (next) => { setPlayers(next); persist("players", JSON.stringify(next)); };
   const saveIndividualSessions = (next) => { setIndividualSessions(next); persist(individualSessionsKey, JSON.stringify(next)); };
+  const saveMatchSessions = (next) => { setMatchSessions(next); persist(matchSessionsKey, JSON.stringify(next)); };
   const savePlays = async (next) => {
     for (const play of next) {
       for (const img of play.images || []) {
@@ -525,7 +532,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, formats, teams, activeTeamId, players, individualSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist };
+  return { exercises, sessions, themes, formats, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist };
 }
 
 function usePdfJs() {
@@ -5897,7 +5904,7 @@ function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAl
 function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
   const { announcement, dismiss: dismissAnnouncement, isAdmin, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
-  const { exercises, sessions, themes, formats, teams, activeTeamId, players, individualSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore(sport);
+  const { exercises, sessions, themes, formats, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
   const SPORT_FORMATS = formats;
@@ -6344,6 +6351,8 @@ function CoachingProBoost({ session }) {
   const [indivForm, setIndivForm] = useState(null); // { date, duree, theme, contenu, notes } en cours d'ajout
   const [matchTeam, setMatchTeam] = useState(null);
   const [matchTally, setMatchTally] = useState({}); // playId -> nombre de fois joué (remis à zéro par match)
+  const [matchDate, setMatchDate] = useState(new Date().toISOString().slice(0, 10));
+  const [matchChampionnat, setMatchChampionnat] = useState("");
   const [bookletSelection, setBookletSelection] = useState(null); // null = tous sélectionnés (défaut)
   const bookletSelectedIds = bookletSelection ?? exercises.map(e => e.id);
   const toggleBookletExercise = (id) => {
@@ -7556,9 +7565,42 @@ function CoachingProBoost({ session }) {
 
             {matchTeam && (
               <div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4 border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4">
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Date du match</div>
+                    <input type="date" value={matchDate} onChange={e => setMatchDate(e.target.value)}
+                      className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                  </div>
+                  <div className="col-span-2 sm:col-span-1">
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Championnat</div>
+                    <input value={matchChampionnat} onChange={e => setMatchChampionnat(e.target.value)} placeholder="Ex: NM1"
+                      className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Opposition</div>
+                    <div className="text-sm text-[#1B2A4A] px-2 py-1.5">{team?.nom || "—"} vs {matchTeam}</div>
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-sm text-[#1B2A4A]/60"><strong className="text-[#1B2A4A]">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} comptabilisé{totalTally !== 1 ? "s" : ""}</span>
-                  <button onClick={() => setMatchTally({})} className="text-xs text-red-500 hover:underline">Réinitialiser le comptage</button>
+                  <div className="flex items-center gap-3">
+                    <button onClick={async () => {
+                      const ok = await cpbAlert?.("Réinitialiser le comptage de ce match ? Les valeurs actuelles seront perdues si tu ne les as pas enregistrées.", { confirm: true });
+                      if (ok) setMatchTally({});
+                    }} className="text-xs text-red-500 hover:underline">Réinitialiser le comptage</button>
+                    {totalTally > 0 && (
+                      <button onClick={() => {
+                        saveMatchSessions([...matchSessions, {
+                          id: uid(), date: matchDate, championnat: matchChampionnat, ourTeam: team?.nom || "", scoutedTeam: matchTeam,
+                          tally: matchTally, createdAt: new Date().toISOString(),
+                        }]);
+                        setMatchTally({});
+                      }} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>
+                        Terminer et enregistrer ce match
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {sorted.map(p => (
@@ -7578,6 +7620,25 @@ function CoachingProBoost({ session }) {
                   ))}
                   {sorted.length === 0 && <p className="text-sm text-[#1B2A4A]/40 sm:col-span-2">Aucun système enregistré pour {matchTeam}.</p>}
                 </div>
+
+                {matchSessions.filter(m => m.scoutedTeam === matchTeam).length > 0 && (
+                  <div className="mt-8">
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-2">Matchs enregistrés contre {matchTeam}</div>
+                    <div className="flex flex-col gap-2">
+                      {matchSessions.filter(m => m.scoutedTeam === matchTeam).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).map(m => {
+                        const topPlayId = Object.entries(m.tally || {}).sort((a, b) => b[1] - a[1])[0]?.[0];
+                        const topPlay = plays.find(p => p.id === topPlayId);
+                        return (
+                          <div key={m.id} className="flex items-center justify-between border border-[#1B2A4A]/10 rounded-lg bg-white/50 px-3 py-2 text-sm">
+                            <span className="text-[#1B2A4A]">{m.date ? new Date(m.date).toLocaleDateString("fr-FR") : "Date inconnue"} {m.championnat && `· ${m.championnat}`}</span>
+                            <span className="text-[#1B2A4A]/50 text-xs">{topPlay ? `Le + joué : ${topPlay.titre}` : ""}</span>
+                            <button onClick={() => saveMatchSessions(matchSessions.filter(x => x.id !== m.id))} className="text-[#1B2A4A]/30 hover:text-red-600"><Trash2 size={14} /></button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
