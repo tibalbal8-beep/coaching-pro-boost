@@ -7635,6 +7635,7 @@ function CoachingProBoost({ session }) {
                           <div className="text-right flex-shrink-0">
                             <div className="text-xl font-bold" style={{ color: "var(--sport-accent)" }}>{played}</div>
                             {possible > 0 && <div className="text-[10px] text-[#1B2A4A]/40">{points}/{possible} pts</div>}
+                            {played > 0 && <div className="text-[10px] font-semibold text-[#1B2A4A]/60">{(points / played).toFixed(2)} pts/poss.</div>}
                           </div>
                         </div>
                         <div className="flex items-center gap-1 flex-wrap">
