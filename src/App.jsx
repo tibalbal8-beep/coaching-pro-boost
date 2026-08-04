@@ -6239,15 +6239,24 @@ function CoachingProBoost({ session }) {
 </body>
 </html>`;
 
+    // Ouvre le rapport dans un nouvel onglet et déclenche directement l'impression : en
+    // choisissant "Enregistrer au format PDF" comme destination, ça donne un vrai PDF (rendu par
+    // le navigateur, fidèle à la mise en page) au lieu de télécharger un fichier .html brut.
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${(title || "scouting").replace(/[^a-z0-9]+/gi, "_")}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const win = window.open(url, "_blank");
+    if (win) {
+      win.addEventListener("load", () => { win.focus(); win.print(); });
+    } else {
+      // Popup bloquée par le navigateur : repli sur le téléchargement du fichier HTML
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(title || "scouting").replace(/[^a-z0-9]+/gi, "_")}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
     setSelectedPlays([]);
     setScoutingTitle("");
   };
