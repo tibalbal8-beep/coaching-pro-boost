@@ -6195,7 +6195,7 @@ function CoachingProBoost({ session }) {
     }
   };
 
-  const exportPlaysPDF = async (selectedIds, title) => {
+  const buildScoutingReportHtml = async (selectedIds, title) => {
     const selectedPlaysData = await Promise.all(
       plays.filter(p => selectedIds.includes(p.id)).map(async (play) => {
         const images = await Promise.all((play.images || []).map(async (img) => {
@@ -6267,10 +6267,30 @@ function CoachingProBoost({ session }) {
   </div>
 </body>
 </html>`;
+    return html;
+  };
 
-    // Ouvre le rapport dans un nouvel onglet et déclenche directement l'impression : en
-    // choisissant "Enregistrer au format PDF" comme destination, ça donne un vrai PDF (rendu par
-    // le navigateur, fidèle à la mise en page) au lieu de télécharger un fichier .html brut.
+  // Export classique : télécharge le rapport en fichier .html brut.
+  const exportPlaysHtml = async (selectedIds, title) => {
+    const html = await buildScoutingReportHtml(selectedIds, title);
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(title || "scouting").replace(/[^a-z0-9]+/gi, "_")}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setSelectedPlays([]);
+    setScoutingTitle("");
+  };
+
+  // Export impression/PDF : ouvre le rapport dans un nouvel onglet et déclenche directement
+  // l'impression — en choisissant "Enregistrer au format PDF" comme destination, ça donne un vrai
+  // PDF (rendu par le navigateur, fidèle à la mise en page) au lieu d'un fichier .html brut.
+  const exportPlaysPrint = async (selectedIds, title) => {
+    const html = await buildScoutingReportHtml(selectedIds, title);
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const win = window.open(url, "_blank");
@@ -7217,7 +7237,8 @@ function CoachingProBoost({ session }) {
                 <input value={scoutingTitle} onChange={e => setScoutingTitle(e.target.value)} placeholder="Titre du scouting (ex: Adversaire Finale)" className="w-full rounded-xl px-3 py-2 text-sm outline-none text-[#1B2A4A]" />
                 <div className="flex gap-2">
                   <button onClick={() => sharePlayCollection(selectedPlays, scoutingTitle)} className="flex-1 bg-white text-[#1B2A4A] py-2 rounded-xl text-sm font-bold">Partager</button>
-                  <button onClick={() => exportPlaysPDF(selectedPlays, scoutingTitle)} className="flex-1 bg-[#FF6B35] text-white py-2 rounded-xl text-sm font-bold">Exporter HTML</button>
+                  <button onClick={() => exportPlaysPrint(selectedPlays, scoutingTitle)} className="flex-1 bg-[#FF6B35] text-white py-2 rounded-xl text-sm font-bold">Export impression/PDF</button>
+                  <button onClick={() => exportPlaysHtml(selectedPlays, scoutingTitle)} className="flex-1 bg-white text-[#1B2A4A] border border-[#1B2A4A]/20 py-2 rounded-xl text-sm font-bold">Exporter HTML</button>
                   <button onClick={() => setSelectedPlays([])} className="px-4 py-2 rounded-xl text-sm text-white/60 border border-white/20">✕</button>
                 </div>
               </div>
