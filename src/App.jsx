@@ -138,6 +138,35 @@ const PLAY_TYPES = ["Système offensif", "ATO", "SLOB", "BLOB"];
 const JOURS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+// Génère et télécharge un événement .ics (Apple Calendar, Google Calendar, Outlook...) pour une
+// séance individuelle programmée — juste une date (pas d'heure), donc événement "journée entière".
+function downloadIndividualSessionIcs(session, playerName) {
+  const escIcs = (s) => String(s ?? "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;");
+  const dateStr = (session.date || "").replace(/-/g, "");
+  const now = new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+  const summary = `Séance individuelle — ${playerName}${session.theme ? " — " + session.theme : ""}`;
+  const lines = [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Coaching Pro Boost//FR",
+    "BEGIN:VEVENT",
+    `UID:${session.id}@coachingproboost.com`,
+    `DTSTAMP:${now}`,
+    `DTSTART;VALUE=DATE:${dateStr}`,
+    `DTEND;VALUE=DATE:${dateStr}`,
+    `SUMMARY:${escIcs(summary)}`,
+    session.contenu ? `DESCRIPTION:${escIcs(session.contenu)}` : null,
+    "END:VEVENT", "END:VCALENDAR",
+  ].filter(Boolean);
+  const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `seance-${playerName.replace(/[^a-z0-9]+/gi, "_")}-${session.date || "date"}.ics`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
 // ex.categorie est un tableau depuis l'ajout de la sélection multiple ; les exercices
 // enregistrés avant avaient une simple chaîne — normalise pour rester compatible partout.
 const catList = (ex) => Array.isArray(ex?.categorie) ? ex.categorie : (ex?.categorie ? [ex.categorie] : []);
@@ -7382,6 +7411,16 @@ function CoachingProBoost({ session }) {
           const byTheme = {};
           playerSessions.forEach(s => { const t = s.theme || "Sans thème"; byTheme[t] = (byTheme[t] || 0) + (Number(s.duree) || 0); });
 
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const upcomingSessions = playerSessions.filter(s => s.date && s.date >= todayStr).sort((a, b) => new Date(a.date) - new Date(b.date));
+          const pastSessions = playerSessions.filter(s => !s.date || s.date < todayStr);
+          const pastByMonth = {};
+          pastSessions.forEach(s => {
+            const d = s.date ? new Date(s.date) : null;
+            const key = d ? d.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }) : "Date inconnue";
+            (pastByMonth[key] = pastByMonth[key] || []).push(s);
+          });
+
           return (
           <div className="max-w-3xl">
             <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>SUIVI INDIVIDUEL</h2>
@@ -7540,28 +7579,57 @@ function CoachingProBoost({ session }) {
                   </button>
                 )}
 
-                <div className="flex flex-col gap-2">
-                  {playerSessions.map(s => {
+                {(() => {
+                  const renderSessionCard = (s, { programmed = false } = {}) => {
                     const others = sessionPlayerIds(s).filter(id => id !== selectedPlayer.id).map(id => players.find(p => p.id === id)?.nom).filter(Boolean);
                     return (
-                    <div key={s.id} className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-semibold text-[#1B2A4A]">{s.date ? new Date(s.date).toLocaleDateString("fr-FR") : "Date inconnue"} {s.theme && `· ${s.theme}`}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-[#1B2A4A]/40">{s.duree || 0} min</span>
-                          <button onClick={() => setIndivForm({ id: s.id, playerIds: sessionPlayerIds(s), date: s.date || "", duree: s.duree || "", theme: s.theme || "", contenu: s.contenu || "", notes: s.notes || "" })}
-                            className="text-[#1B2A4A]/30 hover:text-[#1B2A4A]"><Pencil size={14} /></button>
-                          <button onClick={() => saveIndividualSessions(individualSessions.filter(x => x.id !== s.id))} className="text-[#1B2A4A]/30 hover:text-red-600"><Trash2 size={14} /></button>
+                      <div key={s.id} className={`border rounded-lg bg-white/70 p-3 ${programmed ? "border-[#2563EB]/30" : "border-[#1B2A4A]/15"}`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-semibold text-[#1B2A4A]">
+                            {programmed && <span className="text-[10px] font-bold uppercase tracking-wide text-[#2563EB] bg-[#2563EB]/10 rounded-full px-2 py-0.5 mr-2">Programmé</span>}
+                            {s.date ? new Date(s.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }) : "Date inconnue"} {s.theme && `· ${s.theme}`}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-[#1B2A4A]/40">{s.duree || 0} min</span>
+                            {s.date && (
+                              <button onClick={() => downloadIndividualSessionIcs(s, selectedPlayer.nom)}
+                                title="Ajouter à l'agenda" className="text-[#1B2A4A]/30 hover:text-[#2563EB]"><Clock size={14} /></button>
+                            )}
+                            <button onClick={() => setIndivForm({ id: s.id, playerIds: sessionPlayerIds(s), date: s.date || "", duree: s.duree || "", theme: s.theme || "", contenu: s.contenu || "", notes: s.notes || "" })}
+                              className="text-[#1B2A4A]/30 hover:text-[#1B2A4A]"><Pencil size={14} /></button>
+                            <button onClick={() => saveIndividualSessions(individualSessions.filter(x => x.id !== s.id))} className="text-[#1B2A4A]/30 hover:text-red-600"><Trash2 size={14} /></button>
+                          </div>
                         </div>
+                        {others.length > 0 && <p className="text-xs text-[#2563EB] mb-1">Avec {others.join(", ")}</p>}
+                        {s.contenu && <p className="text-sm text-[#1B2A4A]/70 mb-1">{s.contenu}</p>}
+                        {s.notes && <p className="text-xs text-[#1B2A4A]/40 italic">{s.notes}</p>}
                       </div>
-                      {others.length > 0 && <p className="text-xs text-[#2563EB] mb-1">Avec {others.join(", ")}</p>}
-                      {s.contenu && <p className="text-sm text-[#1B2A4A]/70 mb-1">{s.contenu}</p>}
-                      {s.notes && <p className="text-xs text-[#1B2A4A]/40 italic">{s.notes}</p>}
-                    </div>
                     );
-                  })}
-                  {playerSessions.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucune séance individuelle enregistrée pour ce joueur.</p>}
-                </div>
+                  };
+                  return (
+                    <>
+                      {upcomingSessions.length > 0 && (
+                        <div className="mb-6">
+                          <div className="text-xs uppercase tracking-wide text-[#2563EB] font-semibold mb-2">Programmé ({upcomingSessions.length})</div>
+                          <div className="flex flex-col gap-2">{upcomingSessions.map(s => renderSessionCard(s, { programmed: true }))}</div>
+                        </div>
+                      )}
+                      {Object.entries(pastByMonth).map(([month, sessions]) => {
+                        const monthMinutes = sessions.reduce((sum, s) => sum + (Number(s.duree) || 0), 0);
+                        return (
+                          <div key={month} className="mb-5">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold">{month}</span>
+                              <span className="text-xs text-[#1B2A4A]/40">{sessions.length} séance{sessions.length !== 1 ? "s" : ""} · {Math.round(monthMinutes / 6) / 10}h</span>
+                            </div>
+                            <div className="flex flex-col gap-2">{sessions.map(s => renderSessionCard(s))}</div>
+                          </div>
+                        );
+                      })}
+                      {playerSessions.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucune séance individuelle enregistrée pour ce joueur.</p>}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
