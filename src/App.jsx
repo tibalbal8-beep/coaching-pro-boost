@@ -6216,10 +6216,10 @@ function CoachingProBoost({ session }) {
     const token = new URLSearchParams(window.location.search).get("sharecollection");
     if (!token) return;
     window.history.replaceState({}, "", "/");
-    supabase.from("shared_exercise_collections").select("title, exercises, expires_at").eq("token", token).maybeSingle()
-      .then(({ data }) => {
+    supabase.from("shared_exercise_collections").select("title, exercises").eq("token", token).maybeSingle()
+      .then(({ data, error }) => {
+        if (error) { cpbAlert("Erreur de chargement du lien : " + error.message); return; }
         if (!data) { cpbAlert("Ce lien de partage est invalide ou a expiré."); return; }
-        if (data.expires_at && new Date(data.expires_at) < new Date()) { cpbAlert("Ce lien de partage a expiré."); return; }
         setSharedExerciseCollection(data);
       });
   }, []);
