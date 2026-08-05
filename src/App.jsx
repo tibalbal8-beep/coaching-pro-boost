@@ -5340,8 +5340,12 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
   const addTag = (tag) => {
     const trimmed = tag.trim();
     if (!trimmed) return;
-    if (!playTags.includes(trimmed)) savePlayTags([...playTags, trimmed]);
-    if (!selectedTags.includes(trimmed)) setSelectedTags(prev => [...prev, trimmed]);
+    // Réutilise le mot-clé existant (même casse) s'il y en a déjà un similaire, plutôt que de
+    // créer un quasi-doublon (ex: "Ecran" vs "ecran").
+    const existing = playTags.find(t => t.toLowerCase() === trimmed.toLowerCase());
+    const finalTag = existing || trimmed;
+    if (!existing) savePlayTags([...playTags, finalTag]);
+    if (!selectedTags.includes(finalTag)) setSelectedTags(prev => [...prev, finalTag]);
     setNewTagInput("");
   };
 
@@ -5406,22 +5410,31 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
             {selectedTags.map(t => <Tag key={t} active color="orange" onClick={() => setSelectedTags(prev => prev.filter(x => x !== t))}>{t}</Tag>)}
           </div>
         )}
-        {tagsOpen && (
+        {tagsOpen && (() => {
+          const q = newTagInput.trim().toLowerCase();
+          const filteredTags = q ? playTags.filter(t => t.toLowerCase().includes(q)) : playTags;
+          const exactExists = q && playTags.some(t => t.toLowerCase() === q);
+          return (
           <div className="px-4 py-3 bg-white/20 border-t border-[#1B2A4A]/10 space-y-2.5">
             <div className="flex flex-wrap gap-1.5">
-              {playTags.map(t => (
+              {filteredTags.map(t => (
                 <Tag key={t} active={selectedTags.includes(t)} onClick={() => setSelectedTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])} color="orange">{t}</Tag>
               ))}
+              {q && filteredTags.length === 0 && <span className="text-xs text-[#1B2A4A]/40">Aucun mot-clé existant ne correspond.</span>}
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
               <input value={newTagInput} onChange={e => setNewTagInput(e.target.value)}
-                placeholder="+ nouveau mot-clé"
+                placeholder="Chercher ou créer un mot-clé"
                 className="flex-1 text-xs border border-[#1B2A4A]/20 rounded-full px-3 py-1.5 focus:outline-none focus:border-[#FF6B35] bg-white/60"
                 onKeyDown={e => { if (e.key === "Enter") addTag(newTagInput); }} />
-              {newTagInput.trim() && <button type="button" onClick={() => addTag(newTagInput)} className="text-xs px-3 py-1.5 bg-[#FF6B35]/10 text-[#FF6B35] rounded-full font-medium hover:bg-[#FF6B35]/20">Ajouter</button>}
+              {q && (exactExists
+                ? <span className="text-xs text-[#1B2A4A]/40 whitespace-nowrap">Existe déjà, clique dessus ↑</span>
+                : <button type="button" onClick={() => addTag(newTagInput)} className="text-xs px-3 py-1.5 bg-[#FF6B35]/10 text-[#FF6B35] rounded-full font-medium hover:bg-[#FF6B35]/20 whitespace-nowrap">+ Créer "{newTagInput.trim()}"</button>
+              )}
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
       <div>
         <div className="flex items-center justify-between mb-2">
