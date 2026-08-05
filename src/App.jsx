@@ -1368,13 +1368,19 @@ function FilterAccordion({ label, activeCount, borderTop, children }) {
   );
 }
 
-function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage, onShare }) {
+function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage, onShare, selectMode = false, selected = false, onToggleSelect }) {
   const fileImage = useFileImage(ex);
   const schemas = useSchemasData(ex);
   const [carouselIdx, setCarouselIdx] = useState(0);
   const [confirmDel, setConfirmDel] = useState(false);
   return (
-    <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-4 relative group hover:shadow-md transition-shadow" onClick={onClick}>
+    <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-4 relative group hover:shadow-md transition-shadow" onClick={selectMode ? onToggleSelect : onClick}>
+      {selectMode && (
+        <div className="absolute top-2 left-2 z-10 w-5 h-5 rounded flex items-center justify-center border-2"
+          style={{ borderColor: selected ? "#FF6B35" : "#1B2A4A40", backgroundColor: selected ? "#FF6B35" : "#fff" }}>
+          {selected && <Check size={13} className="text-white" />}
+        </div>
+      )}
       <div className="flex items-start justify-between mb-2 cursor-pointer">
         <div className="flex items-center gap-2">
           {onRemove && (
@@ -6633,6 +6639,10 @@ function CoachingProBoost({ session }) {
   const importInputRef = useRef();
 
   const [librarySearch, setLibrarySearch] = useState("");
+  const [libSelectMode, setLibSelectMode] = useState(false);
+  const [librarySelectedIds, setLibrarySelectedIds] = useState([]);
+  const [libShareTitle, setLibShareTitle] = useState("");
+  const [libSharing, setLibSharing] = useState(false);
   const filtered = exercises.filter(ex =>
     (filterTheme.length === 0 || filterTheme.every(t => ex.themes?.includes(t))) &&
     (filterFormat.length === 0 || filterFormat.includes(ex.format)) &&
@@ -7287,8 +7297,41 @@ function CoachingProBoost({ session }) {
                 <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>BIBLIOTHÈQUE D'EXERCICES</h2>
                 <p className="text-sm text-[#1B2A4A]/50">{exercises.length} exercice{exercises.length !== 1 ? "s" : ""} enregistré{exercises.length !== 1 ? "s" : ""}</p>
               </div>
-              <button data-tour="add-exercise" onClick={() => setShowForm(true)} className="flex items-center gap-1.5 text-white px-4 py-2 rounded-md text-sm font-medium hover:brightness-90 transition-[filter]" style={{ backgroundColor: "var(--sport-accent)" }}><Plus size={16} /> Nouvel exercice</button>
+              <div className="flex items-center gap-2">
+                {isAdmin && (
+                  <button onClick={() => { setLibSelectMode(m => !m); setLibrarySelectedIds([]); }}
+                    className={`px-3 py-2 rounded-md text-sm font-medium border ${libSelectMode ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5"}`}>
+                    {libSelectMode ? "Annuler la sélection" : "Sélectionner plusieurs (admin)"}
+                  </button>
+                )}
+                <button data-tour="add-exercise" onClick={() => setShowForm(true)} className="flex items-center gap-1.5 text-white px-4 py-2 rounded-md text-sm font-medium hover:brightness-90 transition-[filter]" style={{ backgroundColor: "var(--sport-accent)" }}><Plus size={16} /> Nouvel exercice</button>
+              </div>
             </div>
+
+            {libSelectMode && (
+              <div className="bg-[#1B2A4A] rounded-2xl p-4 mb-4 flex flex-col gap-3">
+                <div className="text-white font-semibold text-sm">{librarySelectedIds.length} exercice{librarySelectedIds.length !== 1 ? "s" : ""} sélectionné{librarySelectedIds.length !== 1 ? "s" : ""}</div>
+                <input value={libShareTitle} onChange={e => setLibShareTitle(e.target.value)} placeholder="Titre du lot (ex: Pour Julien)" className="w-full rounded-xl px-3 py-2 text-sm outline-none text-[#1B2A4A]" />
+                <div className="flex gap-2">
+                  <button disabled={librarySelectedIds.length === 0 || libSharing}
+                    onClick={async () => {
+                      setLibSharing(true);
+                      try {
+                        const selected = exercises.filter(e => librarySelectedIds.includes(e.id));
+                        const enriched = await enrichExercisesAssets(selected);
+                        const link = await getOrCreatePermanentCollectionLink(enriched, libShareTitle || `${selected.length} exercices`);
+                        await copyOrShow(link, "Lien de partage copié !");
+                        setLibSelectMode(false); setLibrarySelectedIds([]); setLibShareTitle("");
+                      } catch (e) { await cpbAlert?.("Erreur : " + e.message); }
+                      setLibSharing(false);
+                    }}
+                    className="flex-1 bg-white text-[#1B2A4A] py-2 rounded-xl text-sm font-bold disabled:opacity-50">
+                    {libSharing ? "Création du lien..." : "Créer le lien de partage"}
+                  </button>
+                  <button onClick={() => { setLibSelectMode(false); setLibrarySelectedIds([]); }} className="px-4 py-2 rounded-xl text-sm text-white/60 border border-white/20">✕</button>
+                </div>
+              </div>
+            )}
 
             {addBanner && (
               <div className="mb-5 border border-[#FF6B35]/30 bg-[#FF6B35]/8 rounded-lg p-3 flex items-center justify-between text-sm text-[#1B2A4A]">
@@ -7357,6 +7400,9 @@ function CoachingProBoost({ session }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {filtered.map((ex, i) => (
                   <ExerciseCard key={ex.id} ex={ex} index={i}
+                    selectMode={libSelectMode}
+                    selected={librarySelectedIds.includes(ex.id)}
+                    onToggleSelect={() => setLibrarySelectedIds(ids => ids.includes(ex.id) ? ids.filter(id => id !== ex.id) : [...ids, ex.id])}
                     onClick={() => { setEditing(ex); setShowForm(true); }}
                     onRemove={() => {
                       saveExercises(exercises.filter(e => e.id !== ex.id));
