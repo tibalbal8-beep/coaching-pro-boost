@@ -4392,6 +4392,8 @@ function CropPhotoView({ imageData, onCancel, onCrop, multiMode = false, cropCou
   const imgRef = useRef(null);
   const scaleRef = useRef(1);
   const dragging = useRef(false);
+  const dragModeRef = useRef("draw"); // "draw" (nouveau rectangle) ou "move" (déplacer l'existant)
+  const moveOffsetRef = useRef({ dx: 0, dy: 0 });
   const startRef = useRef({ x: 0, y: 0 });
   const [cropRect, setCropRect] = useState(null);
   // Ratio des terrains fournis dans /public (largeur/hauteur) — aide à cadrer pile sur les lignes
@@ -4473,8 +4475,19 @@ function CropPhotoView({ imageData, onCancel, onCrop, multiMode = false, cropCou
   const onPointerDown = (e) => {
     e.preventDefault();
     const pos = getPos(e);
-    startRef.current = pos;
     dragging.current = true;
+    // Si on clique à l'intérieur du rectangle déjà tracé (ex: après "Reproduire le dernier
+    // cadrage"), on le déplace au lieu d'en redessiner un nouveau — pratique pour recaler le
+    // même cadrage sur un autre terrain de la photo sans le retracer à chaque fois.
+    const nr = cropRect ? normalizeRect(cropRect) : null;
+    if (nr && pos.x >= nr.x && pos.x <= nr.x + nr.w && pos.y >= nr.y && pos.y <= nr.y + nr.h) {
+      dragModeRef.current = "move";
+      moveOffsetRef.current = { dx: pos.x - nr.x, dy: pos.y - nr.y };
+      setCropRect(nr);
+      return;
+    }
+    dragModeRef.current = "draw";
+    startRef.current = pos;
     const r = { ...pos, w: 0, h: 0 };
     setCropRect(r);
     redraw(r);
@@ -4484,6 +4497,20 @@ function CropPhotoView({ imageData, onCancel, onCrop, multiMode = false, cropCou
     if (!dragging.current) return;
     e.preventDefault();
     const pos = getPos(e);
+    const canvas = canvasRef.current;
+    if (dragModeRef.current === "move") {
+      setCropRect(prev => {
+        if (!prev) return prev;
+        let x = pos.x - moveOffsetRef.current.dx;
+        let y = pos.y - moveOffsetRef.current.dy;
+        x = Math.max(0, Math.min(x, canvas.width - prev.w));
+        y = Math.max(0, Math.min(y, canvas.height - prev.h));
+        const r = { ...prev, x, y };
+        redraw(r);
+        return r;
+      });
+      return;
+    }
     let w = pos.x - startRef.current.x;
     let h = pos.y - startRef.current.y;
     if (aspect) {
@@ -4528,7 +4555,7 @@ function CropPhotoView({ imageData, onCancel, onCrop, multiMode = false, cropCou
           <button onClick={onCancel} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><X size={18} /> Annuler</button>
         )}
         <span className="text-white font-medium text-sm">
-          {multiMode ? (cropCount > 0 ? `${cropCount} image${cropCount > 1 ? "s" : ""} ajoutée${cropCount > 1 ? "s" : ""} · trace une nouvelle zone` : "Trace un rectangle à rogner") : "Trace un rectangle autour de l'exercice"}
+          {multiMode ? (cropCount > 0 ? `${cropCount} image${cropCount > 1 ? "s" : ""} ajoutée${cropCount > 1 ? "s" : ""} · trace une nouvelle zone (ou glisse le cadre pour le déplacer)` : "Trace un rectangle à rogner") : "Trace un rectangle autour de l'exercice"}
         </span>
         <button onClick={handleCrop} disabled={!canCrop}
           className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white transition-opacity"
