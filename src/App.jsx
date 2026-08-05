@@ -7970,26 +7970,48 @@ function CoachingProBoost({ session }) {
                   <input autoFocus value={wellnessNewTitle} onChange={e => setWellnessNewTitle(e.target.value)}
                     placeholder="Ex: Post-match Besançon 05/09" className="w-full border border-[#FF6B35] rounded-md px-3 py-2 text-sm outline-none mb-3" />
                   <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Joueurs concernés</div>
-                  {players.length === 0 ? (
-                    <p className="text-xs text-[#1B2A4A]/40 mb-3">Aucun joueur enregistré — ajoutes-en dans "Suivi individuel" d'abord.</p>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5 mb-3">
-                      {players.map(p => {
-                        const on = (wellnessNewPlayerIds ?? players.map(x => x.id)).includes(p.id);
-                        return (
-                          <button key={p.id} type="button"
-                            onClick={() => {
-                              const current = wellnessNewPlayerIds ?? players.map(x => x.id);
-                              setWellnessNewPlayerIds(current.includes(p.id) ? current.filter(id => id !== p.id) : [...current, p.id]);
-                            }}
-                            className={`px-2.5 py-1 rounded-full text-xs font-medium border ${on ? "" : "border-[#1B2A4A]/25 text-[#1B2A4A]/60"}`}
-                            style={on ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
-                            {p.nom}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                  {players.length === 0 && <p className="text-xs text-[#1B2A4A]/40 mb-2">Aucun joueur enregistré sur ce compte — ajoute-les ci-dessous (une seule fois, ils resteront disponibles ensuite).</p>}
+                  <div className="flex flex-wrap gap-1.5 items-center mb-3">
+                    {players.map(p => {
+                      const on = (wellnessNewPlayerIds ?? players.map(x => x.id)).includes(p.id);
+                      return (
+                        <button key={p.id} type="button"
+                          onClick={() => {
+                            const current = wellnessNewPlayerIds ?? players.map(x => x.id);
+                            setWellnessNewPlayerIds(current.includes(p.id) ? current.filter(id => id !== p.id) : [...current, p.id]);
+                          }}
+                          className={`px-2.5 py-1 rounded-full text-xs font-medium border ${on ? "" : "border-[#1B2A4A]/25 text-[#1B2A4A]/60"}`}
+                          style={on ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
+                          {p.nom}
+                        </button>
+                      );
+                    })}
+                    {newPlayerOpen ? (
+                      <div className="flex items-center gap-1">
+                        <input autoFocus value={newPlayerName} onChange={e => setNewPlayerName(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter" && newPlayerName.trim()) {
+                              const p = { id: uid(), nom: newPlayerName.trim() };
+                              savePlayers([...players, p]);
+                              setWellnessNewPlayerIds(current => [...(current ?? players.map(x => x.id)), p.id]);
+                              setNewPlayerName(""); setNewPlayerOpen(false);
+                            }
+                            if (e.key === "Escape") { setNewPlayerOpen(false); setNewPlayerName(""); }
+                          }}
+                          placeholder="Prénom Nom" className="px-2.5 py-1 rounded-full text-xs border border-[#FF6B35] outline-none w-32" />
+                        <button onClick={() => {
+                          if (!newPlayerName.trim()) return;
+                          const p = { id: uid(), nom: newPlayerName.trim() };
+                          savePlayers([...players, p]);
+                          setWellnessNewPlayerIds(current => [...(current ?? players.map(x => x.id)), p.id]);
+                          setNewPlayerName(""); setNewPlayerOpen(false);
+                        }} className="text-xs font-semibold text-[#FF6B35]">OK</button>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => setNewPlayerOpen(true)}
+                        className="px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-[#FF6B35]/50 text-[#FF6B35] flex items-center gap-1"><Plus size={12} /> Ajouter un joueur</button>
+                    )}
+                  </div>
                   <div className="flex gap-2">
                     <button onClick={async () => {
                       if (!wellnessNewTitle.trim()) return;
