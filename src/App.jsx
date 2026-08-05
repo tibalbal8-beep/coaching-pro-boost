@@ -472,13 +472,20 @@ function useStore(sport = DEFAULT_SPORT) {
   }, [sport]);
 
   const persistAlert = useAlert();
+  // Mémorise la dernière valeur écrite par clé — l'autosave (toutes les 30s) appelle persist()
+  // même quand rien n'a changé, ce qui gonflait kv_store_history d'un instantané quasi identique
+  // à chaque tick (320 Mo constatés). On n'écrit (et on ne snapshotte) que si ça a vraiment changé.
+  const lastPersistedRef = useRef({});
   const persist = useCallback(async (key, value) => {
+    if (lastPersistedRef.current[key] === value) return;
     const attempt = async () => {
       const r = await storage.set(key, value);
       if (!r) throw new Error("Storage set returned null for " + key);
     };
+    let succeeded = false;
     try {
       await attempt();
+      succeeded = true;
     } catch (e) {
       console.error("Storage error", key, e);
       // Une coupure réseau (partage de connexion perdu, etc.) peut faire échouer
@@ -486,12 +493,18 @@ function useStore(sport = DEFAULT_SPORT) {
       // clairement l'utilisateur plutôt que de perdre sa modification sans le dire.
       try {
         await attempt();
+        succeeded = true;
       } catch (e2) {
         console.error("Storage retry failed", key, e2);
         persistAlert?.("⚠️ Échec de l'enregistrement (connexion perdue). Vérifie ta connexion internet et refais la modification si besoin — sinon elle risque de ne pas être sauvegardée.");
       }
     }
-    storage.snapshot(key, value).catch(() => {});
+    // Le cache n'est mis à jour qu'après un succès confirmé, pour que l'échec continue d'être
+    // retenté au prochain tick (30s) au lieu d'être oublié parce que la valeur "n'a pas changé".
+    if (succeeded) {
+      lastPersistedRef.current[key] = value;
+      storage.snapshot(key, value).catch(() => {});
+    }
   }, [persistAlert]);
 
   // Bug corrigé le 20/07/2026 : la plupart des exercices en mémoire ne portent PAS `file`/
