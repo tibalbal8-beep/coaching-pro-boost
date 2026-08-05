@@ -13,6 +13,12 @@ create table if not exists public.wellness_forms (
   created_at timestamptz default now()
 );
 
+-- Liste des joueurs choisie au moment de la création du questionnaire (permet d'exclure
+-- certains joueurs, ou de partager le bon roster avec un autre coach qui n'a pas accès à la
+-- liste de joueurs du compte principal). Si absent (anciens questionnaires), on retombe sur la
+-- liste de joueurs du compte créateur.
+alter table public.wellness_forms add column if not exists players jsonb;
+
 create table if not exists public.wellness_checkins (
   id uuid primary key default gen_random_uuid(),
   token text not null references public.wellness_forms(token) on delete cascade,

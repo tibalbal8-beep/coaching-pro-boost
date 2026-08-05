@@ -6418,6 +6418,7 @@ function CoachingProBoost({ session }) {
   const [wellnessForms, setWellnessForms] = useState([]);
   const [wellnessLoading, setWellnessLoading] = useState(false);
   const [wellnessNewOpen, setWellnessNewOpen] = useState(false);
+  const [wellnessNewPlayerIds, setWellnessNewPlayerIds] = useState(null);
   const [wellnessNewTitle, setWellnessNewTitle] = useState("");
   const [wellnessOpenFormId, setWellnessOpenFormId] = useState(null);
   const [wellnessCheckins, setWellnessCheckins] = useState([]);
@@ -7965,19 +7966,44 @@ function CoachingProBoost({ session }) {
               <p className="text-xs text-[#1B2A4A]/40 mb-5">Crée un questionnaire, partage le lien sur WhatsApp — tes joueurs le remplissent sans compte, tu retrouves toutes les réponses ici.</p>
 
               {wellnessNewOpen ? (
-                <div className="flex items-center gap-2 mb-5">
+                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-5">
                   <input autoFocus value={wellnessNewTitle} onChange={e => setWellnessNewTitle(e.target.value)}
-                    placeholder="Ex: Post-match Besançon 05/09" className="flex-1 border border-[#FF6B35] rounded-md px-3 py-2 text-sm outline-none" />
-                  <button onClick={async () => {
-                    if (!wellnessNewTitle.trim()) return;
-                    const token = crypto.randomUUID().replace(/-/g, "");
-                    const { error } = await supabase.from("wellness_forms").insert({ token, title: wellnessNewTitle.trim(), created_by: session.user.id });
-                    if (error) { cpbAlert?.("Erreur : " + error.message); return; }
-                    setWellnessForms(f => [{ token, title: wellnessNewTitle.trim(), created_at: new Date().toISOString() }, ...f]);
-                    setWellnessNewTitle(""); setWellnessNewOpen(false);
-                    await copyOrShow(`${window.location.origin}/api/wellness?token=${token}`, "Questionnaire créé, lien copié !");
-                  }} className="text-sm font-semibold text-white px-4 py-2 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>Créer</button>
-                  <button onClick={() => setWellnessNewOpen(false)} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={18} /></button>
+                    placeholder="Ex: Post-match Besançon 05/09" className="w-full border border-[#FF6B35] rounded-md px-3 py-2 text-sm outline-none mb-3" />
+                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Joueurs concernés</div>
+                  {players.length === 0 ? (
+                    <p className="text-xs text-[#1B2A4A]/40 mb-3">Aucun joueur enregistré — ajoutes-en dans "Suivi individuel" d'abord.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {players.map(p => {
+                        const on = (wellnessNewPlayerIds ?? players.map(x => x.id)).includes(p.id);
+                        return (
+                          <button key={p.id} type="button"
+                            onClick={() => {
+                              const current = wellnessNewPlayerIds ?? players.map(x => x.id);
+                              setWellnessNewPlayerIds(current.includes(p.id) ? current.filter(id => id !== p.id) : [...current, p.id]);
+                            }}
+                            className={`px-2.5 py-1 rounded-full text-xs font-medium border ${on ? "" : "border-[#1B2A4A]/25 text-[#1B2A4A]/60"}`}
+                            style={on ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
+                            {p.nom}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={async () => {
+                      if (!wellnessNewTitle.trim()) return;
+                      const selectedIds = wellnessNewPlayerIds ?? players.map(p => p.id);
+                      const selectedPlayers = players.filter(p => selectedIds.includes(p.id)).map(p => ({ nom: p.nom }));
+                      const token = crypto.randomUUID().replace(/-/g, "");
+                      const { error } = await supabase.from("wellness_forms").insert({ token, title: wellnessNewTitle.trim(), created_by: session.user.id, players: selectedPlayers });
+                      if (error) { cpbAlert?.("Erreur : " + error.message); return; }
+                      setWellnessForms(f => [{ token, title: wellnessNewTitle.trim(), created_at: new Date().toISOString() }, ...f]);
+                      setWellnessNewTitle(""); setWellnessNewOpen(false); setWellnessNewPlayerIds(null);
+                      await copyOrShow(`${window.location.origin}/api/wellness?token=${token}`, "Questionnaire créé, lien copié !");
+                    }} className="text-sm font-semibold text-white px-4 py-2 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>Créer</button>
+                    <button onClick={() => { setWellnessNewOpen(false); setWellnessNewPlayerIds(null); }} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] px-4 py-2">Annuler</button>
+                  </div>
                 </div>
               ) : (
                 <button onClick={() => setWellnessNewOpen(true)} className="mb-5 px-4 py-2 rounded-md text-sm font-semibold text-white flex items-center gap-1.5" style={{ backgroundColor: "var(--sport-accent)" }}>

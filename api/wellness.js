@@ -40,14 +40,21 @@ export default async function handler(req, res) {
   const { token } = req.query;
   if (!token || !/^[a-z0-9]+$/i.test(token)) return res.status(400).send("Lien invalide");
 
-  const { data: form } = await supabase.from("wellness_forms").select("title, created_by").eq("token", token).maybeSingle();
+  const { data: form } = await supabase.from("wellness_forms").select("title, created_by, players").eq("token", token).maybeSingle();
   if (!form) return res.status(404).send("Questionnaire introuvable ou expiré");
 
+  // Liste figée au moment de la création du questionnaire si elle existe (permet d'exclure des
+  // joueurs, ou de partager le bon roster avec un coach qui n'a pas accès au compte principal) —
+  // sinon repli sur la liste de joueurs live du compte créateur (anciens questionnaires).
   let players = [];
-  try {
-    const { data: kv } = await supabase.from("kv_store").select("value").eq("user_id", form.created_by).eq("key", "players").maybeSingle();
-    if (kv) players = (JSON.parse(kv.value) || []).filter(p => p?.nom);
-  } catch {}
+  if (Array.isArray(form.players) && form.players.length > 0) {
+    players = form.players.map(p => (typeof p === "string" ? { nom: p } : p)).filter(p => p?.nom);
+  } else {
+    try {
+      const { data: kv } = await supabase.from("kv_store").select("value").eq("user_id", form.created_by).eq("key", "players").maybeSingle();
+      if (kv) players = (JSON.parse(kv.value) || []).filter(p => p?.nom);
+    } catch {}
+  }
 
   const html = `<!DOCTYPE html>
 <html lang="fr">
