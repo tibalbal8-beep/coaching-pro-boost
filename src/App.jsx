@@ -394,6 +394,8 @@ function useStore(sport = DEFAULT_SPORT) {
   const themesKey = `themes:${sport}`;
   const [formats, setFormats] = useState(SPORTS_CONFIG[sport]?.formats || FORMATS);
   const formatsKey = `formats:${sport}`;
+  const [playTypes, setPlayTypes] = useState(PLAY_TYPES);
+  const playTypesKey = `playTypes:${sport}`;
   const exercisesKey = `exercises:${sport}`;
   const sessionsKey = `sessions:${sport}`;
   const playsKey = `plays:${sport}`;
@@ -442,6 +444,10 @@ function useStore(sport = DEFAULT_SPORT) {
       try {
         const fm = await storage.get(formatsKey);
         setFormats(fm ? JSON.parse(fm.value) : (SPORTS_CONFIG[sport]?.formats || FORMATS));
+      } catch {}
+      try {
+        const pt = await storage.get(playTypesKey);
+        setPlayTypes(pt ? JSON.parse(pt.value) : PLAY_TYPES);
       } catch {}
       try {
         let ex = await storage.get(exercisesKey);
@@ -538,6 +544,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const saveSessions = (next) => { setSessions(next); persist(sessionsKey, JSON.stringify(next)); };
   const saveThemes = (next) => { setThemes(next); persist(themesKey, JSON.stringify(next)); };
   const saveFormats = (next) => { setFormats(next); persist(formatsKey, JSON.stringify(next)); };
+  const savePlayTypes = (next) => { setPlayTypes(next); persist(playTypesKey, JSON.stringify(next)); };
   const saveTeams = (next) => { setTeams(next); persist("teams", JSON.stringify(next)); };
   const saveActiveTeamId = (next) => { setActiveTeamId(next); persist("activeTeamId", JSON.stringify(next)); };
   const savePlayers = (next) => { setPlayers(next); persist("players", JSON.stringify(next)); };
@@ -575,7 +582,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, formats, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist };
+  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist };
 }
 
 function usePdfJs() {
@@ -5312,9 +5319,11 @@ function PlayImageSlot({ img, playId, onChange, onRemove }) {
   );
 }
 
-function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType = "basketball", cpbAlert }) {
+function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes = PLAY_TYPES, savePlayTypes, courtType = "basketball", cpbAlert }) {
   const [titre, setTitre] = useState(initial?.titre || "");
-  const [type, setType] = useState(initial?.type || PLAY_TYPES[0]);
+  const [type, setType] = useState(initial?.type || playTypes[0]);
+  const [newTypeInput, setNewTypeInput] = useState("");
+  const [newTypeOpen, setNewTypeOpen] = useState(false);
   const [scoutedTeam, setScoutedTeam] = useState(initial?.scoutedTeam || "");
   const [tempsFort, setTempsFort] = useState(() => {
     const t = initial?.tempsFort;
@@ -5374,8 +5383,31 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, courtType
         className="w-full text-lg font-semibold bg-transparent border-b-2 border-[#1B2A4A]/20 focus:border-[#FF6B35] outline-none pb-1 text-[#1B2A4A]" />
       <div>
         <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Type</div>
-        <div className="flex flex-wrap gap-1.5">
-          {PLAY_TYPES.map(t => <Tag key={t} active={type === t} onClick={() => setType(t)}>{t}</Tag>)}
+        <div className="flex flex-wrap gap-1.5 items-center">
+          {playTypes.map(t => <Tag key={t} active={type === t} onClick={() => setType(t)}>{t}</Tag>)}
+          {newTypeOpen ? (
+            <div className="flex items-center gap-1">
+              <input autoFocus value={newTypeInput} onChange={e => setNewTypeInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && newTypeInput.trim()) {
+                    const t = newTypeInput.trim();
+                    if (!playTypes.includes(t) && savePlayTypes) savePlayTypes([...playTypes, t]);
+                    setType(t); setNewTypeInput(""); setNewTypeOpen(false);
+                  }
+                  if (e.key === "Escape") { setNewTypeInput(""); setNewTypeOpen(false); }
+                }}
+                placeholder="Nouveau type" className="px-2.5 py-1 rounded-full text-xs border border-[#FF6B35] outline-none w-28" />
+              <button type="button" onClick={() => {
+                const t = newTypeInput.trim();
+                if (!t) return;
+                if (!playTypes.includes(t) && savePlayTypes) savePlayTypes([...playTypes, t]);
+                setType(t); setNewTypeInput(""); setNewTypeOpen(false);
+              }} className="text-xs font-semibold text-[#FF6B35]">OK</button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setNewTypeOpen(true)}
+              className="px-2.5 py-1 rounded-full text-xs font-medium border border-dashed border-[#FF6B35]/50 text-[#FF6B35] flex items-center gap-1"><Plus size={12} /> Ajouter un type</button>
+          )}
         </div>
       </div>
       <div>
@@ -5993,7 +6025,7 @@ function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAl
 function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
   const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
-  const { exercises, sessions, themes, formats, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore(sport);
+  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
   const SPORT_FORMATS = formats;
@@ -7471,7 +7503,7 @@ function CoachingProBoost({ session }) {
             <div className="space-y-2 mb-5">
               <div className="flex flex-wrap gap-1.5 items-center">
                 <span className="text-xs text-[#1B2A4A]/40 mr-1">Type :</span>
-                {PLAY_TYPES.map(t => (
+                {playTypes.map(t => (
                   <Tag key={t} active={filterPlayType.includes(t)} onClick={() => setFilterPlayType(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}>{t}</Tag>
                 ))}
               </div>
@@ -7560,7 +7592,7 @@ function CoachingProBoost({ session }) {
         {view === "playbook" && playbookForm && (
           <div className="max-w-xl">
             <h2 className="text-xl font-bold text-[#1B2A4A] mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>{editingPlay ? "MODIFIER LE PLAY" : "NOUVEAU PLAY"}</h2>
-            <PlayForm initial={editingPlay} playTags={playTags} savePlayTags={savePlayTags} courtType={SPORT_COURT} cpbAlert={cpbAlert}
+            <PlayForm initial={editingPlay} playTags={playTags} savePlayTags={savePlayTags} playTypes={playTypes} savePlayTypes={savePlayTypes} courtType={SPORT_COURT} cpbAlert={cpbAlert}
               onSave={(play) => {
                 const next = editingPlay ? plays.map(p => p.id === play.id ? play : p) : [...plays, play];
                 savePlays(next);
@@ -7990,7 +8022,7 @@ function CoachingProBoost({ session }) {
                     <input autoFocus value={newPlayName} onChange={e => setNewPlayName(e.target.value)}
                       onKeyDown={e => {
                         if (e.key === "Enter" && newPlayName.trim()) {
-                          const np = { id: uid(), titre: newPlayName.trim(), type: PLAY_TYPES[0], scoutedTeam: activeMatch.scoutedTeam, tempsFort: tfFilters, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
+                          const np = { id: uid(), titre: newPlayName.trim(), type: playTypes[0], scoutedTeam: activeMatch.scoutedTeam, tempsFort: tfFilters, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
                           savePlays([...plays, np]);
                           recordOutcome(np.id, null);
                         }
@@ -7999,7 +8031,7 @@ function CoachingProBoost({ session }) {
                       placeholder="Nom du nouveau système" className="flex-1 border border-[#FF6B35] rounded-md px-3 py-2 text-sm outline-none" />
                     <button onClick={() => {
                       if (!newPlayName.trim()) return;
-                      const np = { id: uid(), titre: newPlayName.trim(), type: PLAY_TYPES[0], scoutedTeam: activeMatch.scoutedTeam, tempsFort: tfFilters, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
+                      const np = { id: uid(), titre: newPlayName.trim(), type: playTypes[0], scoutedTeam: activeMatch.scoutedTeam, tempsFort: tfFilters, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
                       savePlays([...plays, np]);
                       recordOutcome(np.id, null);
                     }} className="text-sm font-semibold text-white px-3 py-2 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>Ajouter</button>
