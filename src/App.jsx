@@ -8044,8 +8044,18 @@ function CoachingProBoost({ session }) {
                         <div className="font-semibold text-[#1B2A4A]">{f.title}</div>
                         <div className="text-xs text-[#1B2A4A]/50">{f.created_at ? new Date(f.created_at).toLocaleDateString("fr-FR") : ""}</div>
                       </div>
-                      <button onClick={(e) => { e.stopPropagation(); copyOrShow(`${window.location.origin}/api/wellness?token=${f.token}`, "Lien copié !"); }}
-                        className="text-xs font-medium text-[#1B2A4A] px-3 py-1.5 rounded-md border border-[#1B2A4A]/20 hover:bg-white flex-shrink-0 ml-3">Copier le lien</button>
+                      <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                        <button onClick={(e) => { e.stopPropagation(); copyOrShow(`${window.location.origin}/api/wellness?token=${f.token}`, "Lien copié !"); }}
+                          className="text-xs font-medium text-[#1B2A4A] px-3 py-1.5 rounded-md border border-[#1B2A4A]/20 hover:bg-white">Copier le lien</button>
+                        <button onClick={async (e) => {
+                          e.stopPropagation();
+                          const ok = await cpbAlert?.(`Supprimer le questionnaire "${f.title}" et toutes ses réponses ?`, { confirm: true });
+                          if (!ok) return;
+                          const { error } = await supabase.from("wellness_forms").delete().eq("token", f.token);
+                          if (error) { cpbAlert?.("Erreur : " + error.message); return; }
+                          setWellnessForms(list => list.filter(x => x.token !== f.token));
+                        }} className="text-[#1B2A4A]/30 hover:text-red-600"><Trash2 size={16} /></button>
+                      </div>
                     </div>
                   ))}
                   {wellnessForms.length === 0 && !wellnessNewOpen && <p className="text-sm text-[#1B2A4A]/40">Aucun questionnaire créé pour l'instant.</p>}

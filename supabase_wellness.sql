@@ -50,6 +50,11 @@ create policy "Anyone can read checkins by token"
   on public.wellness_checkins for select
   using (true);
 
+create policy "Le créateur peut supprimer son questionnaire"
+  on public.wellness_forms for delete
+  to authenticated
+  using (created_by = auth.uid());
+
 -- Pour donner cette permission à un autre coach (sans lui donner le flag admin global) :
 -- update public.profiles set can_manage_wellness = true
 -- where id in (select id from auth.users where email = 'email-du-coach@exemple.com');
