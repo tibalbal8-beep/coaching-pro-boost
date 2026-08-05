@@ -6438,6 +6438,7 @@ function CoachingProBoost({ session }) {
   const [newThemeInput, setNewThemeInput] = useState("");
   const [lastSaved, setLastSaved] = useState(null);
   const [repairingVisuals, setRepairingVisuals] = useState(false);
+  const [cleaningOrphans, setCleaningOrphans] = useState(false);
   const [bookletPickerOpen, setBookletPickerOpen] = useState(false);
   const [canvaExporting, setCanvaExporting] = useState(false);
   const [canvaProgress, setCanvaProgress] = useState(null);
@@ -6517,6 +6518,33 @@ function CoachingProBoost({ session }) {
       await cpbAlert?.("Erreur pendant la réparation : " + e.message);
     }
     setRepairingVisuals(false);
+  };
+
+  // Supprime les fichiers (photos/schémas d'exercices, photos de plays) qui ne correspondent plus
+  // à rien — accumulés avant le correctif du 04/08/2026 qui nettoie désormais à la suppression.
+  const cleanupOrphanFiles = async () => {
+    const ok = await cpbAlert?.("Supprimer définitivement les fichiers orphelins (photos/schémas d'exercices et de plays supprimés) ? Cette action est irréversible.", { confirm: true });
+    if (!ok) return;
+    setCleaningOrphans(true);
+    let deleted = 0;
+    try {
+      const exerciseIds = new Set(exercises.map(e => e.id));
+      const validPlayImgKeys = new Set();
+      plays.forEach(p => (p.images || []).forEach(img => validPlayImgKeys.add(`playimg:${p.id}:${img.id}`)));
+
+      const { keys } = await storage.list();
+      for (const key of keys) {
+        let orphan = false;
+        if (key.startsWith("file:")) orphan = !exerciseIds.has(key.slice("file:".length));
+        else if (key.startsWith("schemas:")) orphan = !exerciseIds.has(key.slice("schemas:".length));
+        else if (key.startsWith("playimg:")) orphan = !validPlayImgKeys.has(key);
+        if (orphan) { await storage.delete(key); deleted++; }
+      }
+      await cpbAlert?.(deleted > 0 ? `✓ Nettoyage terminé : ${deleted} fichier(s) orphelin(s) supprimé(s).` : "Aucun fichier orphelin trouvé — tout est déjà propre.");
+    } catch (e) {
+      await cpbAlert?.("Erreur pendant le nettoyage : " + e.message);
+    }
+    setCleaningOrphans(false);
   };
   const [newTeamOpen, setNewTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
@@ -8201,6 +8229,15 @@ function CoachingProBoost({ session }) {
               <button onClick={repairMissingVisuals} disabled={repairingVisuals}
                 className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>
                 {repairingVisuals ? "Vérification en cours..." : "Vérifier et réparer"}
+              </button>
+            </div>
+
+            <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">
+              <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Nettoyer les fichiers orphelins</div>
+              <p className="text-xs text-[#1B2A4A]/50 mb-3">Supprime les photos/schémas d'exercices et de plays déjà supprimés qui traînaient encore en base (bug corrigé le 04/08/2026) — libère de l'espace si tu es proche de la limite de ton plan Supabase.</p>
+              <button onClick={cleanupOrphanFiles} disabled={cleaningOrphans}
+                className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50 bg-red-500 hover:bg-red-600">
+                {cleaningOrphans ? "Nettoyage en cours..." : "Nettoyer maintenant"}
               </button>
             </div>
 
