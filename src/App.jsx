@@ -6439,6 +6439,9 @@ function CoachingProBoost({ session }) {
   const [lastSaved, setLastSaved] = useState(null);
   const [repairingVisuals, setRepairingVisuals] = useState(false);
   const [cleaningOrphans, setCleaningOrphans] = useState(false);
+  const [migratingStorage, setMigratingStorage] = useState(false);
+  const [migrateStorageResult, setMigrateStorageResult] = useState(null);
+  const [finalizingStorage, setFinalizingStorage] = useState(false);
   const [bookletPickerOpen, setBookletPickerOpen] = useState(false);
   const [canvaExporting, setCanvaExporting] = useState(false);
   const [canvaProgress, setCanvaProgress] = useState(null);
@@ -6545,6 +6548,69 @@ function CoachingProBoost({ session }) {
       await cpbAlert?.("Erreur pendant le nettoyage : " + e.message);
     }
     setCleaningOrphans(false);
+  };
+
+  // Copie les photos/schémas/images de plays du kv_store vers Supabase Storage — SANS supprimer
+  // les anciennes lignes en base (sécurité : on garde les deux le temps de vérifier que tout
+  // s'affiche bien). Chaque copie est relue immédiatement pour confirmer qu'elle a bien pris.
+  const migrateToStorage = async () => {
+    setMigratingStorage(true);
+    setMigrateStorageResult(null);
+    let migrated = 0, failed = 0;
+    try {
+      const userId = session.user.id;
+      const { data: rows, error } = await supabase.from("kv_store").select("key, value").eq("user_id", userId)
+        .or("key.like.file:%,key.like.schemas:%,key.like.playimg:%");
+      if (error) throw error;
+      for (const row of rows || []) {
+        try {
+          const path = `${userId}/${row.key}`;
+          const blob = new Blob([row.value], { type: "application/json" });
+          const { error: upErr } = await supabase.storage.from("media").upload(path, blob, { upsert: true, contentType: "application/json" });
+          if (upErr) throw upErr;
+          const { data: check, error: checkErr } = await supabase.storage.from("media").download(path);
+          if (checkErr || !check) throw new Error("Vérification échouée après upload");
+          migrated++;
+        } catch (e) {
+          failed++;
+          console.error("Migration Storage échouée pour", row.key, e);
+        }
+      }
+      setMigrateStorageResult({ migrated, failed, total: (rows || []).length });
+      await cpbAlert?.(`Migration terminée : ${migrated} fichier(s) copié(s) vers Storage${failed > 0 ? `, ${failed} échec(s) (laissés en base, rien de perdu)` : ""}.\n\nLes anciennes données restent en base pour l'instant. Vérifie que tes photos/schémas s'affichent bien dans l'app, puis utilise "Finaliser" pour libérer l'espace.`);
+    } catch (e) {
+      await cpbAlert?.("Erreur pendant la migration : " + e.message);
+    }
+    setMigratingStorage(false);
+  };
+
+  // Supprime les anciennes copies en kv_store — uniquement celles dont on vérifie qu'une copie
+  // existe bien dans Storage juste avant de les effacer.
+  const finalizeStorageMigration = async () => {
+    const ok = await cpbAlert?.("Supprimer définitivement les anciennes copies en base (une fois vérifié que tes photos/schémas s'affichent bien) ? Action irréversible.", { confirm: true });
+    if (!ok) return;
+    setFinalizingStorage(true);
+    let deleted = 0, skipped = 0;
+    try {
+      const userId = session.user.id;
+      const { data: rows, error } = await supabase.from("kv_store").select("key").eq("user_id", userId)
+        .or("key.like.file:%,key.like.schemas:%,key.like.playimg:%");
+      if (error) throw error;
+      for (const row of rows || []) {
+        const path = `${userId}/${row.key}`;
+        const { data: check } = await supabase.storage.from("media").download(path);
+        if (check) {
+          await supabase.from("kv_store").delete().eq("user_id", userId).eq("key", row.key);
+          deleted++;
+        } else {
+          skipped++; // pas encore migré : on ne touche pas, par sécurité
+        }
+      }
+      await cpbAlert?.(`✓ Nettoyage terminé : ${deleted} ancienne(s) copie(s) supprimée(s) de la base${skipped > 0 ? `, ${skipped} laissée(s) en base (pas encore migrée(s))` : ""}.`);
+    } catch (e) {
+      await cpbAlert?.("Erreur pendant la finalisation : " + e.message);
+    }
+    setFinalizingStorage(false);
   };
   const [newTeamOpen, setNewTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
@@ -8239,6 +8305,24 @@ function CoachingProBoost({ session }) {
                 className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50 bg-red-500 hover:bg-red-600">
                 {cleaningOrphans ? "Nettoyage en cours..." : "Nettoyer maintenant"}
               </button>
+            </div>
+
+            <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">
+              <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Déplacer les photos vers Supabase Storage</div>
+              <p className="text-xs text-[#1B2A4A]/50 mb-3">Copie tes photos/schémas vers un stockage séparé (hors quota "Database Size"). Étape 1 : copie sans rien supprimer. Étape 2 ("Finaliser"), à faire seulement une fois que tu as vérifié que tes photos s'affichent bien : supprime les anciennes copies pour libérer l'espace en base.</p>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={migrateToStorage} disabled={migratingStorage}
+                  className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>
+                  {migratingStorage ? "Copie en cours..." : "1. Copier vers Storage"}
+                </button>
+                <button onClick={finalizeStorageMigration} disabled={finalizingStorage}
+                  className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50 bg-red-500 hover:bg-red-600">
+                  {finalizingStorage ? "Finalisation en cours..." : "2. Finaliser (supprimer les anciennes copies)"}
+                </button>
+              </div>
+              {migrateStorageResult && (
+                <p className="text-xs text-[#1B2A4A]/50 mt-2">{migrateStorageResult.migrated}/{migrateStorageResult.total} copiés{migrateStorageResult.failed > 0 ? `, ${migrateStorageResult.failed} échec(s)` : ""}.</p>
+              )}
             </div>
 
             {isAdmin && <AnnouncementAdminPanel currentMessage={announcement?.message} onPublish={publishAnnouncement} onDeactivate={deactivateAnnouncement} cpbAlert={cpbAlert} />}

@@ -39,9 +39,23 @@ async function ensureUserIdReady() {
   return getCurrentUserIdSync();
 }
 
+// Les photos/schémas (file:, schemas:, playimg:) sont volumineuses en base64 et comptaient dans
+// le quota "Database Size" de Supabase. Elles transitent maintenant par Supabase Storage (bucket
+// "media", voir supabase_storage_media.sql) au lieu du kv_store, rangées sous {user_id}/{clé}.
+const BLOB_PREFIXES = ["file:", "schemas:", "playimg:"];
+const isBlobKey = (key) => BLOB_PREFIXES.some((p) => key.startsWith(p));
+const BUCKET = "media";
+
 export const storage = {
   async get(key) {
     const userId = cachedUserId !== null ? getCurrentUserIdSync() : await ensureUserIdReady();
+    if (isBlobKey(key)) {
+      const { data, error } = await supabase.storage.from(BUCKET).download(`${userId}/${key}`);
+      if (!error && data) {
+        return { key, value: await data.text() };
+      }
+      // Pas encore migré (ou erreur) : repli sur l'ancien emplacement kv_store.
+    }
     const { data, error } = await supabase
       .from("kv_store")
       .select("key, value")
@@ -57,6 +71,15 @@ export const storage = {
 
   async set(key, value) {
     const userId = cachedUserId !== null ? getCurrentUserIdSync() : await ensureUserIdReady();
+    if (isBlobKey(key)) {
+      const blob = new Blob([value], { type: "application/json" });
+      const { error } = await supabase.storage.from(BUCKET).upload(`${userId}/${key}`, blob, { upsert: true, contentType: "application/json" });
+      if (error) {
+        console.error("storage.set (Storage) error:", error);
+        return null;
+      }
+      return { key, value };
+    }
     const { error } = await supabase
       .from("kv_store")
       .upsert({ user_id: userId, key, value, updated_at: new Date().toISOString() });
@@ -69,6 +92,12 @@ export const storage = {
 
   async delete(key) {
     const userId = cachedUserId !== null ? getCurrentUserIdSync() : await ensureUserIdReady();
+    if (isBlobKey(key)) {
+      await supabase.storage.from(BUCKET).remove([`${userId}/${key}`]);
+      // Nettoie aussi une éventuelle copie kv_store pas encore migrée.
+      await supabase.from("kv_store").delete().eq("user_id", userId).eq("key", key);
+      return { key, deleted: true };
+    }
     const { error } = await supabase
       .from("kv_store")
       .delete()
@@ -92,7 +121,19 @@ export const storage = {
       console.error("storage.list error:", error);
       throw error;
     }
-    return { keys: (data || []).map((row) => row.key), prefix };
+    const keys = (data || []).map((row) => row.key);
+    // Ajoute les fichiers déjà migrés vers Storage (n'existent plus en kv_store).
+    if (!prefix || BLOB_PREFIXES.some((p) => p.startsWith(prefix))) {
+      try {
+        const { data: files } = await supabase.storage.from(BUCKET).list(userId, { limit: 10000 });
+        (files || []).forEach((f) => {
+          if ((!prefix || f.name.startsWith(prefix)) && !keys.includes(f.name)) keys.push(f.name);
+        });
+      } catch (e) {
+        console.error("storage.list (Storage) error:", e);
+      }
+    }
+    return { keys, prefix };
   },
 
   // Historique de versions (best-effort, ne bloque jamais l'écriture principale).
