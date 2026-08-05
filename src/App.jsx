@@ -212,6 +212,7 @@ function useSubscription(userId) {
 function useAnnouncement(userId) {
   const [announcement, setAnnouncement] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [canManageWellness, setCanManageWellness] = useState(false);
 
   useEffect(() => {
     supabase.from("announcements").select("id, message").eq("active", true)
@@ -225,8 +226,8 @@ function useAnnouncement(userId) {
 
   useEffect(() => {
     if (!userId) return;
-    supabase.from("profiles").select("is_admin").eq("id", userId).maybeSingle()
-      .then(({ data }) => setIsAdmin(!!data?.is_admin));
+    supabase.from("profiles").select("is_admin, can_manage_wellness").eq("id", userId).maybeSingle()
+      .then(({ data }) => { setIsAdmin(!!data?.is_admin); setCanManageWellness(!!data?.can_manage_wellness); });
   }, [userId]);
 
   const dismiss = () => {
@@ -243,7 +244,7 @@ function useAnnouncement(userId) {
     await supabase.from("announcements").update({ active: false }).eq("active", true);
   };
 
-  return { announcement, dismiss, isAdmin, publish, deactivate };
+  return { announcement, dismiss, isAdmin, canManageWellness, publish, deactivate };
 }
 
 async function startCheckout(priceId) {
@@ -5932,7 +5933,7 @@ function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAl
 
 function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
-  const { announcement, dismiss: dismissAnnouncement, isAdmin, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
+  const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
   const { exercises, sessions, themes, formats, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
@@ -6414,6 +6415,27 @@ function CoachingProBoost({ session }) {
   const [newMatchScoutedTeam, setNewMatchScoutedTeam] = useState("");
   const [tfFilters, setTfFilters] = useState([]);
   const [newTfInput, setNewTfInput] = useState("");
+  const [wellnessForms, setWellnessForms] = useState([]);
+  const [wellnessLoading, setWellnessLoading] = useState(false);
+  const [wellnessNewOpen, setWellnessNewOpen] = useState(false);
+  const [wellnessNewTitle, setWellnessNewTitle] = useState("");
+  const [wellnessOpenFormId, setWellnessOpenFormId] = useState(null);
+  const [wellnessCheckins, setWellnessCheckins] = useState([]);
+
+  useEffect(() => {
+    if (view !== "wellness" || !session?.user?.id) return;
+    setWellnessLoading(true);
+    supabase.from("wellness_forms").select("token, title, created_at").eq("created_by", session.user.id)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => { setWellnessForms(data || []); setWellnessLoading(false); });
+  }, [view, session?.user?.id]);
+
+  useEffect(() => {
+    if (!wellnessOpenFormId) { setWellnessCheckins([]); return; }
+    supabase.from("wellness_checkins").select("*").eq("token", wellnessOpenFormId)
+      .order("submitted_at", { ascending: false })
+      .then(({ data }) => setWellnessCheckins(data || []));
+  }, [wellnessOpenFormId]);
   const [newPlayOpen, setNewPlayOpen] = useState(false);
   const [newPlayName, setNewPlayName] = useState("");
   const [bookletSelection, setBookletSelection] = useState(null); // null = tous sélectionnés (défaut)
@@ -7061,6 +7083,7 @@ function CoachingProBoost({ session }) {
               { key: "stats", label: "Stats", icon: BarChart3 },
               ...(isAdmin ? [{ key: "suivi", label: "Suivi individuel (admin)", icon: UserCheck }] : []),
               ...(isAdmin ? [{ key: "matchmode", label: "Mode match (admin)", icon: Zap }] : []),
+              ...(isAdmin || canManageWellness ? [{ key: "wellness", label: "Bien-être joueurs", icon: UserCheck }] : []),
               { key: "account", label: "Mon compte", icon: Users },
             ].map(item => {
               const active = view === item.key || view === item.alsoActive;
@@ -7869,6 +7892,118 @@ function CoachingProBoost({ session }) {
               {matchSessions.length === 0 && !newMatchOpen && <p className="text-sm text-[#1B2A4A]/40">Aucun match planifié pour l'instant.</p>}
             </div>
           </div>
+          );
+        })()}
+
+        {view === "wellness" && (isAdmin || canManageWellness) && (() => {
+          const WELLNESS_FIELDS = [
+            { key: "rpe", label: "RPE" }, { key: "sommeil", label: "Sommeil" }, { key: "fatigue", label: "Fatigue" },
+            { key: "courbature", label: "Courbatures" }, { key: "stress", label: "Stress" }, { key: "humeur", label: "Humeur" }, { key: "alimentation", label: "Alimentation" },
+          ];
+          const openForm = wellnessForms.find(f => f.token === wellnessOpenFormId);
+
+          if (wellnessOpenFormId) {
+            const exportCsv = () => {
+              const headers = ["Joueur", "Date", ...WELLNESS_FIELDS.map(f => f.label)];
+              const rows = wellnessCheckins.map(c => [
+                c.player_name, c.submitted_at ? new Date(c.submitted_at).toLocaleString("fr-FR") : "",
+                ...WELLNESS_FIELDS.map(f => c[f.key] ?? ""),
+              ]);
+              const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+              const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url; a.download = `bien-etre-${(openForm?.title || "questionnaire").replace(/[^a-z0-9]+/gi, "_")}.csv`;
+              document.body.appendChild(a); a.click(); document.body.removeChild(a);
+              setTimeout(() => URL.revokeObjectURL(url), 5000);
+            };
+            return (
+              <div className="max-w-4xl">
+                <button onClick={() => setWellnessOpenFormId(null)} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] mb-3">← Retour aux questionnaires</button>
+                <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>{openForm?.title || "Questionnaire"}</h2>
+                <div className="flex items-center justify-between mb-5">
+                  <span className="text-sm text-[#1B2A4A]/60">{wellnessCheckins.length} réponse{wellnessCheckins.length !== 1 ? "s" : ""}</span>
+                  <div className="flex gap-2">
+                    <button onClick={() => copyOrShow(`${window.location.origin}/api/wellness?token=${wellnessOpenFormId}`, "Lien copié !")}
+                      className="text-xs font-medium text-[#1B2A4A] px-3 py-1.5 rounded-md border border-[#1B2A4A]/20 hover:bg-[#1B2A4A]/5">Copier le lien</button>
+                    {wellnessCheckins.length > 0 && (
+                      <button onClick={exportCsv} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>Exporter CSV</button>
+                    )}
+                  </div>
+                </div>
+                {wellnessCheckins.length === 0 ? (
+                  <p className="text-sm text-[#1B2A4A]/40">Aucune réponse pour l'instant — partage le lien sur ton groupe WhatsApp.</p>
+                ) : (
+                  <div className="overflow-x-auto border border-[#1B2A4A]/15 rounded-lg">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-[#1B2A4A]/5 text-left">
+                          <th className="px-3 py-2 font-semibold text-[#1B2A4A]">Joueur</th>
+                          {WELLNESS_FIELDS.map(f => <th key={f.key} className="px-3 py-2 font-semibold text-[#1B2A4A] text-center">{f.label}</th>)}
+                          <th className="px-3 py-2 font-semibold text-[#1B2A4A]/50">Envoyé</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {wellnessCheckins.map(c => (
+                          <tr key={c.id} className="border-t border-[#1B2A4A]/10">
+                            <td className="px-3 py-2 font-medium text-[#1B2A4A]">{c.player_name}</td>
+                            {WELLNESS_FIELDS.map(f => <td key={f.key} className="px-3 py-2 text-center">{c[f.key] ?? "—"}</td>)}
+                            <td className="px-3 py-2 text-[#1B2A4A]/40 text-xs">{c.submitted_at ? new Date(c.submitted_at).toLocaleString("fr-FR") : ""}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          return (
+            <div className="max-w-2xl">
+              <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>BIEN-ÊTRE JOUEURS</h2>
+              <p className="text-xs text-[#1B2A4A]/40 mb-5">Crée un questionnaire, partage le lien sur WhatsApp — tes joueurs le remplissent sans compte, tu retrouves toutes les réponses ici.</p>
+
+              {wellnessNewOpen ? (
+                <div className="flex items-center gap-2 mb-5">
+                  <input autoFocus value={wellnessNewTitle} onChange={e => setWellnessNewTitle(e.target.value)}
+                    placeholder="Ex: Post-match Besançon 05/09" className="flex-1 border border-[#FF6B35] rounded-md px-3 py-2 text-sm outline-none" />
+                  <button onClick={async () => {
+                    if (!wellnessNewTitle.trim()) return;
+                    const token = crypto.randomUUID().replace(/-/g, "");
+                    const { error } = await supabase.from("wellness_forms").insert({ token, title: wellnessNewTitle.trim(), created_by: session.user.id });
+                    if (error) { cpbAlert?.("Erreur : " + error.message); return; }
+                    setWellnessForms(f => [{ token, title: wellnessNewTitle.trim(), created_at: new Date().toISOString() }, ...f]);
+                    setWellnessNewTitle(""); setWellnessNewOpen(false);
+                    await copyOrShow(`${window.location.origin}/api/wellness?token=${token}`, "Questionnaire créé, lien copié !");
+                  }} className="text-sm font-semibold text-white px-4 py-2 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>Créer</button>
+                  <button onClick={() => setWellnessNewOpen(false)} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={18} /></button>
+                </div>
+              ) : (
+                <button onClick={() => setWellnessNewOpen(true)} className="mb-5 px-4 py-2 rounded-md text-sm font-semibold text-white flex items-center gap-1.5" style={{ backgroundColor: "var(--sport-accent)" }}>
+                  <Plus size={15} /> Nouveau questionnaire
+                </button>
+              )}
+
+              {wellnessLoading ? (
+                <p className="text-sm text-[#1B2A4A]/40">Chargement...</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {wellnessForms.map(f => (
+                    <div key={f.token} onClick={() => setWellnessOpenFormId(f.token)}
+                      className="flex items-center justify-between border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 cursor-pointer hover:border-[#FF6B35] hover:shadow-md transition-all">
+                      <div>
+                        <div className="font-semibold text-[#1B2A4A]">{f.title}</div>
+                        <div className="text-xs text-[#1B2A4A]/50">{f.created_at ? new Date(f.created_at).toLocaleDateString("fr-FR") : ""}</div>
+                      </div>
+                      <button onClick={(e) => { e.stopPropagation(); copyOrShow(`${window.location.origin}/api/wellness?token=${f.token}`, "Lien copié !"); }}
+                        className="text-xs font-medium text-[#1B2A4A] px-3 py-1.5 rounded-md border border-[#1B2A4A]/20 hover:bg-white flex-shrink-0 ml-3">Copier le lien</button>
+                    </div>
+                  ))}
+                  {wellnessForms.length === 0 && !wellnessNewOpen && <p className="text-sm text-[#1B2A4A]/40">Aucun questionnaire créé pour l'instant.</p>}
+                </div>
+              )}
+            </div>
           );
         })()}
 
