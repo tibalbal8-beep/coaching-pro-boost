@@ -7898,7 +7898,7 @@ function CoachingProBoost({ session }) {
         {view === "wellness" && (isAdmin || canManageWellness) && (() => {
           const WELLNESS_FIELDS = [
             { key: "rpe", label: "RPE" }, { key: "sommeil", label: "Sommeil" }, { key: "fatigue", label: "Fatigue" },
-            { key: "courbature", label: "Courbatures" }, { key: "stress", label: "Stress" }, { key: "humeur", label: "Humeur" }, { key: "alimentation", label: "Alimentation" },
+            { key: "courbature", label: "Courbatures" }, { key: "stress", label: "Stress" }, { key: "humeur", label: "Humeur/Alim." },
           ];
           const openForm = wellnessForms.find(f => f.token === wellnessOpenFormId);
 
