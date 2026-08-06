@@ -7005,6 +7005,7 @@ function CoachingProBoost({ session }) {
                 {sharedExercise.objectif && <p className="text-xs text-[#1B2A4A]/60 mt-2 italic">{sharedExercise.objectif}</p>}
               </div>
               <button onClick={() => {
+                if (!isPremium) { setSharedExercise(null); setPaywallReason("L'import d'un exercice partagé est une fonctionnalité Premium."); return; }
                 const newEx = { ...sharedExercise, id: uid(), createdAt: new Date().toISOString() };
                 if (newEx.file?.data) {
                   storage.set(`file:${newEx.id}`, JSON.stringify(newEx.file)).catch(() => {});
@@ -7016,7 +7017,7 @@ function CoachingProBoost({ session }) {
                 toast?.(`"${newEx.titre}" ajouté à ta bibliothèque !`);
               }} className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors mb-3"
                 style={{ fontFamily: "Oswald, sans-serif" }}>
-                Ajouter à ma bibliothèque
+                {isPremium ? "Ajouter à ma bibliothèque" : "🔒 Ajouter à ma bibliothèque (Premium)"}
               </button>
               <button onClick={() => setSharedExercise(null)}
                 className="w-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A] transition-colors">
@@ -7041,6 +7042,7 @@ function CoachingProBoost({ session }) {
                 ))}
               </div>
               <button onClick={() => {
+                if (!isPremium) { setSharedExerciseCollection(null); setPaywallReason("L'import d'un lot d'exercices partagés est une fonctionnalité Premium."); return; }
                 const newExs = sharedExerciseCollection.exercises.map(ex => {
                   const newEx = { ...ex, id: uid(), createdAt: new Date().toISOString() };
                   if (newEx.file?.data) {
@@ -7055,7 +7057,7 @@ function CoachingProBoost({ session }) {
                 toast?.(`${newExs.length} exercice${newExs.length > 1 ? "s" : ""} ajouté${newExs.length > 1 ? "s" : ""} à ta bibliothèque !`);
               }} className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors mb-3"
                 style={{ fontFamily: "Oswald, sans-serif" }}>
-                Tout ajouter à ma bibliothèque
+                {isPremium ? "Tout ajouter à ma bibliothèque" : "🔒 Tout ajouter (Premium)"}
               </button>
               <button onClick={() => setSharedExerciseCollection(null)}
                 className="w-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A] transition-colors">
