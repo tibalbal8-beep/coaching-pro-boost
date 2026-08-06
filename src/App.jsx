@@ -6772,7 +6772,7 @@ function CoachingProBoost({ session }) {
   // Stats filters (independent from sessions view)
   const [statsTeamFilter, setStatsTeamFilter] = useState("all");
   const [statsSeasonFilter, setStatsSeasonFilter] = useState(null);
-  const [statsMonthFilter, setStatsMonthFilter] = useState(null);
+  const [statsMonthFilter, setStatsMonthFilter] = useState([]); // liste de mois sélectionnés (plusieurs possibles) ; vide = toute la saison
   const [statsCatFilter, setStatsCatFilter] = useState([]);
 
   const statsBaseSessions = statsTeamFilter === "all" ? sessions : sessions.filter(s => s.teamId === statsTeamFilter);
@@ -6786,8 +6786,10 @@ function CoachingProBoost({ session }) {
     return acc;
   }, {});
   const statsMonthLabels = Object.keys(statsMonthGroups);
-  const statsActiveMonth = statsMonthFilter && statsMonthLabels.includes(statsMonthFilter) ? statsMonthFilter : null;
-  const statsSessions = statsActiveMonth ? statsMonthGroups[statsActiveMonth] : statsSeasonSessions;
+  const statsActiveMonths = statsMonthFilter.filter(m => statsMonthLabels.includes(m));
+  const statsSessions = statsActiveMonths.length > 0
+    ? statsActiveMonths.flatMap(m => statsMonthGroups[m] || [])
+    : statsSeasonSessions;
   const statsTotalMin = statsSessions.reduce((sum, s) => sum + totalDuree(s), 0);
   const statsThemeMin = {};
   statsSessions.forEach(s => s.exerciseIds.forEach(id => {
@@ -8300,9 +8302,9 @@ function CoachingProBoost({ session }) {
               {teams.length > 1 && (
                 <div className="flex flex-wrap gap-1.5 items-center">
                   <span className="text-xs text-[#1B2A4A]/40 w-20">Équipe :</span>
-                  <Tag active={statsTeamFilter === "all"} onClick={() => { setStatsTeamFilter("all"); setStatsSeasonFilter(null); setStatsMonthFilter(null); }}>Toutes</Tag>
+                  <Tag active={statsTeamFilter === "all"} onClick={() => { setStatsTeamFilter("all"); setStatsSeasonFilter(null); setStatsMonthFilter([]); }}>Toutes</Tag>
                   {teams.map(t => (
-                    <Tag key={t.id} active={statsTeamFilter === t.id} onClick={() => { setStatsTeamFilter(t.id); setStatsSeasonFilter(null); setStatsMonthFilter(null); }}>{t.nom || "Sans nom"}</Tag>
+                    <Tag key={t.id} active={statsTeamFilter === t.id} onClick={() => { setStatsTeamFilter(t.id); setStatsSeasonFilter(null); setStatsMonthFilter([]); }}>{t.nom || "Sans nom"}</Tag>
                   ))}
                 </div>
               )}
@@ -8310,16 +8312,17 @@ function CoachingProBoost({ session }) {
                 <div className="flex flex-wrap gap-1.5 items-center">
                   <span className="text-xs text-[#1B2A4A]/40 w-20">Saison :</span>
                   {statsSeasons.map(s => (
-                    <Tag key={s} active={statsActiveSeason === s} onClick={() => { setStatsSeasonFilter(s); setStatsMonthFilter(null); }}>{s}</Tag>
+                    <Tag key={s} active={statsActiveSeason === s} onClick={() => { setStatsSeasonFilter(s); setStatsMonthFilter([]); }}>{s}</Tag>
                   ))}
                 </div>
               )}
               {statsMonthLabels.length > 1 && (
                 <div className="flex flex-wrap gap-1.5 items-center">
                   <span className="text-xs text-[#1B2A4A]/40 w-20">Mois :</span>
-                  <Tag active={!statsActiveMonth} onClick={() => setStatsMonthFilter(null)}>Toute la saison</Tag>
+                  <Tag active={statsActiveMonths.length === 0} onClick={() => setStatsMonthFilter([])}>Toute la saison</Tag>
                   {statsMonthLabels.map(m => (
-                    <Tag key={m} active={statsActiveMonth === m} onClick={() => setStatsMonthFilter(m)}>{m}</Tag>
+                    <Tag key={m} active={statsMonthFilter.includes(m)}
+                      onClick={() => setStatsMonthFilter(prev => prev.includes(m) ? prev.filter(x => x !== m) : [...prev, m])}>{m}</Tag>
                   ))}
                 </div>
               )}
