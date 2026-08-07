@@ -7331,7 +7331,11 @@ function CoachingProBoost({ session }) {
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>BIBLIOTHÈQUE D'EXERCICES</h2>
-                <p className="text-sm text-[#1B2A4A]/50">{exercises.length} exercice{exercises.length !== 1 ? "s" : ""} enregistré{exercises.length !== 1 ? "s" : ""}</p>
+                <p className="text-sm text-[#1B2A4A]/50">
+                  {filtered.length !== exercises.length
+                    ? `${filtered.length} exercice${filtered.length !== 1 ? "s" : ""} affiché${filtered.length !== 1 ? "s" : ""} sur ${exercises.length}`
+                    : `${exercises.length} exercice${exercises.length !== 1 ? "s" : ""} enregistré${exercises.length !== 1 ? "s" : ""}`}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 {isAdmin && (
@@ -7469,7 +7473,11 @@ function CoachingProBoost({ session }) {
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>PLAY BOOK</h2>
-                <p className="text-sm text-[#1B2A4A]/50">{plays.length} play{plays.length !== 1 ? "s" : ""} enregistré{plays.length !== 1 ? "s" : ""}</p>
+                <p className="text-sm text-[#1B2A4A]/50">
+                  {filteredPlays.length !== plays.length
+                    ? `${filteredPlays.length} play${filteredPlays.length !== 1 ? "s" : ""} affiché${filteredPlays.length !== 1 ? "s" : ""} sur ${plays.length}`
+                    : `${plays.length} play${plays.length !== 1 ? "s" : ""} enregistré${plays.length !== 1 ? "s" : ""}`}
+                </p>
               </div>
               {isPremium ? (
                 <button onClick={() => { setEditingPlay(null); setPlaybookForm(true); }}
