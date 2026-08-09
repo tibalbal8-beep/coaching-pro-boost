@@ -1047,17 +1047,26 @@ function MediaCarousel({ items, index, onIndexChange, card = true, height = "h-4
 // Bouton "Réseaux" : compose côté navigateur un visuel prêt à publier (post carré 1080×1080
 // ou story 1080×1920) à partir de la photo/du schéma affiché et le télécharge directement —
 // pas d'aller-retour serveur, réutilise composeSocialImage/downloadBlob (voir src/App.jsx:~604).
-function SocialExportButton({ photoDataUrl, title, subtitle, filenameBase }) {
+function SocialExportButton({ photos, title, subtitle, filenameBase }) {
   const [open, setOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const toast = useToast();
+  const list = (photos || []).filter(Boolean);
+  const count = list.length;
 
+  // Une vignette = un fichier téléchargé : plusieurs photos/schémas donnent autant de PNG
+  // (numérotés) plutôt qu'un seul visuel basé sur la vignette affichée au moment du clic.
   const handleExport = async (format) => {
     setOpen(false);
+    if (count === 0) return;
     setExporting(true);
     try {
-      const blob = await composeSocialImage({ photoDataUrl, title, subtitle, format });
-      downloadBlob(blob, `${slugifyForFile(filenameBase)}-${format === "story" ? "story" : "post"}.png`);
+      for (let i = 0; i < count; i++) {
+        const blob = await composeSocialImage({ photoDataUrl: list[i], title, subtitle, format });
+        const suffix = count > 1 ? `-${i + 1}` : "";
+        downloadBlob(blob, `${slugifyForFile(filenameBase)}-${format === "story" ? "story" : "post"}${suffix}.png`);
+        if (i < count - 1) await new Promise(r => setTimeout(r, 300));
+      }
     } catch {
       toast?.("Impossible de générer l'image.");
     }
@@ -1066,16 +1075,20 @@ function SocialExportButton({ photoDataUrl, title, subtitle, filenameBase }) {
 
   return (
     <div className="relative">
-      <button onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }} disabled={exporting}
+      <button onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }} disabled={exporting || count === 0}
         className="flex items-center gap-1.5 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A] disabled:opacity-50">
-        <Share2 size={16} /> {exporting ? "Génération..." : "Réseaux"}
+        <Share2 size={16} /> {exporting ? "Génération..." : count > 1 ? `Réseaux (${count})` : "Réseaux"}
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setOpen(false); }} />
-          <div className="absolute right-0 top-full mt-2 z-20 bg-white rounded-xl shadow-xl border border-[#1B2A4A]/10 py-1 w-56" onClick={e => e.stopPropagation()}>
-            <button onClick={() => handleExport("post")} className="w-full text-left px-3 py-2 text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5">Post carré (1080×1080)</button>
-            <button onClick={() => handleExport("story")} className="w-full text-left px-3 py-2 text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5">Story (1080×1920)</button>
+          <div className="absolute right-0 top-full mt-2 z-20 bg-white rounded-xl shadow-xl border border-[#1B2A4A]/10 py-1 w-60" onClick={e => e.stopPropagation()}>
+            <button onClick={() => handleExport("post")} className="w-full text-left px-3 py-2 text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5">
+              Post carré (1080×1080){count > 1 ? ` · ${count} fichiers` : ""}
+            </button>
+            <button onClick={() => handleExport("story")} className="w-full text-left px-3 py-2 text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5">
+              Story (1080×1920){count > 1 ? ` · ${count} fichiers` : ""}
+            </button>
           </div>
         </>
       )}
@@ -1666,7 +1679,7 @@ function ExerciseViewer({ ex, onClose, onEdit, showSocialExport = false }) {
         </div>
         <div className="flex items-center gap-3">
           {showSocialExport && (
-            <SocialExportButton photoDataUrl={allPhotos[Math.min(imgIdx, allPhotos.length - 1)] || null}
+            <SocialExportButton photos={allPhotos}
               title={ex.titre} subtitle={`${ex.format} · ${ex.duree} min`} filenameBase={ex.titre} />
           )}
           {onEdit && (
@@ -5431,7 +5444,7 @@ function PlayViewer({ play, onClose, onEdit, onUpdatePlay, showSocialExport = fa
         </div>
         <div className="flex items-center gap-3">
           {showSocialExport && (
-            <SocialExportButton photoDataUrl={currentItem?.src || null}
+            <SocialExportButton photos={carouselItems.map(it => it.src)}
               title={play.titre} subtitle={play.type} filenameBase={play.titre} />
           )}
           <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">
