@@ -1503,40 +1503,40 @@ function ExerciseViewer({ ex, onClose, onEdit }) {
   const allPhotos = [...(hasFile ? [fileImage] : []), ...schemas];
 
   return (
-    <div className="fixed inset-0 z-[250] bg-black/85 flex flex-col" onClick={onClose}>
-      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" onClick={e => e.stopPropagation()}>
-        <button onClick={onClose} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><X size={18} /> Fermer</button>
+    <div className="fixed inset-0 z-[250] bg-[#F4F0E6] flex flex-col" onClick={onClose}>
+      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0 border-b border-[#1B2A4A]/10 bg-white" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="flex items-center gap-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]"><X size={18} /> Fermer</button>
         <div className="text-center">
-          <div className="text-white font-semibold">{ex.titre}</div>
+          <div className="text-[#1B2A4A] font-semibold">{ex.titre}</div>
           <div className="text-xs font-medium" style={{ color: "var(--sport-accent)" }}>{ex.format} · {ex.duree} min</div>
         </div>
         {onEdit && (
-          <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white">
+          <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">
             <Pencil size={16} /> Modifier
           </button>
         )}
       </div>
-      <div className="flex-1 flex flex-col items-center justify-center px-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="flex-1 flex flex-col items-center justify-center px-4 py-4 overflow-hidden" onClick={e => e.stopPropagation()}>
         {ex.diagram ? (
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden p-2">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl shadow-[#1B2A4A]/10 overflow-hidden p-2">
             <CourtDiagram players={ex.diagram.players} paths={ex.diagram.paths} screens={ex.diagram.screens} />
           </div>
         ) : allPhotos.length > 0 ? (
-          <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden">
+          <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl shadow-[#1B2A4A]/10 overflow-hidden">
             <MediaCarousel items={allPhotos} index={imgIdx} onIndexChange={setImgIdx} card={false} height="max-h-[65vh] h-auto" />
           </div>
         ) : (
-          <div className="text-white/40 text-sm">Aucune image</div>
+          <div className="text-[#1B2A4A]/30 text-sm">Aucune image</div>
         )}
       </div>
       {(ex.objectif || ex.notes || (ex.themes || []).length > 0) && (
-        <div className="flex-shrink-0 bg-[#1B2A4A]/90 px-4 py-3 max-h-60 overflow-y-auto" onClick={e => e.stopPropagation()}>
-          {ex.objectif && <p className="text-white/80 text-sm mb-1">{ex.objectif}</p>}
-          {ex.notes && <p className="text-white/50 text-xs">{ex.notes}</p>}
+        <div className="flex-shrink-0 bg-white border-t border-[#1B2A4A]/10 px-4 py-3 max-h-60 overflow-y-auto" onClick={e => e.stopPropagation()}>
+          {ex.objectif && <p className="text-[#1B2A4A]/80 text-sm mb-1">{ex.objectif}</p>}
+          {ex.notes && <p className="text-[#1B2A4A]/50 text-xs">{ex.notes}</p>}
           {(ex.themes || []).length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
               {(ex.themes || []).map(t => (
-                <span key={t} className="text-xs bg-white/10 text-white/60 rounded-full px-2 py-0.5">{t}</span>
+                <span key={t} className="text-xs bg-[#1B2A4A]/8 text-[#1B2A4A]/60 rounded-full px-2 py-0.5">{t}</span>
               ))}
             </div>
           )}
@@ -5262,50 +5262,50 @@ function PlayViewer({ play, onClose, onEdit, onUpdatePlay }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[250] bg-black/85 flex flex-col" onClick={onClose}>
-      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" onClick={e => e.stopPropagation()}>
-        <button onClick={onClose} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><X size={18} /> Fermer</button>
+    <div className="fixed inset-0 z-[250] bg-[#F4F0E6] flex flex-col" onClick={onClose}>
+      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0 border-b border-[#1B2A4A]/10 bg-white" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="flex items-center gap-2 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]"><X size={18} /> Fermer</button>
         <div className="text-center">
-          <div className="text-white font-semibold">{play.titre}</div>
+          <div className="text-[#1B2A4A] font-semibold">{play.titre}</div>
           <div className="text-xs font-medium" style={{ color: "var(--sport-accent)" }}>{play.type}</div>
         </div>
-        <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white">
+        <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">
           <Pencil size={16} /> Modifier
         </button>
       </div>
-      <div className="flex-1 flex flex-col items-center justify-center px-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="flex-1 flex flex-col items-center justify-center px-4 py-4 overflow-hidden" onClick={e => e.stopPropagation()}>
         {carouselItems.length > 0 ? (
           <>
-            <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-xl shadow-[#1B2A4A]/10 overflow-hidden">
               <MediaCarousel items={carouselItems.map(it => it.src)} index={imgIdx} onIndexChange={setImgIdx} card={false} height="max-h-[60vh] h-auto"
                 overlay={onUpdatePlay && (
                   <button onClick={(e) => { e.stopPropagation(); setCropping(true); }}
-                    className="absolute top-2 right-2 bg-black/60 text-white rounded-full px-3 py-1.5 text-xs flex items-center gap-1.5 hover:bg-black/80">
+                    className="absolute top-2 right-2 bg-white shadow-md text-[#1B2A4A] rounded-full px-3 py-1.5 text-xs flex items-center gap-1.5 hover:bg-[#FF6B35] hover:text-white transition-colors">
                     <Pencil size={12} /> Rogner
                   </button>
                 )} />
             </div>
             {currentItem.annotation && (
-              <div className="mt-2 text-white/80 text-sm italic text-center">{currentItem.annotation}</div>
+              <div className="mt-2 text-[#1B2A4A]/70 text-sm italic text-center">{currentItem.annotation}</div>
             )}
           </>
         ) : (
-          <div className="text-white/40 text-sm">Aucune image</div>
+          <div className="text-[#1B2A4A]/30 text-sm">Aucune image</div>
         )}
       </div>
       {(play.description || play.notes || (play.tags || []).length > 0 || play.diagram) && (
-        <div className="flex-shrink-0 bg-[#1B2A4A]/90 px-4 py-3 max-h-60 overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex-shrink-0 bg-white border-t border-[#1B2A4A]/10 px-4 py-3 max-h-60 overflow-y-auto" onClick={e => e.stopPropagation()}>
           {play.diagram && !play.schemas?.length && (
-            <div className="mb-2 bg-white/10 rounded-lg overflow-hidden">
+            <div className="mb-2 bg-[#1B2A4A]/5 rounded-lg overflow-hidden">
               <CourtDiagram diagram={play.diagram} />
             </div>
           )}
-          {play.description && <p className="text-white/80 text-sm mb-1">{play.description}</p>}
-          {play.notes && <p className="text-white/50 text-xs">{play.notes}</p>}
+          {play.description && <p className="text-[#1B2A4A]/80 text-sm mb-1">{play.description}</p>}
+          {play.notes && <p className="text-[#1B2A4A]/50 text-xs">{play.notes}</p>}
           {(play.tags || []).length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
               {(play.tags || []).map(t => (
-                <span key={t} className="text-xs bg-white/10 text-white/60 rounded-full px-2 py-0.5">{t}</span>
+                <span key={t} className="text-xs bg-[#1B2A4A]/8 text-[#1B2A4A]/60 rounded-full px-2 py-0.5">{t}</span>
               ))}
             </div>
           )}
