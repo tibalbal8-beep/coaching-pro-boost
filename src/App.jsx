@@ -1649,7 +1649,7 @@ function ExerciseCard({ ex, index, onClick, onView, onRemove, onAddToDraft, onCr
   );
 }
 
-function ExerciseViewer({ ex, onClose, onEdit }) {
+function ExerciseViewer({ ex, onClose, onEdit, showSocialExport = false }) {
   const fileImage = useFileImage(ex);
   const schemas = useSchemasData(ex);
   const [imgIdx, setImgIdx] = useState(0);
@@ -1665,8 +1665,10 @@ function ExerciseViewer({ ex, onClose, onEdit }) {
           <div className="text-xs font-medium" style={{ color: "var(--sport-accent)" }}>{ex.format} · {ex.duree} min</div>
         </div>
         <div className="flex items-center gap-3">
-          <SocialExportButton photoDataUrl={allPhotos[Math.min(imgIdx, allPhotos.length - 1)] || null}
-            title={ex.titre} subtitle={`${ex.format} · ${ex.duree} min`} filenameBase={ex.titre} />
+          {showSocialExport && (
+            <SocialExportButton photoDataUrl={allPhotos[Math.min(imgIdx, allPhotos.length - 1)] || null}
+              title={ex.titre} subtitle={`${ex.format} · ${ex.duree} min`} filenameBase={ex.titre} />
+          )}
           {onEdit && (
             <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">
               <Pencil size={16} /> Modifier
@@ -5390,7 +5392,7 @@ function CourtEditor({ value, onChange }) {
   );
 }
 
-function PlayViewer({ play, onClose, onEdit, onUpdatePlay }) {
+function PlayViewer({ play, onClose, onEdit, onUpdatePlay, showSocialExport = false }) {
   const images = usePlayImages(play);
   const [imgIdx, setImgIdx] = useState(0);
   const [cropping, setCropping] = useState(false);
@@ -5428,8 +5430,10 @@ function PlayViewer({ play, onClose, onEdit, onUpdatePlay }) {
           <div className="text-xs font-medium" style={{ color: "var(--sport-accent)" }}>{play.type}</div>
         </div>
         <div className="flex items-center gap-3">
-          <SocialExportButton photoDataUrl={currentItem?.src || null}
-            title={play.titre} subtitle={play.type} filenameBase={play.titre} />
+          {showSocialExport && (
+            <SocialExportButton photoDataUrl={currentItem?.src || null}
+              title={play.titre} subtitle={play.type} filenameBase={play.titre} />
+          )}
           <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">
             <Pencil size={16} /> Modifier
           </button>
@@ -9012,12 +9016,14 @@ function CoachingProBoost({ session }) {
         {viewingPlay && (
           <PlayViewer play={viewingPlay} onClose={() => setViewingPlay(null)}
             onEdit={() => { setEditingPlay(viewingPlay); setPlaybookForm(true); setViewingPlay(null); }}
-            onUpdatePlay={(updatedPlay) => { savePlays(plays.map(p => p.id === updatedPlay.id ? updatedPlay : p)); setViewingPlay(updatedPlay); }} />
+            onUpdatePlay={(updatedPlay) => { savePlays(plays.map(p => p.id === updatedPlay.id ? updatedPlay : p)); setViewingPlay(updatedPlay); }}
+            showSocialExport={isAdmin} />
         )}
 
         {viewingExercise && (
           <ExerciseViewer ex={viewingExercise} onClose={() => setViewingExercise(null)}
-            onEdit={() => { setEditing(viewingExercise); setShowForm(true); setViewingExercise(null); }} />
+            onEdit={() => { setEditing(viewingExercise); setShowForm(true); setViewingExercise(null); }}
+            showSocialExport={isAdmin} />
         )}
 
         {view === "sessions" && !reviewItems && (
