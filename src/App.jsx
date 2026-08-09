@@ -9548,7 +9548,8 @@ export default function App() {
 
   if (session === undefined) {
     return (
-      <div className="min-h-screen bg-[#F2EDE4] flex items-center justify-center">
+      <div className="min-h-screen bg-[#F2EDE4] flex flex-col items-center justify-center gap-4">
+        <img src="/logo%20détouré.png" alt="" className="w-24 h-24 object-contain animate-pulse" />
         <div className="text-[#1B2A4A]/50 text-sm">Chargement...</div>
       </div>
     );
