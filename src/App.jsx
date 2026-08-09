@@ -883,6 +883,52 @@ function useSchemasData(ex) {
   return schemas;
 }
 
+// Carrousel réutilisable (carte claire, ombre douce, glisser au doigt, points cliquables).
+// `card=true` : le carrousel dessine sa propre carte blanche arrondie avec ombre (usage autonome).
+// `card=false` : pas de carte propre, on suppose que le parent fournit déjà le cadre (évite les cartes imbriquées).
+function MediaCarousel({ items, index, onIndexChange, card = true, height = "h-48", overlay, onClickImage }) {
+  const touchStartX = React.useRef(null);
+  const touchDeltaX = React.useRef(0);
+  if (!items || items.length === 0) return null;
+  const idx = Math.min(index, items.length - 1);
+  const go = (i) => onIndexChange((i + items.length) % items.length);
+  const onTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; touchDeltaX.current = 0; };
+  const onTouchMove = (e) => { if (touchStartX.current != null) touchDeltaX.current = e.touches[0].clientX - touchStartX.current; };
+  const onTouchEnd = () => {
+    if (Math.abs(touchDeltaX.current) > 40) go(idx + (touchDeltaX.current < 0 ? 1 : -1));
+    touchStartX.current = null; touchDeltaX.current = 0;
+  };
+  return (
+    <div className={card ? "bg-white rounded-2xl shadow-lg shadow-[#1B2A4A]/15 border border-[#1B2A4A]/5 overflow-hidden" : ""}>
+      <div className="relative select-none" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+        onClick={onClickImage}>
+        <img src={items[idx]} alt="" className={`w-full ${height} object-contain bg-white`} />
+        {overlay}
+        {items.length > 1 && (
+          <>
+            <button type="button" onClick={(e) => { e.stopPropagation(); go(idx - 1); }}
+              className="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white shadow-md flex items-center justify-center text-[#1B2A4A] hover:bg-[#FF6B35] hover:text-white transition-colors">
+              <ChevronRight size={15} className="rotate-180" />
+            </button>
+            <button type="button" onClick={(e) => { e.stopPropagation(); go(idx + 1); }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white shadow-md flex items-center justify-center text-[#1B2A4A] hover:bg-[#FF6B35] hover:text-white transition-colors">
+              <ChevronRight size={15} />
+            </button>
+          </>
+        )}
+      </div>
+      {items.length > 1 && (
+        <div className="flex items-center justify-center gap-1.5 py-2 bg-white">
+          {items.map((_, i) => (
+            <button type="button" key={i} onClick={(e) => { e.stopPropagation(); onIndexChange(i); }}
+              className={`rounded-full transition-all ${i === idx ? "w-2.5 h-2.5 bg-[#FF6B35]" : "w-2 h-2 bg-[#1B2A4A]/15 hover:bg-[#1B2A4A]/30"}`} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ExerciseFormImagePreview({ ex }) {
   const fileImage = useFileImage(ex);
   if (!fileImage || !ex.file?.type?.startsWith("image/")) return null;
@@ -1064,14 +1110,9 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
         const isFileSlide = hasFilePhoto && photoIdx === 0;
         return (
         <div className="border border-[#1B2A4A]/15 rounded-lg p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <button type="button" disabled={photoIdx === 0} onClick={() => setPhotoIdx(i => i - 1)}
-              className="w-7 h-7 flex items-center justify-center rounded-full border border-[#1B2A4A]/20 text-[#1B2A4A] disabled:opacity-30 hover:bg-[#1B2A4A]/5">‹</button>
-            <span className="text-xs font-medium text-[#1B2A4A]/60 flex-1 text-center">Photo {photoIdx + 1} / {allPhotos.length}</span>
-            <button type="button" disabled={photoIdx === allPhotos.length - 1} onClick={() => setPhotoIdx(i => i + 1)}
-              className="w-7 h-7 flex items-center justify-center rounded-full border border-[#1B2A4A]/20 text-[#1B2A4A] disabled:opacity-30 hover:bg-[#1B2A4A]/5">›</button>
+          <div className="mb-2">
+            <MediaCarousel items={allPhotos} index={photoIdx} onIndexChange={setPhotoIdx} height="max-h-72 h-auto" />
           </div>
-          <img src={allPhotos[Math.min(photoIdx, allPhotos.length - 1)]} alt="" className="w-full rounded-lg border border-[#1B2A4A]/10 mb-2" />
           <div className="flex gap-2">
             <input ref={extraPhotoInputRef} type="file" accept="image/*" className="hidden"
               onChange={async (e) => {
@@ -1381,7 +1422,7 @@ function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage,
   const [carouselIdx, setCarouselIdx] = useState(0);
   const [confirmDel, setConfirmDel] = useState(false);
   return (
-    <div className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-4 relative group hover:shadow-md transition-shadow" onClick={selectMode ? onToggleSelect : onClick}>
+    <div className="border border-[#1B2A4A]/10 rounded-xl bg-white shadow-md shadow-[#1B2A4A]/10 p-4 relative group hover:shadow-lg transition-shadow" onClick={selectMode ? onToggleSelect : onClick}>
       {selectMode && (
         <div className="absolute top-2 left-2 z-10 w-5 h-5 rounded flex items-center justify-center border-2"
           style={{ borderColor: selected ? "#FF6B35" : "#1B2A4A40", backgroundColor: selected ? "#FF6B35" : "#fff" }}>
@@ -1422,25 +1463,14 @@ function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage,
           const idx = Math.min(carouselIdx, allPhotos.length - 1);
           const isFileSlide = hasFile && idx === 0;
           return (
-            <div className="mb-2 relative" onClick={e => e.stopPropagation()}>
-              <img src={allPhotos[idx]} alt="" className="w-full rounded border border-[#1B2A4A]/10 object-contain max-h-48" />
-              {allPhotos.length > 1 && (
-                <div className="absolute bottom-2 left-0 right-0 flex items-center justify-center gap-2">
-                  <button onClick={() => setCarouselIdx(i => Math.max(0, i - 1))}
-                    disabled={idx === 0}
-                    className="w-6 h-6 flex items-center justify-center rounded-full bg-white/90 border border-[#1B2A4A]/20 text-[#1B2A4A] text-sm disabled:opacity-30 shadow-sm">‹</button>
-                  <span className="text-[10px] font-medium bg-white/90 px-1.5 py-0.5 rounded-full text-[#1B2A4A]/60 shadow-sm">{idx + 1}/{allPhotos.length}</span>
-                  <button onClick={() => setCarouselIdx(i => Math.min(allPhotos.length - 1, i + 1))}
-                    disabled={idx === allPhotos.length - 1}
-                    className="w-6 h-6 flex items-center justify-center rounded-full bg-white/90 border border-[#1B2A4A]/20 text-[#1B2A4A] text-sm disabled:opacity-30 shadow-sm">›</button>
-                </div>
-              )}
-              {isFileSlide && onCropImage && (
-                <button onClick={(e) => { e.stopPropagation(); onCropImage(fileImage); }}
-                  className="absolute bottom-2 right-2 flex items-center gap-1 bg-white/90 border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-xs font-medium text-[#1B2A4A] hover:bg-[#FF6B35] hover:text-white hover:border-[#FF6B35] transition-colors">
-                  <ImageIcon size={12} /> Rogner
-                </button>
-              )}
+            <div className="mb-2 rounded-lg overflow-hidden" onClick={e => e.stopPropagation()}>
+              <MediaCarousel items={allPhotos} index={idx} onIndexChange={setCarouselIdx} card={false} height="h-48"
+                overlay={isFileSlide && onCropImage && (
+                  <button onClick={(e) => { e.stopPropagation(); onCropImage(fileImage); }}
+                    className="absolute top-2 right-2 flex items-center gap-1 bg-white/90 border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-xs font-medium text-[#1B2A4A] hover:bg-[#FF6B35] hover:text-white hover:border-[#FF6B35] transition-colors">
+                    <ImageIcon size={12} /> Rogner
+                  </button>
+                )} />
             </div>
           );
         })()}
@@ -4862,7 +4892,7 @@ function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare, onS
   const currentItem = carouselItems[Math.min(imgIdx, carouselItems.length - 1)];
 
   return (
-    <div className={`border rounded-lg bg-white/70 overflow-hidden transition-all ${selected ? "border-[#FF6B35] ring-2 ring-[#FF6B35]/30" : "border-[#1B2A4A]/15 hover:border-[#FF6B35]/50"}`}>
+    <div className={`border rounded-xl bg-white shadow-md shadow-[#1B2A4A]/10 hover:shadow-lg overflow-hidden transition-all ${selected ? "border-[#FF6B35] ring-2 ring-[#FF6B35]/30" : "border-[#1B2A4A]/10 hover:border-[#FF6B35]/50"}`}>
       {onSelect && (
         <div className="flex items-center gap-2 px-3 pt-2" onClick={onSelect}>
           <div className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-colors ${selected ? "bg-[#FF6B35] border-[#FF6B35]" : "border-[#1B2A4A]/30"}`}>
@@ -4872,30 +4902,14 @@ function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare, onS
         </div>
       )}
       {carouselItems.length > 0 && (
-        <div className="relative select-none cursor-pointer" onClick={onView}>
-          <img src={currentItem.src} alt="" className="w-full h-48 object-contain bg-white" />
-          {carouselItems.length > 1 && (
-            <>
-              <button onClick={e => { e.stopPropagation(); setImgIdx(i => (i - 1 + carouselItems.length) % carouselItems.length); }}
-                className="absolute left-1.5 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full p-0.5 hover:bg-black/70">
-                <ChevronRight size={15} className="rotate-180" />
-              </button>
-              <button onClick={e => { e.stopPropagation(); setImgIdx(i => (i + 1) % carouselItems.length); }}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-black/50 text-white rounded-full p-0.5 hover:bg-black/70">
-                <ChevronRight size={15} />
-              </button>
-              <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1">
-                {carouselItems.map((_, i) => (
-                  <div key={i} className={`w-1.5 h-1.5 rounded-full transition-colors ${i === imgIdx ? "bg-white" : "bg-white/40"}`} />
-                ))}
+        <div className="cursor-pointer">
+          <MediaCarousel items={carouselItems.map(it => it.src)} index={imgIdx} onIndexChange={setImgIdx} card={false} height="h-48"
+            onClickImage={onView}
+            overlay={currentItem.annotation && (
+              <div className="absolute bottom-0 left-0 right-0 bg-black/55 text-white text-xs px-2 py-1 text-center">
+                {currentItem.annotation}
               </div>
-            </>
-          )}
-          {currentItem.annotation && (
-            <div className="absolute bottom-0 left-0 right-0 bg-black/55 text-white text-xs px-2 py-1 text-center">
-              {currentItem.annotation}
-            </div>
-          )}
+            )} />
         </div>
       )}
       <div className="p-3 cursor-pointer" onClick={onView}>
@@ -5210,37 +5224,17 @@ function PlayViewer({ play, onClose, onEdit, onUpdatePlay }) {
       <div className="flex-1 flex flex-col items-center justify-center px-4 overflow-hidden" onClick={e => e.stopPropagation()}>
         {carouselItems.length > 0 ? (
           <>
-            <div className="relative w-full max-w-2xl">
-              <img src={currentItem.src} alt="" className="w-full max-h-[60vh] object-contain rounded-lg" />
-              {onUpdatePlay && (
-                <button onClick={() => setCropping(true)}
-                  className="absolute top-2 right-2 bg-black/60 text-white rounded-full px-3 py-1.5 text-xs flex items-center gap-1.5 hover:bg-black/80">
-                  <Pencil size={12} /> Rogner
-                </button>
-              )}
-              {carouselItems.length > 1 && (
-                <>
-                  <button onClick={() => setImgIdx(i => (i - 1 + carouselItems.length) % carouselItems.length)}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 text-white rounded-full p-1.5 hover:bg-black/80">
-                    <ChevronRight size={20} className="rotate-180" />
+            <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden">
+              <MediaCarousel items={carouselItems.map(it => it.src)} index={imgIdx} onIndexChange={setImgIdx} card={false} height="max-h-[60vh] h-auto"
+                overlay={onUpdatePlay && (
+                  <button onClick={(e) => { e.stopPropagation(); setCropping(true); }}
+                    className="absolute top-2 right-2 bg-black/60 text-white rounded-full px-3 py-1.5 text-xs flex items-center gap-1.5 hover:bg-black/80">
+                    <Pencil size={12} /> Rogner
                   </button>
-                  <button onClick={() => setImgIdx(i => (i + 1) % carouselItems.length)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 text-white rounded-full p-1.5 hover:bg-black/80">
-                    <ChevronRight size={20} />
-                  </button>
-                </>
-              )}
+                )} />
             </div>
             {currentItem.annotation && (
               <div className="mt-2 text-white/80 text-sm italic text-center">{currentItem.annotation}</div>
-            )}
-            {carouselItems.length > 1 && (
-              <div className="flex gap-2 mt-3">
-                {carouselItems.map((_, i) => (
-                  <button key={i} onClick={() => setImgIdx(i)}
-                    className={`w-2.5 h-2.5 rounded-full transition-colors ${i === imgIdx ? "bg-white" : "bg-white/30"}`} />
-                ))}
-              </div>
             )}
           </>
         ) : (
