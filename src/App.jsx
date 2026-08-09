@@ -629,6 +629,121 @@ function readImageAsJpeg(file, maxDim = 1200, quality = 0.72) {
   });
 }
 
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight, maxLines) {
+  const words = (text || "").split(" ");
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    const testLine = line ? `${line} ${word}` : word;
+    if (ctx.measureText(testLine).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = testLine;
+    }
+  }
+  if (line) lines.push(line);
+  const shown = lines.slice(0, maxLines);
+  if (lines.length > maxLines) shown[maxLines - 1] = shown[maxLines - 1].replace(/\s*\S*$/, "…");
+  shown.forEach((l, i) => ctx.fillText(l, x, y + i * lineHeight));
+  return shown.length;
+}
+
+function loadImageEl(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+// Compose une image "prête à publier" (photo/schéma + titre + logo) pour Instagram/Facebook,
+// en réutilisant le canvas plutôt qu'un rendu serveur — pas d'aller-retour réseau nécessaire.
+async function composeSocialImage({ photoDataUrl, title, subtitle, format = "post" }) {
+  const W = 1080;
+  const H = format === "story" ? 1920 : 1080;
+  const bandH = format === "story" ? 380 : 260;
+  const pad = 48;
+  const photoAreaH = H - bandH;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+
+  ctx.fillStyle = "#F2EDE4";
+  ctx.fillRect(0, 0, W, H);
+
+  try { await document.fonts.load("800 52px Oswald"); await document.fonts.load("600 30px Oswald"); } catch {}
+
+  const [photo, logo] = await Promise.all([
+    photoDataUrl ? loadImageEl(photoDataUrl).catch(() => null) : Promise.resolve(null),
+    loadImageEl("/logo%20détouré.png").catch(() => null),
+  ]);
+
+  const cardX = pad, cardY = pad, cardW = W - pad * 2, cardH = photoAreaH - pad * 1.5;
+  ctx.save();
+  ctx.shadowColor = "rgba(27,42,74,0.18)";
+  ctx.shadowBlur = 36;
+  ctx.shadowOffsetY = 12;
+  roundRectPath(ctx, cardX, cardY, cardW, cardH, 32);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.restore();
+
+  if (photo) {
+    const innerPad = 28;
+    const ix = cardX + innerPad, iy = cardY + innerPad, iw = cardW - innerPad * 2, ih = cardH - innerPad * 2;
+    const scale = Math.min(iw / photo.width, ih / photo.height);
+    const dw = photo.width * scale, dh = photo.height * scale;
+    const dx = ix + (iw - dw) / 2, dy = iy + (ih - dh) / 2;
+    ctx.save();
+    roundRectPath(ctx, cardX, cardY, cardW, cardH, 32);
+    ctx.clip();
+    ctx.drawImage(photo, dx, dy, dw, dh);
+    ctx.restore();
+  }
+
+  ctx.fillStyle = "#1B2A4A";
+  ctx.fillRect(0, photoAreaH, W, bandH);
+  ctx.fillStyle = "#FF6B35";
+  ctx.fillRect(0, photoAreaH, W, 6);
+
+  const logoSize = 84;
+  if (logo) ctx.drawImage(logo, W - pad - logoSize, photoAreaH + bandH - logoSize - 34, logoSize, logoSize);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.textBaseline = "top";
+  ctx.font = "800 52px Oswald, sans-serif";
+  wrapCanvasText(ctx, (title || "").toUpperCase(), pad, photoAreaH + 38, W - pad * 2 - logoSize - 24, 60, 2);
+
+  if (subtitle) {
+    ctx.fillStyle = "#FF6B35";
+    ctx.font = "600 28px Oswald, sans-serif";
+    ctx.fillText(subtitle.toUpperCase(), pad, photoAreaH + bandH - 62);
+  }
+
+  return new Promise(resolve => canvas.toBlob(resolve, "image/png", 0.95));
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 async function renderPdfPages(file, maxPages = 25) {
   const buf = await file.arrayBuffer();
   const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
@@ -924,6 +1039,45 @@ function MediaCarousel({ items, index, onIndexChange, card = true, height = "h-4
               className={`rounded-full transition-all ${i === idx ? "w-2.5 h-2.5 bg-[#FF6B35]" : "w-2 h-2 bg-[#1B2A4A]/15 hover:bg-[#1B2A4A]/30"}`} />
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+// Bouton "Réseaux" : compose côté navigateur un visuel prêt à publier (post carré 1080×1080
+// ou story 1080×1920) à partir de la photo/du schéma affiché et le télécharge directement —
+// pas d'aller-retour serveur, réutilise composeSocialImage/downloadBlob (voir src/App.jsx:~604).
+function SocialExportButton({ photoDataUrl, title, subtitle, filenameBase }) {
+  const [open, setOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const toast = useToast();
+
+  const handleExport = async (format) => {
+    setOpen(false);
+    setExporting(true);
+    try {
+      const blob = await composeSocialImage({ photoDataUrl, title, subtitle, format });
+      downloadBlob(blob, `${slugifyForFile(filenameBase)}-${format === "story" ? "story" : "post"}.png`);
+    } catch {
+      toast?.("Impossible de générer l'image.");
+    }
+    setExporting(false);
+  };
+
+  return (
+    <div className="relative">
+      <button onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }} disabled={exporting}
+        className="flex items-center gap-1.5 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A] disabled:opacity-50">
+        <Share2 size={16} /> {exporting ? "Génération..." : "Réseaux"}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setOpen(false); }} />
+          <div className="absolute right-0 top-full mt-2 z-20 bg-white rounded-xl shadow-xl border border-[#1B2A4A]/10 py-1 w-56" onClick={e => e.stopPropagation()}>
+            <button onClick={() => handleExport("post")} className="w-full text-left px-3 py-2 text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5">Post carré (1080×1080)</button>
+            <button onClick={() => handleExport("story")} className="w-full text-left px-3 py-2 text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5">Story (1080×1920)</button>
+          </div>
+        </>
       )}
     </div>
   );
@@ -1510,11 +1664,15 @@ function ExerciseViewer({ ex, onClose, onEdit }) {
           <div className="text-[#1B2A4A] font-semibold">{ex.titre}</div>
           <div className="text-xs font-medium" style={{ color: "var(--sport-accent)" }}>{ex.format} · {ex.duree} min</div>
         </div>
-        {onEdit && (
-          <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">
-            <Pencil size={16} /> Modifier
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <SocialExportButton photoDataUrl={allPhotos[Math.min(imgIdx, allPhotos.length - 1)] || null}
+            title={ex.titre} subtitle={`${ex.format} · ${ex.duree} min`} filenameBase={ex.titre} />
+          {onEdit && (
+            <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">
+              <Pencil size={16} /> Modifier
+            </button>
+          )}
+        </div>
       </div>
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-4 overflow-hidden" onClick={e => e.stopPropagation()}>
         {ex.diagram ? (
@@ -5269,9 +5427,13 @@ function PlayViewer({ play, onClose, onEdit, onUpdatePlay }) {
           <div className="text-[#1B2A4A] font-semibold">{play.titre}</div>
           <div className="text-xs font-medium" style={{ color: "var(--sport-accent)" }}>{play.type}</div>
         </div>
-        <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">
-          <Pencil size={16} /> Modifier
-        </button>
+        <div className="flex items-center gap-3">
+          <SocialExportButton photoDataUrl={currentItem?.src || null}
+            title={play.titre} subtitle={play.type} filenameBase={play.titre} />
+          <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">
+            <Pencil size={16} /> Modifier
+          </button>
+        </div>
       </div>
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-4 overflow-hidden" onClick={e => e.stopPropagation()}>
         {carouselItems.length > 0 ? (
