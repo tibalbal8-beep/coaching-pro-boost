@@ -8488,14 +8488,16 @@ function CoachingProBoost({ session }) {
           <div className="max-w-md">
             <h2 className="text-2xl font-bold text-[#1B2A4A] mb-6" style={{ fontFamily: "Oswald, sans-serif" }}>MON COMPTE</h2>
 
-            <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">
-              <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Réparer les visuels manquants</div>
-              <p className="text-xs text-[#1B2A4A]/50 mb-3">Si des photos ou schémas d'exercices ont disparu récemment (bug corrigé le 20/07/2026), clique ici pour vérifier et les restaurer — tes données n'ont pas été supprimées, juste "perdues de vue".</p>
-              <button onClick={repairMissingVisuals} disabled={repairingVisuals}
-                className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>
-                {repairingVisuals ? "Vérification en cours..." : "Vérifier et réparer"}
-              </button>
-            </div>
+            {isAdmin && (
+              <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">
+                <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Réparer les visuels manquants</div>
+                <p className="text-xs text-[#1B2A4A]/50 mb-3">Si des photos ou schémas d'exercices ont disparu récemment (bug corrigé le 20/07/2026), clique ici pour vérifier et les restaurer — tes données n'ont pas été supprimées, juste "perdues de vue".</p>
+                <button onClick={repairMissingVisuals} disabled={repairingVisuals}
+                  className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>
+                  {repairingVisuals ? "Vérification en cours..." : "Vérifier et réparer"}
+                </button>
+              </div>
+            )}
 
             <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">
               <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Nettoyer les fichiers orphelins</div>
