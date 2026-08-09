@@ -5903,7 +5903,7 @@ function ScrollToTopButton() {
   if (!visible) return null;
   return (
     <button onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-      className="fixed bottom-6 right-5 z-[500] w-11 h-11 rounded-full bg-[#1B2A4A] text-white shadow-lg flex items-center justify-center hover:bg-[#FF6B35] transition-colors no-print"
+      className="fixed bottom-24 right-5 z-[500] w-11 h-11 rounded-full bg-[#1B2A4A] text-white shadow-lg flex items-center justify-center hover:bg-[#FF6B35] transition-colors no-print"
       aria-label="Remonter en haut">
       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
     </button>
@@ -6198,6 +6198,9 @@ function CoachingProBoost({ session }) {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddTarget, setQuickAddTarget] = useState(null); // "exercise" | "play" | "session"
+  const quickAddCameraRef = useRef();
   const [sharedExercise, setSharedExercise] = useState(null);
   const [sharedExerciseCollection, setSharedExerciseCollection] = useState(null);
   const [sharedPlay, setSharedPlay] = useState(null);
@@ -6898,6 +6901,36 @@ function CoachingProBoost({ session }) {
     await storage.set(`sessionPhoto:${activeSession.id}`, JSON.stringify(dataUrl));
   };
 
+  // Bandeau du bas : bouton photo central → choix Exercice/Play/Séance → appareil photo →
+  // la photo capturée alimente directement le formulaire de création correspondant.
+  const handleQuickAddPhoto = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    const target = quickAddTarget;
+    setQuickAddTarget(null);
+    if (!f || !target) return;
+    let dataUrl;
+    try {
+      dataUrl = await readImageAsJpeg(f, 1600, 0.8);
+    } catch { cpbAlert?.("Impossible de lire la photo."); return; }
+    if (target === "exercise") {
+      setEditing({ file: { name: "photo.jpg", type: "image/jpeg", data: dataUrl } });
+      setShowForm(true);
+      setViewPersist("library");
+    } else if (target === "play") {
+      setEditingPlay({ images: [{ id: uid(), file: { name: "photo.jpg", type: "image/jpeg", data: dataUrl }, annotation: "" }] });
+      setPlaybookForm(true);
+      setViewPersist("playbook");
+    } else if (target === "session") {
+      if (!isPremium && sessions.length >= FREE_MAX_SESSIONS) {
+        setPaywallReason(`La version gratuite est limitée à ${FREE_MAX_SESSIONS} séances. Passez en Premium pour en créer autant que vous voulez.`);
+        return;
+      }
+      newSession(null);
+      setPendingPerspectivePhoto(dataUrl);
+    }
+  };
+
   const deleteSessionPhoto = async () => {
     if (!activeSession) return;
     setCurrentSessionPhoto(null);
@@ -7288,7 +7321,7 @@ function CoachingProBoost({ session }) {
       )}
       {showOnboarding && <OnboardingModal onDone={finishOnboarding} />}
       {showInstallBanner && !showOnboarding && (
-        <div className="fixed bottom-20 left-3 right-3 z-40 bg-[#1B2A4A] text-white rounded-2xl p-4 shadow-xl flex items-start gap-3 no-print">
+        <div className="fixed bottom-24 left-3 right-3 z-40 bg-[#1B2A4A] text-white rounded-2xl p-4 shadow-xl flex items-start gap-3 no-print">
           <span className="text-2xl flex-shrink-0">📲</span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold mb-0.5">Installer l'application</p>
@@ -7385,7 +7418,7 @@ function CoachingProBoost({ session }) {
         </div>
       )}
 
-      <main className="px-6 py-6 max-w-5xl mx-auto">
+      <main className="px-6 py-6 pb-24 max-w-5xl mx-auto">
 
         {view === "library" && !showForm && (
           <>
@@ -9189,6 +9222,75 @@ function CoachingProBoost({ session }) {
 
       </main>
       <ScrollToTopButton />
+
+      <input ref={quickAddCameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleQuickAddPhoto} />
+
+      <nav className="fixed bottom-0 left-0 right-0 z-[400] bg-white border-t border-[#1B2A4A]/10 shadow-[0_-2px_12px_rgba(27,42,74,0.08)] no-print"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div className="max-w-lg mx-auto flex items-center justify-between px-4 pt-1.5 pb-1.5">
+          {[
+            { key: "library", label: "Bibliothèque", icon: Library },
+            { key: "sessions", label: "Séances", icon: ListPlus, alsoActive: "session" },
+          ].map(item => {
+            const active = view === item.key || view === item.alsoActive;
+            const Icon = item.icon;
+            return (
+              <button key={item.key} onClick={() => setViewPersist(item.key)}
+                className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg"
+                style={{ color: active ? SPORT_COLOR : "#1B2A4A80" }}>
+                <Icon size={20} />
+                <span className="text-[10px] font-medium">{item.label}</span>
+              </button>
+            );
+          })}
+          <button onClick={() => setQuickAddOpen(true)}
+            className="-mt-6 w-14 h-14 rounded-full text-white shadow-lg flex items-center justify-center border-4 border-white hover:brightness-90 transition-[filter]"
+            style={{ backgroundColor: SPORT_COLOR }} aria-label="Ajouter avec une photo">
+            <Camera size={24} />
+          </button>
+          {[
+            { key: "playbook", label: "Play Book", icon: BookOpen },
+            { key: "account", label: "Mon compte", icon: Users },
+          ].map(item => {
+            const active = view === item.key;
+            const Icon = item.icon;
+            return (
+              <button key={item.key} onClick={() => setViewPersist(item.key)}
+                className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg"
+                style={{ color: active ? SPORT_COLOR : "#1B2A4A80" }}>
+                <Icon size={20} />
+                <span className="text-[10px] font-medium">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+
+      {quickAddOpen && (
+        <div className="fixed inset-0 z-[600] bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setQuickAddOpen(false)}>
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-sm p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={e => e.stopPropagation()}>
+            <div className="text-center text-sm font-semibold text-[#1B2A4A]/70 mb-3">Ajouter une photo pour...</div>
+            <div className="space-y-2">
+              {[
+                { key: "exercise", label: "Un exercice", icon: Library },
+                { key: "play", label: "Un play", icon: BookOpen },
+                { key: "session", label: "Une séance", icon: ListPlus },
+              ].map(opt => {
+                const Icon = opt.icon;
+                return (
+                  <button key={opt.key}
+                    onClick={() => { setQuickAddTarget(opt.key); setQuickAddOpen(false); quickAddCameraRef.current?.click(); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-[#1B2A4A]/10 hover:border-[#FF6B35]/50 hover:bg-[#FF6B35]/5 transition-colors text-left">
+                    <Icon size={20} className="text-[#FF6B35]" />
+                    <span className="font-medium text-[#1B2A4A]">{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={() => setQuickAddOpen(false)} className="w-full mt-3 py-2 text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">Annuler</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
