@@ -2501,9 +2501,14 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const [color, setColor] = useState("#1B2A4A");
   const [lineWidth, setLineWidth] = useState(2.5);
   const [eraserSize, setEraserSize] = useState(24);
-  const [lineStyle, setLineStyle] = useState("simple"); // simple | pointille | zigzag
   const [arrowEnd, setArrowEnd] = useState(true);
   const [tool, setTool] = useState("pen"); // pen | player | text | select
+  // Le style de trait (simple/pointillé/zigzag/écran/tir) est mémorisé séparément par outil
+  // (Stylo vs Courbe notamment), pour éviter qu'un style choisi sur l'un ne "déteigne" sur
+  // l'autre en changeant d'outil — surprenant sinon (ex: garder "Tir" en passant sur Courbe).
+  const [toolLineStyles, setToolLineStyles] = useState({});
+  const lineStyle = toolLineStyles[tool] ?? "simple";
+  const setLineStyle = (val) => setToolLineStyles(s => ({ ...s, [tool]: val }));
   const draggingRef = useRef(null); // { el, startX, startY, moved }
   const [textSize, setTextSize] = useState(16);
   const [textBold, setTextBold] = useState(false);
@@ -3421,9 +3426,12 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
   const [refPhotoZoomed, setRefPhotoZoomed] = useState(false);
   const [refPhotoIdx, setRefPhotoIdx] = useState(0);
   const referencePhoto = referencePhotoOptions[refPhotoIdx]?.src || null;
-  const [lineStyle, setLineStyle] = useState("simple");
   const [arrowEnd, setArrowEnd] = useState(true);
   const [tool, setTool] = useState("pen");
+  // Style de trait mémorisé séparément par outil (Stylo vs Courbe) — voir DrawSheetView.
+  const [toolLineStyles, setToolLineStyles] = useState({});
+  const lineStyle = toolLineStyles[tool] ?? "simple";
+  const setLineStyle = (val) => setToolLineStyles(s => ({ ...s, [tool]: val }));
   const draggingRef = useRef(null);
   const [textSize, setTextSize] = useState(16);
   const [textBold, setTextBold] = useState(false);
