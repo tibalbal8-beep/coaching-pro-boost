@@ -902,7 +902,7 @@ function MediaCarousel({ items, index, onIndexChange, card = true, height = "h-4
     <div className={card ? "bg-white rounded-2xl shadow-lg shadow-[#1B2A4A]/15 border border-[#1B2A4A]/5 overflow-hidden" : ""}>
       <div className="relative select-none" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
         onClick={onClickImage}>
-        <img src={items[idx]} alt="" className={`w-full ${height} object-contain bg-white`} />
+        <img key={idx} src={items[idx]} alt="" className={`w-full ${height} object-contain bg-white animate-carousel-fade`} />
         {overlay}
         {items.length > 1 && (
           <>
