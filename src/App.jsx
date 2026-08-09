@@ -1416,7 +1416,7 @@ function FilterAccordion({ label, activeCount, borderTop, children }) {
   );
 }
 
-function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage, onShare, selectMode = false, selected = false, onToggleSelect }) {
+function ExerciseCard({ ex, index, onClick, onView, onRemove, onAddToDraft, onCropImage, onShare, selectMode = false, selected = false, onToggleSelect }) {
   const fileImage = useFileImage(ex);
   const schemas = useSchemasData(ex);
   const [carouselIdx, setCarouselIdx] = useState(0);
@@ -1465,6 +1465,7 @@ function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage,
           return (
             <div className="mb-2 rounded-lg overflow-hidden" onClick={e => e.stopPropagation()}>
               <MediaCarousel items={allPhotos} index={idx} onIndexChange={setCarouselIdx} card={false} height="h-48"
+                onClickImage={onView}
                 overlay={isFileSlide && onCropImage && (
                   <button onClick={(e) => { e.stopPropagation(); onCropImage(fileImage); }}
                     className="absolute top-2 right-2 flex items-center gap-1 bg-white/90 border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-xs font-medium text-[#1B2A4A] hover:bg-[#FF6B35] hover:text-white hover:border-[#FF6B35] transition-colors">
@@ -1489,6 +1490,57 @@ function ExerciseCard({ ex, index, onClick, onRemove, onAddToDraft, onCropImage,
           className="w-full mt-1 flex items-center justify-center gap-1 border border-[#FF6B35]/40 rounded-md px-2 py-1.5 text-xs font-medium text-[#FF6B35] hover:bg-[#FF6B35] hover:text-white transition-colors">
           <Plus size={13} /> Ajouter à la nouvelle séance
         </button>
+      )}
+    </div>
+  );
+}
+
+function ExerciseViewer({ ex, onClose, onEdit }) {
+  const fileImage = useFileImage(ex);
+  const schemas = useSchemasData(ex);
+  const [imgIdx, setImgIdx] = useState(0);
+  const hasFile = fileImage && ex.file?.type?.startsWith("image/");
+  const allPhotos = [...(hasFile ? [fileImage] : []), ...schemas];
+
+  return (
+    <div className="fixed inset-0 z-[250] bg-black/85 flex flex-col" onClick={onClose}>
+      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="flex items-center gap-2 text-sm text-white/70 hover:text-white"><X size={18} /> Fermer</button>
+        <div className="text-center">
+          <div className="text-white font-semibold">{ex.titre}</div>
+          <div className="text-xs font-medium" style={{ color: "var(--sport-accent)" }}>{ex.format} · {ex.duree} min</div>
+        </div>
+        {onEdit && (
+          <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-white/70 hover:text-white">
+            <Pencil size={16} /> Modifier
+          </button>
+        )}
+      </div>
+      <div className="flex-1 flex flex-col items-center justify-center px-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+        {ex.diagram ? (
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden p-2">
+            <CourtDiagram players={ex.diagram.players} paths={ex.diagram.paths} screens={ex.diagram.screens} />
+          </div>
+        ) : allPhotos.length > 0 ? (
+          <div className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <MediaCarousel items={allPhotos} index={imgIdx} onIndexChange={setImgIdx} card={false} height="max-h-[65vh] h-auto" />
+          </div>
+        ) : (
+          <div className="text-white/40 text-sm">Aucune image</div>
+        )}
+      </div>
+      {(ex.objectif || ex.notes || (ex.themes || []).length > 0) && (
+        <div className="flex-shrink-0 bg-[#1B2A4A]/90 px-4 py-3 max-h-60 overflow-y-auto" onClick={e => e.stopPropagation()}>
+          {ex.objectif && <p className="text-white/80 text-sm mb-1">{ex.objectif}</p>}
+          {ex.notes && <p className="text-white/50 text-xs">{ex.notes}</p>}
+          {(ex.themes || []).length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {(ex.themes || []).map(t => (
+                <span key={t} className="text-xs bg-white/10 text-white/60 rounded-full px-2 py-0.5">{t}</span>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -6462,6 +6514,7 @@ function CoachingProBoost({ session }) {
   const [scoutingTitle, setScoutingTitle] = useState("");
   const [editingPlay, setEditingPlay] = useState(null);
   const [viewingPlay, setViewingPlay] = useState(null);
+  const [viewingExercise, setViewingExercise] = useState(null);
   const [filterPlayType, setFilterPlayType] = useState([]);
   const [filterPlayTags, setFilterPlayTags] = useState([]);
   const [filterScoutedTeam, setFilterScoutedTeam] = useState("");
@@ -7452,6 +7505,7 @@ function CoachingProBoost({ session }) {
                     selected={librarySelectedIds.includes(ex.id)}
                     onToggleSelect={() => setLibrarySelectedIds(ids => ids.includes(ex.id) ? ids.filter(id => id !== ex.id) : [...ids, ex.id])}
                     onClick={() => { setEditing(ex); setShowForm(true); }}
+                    onView={() => setViewingExercise(ex)}
                     onRemove={() => {
                       saveExercises(exercises.filter(e => e.id !== ex.id));
                       // Best-effort : la photo/les schémas de l'exercice restaient orphelins en
@@ -8758,6 +8812,11 @@ function CoachingProBoost({ session }) {
           <PlayViewer play={viewingPlay} onClose={() => setViewingPlay(null)}
             onEdit={() => { setEditingPlay(viewingPlay); setPlaybookForm(true); setViewingPlay(null); }}
             onUpdatePlay={(updatedPlay) => { savePlays(plays.map(p => p.id === updatedPlay.id ? updatedPlay : p)); setViewingPlay(updatedPlay); }} />
+        )}
+
+        {viewingExercise && (
+          <ExerciseViewer ex={viewingExercise} onClose={() => setViewingExercise(null)}
+            onEdit={() => { setEditing(viewingExercise); setShowForm(true); setViewingExercise(null); }} />
         )}
 
         {view === "sessions" && !reviewItems && (
