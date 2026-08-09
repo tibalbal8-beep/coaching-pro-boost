@@ -670,10 +670,12 @@ function loadImageEl(src) {
 
 // Compose une image "prête à publier" (photo/schéma + titre + logo) pour Instagram/Facebook,
 // en réutilisant le canvas plutôt qu'un rendu serveur — pas d'aller-retour réseau nécessaire.
-async function composeSocialImage({ photoDataUrl, title, subtitle, format = "post" }) {
+async function composeSocialImage({ photoDataUrl, title, subtitle, caption, format = "post" }) {
   const W = 1080;
   const H = format === "story" ? 1920 : 1080;
-  const bandH = format === "story" ? 380 : 260;
+  // Le bandeau grandit un peu quand il y a une annotation à afficher (temps fort du play,
+  // vignette par vignette) pour ne pas la faire chevaucher le titre/logo.
+  const bandH = format === "story" ? (caption ? 480 : 380) : (caption ? 340 : 260);
   const pad = 48;
   const photoAreaH = H - bandH;
 
@@ -684,7 +686,11 @@ async function composeSocialImage({ photoDataUrl, title, subtitle, format = "pos
   ctx.fillStyle = "#F2EDE4";
   ctx.fillRect(0, 0, W, H);
 
-  try { await document.fonts.load("800 52px Oswald"); await document.fonts.load("600 30px Oswald"); } catch {}
+  try {
+    await document.fonts.load("800 52px Oswald");
+    await document.fonts.load("600 30px Oswald");
+    await document.fonts.load("italic 500 26px Inter");
+  } catch {}
 
   const [photo, logo] = await Promise.all([
     photoDataUrl ? loadImageEl(photoDataUrl).catch(() => null) : Promise.resolve(null),
@@ -722,15 +728,26 @@ async function composeSocialImage({ photoDataUrl, title, subtitle, format = "pos
   const logoSize = 84;
   if (logo) ctx.drawImage(logo, W - pad - logoSize, photoAreaH + bandH - logoSize - 34, logoSize, logoSize);
 
-  ctx.fillStyle = "#ffffff";
   ctx.textBaseline = "top";
+  const textMaxWidth = W - pad * 2 - logoSize - 24;
+  let cursorY = photoAreaH + 36;
+
+  ctx.fillStyle = "#ffffff";
   ctx.font = "800 52px Oswald, sans-serif";
-  wrapCanvasText(ctx, (title || "").toUpperCase(), pad, photoAreaH + 38, W - pad * 2 - logoSize - 24, 60, 2);
+  const titleLines = wrapCanvasText(ctx, (title || "").toUpperCase(), pad, cursorY, textMaxWidth, 58, 2);
+  cursorY += titleLines * 58 + 14;
 
   if (subtitle) {
     ctx.fillStyle = "#FF6B35";
     ctx.font = "600 28px Oswald, sans-serif";
-    ctx.fillText(subtitle.toUpperCase(), pad, photoAreaH + bandH - 62);
+    ctx.fillText(subtitle.toUpperCase(), pad, cursorY);
+    cursorY += 42;
+  }
+
+  if (caption) {
+    ctx.fillStyle = "rgba(255,255,255,0.75)";
+    ctx.font = "italic 500 26px Inter, sans-serif";
+    wrapCanvasText(ctx, caption, pad, cursorY, textMaxWidth, 32, 2);
   }
 
   return new Promise(resolve => canvas.toBlob(resolve, "image/png", 0.95));
@@ -1047,11 +1064,15 @@ function MediaCarousel({ items, index, onIndexChange, card = true, height = "h-4
 // Bouton "Réseaux" : compose côté navigateur un visuel prêt à publier (post carré 1080×1080
 // ou story 1080×1920) à partir de la photo/du schéma affiché et le télécharge directement —
 // pas d'aller-retour serveur, réutilise composeSocialImage/downloadBlob (voir src/App.jsx:~604).
-function SocialExportButton({ photos, title, subtitle, filenameBase }) {
+function SocialExportButton({ items, title, subtitle, filenameBase }) {
   const [open, setOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const toast = useToast();
-  const list = (photos || []).filter(Boolean);
+  // Accepte soit un tableau de chaînes (photos brutes), soit d'objets { src, caption }
+  // (annotation par vignette, ex: temps fort d'un play) — normalisé ici une fois pour toutes.
+  const list = (items || [])
+    .map(it => typeof it === "string" ? { src: it, caption: null } : it)
+    .filter(it => it?.src);
   const count = list.length;
 
   // Une vignette = un fichier téléchargé : plusieurs photos/schémas donnent autant de PNG
@@ -1062,7 +1083,7 @@ function SocialExportButton({ photos, title, subtitle, filenameBase }) {
     setExporting(true);
     try {
       for (let i = 0; i < count; i++) {
-        const blob = await composeSocialImage({ photoDataUrl: list[i], title, subtitle, format });
+        const blob = await composeSocialImage({ photoDataUrl: list[i].src, caption: list[i].caption, title, subtitle, format });
         const suffix = count > 1 ? `-${i + 1}` : "";
         downloadBlob(blob, `${slugifyForFile(filenameBase)}-${format === "story" ? "story" : "post"}${suffix}.png`);
         if (i < count - 1) await new Promise(r => setTimeout(r, 300));
@@ -1679,7 +1700,7 @@ function ExerciseViewer({ ex, onClose, onEdit, showSocialExport = false }) {
         </div>
         <div className="flex items-center gap-3">
           {showSocialExport && (
-            <SocialExportButton photos={allPhotos}
+            <SocialExportButton items={allPhotos}
               title={ex.titre} subtitle={`${ex.format} · ${ex.duree} min`} filenameBase={ex.titre} />
           )}
           {onEdit && (
@@ -5444,7 +5465,7 @@ function PlayViewer({ play, onClose, onEdit, onUpdatePlay, showSocialExport = fa
         </div>
         <div className="flex items-center gap-3">
           {showSocialExport && (
-            <SocialExportButton photos={carouselItems.map(it => it.src)}
+            <SocialExportButton items={carouselItems.map(it => ({ src: it.src, caption: it.annotation }))}
               title={play.titre} subtitle={play.type} filenameBase={play.titre} />
           )}
           <button onClick={onEdit} className="flex items-center gap-1.5 text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A]">
