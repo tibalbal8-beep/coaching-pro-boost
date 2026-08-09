@@ -8510,23 +8510,25 @@ function CoachingProBoost({ session }) {
               </div>
             )}
 
-            <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">
-              <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Déplacer les photos vers Supabase Storage</div>
-              <p className="text-xs text-[#1B2A4A]/50 mb-3">Copie tes photos/schémas vers un stockage séparé (hors quota "Database Size"). Étape 1 : copie sans rien supprimer. Étape 2 ("Finaliser"), à faire seulement une fois que tu as vérifié que tes photos s'affichent bien : supprime les anciennes copies pour libérer l'espace en base.</p>
-              <div className="flex flex-wrap gap-2">
-                <button onClick={migrateToStorage} disabled={migratingStorage}
-                  className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>
-                  {migratingStorage ? "Copie en cours..." : "1. Copier vers Storage"}
-                </button>
-                <button onClick={finalizeStorageMigration} disabled={finalizingStorage}
-                  className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50 bg-red-500 hover:bg-red-600">
-                  {finalizingStorage ? "Finalisation en cours..." : "2. Finaliser (supprimer les anciennes copies)"}
-                </button>
+            {isAdmin && (
+              <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">
+                <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Déplacer les photos vers Supabase Storage</div>
+                <p className="text-xs text-[#1B2A4A]/50 mb-3">Copie tes photos/schémas vers un stockage séparé (hors quota "Database Size"). Étape 1 : copie sans rien supprimer. Étape 2 ("Finaliser"), à faire seulement une fois que tu as vérifié que tes photos s'affichent bien : supprime les anciennes copies pour libérer l'espace en base.</p>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={migrateToStorage} disabled={migratingStorage}
+                    className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>
+                    {migratingStorage ? "Copie en cours..." : "1. Copier vers Storage"}
+                  </button>
+                  <button onClick={finalizeStorageMigration} disabled={finalizingStorage}
+                    className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50 bg-red-500 hover:bg-red-600">
+                    {finalizingStorage ? "Finalisation en cours..." : "2. Finaliser (supprimer les anciennes copies)"}
+                  </button>
+                </div>
+                {migrateStorageResult && (
+                  <p className="text-xs text-[#1B2A4A]/50 mt-2">{migrateStorageResult.migrated}/{migrateStorageResult.total} copiés{migrateStorageResult.failed > 0 ? `, ${migrateStorageResult.failed} échec(s)` : ""}.</p>
+                )}
               </div>
-              {migrateStorageResult && (
-                <p className="text-xs text-[#1B2A4A]/50 mt-2">{migrateStorageResult.migrated}/{migrateStorageResult.total} copiés{migrateStorageResult.failed > 0 ? `, ${migrateStorageResult.failed} échec(s)` : ""}.</p>
-              )}
-            </div>
+            )}
 
             {isAdmin && <AnnouncementAdminPanel currentMessage={announcement?.message} onPublish={publishAnnouncement} onDeactivate={deactivateAnnouncement} cpbAlert={cpbAlert} />}
 
