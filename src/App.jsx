@@ -2247,9 +2247,9 @@ function _sampleCatmullRom(pts, stepsPerSeg = 30) {
   return result;
 }
 
-function _drawArrowHead(ctx, from, to, color, size) {
+function _drawArrowHead(ctx, from, to, color, size, halfAngle = 0.45) {
   const angle = Math.atan2(to.y - from.y, to.x - from.x);
-  const a1 = angle + Math.PI - 0.45, a2 = angle + Math.PI + 0.45;
+  const a1 = angle + Math.PI - halfAngle, a2 = angle + Math.PI + halfAngle;
   ctx.beginPath();
   ctx.moveTo(to.x, to.y);
   ctx.lineTo(to.x + size * Math.cos(a1), to.y + size * Math.sin(a1));
@@ -2305,22 +2305,27 @@ function _drawStroke(ctx, stroke) {
   const arrowSize = 6 + stroke.width * 2;
   const angle = Math.atan2(last.y - prev.y, last.x - prev.x);
   if (stroke.style === "tir") {
+    // Pointe distincte du double trait (comme une flèche "=>" dessinée à la main) : triangle
+    // plus fin et plus long, dont la largeur dépasse nettement l'écart entre les deux lignes,
+    // qui s'arrêtent net avant la pointe au lieu de se prolonger dedans.
     const gap = stroke.width * 2.5;
+    const tirArrowSize = 11 + stroke.width * 3.2;
+    const tirHalfAngle = 0.32;
     const globalAngle = Math.atan2(last.y - pts[0].y, last.x - pts[0].x);
     const px = Math.cos(globalAngle + Math.PI / 2) * gap / 2;
     const py = Math.sin(globalAngle + Math.PI / 2) * gap / 2;
-    const tirPts = [...pts.slice(0, -1), { x: last.x - Math.cos(angle) * arrowSize * 0.7, y: last.y - Math.sin(angle) * arrowSize * 0.7 }];
+    const tirPts = [...pts.slice(0, -1), { x: last.x - Math.cos(angle) * tirArrowSize * 0.95, y: last.y - Math.sin(angle) * tirArrowSize * 0.95 }];
     const drawLine = (offX, offY) => {
       const op = tirPts.map(p => ({ x: p.x + offX, y: p.y + offY }));
       ctx.beginPath();
-      ctx.strokeStyle = stroke.color; ctx.lineWidth = stroke.width * 0.85;
+      ctx.strokeStyle = stroke.color; ctx.lineWidth = stroke.width * 0.75;
       ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.setLineDash([]);
       if (op.length < 3) { op.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); }); }
       else { ctx.moveTo(op[0].x, op[0].y); for (let i = 1; i < op.length - 1; i++) { const mx = (op[i].x + op[i + 1].x) / 2, my = (op[i].y + op[i + 1].y) / 2; ctx.quadraticCurveTo(op[i].x, op[i].y, mx, my); } ctx.lineTo(op[op.length - 1].x, op[op.length - 1].y); }
       ctx.stroke();
     };
     drawLine(px, py); drawLine(-px, -py);
-    _drawArrowHead(ctx, prev, last, stroke.color, arrowSize);
+    _drawArrowHead(ctx, prev, last, stroke.color, tirArrowSize, tirHalfAngle);
     return;
   }
   const drawPts = (stroke.arrow && stroke.style !== "ecran") ? [...pts.slice(0, -1), { x: last.x - Math.cos(angle) * arrowSize * 0.7, y: last.y - Math.sin(angle) * arrowSize * 0.7 }] : pts;
