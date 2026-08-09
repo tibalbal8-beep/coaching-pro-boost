@@ -8499,14 +8499,16 @@ function CoachingProBoost({ session }) {
               </div>
             )}
 
-            <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">
-              <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Nettoyer les fichiers orphelins</div>
-              <p className="text-xs text-[#1B2A4A]/50 mb-3">Supprime les photos/schémas d'exercices et de plays déjà supprimés qui traînaient encore en base (bug corrigé le 04/08/2026) — libère de l'espace si tu es proche de la limite de ton plan Supabase.</p>
-              <button onClick={cleanupOrphanFiles} disabled={cleaningOrphans}
-                className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50 bg-red-500 hover:bg-red-600">
-                {cleaningOrphans ? "Nettoyage en cours..." : "Nettoyer maintenant"}
-              </button>
-            </div>
+            {isAdmin && (
+              <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">
+                <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Nettoyer les fichiers orphelins</div>
+                <p className="text-xs text-[#1B2A4A]/50 mb-3">Supprime les photos/schémas d'exercices et de plays déjà supprimés qui traînaient encore en base (bug corrigé le 04/08/2026) — libère de l'espace si tu es proche de la limite de ton plan Supabase.</p>
+                <button onClick={cleanupOrphanFiles} disabled={cleaningOrphans}
+                  className="text-sm font-medium text-white px-4 py-2 rounded-md disabled:opacity-50 bg-red-500 hover:bg-red-600">
+                  {cleaningOrphans ? "Nettoyage en cours..." : "Nettoyer maintenant"}
+                </button>
+              </div>
+            )}
 
             <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">
               <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Déplacer les photos vers Supabase Storage</div>
