@@ -1819,6 +1819,7 @@ function getSessionOrder(session) {
   const known = [
     ...(session.exerciseIds || []).map(id => ({ type: "exercise", id })),
     ...(session.playIds || []).map(id => ({ type: "play", id })),
+    ...(session.notes || []).map(n => ({ type: "note", id: n.id })),
   ];
   const stored = (session.itemOrder || []).filter(it => known.some(k => k.type === it.type && k.id === it.id));
   const missing = known.filter(k => !stored.some(it => it.type === k.type && it.id === k.id));
@@ -2127,7 +2128,8 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const sportColor = SPORTS_CONFIG[sport]?.color || "#FF6B35";
   const sportEmoji = SPORTS_CONFIG[sport]?.emoji || "🏀";
-  const total = session.exerciseIds.reduce((sum, id) => sum + (exercises.find(e => e.id === id)?.duree || 0), 0);
+  const total = session.exerciseIds.reduce((sum, id) => sum + (exercises.find(e => e.id === id)?.duree || 0), 0)
+    + (session.notes || []).reduce((sum, n) => sum + (n.duree || 0), 0);
   const h = Math.floor(total / 60), m = total % 60;
   const totalStr = h > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${m} min`;
   const d = new Date(session.date);
@@ -2179,6 +2181,18 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
             ${ex.notes ? `<div class="field"><div class="field-label">Consignes</div><p class="field-val notes">${esc(ex.notes)}</p></div>` : ""}
             ${!ex.objectif && !ex.notes && !ex.themes?.length ? `<p class="empty-text">Aucune consigne renseignée.</p>` : ""}
           </div>
+        </div>
+      </div>`;
+    }
+    if (item.type === "note") {
+      const note = (session.notes || []).find(n => n.id === item.id);
+      if (!note) return "";
+      return `
+      <div class="exo">
+        <div class="exo-header">
+          <span class="exo-num">TXT</span>
+          <span class="exo-title">${esc(note.titre)}</span>
+          <span class="exo-meta">${esc(note.duree)} min${note.theme ? " · " + esc(note.theme) : ""} · hors bibliothèque</span>
         </div>
       </div>`;
     }
@@ -6112,6 +6126,7 @@ function ScrollToTopButton() {
 
 // Miniature d'un item (exercice ou play) pour l'organisateur de séance.
 function organizerThumb(item, exercises, plays) {
+  if (item.type === "note") return null;
   if (item.type === "exercise") {
     const ex = exercises.find(e => e.id === item.id);
     if (!ex) return null;
@@ -6147,6 +6162,7 @@ function SessionOrganizerModal({ session, exercises, plays, onClose, onDownload,
 
   const label = (item) => {
     if (item.type === "exercise") return exercises.find(e => e.id === item.id)?.titre || "Exercice";
+    if (item.type === "note") return (session.notes || []).find(n => n.id === item.id)?.titre || "Bloc texte";
     return plays.find(p => p.id === item.id)?.titre || "Play";
   };
 
@@ -6197,11 +6213,11 @@ function SessionOrganizerModal({ session, exercises, plays, onClose, onDownload,
                   onDragEnd={() => setDragIdx(null)}
                   className="flex items-center gap-2.5 border border-[#1B2A4A]/15 rounded-xl bg-white p-2 cursor-grab active:cursor-grabbing">
                   <div className="w-9 h-9 rounded-lg overflow-hidden bg-[#F2EDE4] flex items-center justify-center flex-shrink-0 border border-[#1B2A4A]/10">
-                    {thumb ? <img src={thumb} alt="" className="w-full h-full object-cover" /> : <span className="text-[10px] text-[#1B2A4A]/30">{item.type === "exercise" ? "EX" : "PL"}</span>}
+                    {thumb ? <img src={thumb} alt="" className="w-full h-full object-cover" /> : <span className="text-[10px] text-[#1B2A4A]/30">{item.type === "exercise" ? "EX" : item.type === "note" ? "TXT" : "PL"}</span>}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-[#1B2A4A] truncate">{label(item)}</div>
-                    <div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/40">{item.type === "exercise" ? "Exercice" : "Play"}</div>
+                    <div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/40">{item.type === "exercise" ? "Exercice" : item.type === "note" ? "Bloc texte" : "Play"}</div>
                   </div>
                   <div className="flex flex-col gap-0.5 flex-shrink-0">
                     <button onClick={() => move(i, i - 1)} disabled={i === 0} className="text-[#1B2A4A]/50 hover:text-[#1B2A4A] disabled:opacity-20 p-0.5"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg></button>
@@ -6962,6 +6978,10 @@ function CoachingProBoost({ session }) {
 
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
   const [viewSessionPhotoFull, setViewSessionPhotoFull] = useState(false);
+  const [noteFormOpen, setNoteFormOpen] = useState(false);
+  const [noteTitre, setNoteTitre] = useState("");
+  const [noteDuree, setNoteDuree] = useState(10);
+  const [noteTheme, setNoteTheme] = useState("");
   const [viewingSessionExercise, setViewingSessionExercise] = useState(null);
   const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem("cpb_onboarded"));
   const [showTour, setShowTour] = useState(false);
@@ -6979,7 +6999,7 @@ function CoachingProBoost({ session }) {
       setPaywallReason(`La version gratuite est limitée à ${FREE_MAX_SESSIONS} séances. Passez en Premium pour en créer autant que vous voulez.`);
       return;
     }
-    const s = { id: uid(), titre: "Nouvelle séance", date: new Date().toISOString().slice(0, 10), exerciseIds: [], playIds: [], teamId: teamId || null };
+    const s = { id: uid(), titre: "Nouvelle séance", date: new Date().toISOString().slice(0, 10), exerciseIds: [], playIds: [], notes: [], teamId: teamId || null };
     saveSessions([...sessions, s]); setActiveSession(s); setView("session"); history.pushState({ view: "session" }, "", "#session");
   };
 
@@ -6995,7 +7015,8 @@ function CoachingProBoost({ session }) {
     const ex = exercises.find(e => e.id === exId);
     toast?.(ex?.titre ? `"${ex.titre}" ajouté à la séance` : "Exercice ajouté à la séance");
   };
-  const totalDuree = (s) => s.exerciseIds.reduce((sum, id) => sum + (exercises.find(e => e.id === id)?.duree || 0), 0);
+  const totalDuree = (s) => s.exerciseIds.reduce((sum, id) => sum + (exercises.find(e => e.id === id)?.duree || 0), 0)
+    + (s.notes || []).reduce((sum, n) => sum + (n.duree || 0), 0);
 
   const [addBanner, setAddBanner] = useState(null); // { sessionId, sessionTitre, count }
   const [draftSessionId, setDraftSessionId] = useState(null);
@@ -7061,6 +7082,12 @@ function CoachingProBoost({ session }) {
     if (!ex) return;
     if (statsCatFilter.length > 0 && !catList(ex).some(c => statsCatFilter.includes(c))) return;
     (ex.themes || []).forEach(t => { statsThemeMin[t] = (statsThemeMin[t] || 0) + (ex.duree || 0); });
+  }));
+  // Blocs texte (hors bibliothèque) : comptés dans les stats par thème comme demandé,
+  // mais pas de catégorie à filtrer dessus donc ignorés si un filtre catégorie est actif.
+  statsSessions.forEach(s => (s.notes || []).forEach(n => {
+    if (statsCatFilter.length > 0 || !n.theme) return;
+    statsThemeMin[n.theme] = (statsThemeMin[n.theme] || 0) + (n.duree || 0);
   }));
   const statsThemeRows = Object.entries(statsThemeMin).sort((a, b) => b[1] - a[1]);
   const statsAvgMin = statsSessions.length ? Math.round(statsTotalMin / statsSessions.length) : 0;
@@ -9307,6 +9334,59 @@ function CoachingProBoost({ session }) {
                   </div>
                 );
               })}
+            </div>
+
+            {/* Blocs texte : du contenu de séance (ex: "5c5 sur un play, 10 min") sans créer
+                un exercice réutilisable dans la bibliothèque — compté dans la durée et les
+                stats par thème comme un exercice, mais jamais dans exercises/la bibliothèque. */}
+            <div className="mb-8">
+              {(activeSession.notes || []).length > 0 && (
+                <div className="space-y-2 mb-2">
+                  {activeSession.notes.map((n) => (
+                    <div key={n.id} className="border border-dashed border-[#1B2A4A]/25 rounded-lg bg-[#1B2A4A]/[0.03] p-3 flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-[#1B2A4A] truncate">{n.titre}</div>
+                        <div className="text-xs text-[#1B2A4A]/50">{n.duree} min{n.theme ? ` · ${n.theme}` : ""} · hors bibliothèque</div>
+                      </div>
+                      <button onClick={() => updateSession({ ...activeSession, notes: activeSession.notes.filter(x => x.id !== n.id) })}
+                        className="text-[#1B2A4A]/40 hover:text-red-600 no-print ml-3 flex-shrink-0"><X size={16} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {noteFormOpen ? (
+                <div className="border border-[#1B2A4A]/15 rounded-lg p-3 space-y-2 no-print">
+                  <input autoFocus value={noteTitre} onChange={e => setNoteTitre(e.target.value)}
+                    placeholder="Ex: 5c5 sur un play" className="w-full border border-[#1B2A4A]/20 rounded-md px-2.5 py-1.5 text-sm bg-white" />
+                  <div className="flex items-center gap-2">
+                    <input type="number" min={1} value={noteDuree} onFocus={e => e.target.select()}
+                      onChange={e => setNoteDuree(e.target.value === "" ? "" : Number(e.target.value))}
+                      onBlur={e => { if (e.target.value === "" || Number(e.target.value) < 1) setNoteDuree(1); }}
+                      className="w-20 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white" />
+                    <span className="text-xs text-[#1B2A4A]/40">min</span>
+                    <select value={noteTheme} onChange={e => setNoteTheme(e.target.value)}
+                      className="flex-1 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white">
+                      <option value="">Sans thème</option>
+                      {themes.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => {
+                      if (!noteTitre.trim()) return;
+                      const note = { id: uid(), titre: noteTitre.trim(), duree: noteDuree || 1, theme: noteTheme || null };
+                      updateSession({ ...activeSession, notes: [...(activeSession.notes || []), note] });
+                      setNoteTitre(""); setNoteDuree(10); setNoteTheme(""); setNoteFormOpen(false);
+                    }} className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>Ajouter</button>
+                    <button onClick={() => { setNoteFormOpen(false); setNoteTitre(""); }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[#1B2A4A]/20 text-[#1B2A4A]/60">Annuler</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setNoteFormOpen(true)}
+                  className="w-full border-2 border-dashed border-[#1B2A4A]/20 rounded-lg py-2.5 text-xs font-semibold text-[#1B2A4A]/50 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors no-print">
+                  + Ajouter un bloc texte (hors bibliothèque)
+                </button>
+              )}
             </div>
 
             {/* Suggestions */}
