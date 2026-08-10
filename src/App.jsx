@@ -8289,7 +8289,7 @@ function CoachingProBoost({ session }) {
                       const entry = activeMatch.tally?.[p.id];
                       const played = playedOf(entry), points = pointsOf(entry), possible = possibleOf(entry);
                       return (
-                      <div key={p.id} className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-3">
+                      <div key={p.id} className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4">
                         <div className="flex items-start justify-between mb-2 gap-2">
                           <div>
                             <div className="font-semibold text-[#1B2A4A]">{p.titre}</div>
@@ -8304,17 +8304,17 @@ function CoachingProBoost({ session }) {
                             {played > 0 && <div className="text-[10px] font-semibold text-[#1B2A4A]/60">{(points / played).toFixed(2)} pts/poss.</div>}
                           </div>
                         </div>
-                        <div className="flex items-center gap-1 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <button onClick={() => recordOutcome(p.id, null)}
-                            className="px-2.5 py-1.5 rounded-md text-xs font-medium border border-[#1B2A4A]/20 text-[#1B2A4A]/60 hover:bg-[#1B2A4A]/5">Compter (sans tir)</button>
-                          <span className="w-px h-5 bg-[#1B2A4A]/10 mx-0.5" />
+                            className="px-4 py-3 rounded-lg text-sm font-semibold border border-[#1B2A4A]/20 text-[#1B2A4A]/70 hover:bg-[#1B2A4A]/5 active:bg-[#1B2A4A]/10">Compter (sans tir)</button>
+                          <span className="w-px h-9 bg-[#1B2A4A]/10 mx-1" />
                           {[-3, -2, -1].map(v => (
                             <button key={v} onClick={() => recordOutcome(p.id, v)}
-                              className="w-9 h-8 rounded-md text-xs font-semibold border border-red-200 text-red-600 hover:bg-red-50">{v}</button>
+                              className="w-14 h-14 rounded-lg text-xl font-bold border-2 border-red-200 text-red-600 hover:bg-red-50 active:bg-red-100">{v}</button>
                           ))}
                           {[1, 2, 3].map(v => (
                             <button key={v} onClick={() => recordOutcome(p.id, v)}
-                              className="w-9 h-8 rounded-md text-xs font-semibold border border-green-300 text-green-700 hover:bg-green-50">+{v}</button>
+                              className="w-14 h-14 rounded-lg text-xl font-bold border-2 border-green-300 text-green-700 hover:bg-green-50 active:bg-green-100">+{v}</button>
                           ))}
                         </div>
                       </div>
