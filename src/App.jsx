@@ -6419,6 +6419,7 @@ function CoachingProBoost({ session }) {
   const quickAddCameraRef = useRef();
   const [sharedExercise, setSharedExercise] = useState(null);
   const [sharedExerciseCollection, setSharedExerciseCollection] = useState(null);
+  const [sharedSession, setSharedSession] = useState(null);
   const [sharedPlay, setSharedPlay] = useState(null);
   const [sharedPlayCollection, setSharedPlayCollection] = useState(null);
   const [showHistoryRestore, setShowHistoryRestore] = useState(false);
@@ -6532,6 +6533,20 @@ function CoachingProBoost({ session }) {
         if (error) { cpbAlert("Erreur de chargement du lien : " + error.message); return; }
         if (!data) { cpbAlert("Ce lien de partage est invalide ou a expiré."); return; }
         setSharedExerciseCollection(data);
+      });
+  }, []);
+
+  // Détection lien de partage de séance ?sharesession=TOKEN
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("sharesession");
+    if (!token) return;
+    window.history.replaceState({}, "", "/");
+    supabase.from("shared_sessions").select("session_data, exercises, plays, session_photo, expires_at").eq("token", token).maybeSingle()
+      .then(({ data, error }) => {
+        if (error) { cpbAlert("Erreur de chargement du lien : " + error.message); return; }
+        if (!data) { cpbAlert("Ce lien de partage est invalide ou a expiré."); return; }
+        if (data.expires_at && new Date(data.expires_at) < new Date()) { cpbAlert("Ce lien de partage a expiré."); return; }
+        setSharedSession(data);
       });
   }, []);
 
@@ -6718,6 +6733,46 @@ function CoachingProBoost({ session }) {
       const { error } = await supabase.from("shared_exercises").insert({ token, exercise_data: exData });
       if (error) throw error;
       const link = `${window.location.origin}/api/share-exercise?token=${token}`;
+      await copyOrShow(link, "Lien copié ! Valable 30 jours.");
+    } catch(e) { await cpbAlert("Erreur lors du partage : " + e.message); }
+  };
+
+  // Partage d'une séance complète entre deux comptes Premium : snapshot figé au moment du
+  // partage (pas de synchro live) — embarque les exercices/plays référencés (enrichis, comme
+  // shareExercise/sharePlay) pour que le destinataire puisse tout importer d'un coup même s'il
+  // ne les a pas déjà en bibliothèque. teamId/id sont volontairement omis : l'équipe et l'id ne
+  // veulent rien dire sur le compte destinataire, régénérés à l'import.
+  const shareSession = async (session) => {
+    try {
+      const token = crypto.randomUUID().replace(/-/g, "");
+      const sessionExercises = session.exerciseIds.map(id => exercises.find(e => e.id === id)).filter(Boolean);
+      const sessionPlaysList = (session.playIds || []).map(id => plays.find(p => p.id === id)).filter(Boolean);
+      const enrichedExercises = await enrichExercisesAssets(sessionExercises);
+      const enrichedPlays = await Promise.all(sessionPlaysList.map(async (play) => {
+        const playData = { ...play };
+        if (play.images?.length) {
+          playData.images = await Promise.all(play.images.map(async (img) => {
+            if (img.file?.data) return img;
+            try {
+              const r = await storage.get(`playimg:${play.id}:${img.id}`);
+              if (r) { const parsed = JSON.parse(r.value); return { ...img, file: parsed }; }
+            } catch {}
+            return img;
+          }));
+        }
+        return playData;
+      }));
+      let sessionPhoto = null;
+      try {
+        const r = await storage.get(`sessionPhoto:${session.id}`);
+        if (r) sessionPhoto = JSON.parse(r.value);
+      } catch {}
+      const { id, teamId, itemOrder, ...sessionRest } = session;
+      const { error } = await supabase.from("shared_sessions").insert({
+        token, session_data: sessionRest, exercises: enrichedExercises, plays: enrichedPlays, session_photo: sessionPhoto,
+      });
+      if (error) throw error;
+      const link = `${window.location.origin}/app?sharesession=${token}`;
       await copyOrShow(link, "Lien copié ! Valable 30 jours.");
     } catch(e) { await cpbAlert("Erreur lors du partage : " + e.message); }
   };
@@ -7383,6 +7438,98 @@ function CoachingProBoost({ session }) {
                 {isPremium ? "Tout ajouter à ma bibliothèque" : "🔒 Tout ajouter (Premium)"}
               </button>
               <button onClick={() => setSharedExerciseCollection(null)}
+                className="w-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A] transition-colors">
+                Ignorer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {sharedSession && (
+        <div className="fixed inset-0 z-[700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
+            <div className="bg-[#1B2A4A] px-6 py-5 text-center">
+              <div className="text-3xl mb-2">🗓️</div>
+              <div className="text-white font-bold text-xl" style={{ fontFamily: "Oswald, sans-serif" }}>SÉANCE PARTAGÉE</div>
+              <div className="text-white/60 text-sm mt-1">Un coach partage cette séance avec toi</div>
+            </div>
+            <div className="px-6 py-5">
+              <div className="bg-[#F2EDE4] rounded-xl p-4 mb-4">
+                <div className="font-bold text-[#1B2A4A] mb-1">{sharedSession.session_data.titre}</div>
+                <div className="flex flex-wrap gap-2 text-xs text-[#1B2A4A]/60">
+                  <span>{(sharedSession.exercises || []).length} exercice{(sharedSession.exercises || []).length !== 1 ? "s" : ""}</span>
+                  {(sharedSession.plays || []).length > 0 && <span>{sharedSession.plays.length} play{sharedSession.plays.length !== 1 ? "s" : ""}</span>}
+                  {(sharedSession.session_data.notes || []).length > 0 && <span>{sharedSession.session_data.notes.length} bloc{sharedSession.session_data.notes.length !== 1 ? "s" : ""} texte</span>}
+                </div>
+              </div>
+              <button onClick={() => {
+                if (!isPremium) { setSharedSession(null); setPaywallReason("L'import d'une séance partagée est une fonctionnalité Premium."); return; }
+
+                // Dédoublonne par titre (pas d'id commun entre comptes) : réutilise l'exercice/play
+                // déjà en bibliothèque plutôt que d'en recréer un doublon si le titre correspond.
+                const normTitle = (t) => (t || "").trim().toLowerCase();
+                const exIdMap = {};
+                const newExercisesToAdd = [];
+                (sharedSession.session_data.exerciseIds || []).forEach((oldId, i) => {
+                  const exData = sharedSession.exercises[i];
+                  if (!exData) return;
+                  const existing = exercises.find(e => normTitle(e.titre) === normTitle(exData.titre));
+                  if (existing) { exIdMap[oldId] = existing.id; return; }
+                  const newEx = { ...exData, id: uid(), createdAt: new Date().toISOString() };
+                  if (newEx.file?.data) {
+                    storage.set(`file:${newEx.id}`, JSON.stringify(newEx.file)).catch(() => {});
+                    newEx.file = { name: newEx.file.name, type: newEx.file.type, data: null };
+                  }
+                  // schemas laissés tels quels : saveExercises() les persiste et les strippe
+                  // automatiquement (voir stripFiles), même pattern que l'import sharedExercise.
+                  exIdMap[oldId] = newEx.id;
+                  newExercisesToAdd.push(newEx);
+                });
+
+                const playIdMap = {};
+                const newPlaysToAdd = [];
+                (sharedSession.session_data.playIds || []).forEach((oldId, i) => {
+                  const playData = sharedSession.plays[i];
+                  if (!playData) return;
+                  const existing = plays.find(p => normTitle(p.titre) === normTitle(playData.titre));
+                  if (existing) { playIdMap[oldId] = existing.id; return; }
+                  const newPlay = { ...playData, id: uid(), createdAt: new Date().toISOString() };
+                  if (newPlay.images?.length) {
+                    newPlay.images = newPlay.images.map(img => {
+                      if (!img.file?.data) return img;
+                      storage.set(`playimg:${newPlay.id}:${img.id}`, JSON.stringify(img.file)).catch(() => {});
+                      return { ...img, hasFile: true, fileName: img.file.name, fileType: img.file.type, file: null };
+                    });
+                  }
+                  playIdMap[oldId] = newPlay.id;
+                  newPlaysToAdd.push(newPlay);
+                });
+
+                const newSessionObj = {
+                  ...sharedSession.session_data,
+                  id: uid(),
+                  teamId: null,
+                  itemOrder: [],
+                  exerciseIds: (sharedSession.session_data.exerciseIds || []).map(id => exIdMap[id]).filter(Boolean),
+                  playIds: (sharedSession.session_data.playIds || []).map(id => playIdMap[id]).filter(Boolean),
+                };
+
+                if (newExercisesToAdd.length) saveExercises([...exercises, ...newExercisesToAdd]);
+                if (newPlaysToAdd.length) savePlays([...plays, ...newPlaysToAdd]);
+                saveSessions([...sessions, newSessionObj]);
+                if (sharedSession.session_photo) {
+                  storage.set(`sessionPhoto:${newSessionObj.id}`, JSON.stringify(sharedSession.session_photo)).catch(() => {});
+                }
+
+                setActiveSession(newSessionObj);
+                setSharedSession(null);
+                setView("session"); history.pushState({ view: "session" }, "", "#session");
+                toast?.(`Séance "${newSessionObj.titre}" ajoutée !`);
+              }} className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors mb-3"
+                style={{ fontFamily: "Oswald, sans-serif" }}>
+                {isPremium ? "Ajouter à mes séances" : "🔒 Ajouter à mes séances (Premium)"}
+              </button>
+              <button onClick={() => setSharedSession(null)}
                 className="w-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A] transition-colors">
                 Ignorer
               </button>
@@ -9207,6 +9354,10 @@ function CoachingProBoost({ session }) {
               <div className="flex items-center gap-2">
                 <button onClick={() => setShowSessionDrawer(true)} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Pencil size={14} /> Dessiner la séance</button>
                 <button onClick={() => setShowSessionOrganizer(true)} className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5"><Printer size={14} /> Aperçu / Imprimer</button>
+                <button onClick={() => isPremium ? shareSession(activeSession) : setPaywallReason("Le partage de séances est une fonctionnalité Premium.")}
+                  className="flex items-center gap-1.5 border border-[#1B2A4A]/20 px-3 py-1.5 rounded-md text-sm text-[#1B2A4A] hover:bg-[#1B2A4A]/5">
+                  <Share2 size={14} /> Partager
+                </button>
               </div>
             </div>
             <div className="flex items-start gap-4 mb-4">
