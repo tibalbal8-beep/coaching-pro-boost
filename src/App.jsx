@@ -7867,7 +7867,26 @@ function CoachingProBoost({ session }) {
                   key: "theme", label: "Thème", active: filterTheme.length,
                   content: (
                     <>
-                      {themes.map(t => <Tag key={t} active={filterTheme.includes(t)} onClick={() => toggleFilter(filterTheme, setFilterTheme, t)} color="orange">{t}</Tag>)}
+                      {themes.map(t => (
+                        <span key={t} className="inline-flex items-center gap-0.5">
+                          <Tag active={filterTheme.includes(t)} onClick={() => toggleFilter(filterTheme, setFilterTheme, t)} color="orange">{t}</Tag>
+                          <button type="button" title={`Supprimer le thème "${t}"`}
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              const count = exercises.filter(ex => ex.themes?.includes(t)).length;
+                              const confirmed = await cpbAlert(
+                                count > 0
+                                  ? `Supprimer le thème "${t}" ? Il est utilisé par ${count} exercice${count > 1 ? "s" : ""} — ils le garderont, mais il ne sera plus proposé dans la liste (utile pour retirer un doublon).`
+                                  : `Supprimer le thème "${t}" ?`,
+                                { confirm: true }
+                              );
+                              if (!confirmed) return;
+                              saveThemes(themes.filter(x => x !== t));
+                              setFilterTheme(filterTheme.filter(x => x !== t));
+                            }}
+                            className="text-[#1B2A4A]/25 hover:text-red-600 -ml-1.5"><X size={11} /></button>
+                        </span>
+                      ))}
                       <input value={newThemeInput} onChange={e => setNewThemeInput(e.target.value)} placeholder="+ nouveau thème" className="text-xs border border-[#1B2A4A]/20 rounded-full px-2 py-1 w-28 bg-white/60"
                         onKeyDown={e => { if (e.key === "Enter" && newThemeInput.trim()) { saveThemes([...themes, newThemeInput.trim()]); setNewThemeInput(""); } }} />
                     </>
