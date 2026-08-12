@@ -2623,9 +2623,11 @@ function _drawStroke(ctx, stroke) {
   ctx.lineCap = "round"; ctx.lineJoin = "round";
   ctx.setLineDash(stroke.style === "pointille" ? [stroke.width * 3.5, stroke.width * 2.5] : []);
   if (stroke.isCurve && stroke.style === "zigzag") {
+    // Vague de dribble lissée (comme une sinusoïde à la main), pas un zigzag à angles vifs :
+    // on passe les points alternés par une spline Catmull-Rom au lieu de segments droits.
     const sampled = _sampleCatmullRom(stroke.arrow ? [...pts.slice(0, -1), { x: last.x - Math.cos(angle) * arrowSize * 0.7, y: last.y - Math.sin(angle) * arrowSize * 0.7 }] : pts);
-    const zpts = _zigzagify(sampled);
-    zpts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+    const zpts = _zigzagify(sampled, 6, 12);
+    _catmullRomPath(ctx, zpts);
   } else if (stroke.isCurve) { _catmullRomPath(ctx, drawPts); }
   else if (drawPts.length < 3) { drawPts.forEach((p, i) => { if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); }); }
   else { ctx.moveTo(drawPts[0].x, drawPts[0].y); for (let i = 1; i < drawPts.length - 1; i++) { const mx = (drawPts[i].x + drawPts[i + 1].x) / 2, my = (drawPts[i].y + drawPts[i + 1].y) / 2; ctx.quadraticCurveTo(drawPts[i].x, drawPts[i].y, mx, my); } ctx.lineTo(drawPts[drawPts.length - 1].x, drawPts[drawPts.length - 1].y); }
