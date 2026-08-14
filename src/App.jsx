@@ -2673,7 +2673,7 @@ function EQUIPMENT_ITEMS(courtType) {
 // place (jamais remplacés) — ouvert par un glisser depuis le bord droit du dessinateur ou en
 // tapant la poignée. Réutilise directement les setters existants (setTool/setToolLineStyles/
 // setPlayerLabel) pour rester strictement cohérent avec le reste de la barre d'outils.
-function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles, playerLabel, setPlayerLabel }) {
+function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles, playerLabel, setPlayerLabel, playerHasBall, setPlayerHasBall }) {
   const [open, setOpen] = useState(false);
   const touchStartX = useRef(null);
 
@@ -2702,7 +2702,7 @@ function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles
     setToolLineStyles(s => ({ ...s, [targetTool]: key }));
     setOpen(false);
   };
-  const choosePlayer = (n) => { setTool("player"); setPlayerLabel(String(n)); setOpen(false); };
+  const choosePlayer = (n, hasBall) => { setTool("player"); setPlayerLabel(String(n)); setPlayerHasBall(hasBall); setOpen(false); };
   const chooseMaterial = (v) => { setTool("player"); setPlayerLabel(v); setOpen(false); };
   const chooseText = () => { setTool("text"); setOpen(false); };
 
@@ -2719,10 +2719,18 @@ function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles
         <div className="p-3 space-y-4">
           <div>
             <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Joueurs</div>
+            <div className="flex flex-wrap gap-1.5 mb-1.5">
+              {[1, 2, 3, 4, 5].map(n => (
+                <button key={n} type="button" onClick={() => choosePlayer(n, true)} title={`Joueur ${n} avec ballon`}
+                  className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-bold transition-colors ${tool === "player" && playerLabel === String(n) && playerHasBall ? "bg-[#1B2A4A] border-[#1B2A4A] text-white" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}>
+                  {n}
+                </button>
+              ))}
+            </div>
             <div className="flex flex-wrap gap-1.5">
               {[1, 2, 3, 4, 5].map(n => (
-                <button key={n} type="button" onClick={() => choosePlayer(n)}
-                  className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-bold transition-colors ${tool === "player" && playerLabel === String(n) ? "bg-[#1B2A4A] border-[#1B2A4A] text-white" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}>
+                <button key={n} type="button" onClick={() => choosePlayer(n, false)} title={`Joueur ${n} sans ballon`}
+                  className={`w-9 h-9 rounded-md border flex items-center justify-center text-sm font-bold transition-colors ${tool === "player" && playerLabel === String(n) && !playerHasBall ? "bg-[#1B2A4A] border-[#1B2A4A] text-white" : "border-[#1B2A4A]/15 text-[#1B2A4A] hover:border-[#1B2A4A]/40"}`}>
                   {n}
                 </button>
               ))}
@@ -3748,7 +3756,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           );
         })()}
         <DrawQuickPanel courtType={courtType} tool={tool} lineStyle={lineStyle} setTool={setTool} setToolLineStyles={setToolLineStyles}
-          playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} />
+          playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall} />
       </div>
 
       {/* Notes structurées */}
@@ -4452,7 +4460,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
             );
           })()}
           <DrawQuickPanel courtType={courtType} tool={tool} lineStyle={lineStyle} setTool={setTool} setToolLineStyles={setToolLineStyles}
-            playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} />
+            playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall} />
         </div>
         {referencePhotoOptions.length > 0 && (
           <div className={`hidden lg:flex lg:flex-col flex-shrink-0 ${refPhotoCollapsed ? "lg:w-8" : "lg:w-64"}`}>
