@@ -2673,6 +2673,80 @@ function EQUIPMENT_ITEMS(courtType) {
 // place (jamais remplacés) — ouvert par un glisser depuis le bord droit du dessinateur ou en
 // tapant la poignée. Réutilise directement les setters existants (setTool/setToolLineStyles/
 // setPlayerLabel) pour rester strictement cohérent avec le reste de la barre d'outils.
+// Panneau de modification, uniquement en plein écran : glisser de gauche à droite (ou taper
+// la poignée) ouvre l'accès à annuler/effacer, sélection-déplacement, gomme, couleurs, épaisseur,
+// flèche — sans avoir à quitter le plein écran. Miroir de DrawQuickPanel mais côté gauche.
+function DrawModifyPanel({ tool, setTool, color, setColor, lineWidth, setLineWidth, eraserSize, setEraserSize, arrowEnd, setArrowEnd, onUndo, onClearAll }) {
+  const [open, setOpen] = useState(false);
+  const touchStartX = useRef(null);
+
+  const onEdgeTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
+  const onEdgeTouchEnd = (e) => {
+    if (touchStartX.current == null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    if (dx > 24) setOpen(true);
+    else if (dx < -24) setOpen(false);
+    touchStartX.current = null;
+  };
+
+  const colors = ["#1B2A4A", "#D62828", "#2563EB", "#16a34a", "#FF6B35"];
+
+  return (
+    <>
+      <div onTouchStart={onEdgeTouchStart} onTouchEnd={onEdgeTouchEnd} onClick={() => setOpen(o => !o)}
+        className="absolute top-1/2 -translate-y-1/2 z-40 flex items-center justify-center w-6 h-16 bg-[#1B2A4A] text-white rounded-r-lg shadow-lg cursor-pointer transition-[left] duration-200 no-print"
+        style={{ left: open ? 224 : 0, touchAction: "pan-y" }} title="Modifier (glisser ou taper)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? "rotate(180deg)" : "none" }}><polyline points="15 18 9 12 15 6" /></svg>
+      </div>
+      {open && <div className="absolute inset-0 z-30 bg-black/10 no-print" onClick={() => setOpen(false)} />}
+      <div onPointerDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+        className={`absolute top-0 left-0 bottom-0 z-[35] w-56 bg-white shadow-2xl border-r border-[#1B2A4A]/10 overflow-y-auto transition-transform duration-200 no-print ${open ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="p-3 space-y-4">
+          <div className="flex gap-1.5">
+            <button type="button" onClick={() => { onUndo(); setOpen(false); }}
+              className="flex-1 py-2 rounded-lg border border-[#1B2A4A]/15 text-xs font-semibold text-[#1B2A4A] hover:bg-[#1B2A4A]/5">↩ Annuler</button>
+            <button type="button" onClick={() => { onClearAll(); setOpen(false); }}
+              className="flex-1 py-2 rounded-lg border border-red-200 text-xs font-semibold text-red-600 hover:bg-red-50">🗑 Tout effacer</button>
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Outil</div>
+            <div className="flex gap-1.5">
+              <button type="button" onClick={() => setTool("select")}
+                className={`flex-1 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${tool === "select" ? "bg-[#1B2A4A] border-[#1B2A4A] text-white" : "border-[#1B2A4A]/15 text-[#1B2A4A] hover:bg-[#1B2A4A]/5"}`}>🖐 Déplacer</button>
+              <button type="button" onClick={() => setTool("eraser")}
+                className={`flex-1 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${tool === "eraser" ? "bg-[#1B2A4A] border-[#1B2A4A] text-white" : "border-[#1B2A4A]/15 text-[#1B2A4A] hover:bg-[#1B2A4A]/5"}`}>🧹 Gomme</button>
+            </div>
+            {tool === "eraser" && (
+              <select value={eraserSize} onChange={e => setEraserSize(Number(e.target.value))}
+                className="w-full mt-1.5 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white">
+                <option value={12}>Petite</option>
+                <option value={24}>Moyenne</option>
+                <option value={40}>Grande</option>
+              </select>
+            )}
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Couleur</div>
+            <div className="flex flex-wrap gap-1.5">
+              {colors.map(c => (
+                <button key={c} type="button" onClick={() => setColor(c)}
+                  className="w-8 h-8 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "transparent" }} />
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Épaisseur du trait</div>
+            <SizeSlider value={lineWidth} onChange={setLineWidth} min={1} max={10} step={0.5} presets={[{v:1.5,l:"S"},{v:2.5,l:"M"},{v:4,l:"L"}]} />
+          </div>
+          <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
+            <input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche en bout de trait
+          </label>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles, playerLabel, setPlayerLabel, playerHasBall, setPlayerHasBall, playerIsDefender, setPlayerIsDefender }) {
   const [open, setOpen] = useState(false);
   const touchStartX = useRef(null);
@@ -3787,6 +3861,11 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         <DrawQuickPanel courtType={courtType} tool={tool} lineStyle={lineStyle} setTool={setTool} setToolLineStyles={setToolLineStyles}
           playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall}
           playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender} />
+        {fullscreen && (
+          <DrawModifyPanel tool={tool} setTool={setTool} color={color} setColor={setColor} lineWidth={lineWidth} setLineWidth={setLineWidth}
+            eraserSize={eraserSize} setEraserSize={setEraserSize} arrowEnd={arrowEnd} setArrowEnd={setArrowEnd}
+            onUndo={undo} onClearAll={() => { if (window.confirm("Effacer tout le dessin ? Cette action est irréversible.")) clearAll(); }} />
+        )}
       </div>
 
       {/* Notes structurées */}
@@ -4502,6 +4581,11 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
           <DrawQuickPanel courtType={courtType} tool={tool} lineStyle={lineStyle} setTool={setTool} setToolLineStyles={setToolLineStyles}
             playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall}
           playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender} />
+          {fullscreen && (
+            <DrawModifyPanel tool={tool} setTool={setTool} color={color} setColor={setColor} lineWidth={lineWidth} setLineWidth={setLineWidth}
+              eraserSize={eraserSize} setEraserSize={setEraserSize} arrowEnd={arrowEnd} setArrowEnd={setArrowEnd}
+              onUndo={undo} onClearAll={clearAll} />
+          )}
         </div>
         {referencePhotoOptions.length > 0 && (
           <div className={`hidden lg:flex lg:flex-col flex-shrink-0 ${refPhotoCollapsed ? "lg:w-8" : "lg:w-64"}`}>
