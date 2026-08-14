@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
-import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera, Share2, Zap } from "lucide-react";
+import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera, Share2, Zap, Maximize2, Minimize2 } from "lucide-react";
 import { storage, supabase, isPasswordRecoveryUrl } from "./storage";
 import JSZip from "jszip";
 import QRCode from "qrcode";
@@ -2673,7 +2673,7 @@ function EQUIPMENT_ITEMS(courtType) {
 // place (jamais remplacés) — ouvert par un glisser depuis le bord droit du dessinateur ou en
 // tapant la poignée. Réutilise directement les setters existants (setTool/setToolLineStyles/
 // setPlayerLabel) pour rester strictement cohérent avec le reste de la barre d'outils.
-function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles, playerLabel, setPlayerLabel, playerHasBall, setPlayerHasBall }) {
+function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles, playerLabel, setPlayerLabel, playerHasBall, setPlayerHasBall, playerIsDefender, setPlayerIsDefender }) {
   const [open, setOpen] = useState(false);
   const touchStartX = useRef(null);
 
@@ -2694,16 +2694,20 @@ function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles
     { key: "tir", glyph: "⇒" },
   ].filter(a => !(courtType === "football" && (a.key === "ecran" || a.key === "tir")));
 
-  const isActionActive = (key) => key === "zigzag" ? (tool === "curve" && lineStyle === "zigzag") : (tool === "pen" && lineStyle === key);
+  // L'outil (Stylo vs Courbe) suit le sélecteur du haut : chaque style choisi ensuite s'applique
+  // à l'outil actuellement actif (sauf "Dribble"/zigzag, toujours en Courbe pour la vague lissée).
+  const targetToolFor = (key) => key === "zigzag" ? "curve" : (tool === "curve" ? "curve" : "pen");
+  const isActionActive = (key) => tool === targetToolFor(key) && lineStyle === key;
 
   const chooseAction = (key) => {
-    const targetTool = key === "zigzag" ? "curve" : "pen";
+    const targetTool = targetToolFor(key);
     setTool(targetTool);
     setToolLineStyles(s => ({ ...s, [targetTool]: key }));
     setOpen(false);
   };
-  const choosePlayer = (n, hasBall) => { setTool("player"); setPlayerLabel(String(n)); setPlayerHasBall(hasBall); setOpen(false); };
-  const chooseMaterial = (v) => { setTool("player"); setPlayerLabel(v); setOpen(false); };
+  const choosePlayer = (n, hasBall) => { setTool("player"); setPlayerIsDefender(false); setPlayerLabel(String(n)); setPlayerHasBall(hasBall); setOpen(false); };
+  const chooseDefender = (n) => { setTool("player"); setPlayerIsDefender(true); setPlayerLabel("X" + n); setPlayerHasBall(false); setOpen(false); };
+  const chooseMaterial = (v) => { setTool("player"); setPlayerIsDefender(false); setPlayerLabel(v); setOpen(false); };
   const chooseText = () => { setTool("text"); setOpen(false); };
 
   return (
@@ -2727,7 +2731,7 @@ function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles
                 </button>
               ))}
             </div>
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5 mb-1.5">
               {[1, 2, 3, 4, 5].map(n => (
                 <button key={n} type="button" onClick={() => choosePlayer(n, false)} title={`Joueur ${n} sans ballon`}
                   className={`w-9 h-9 rounded-md border flex items-center justify-center text-sm font-bold transition-colors ${tool === "player" && playerLabel === String(n) && !playerHasBall ? "bg-[#1B2A4A] border-[#1B2A4A] text-white" : "border-[#1B2A4A]/15 text-[#1B2A4A] hover:border-[#1B2A4A]/40"}`}>
@@ -2735,8 +2739,23 @@ function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles
                 </button>
               ))}
             </div>
+            <div className="flex flex-wrap gap-1.5">
+              {[1, 2, 3, 4, 5].map(n => (
+                <button key={n} type="button" onClick={() => chooseDefender(n)} title={`Défenseur X${n}`}
+                  className={`w-9 h-9 rounded-md border flex items-center justify-center text-sm font-bold transition-colors ${tool === "player" && playerLabel === "X" + n && playerIsDefender ? "bg-red-600 border-red-600 text-white" : "border-red-300 text-red-600 hover:border-red-500"}`}>
+                  X{n}
+                </button>
+              ))}
+            </div>
           </div>
           <div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Outil</div>
+            <div className="flex gap-1.5 mb-2">
+              <button type="button" onClick={() => setTool("pen")}
+                className={`flex-1 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${tool === "pen" ? "bg-[#1B2A4A] border-[#1B2A4A] text-white" : "border-[#1B2A4A]/15 text-[#1B2A4A] hover:bg-[#1B2A4A]/5"}`}>Stylo</button>
+              <button type="button" onClick={() => setTool("curve")}
+                className={`flex-1 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${tool === "curve" ? "bg-[#1B2A4A] border-[#1B2A4A] text-white" : "border-[#1B2A4A]/15 text-[#1B2A4A] hover:bg-[#1B2A4A]/5"}`}>Courbe</button>
+            </div>
             <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Actions</div>
             <div className="space-y-1">
               {actions.map(a => (
@@ -2900,6 +2919,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const [eraserSize, setEraserSize] = useState(24);
   const [arrowEnd, setArrowEnd] = useState(true);
   const [tool, setTool] = useState("pen"); // pen | player | text | select
+  const [fullscreen, setFullscreen] = useState(false);
   // Le style de trait (simple/pointillé/zigzag/écran/tir) est mémorisé séparément par outil
   // (Stylo vs Courbe notamment), pour éviter qu'un style choisi sur l'un ne "déteigne" sur
   // l'autre en changeant d'outil — surprenant sinon (ex: garder "Tir" en passant sur Courbe).
@@ -3702,12 +3722,21 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         </div>
       )}
 
-      <div ref={wrapRef} className="relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white mb-4" style={{ touchAction: "none" }}>
+      <div ref={wrapRef}
+        className={fullscreen
+          ? "fixed inset-0 z-[900] bg-white overflow-hidden flex items-center justify-center"
+          : "relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white mb-4"}
+        style={{ touchAction: "none" }}>
+        <button type="button" onClick={() => setFullscreen(f => !f)}
+          className="absolute top-2 left-2 z-40 w-8 h-8 rounded-lg bg-white/90 shadow border border-[#1B2A4A]/15 flex items-center justify-center text-[#1B2A4A] hover:bg-white no-print"
+          title={fullscreen ? "Réduire" : "Agrandir en plein écran"}>
+          {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+        </button>
         <canvas
           ref={canvasRef}
           width={dims.width}
           height={dims.height}
-          style={{ width: "100%", height: "auto", display: "block", touchAction: "none" }}
+          style={{ width: "100%", height: "auto", display: "block", touchAction: "none", ...(fullscreen ? { maxHeight: "100vh", width: "auto", maxWidth: "100vw" } : {}) }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -3756,7 +3785,8 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           );
         })()}
         <DrawQuickPanel courtType={courtType} tool={tool} lineStyle={lineStyle} setTool={setTool} setToolLineStyles={setToolLineStyles}
-          playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall} />
+          playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall}
+          playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender} />
       </div>
 
       {/* Notes structurées */}
@@ -3828,6 +3858,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
   const referencePhoto = referencePhotoOptions[refPhotoIdx]?.src || null;
   const [arrowEnd, setArrowEnd] = useState(true);
   const [tool, setTool] = useState("pen");
+  const [fullscreen, setFullscreen] = useState(false);
   // Style de trait mémorisé séparément par outil (Stylo vs Courbe) — voir DrawSheetView.
   const [toolLineStyles, setToolLineStyles] = useState({});
   const lineStyle = toolLineStyles[tool] ?? "simple";
@@ -4437,9 +4468,18 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
         </div>
       )}
       <div className="lg:flex lg:gap-4 lg:items-start mb-4">
-        <div ref={wrapRef} className="relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white lg:flex-1 min-w-0" style={{ touchAction: "none" }}>
+        <div ref={wrapRef}
+          className={fullscreen
+            ? "fixed inset-0 z-[900] bg-white overflow-hidden flex items-center justify-center"
+            : "relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white lg:flex-1 min-w-0"}
+          style={{ touchAction: "none" }}>
+          <button type="button" onClick={() => setFullscreen(f => !f)}
+            className="absolute top-2 left-2 z-40 w-8 h-8 rounded-lg bg-white/90 shadow border border-[#1B2A4A]/15 flex items-center justify-center text-[#1B2A4A] hover:bg-white no-print"
+            title={fullscreen ? "Réduire" : "Agrandir en plein écran"}>
+            {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+          </button>
           <canvas ref={canvasRef} width={dims.width} height={dims.height}
-            style={{ width: "100%", height: "auto", display: "block", touchAction: "none" }}
+            style={{ width: "100%", height: "auto", display: "block", touchAction: "none", ...(fullscreen ? { maxHeight: "100vh", width: "auto", maxWidth: "100vw" } : {}) }}
             onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp} />
           {previousSchemaGhost && showGhost && (
             <img src={previousSchemaGhost} alt=""
@@ -4460,7 +4500,8 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
             );
           })()}
           <DrawQuickPanel courtType={courtType} tool={tool} lineStyle={lineStyle} setTool={setTool} setToolLineStyles={setToolLineStyles}
-            playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall} />
+            playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall}
+          playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender} />
         </div>
         {referencePhotoOptions.length > 0 && (
           <div className={`hidden lg:flex lg:flex-col flex-shrink-0 ${refPhotoCollapsed ? "lg:w-8" : "lg:w-64"}`}>
