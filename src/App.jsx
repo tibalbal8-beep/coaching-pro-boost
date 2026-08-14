@@ -3478,17 +3478,6 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       {referencePhoto && !showRefPhoto && (
         <button type="button" onClick={() => setShowRefPhoto(true)} className="mb-3 text-xs text-[#FF6B35] hover:underline">Afficher photo modèle</button>
       )}
-      {/* Plein écran : englobe toute la barre d'outils (pas seulement le canvas) pour garder
-          accès à absolument tout — couleurs, styles, annuler, sélection/déplacement — sans avoir
-          à réduire. On ne sort qu'au moment d'enregistrer, via le bouton "Réduire" ci-dessous. */}
-      <div className={fullscreen ? "fixed inset-0 z-[900] bg-white overflow-y-auto p-4" : ""}>
-      {fullscreen && (
-        <button type="button" onClick={() => setFullscreen(false)}
-          className="fixed top-3 right-3 z-[950] w-11 h-11 rounded-full bg-[#1B2A4A] text-white shadow-lg flex items-center justify-center hover:bg-[#FF6B35] transition-colors"
-          title="Réduire (pour enregistrer)">
-          <Minimize2 size={18} />
-        </button>
-      )}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
         <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>DESSINER UNE FICHE</h2>
         <div className="flex items-center gap-1 bg-[#1B2A4A]/5 rounded-full p-1 overflow-x-auto max-w-full [&>button]:flex-shrink-0 [&>button]:whitespace-nowrap">
@@ -3499,11 +3488,6 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           <button onClick={() => setTool("eraser")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "eraser" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🧹 Gomme</button>
           <button onClick={() => setTool("zone")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "zone" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>▭ Zone</button>
           <button onClick={() => setTool("select")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "select" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🖐 Déplacer</button>
-          {!fullscreen && (
-            <button type="button" onClick={() => setFullscreen(true)} className="px-3 py-1.5 rounded-full text-sm font-medium text-[#1B2A4A]/50 hover:text-[#1B2A4A]" title="Agrandir en plein écran">
-              <Maximize2 size={14} />
-            </button>
-          )}
         </div>
       </div>
 
@@ -3738,12 +3722,21 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         </div>
       )}
 
-      <div ref={wrapRef} className="relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white mb-4" style={{ touchAction: "none" }}>
+      <div ref={wrapRef}
+        className={fullscreen
+          ? "fixed inset-0 z-[900] bg-white overflow-hidden flex items-center justify-center"
+          : "relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white mb-4"}
+        style={{ touchAction: "none" }}>
+        <button type="button" onClick={() => setFullscreen(f => !f)}
+          className="absolute top-2 left-2 z-40 w-8 h-8 rounded-lg bg-white/90 shadow border border-[#1B2A4A]/15 flex items-center justify-center text-[#1B2A4A] hover:bg-white no-print"
+          title={fullscreen ? "Réduire" : "Agrandir en plein écran"}>
+          {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+        </button>
         <canvas
           ref={canvasRef}
           width={dims.width}
           height={dims.height}
-          style={{ width: "100%", height: "auto", display: "block", touchAction: "none" }}
+          style={{ width: "100%", height: "auto", display: "block", touchAction: "none", ...(fullscreen ? { maxHeight: "100vh", width: "auto", maxWidth: "100vw" } : {}) }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -3794,7 +3787,6 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         <DrawQuickPanel courtType={courtType} tool={tool} lineStyle={lineStyle} setTool={setTool} setToolLineStyles={setToolLineStyles}
           playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall}
           playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender} />
-      </div>
       </div>
 
       {/* Notes structurées */}
@@ -4350,17 +4342,6 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
           )}
         </div>
       )}
-      {/* Plein écran : englobe toute la barre d'outils (pas seulement le canvas) pour garder
-          accès à absolument tout — couleurs, styles, annuler, sélection/déplacement — sans avoir
-          à réduire. On ne sort qu'au moment d'enregistrer, via le bouton "Réduire" ci-dessous. */}
-      <div className={fullscreen ? "fixed inset-0 z-[900] bg-white overflow-y-auto p-4" : ""}>
-      {fullscreen && (
-        <button type="button" onClick={() => setFullscreen(false)}
-          className="fixed top-3 right-3 z-[950] w-11 h-11 rounded-full bg-[#1B2A4A] text-white shadow-lg flex items-center justify-center hover:bg-[#FF6B35] transition-colors"
-          title="Réduire (pour enregistrer)">
-          <Minimize2 size={18} />
-        </button>
-      )}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
         <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>DESSINER UN SCHÉMA</h2>
         <div className="flex items-center gap-1 bg-[#1B2A4A]/5 rounded-full p-1 overflow-x-auto max-w-full [&>button]:flex-shrink-0 [&>button]:whitespace-nowrap">
@@ -4371,11 +4352,6 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
           <button onClick={() => setTool("eraser")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "eraser" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🧹 Gomme</button>
           <button onClick={() => setTool("zone")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "zone" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>▭ Zone</button>
           <button onClick={() => setTool("select")} className={`px-3 py-1.5 rounded-full text-sm font-medium ${tool === "select" ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/50"}`}>🖐 Déplacer</button>
-          {!fullscreen && (
-            <button type="button" onClick={() => setFullscreen(true)} className="px-3 py-1.5 rounded-full text-sm font-medium text-[#1B2A4A]/50 hover:text-[#1B2A4A]" title="Agrandir en plein écran">
-              <Maximize2 size={14} />
-            </button>
-          )}
         </div>
       </div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -4492,9 +4468,18 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
         </div>
       )}
       <div className="lg:flex lg:gap-4 lg:items-start mb-4">
-        <div ref={wrapRef} className="relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white lg:flex-1 min-w-0" style={{ touchAction: "none" }}>
+        <div ref={wrapRef}
+          className={fullscreen
+            ? "fixed inset-0 z-[900] bg-white overflow-hidden flex items-center justify-center"
+            : "relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white lg:flex-1 min-w-0"}
+          style={{ touchAction: "none" }}>
+          <button type="button" onClick={() => setFullscreen(f => !f)}
+            className="absolute top-2 left-2 z-40 w-8 h-8 rounded-lg bg-white/90 shadow border border-[#1B2A4A]/15 flex items-center justify-center text-[#1B2A4A] hover:bg-white no-print"
+            title={fullscreen ? "Réduire" : "Agrandir en plein écran"}>
+            {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+          </button>
           <canvas ref={canvasRef} width={dims.width} height={dims.height}
-            style={{ width: "100%", height: "auto", display: "block", touchAction: "none" }}
+            style={{ width: "100%", height: "auto", display: "block", touchAction: "none", ...(fullscreen ? { maxHeight: "100vh", width: "auto", maxWidth: "100vw" } : {}) }}
             onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp} />
           {previousSchemaGhost && showGhost && (
             <img src={previousSchemaGhost} alt=""
@@ -4518,7 +4503,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
             playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall}
           playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender} />
         </div>
-        {!fullscreen && referencePhotoOptions.length > 0 && (
+        {referencePhotoOptions.length > 0 && (
           <div className={`hidden lg:flex lg:flex-col flex-shrink-0 ${refPhotoCollapsed ? "lg:w-8" : "lg:w-64"}`}>
             <button type="button" onClick={() => setRefPhotoCollapsed(c => !c)}
               className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-[#1B2A4A]/40 hover:text-[#1B2A4A]/70 mb-1.5">
@@ -4546,7 +4531,6 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
             )}
           </div>
         )}
-      </div>
       </div>
       {refPhotoZoomed && (
         <div className="fixed inset-0 z-[400] bg-black/80 flex items-center justify-center p-4" onClick={() => setRefPhotoZoomed(false)}>
