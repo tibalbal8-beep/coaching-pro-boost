@@ -2676,8 +2676,7 @@ function EQUIPMENT_ITEMS(courtType) {
 // Panneau de modification, uniquement en plein écran : glisser de gauche à droite (ou taper
 // la poignée) ouvre l'accès à annuler/effacer, sélection-déplacement, gomme, couleurs, épaisseur,
 // flèche — sans avoir à quitter le plein écran. Miroir de DrawQuickPanel mais côté gauche.
-function DrawModifyPanel({ tool, setTool, color, setColor, lineWidth, setLineWidth, eraserSize, setEraserSize, arrowEnd, setArrowEnd, onUndo, onClearAll }) {
-  const [open, setOpen] = useState(false);
+function DrawModifyPanel({ tool, setTool, color, setColor, lineWidth, setLineWidth, eraserSize, setEraserSize, arrowEnd, setArrowEnd, onUndo, onClearAll, open, setOpen }) {
   const touchStartX = useRef(null);
 
   const onEdgeTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
@@ -2693,7 +2692,7 @@ function DrawModifyPanel({ tool, setTool, color, setColor, lineWidth, setLineWid
 
   return (
     <>
-      <div onTouchStart={onEdgeTouchStart} onTouchEnd={onEdgeTouchEnd} onClick={() => setOpen(o => !o)}
+      <div onTouchStart={onEdgeTouchStart} onTouchEnd={onEdgeTouchEnd} onClick={() => setOpen(!open)}
         className="absolute top-1/2 -translate-y-1/2 z-40 flex items-center justify-center w-6 h-16 bg-[#1B2A4A] text-white rounded-r-lg shadow-lg cursor-pointer transition-[left] duration-200 no-print"
         style={{ left: open ? 224 : 0, touchAction: "pan-y" }} title="Modifier (glisser ou taper)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? "rotate(180deg)" : "none" }}><polyline points="15 18 9 12 15 6" /></svg>
@@ -2747,8 +2746,7 @@ function DrawModifyPanel({ tool, setTool, color, setColor, lineWidth, setLineWid
   );
 }
 
-function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles, playerLabel, setPlayerLabel, playerHasBall, setPlayerHasBall, playerIsDefender, setPlayerIsDefender }) {
-  const [open, setOpen] = useState(false);
+function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles, playerLabel, setPlayerLabel, playerHasBall, setPlayerHasBall, playerIsDefender, setPlayerIsDefender, playerSize, setPlayerSize, open, setOpen }) {
   const touchStartX = useRef(null);
 
   const onEdgeTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
@@ -2786,7 +2784,7 @@ function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles
 
   return (
     <>
-      <div onTouchStart={onEdgeTouchStart} onTouchEnd={onEdgeTouchEnd} onClick={() => setOpen(o => !o)}
+      <div onTouchStart={onEdgeTouchStart} onTouchEnd={onEdgeTouchEnd} onClick={() => setOpen(!open)}
         className="absolute top-1/2 -translate-y-1/2 z-40 flex items-center justify-center w-6 h-16 bg-[#1B2A4A] text-white rounded-l-lg shadow-lg cursor-pointer transition-[right] duration-200 no-print"
         style={{ right: open ? 224 : 0, touchAction: "pan-y" }} title="Menu rapide (glisser ou taper)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? "rotate(180deg)" : "none" }}><polyline points="9 18 15 12 9 6" /></svg>
@@ -2820,6 +2818,10 @@ function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles
                   X{n}
                 </button>
               ))}
+            </div>
+            <div className="mt-1.5">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40 mb-1">Épaisseur joueur</div>
+              <SizeSlider value={playerSize} onChange={setPlayerSize} min={0.4} max={2.2} step={0.1} presets={[{v:0.6,l:"S"},{v:1,l:"M"},{v:1.5,l:"L"}]} />
             </div>
           </div>
           <div>
@@ -2994,6 +2996,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const [arrowEnd, setArrowEnd] = useState(true);
   const [tool, setTool] = useState("pen"); // pen | player | text | select
   const [fullscreen, setFullscreen] = useState(false);
+  const [activeSwipePanel, setActiveSwipePanel] = useState(null); // "quick" | "modify" | null — jamais les deux ouverts en même temps
   // Le style de trait (simple/pointillé/zigzag/écran/tir) est mémorisé séparément par outil
   // (Stylo vs Courbe notamment), pour éviter qu'un style choisi sur l'un ne "déteigne" sur
   // l'autre en changeant d'outil — surprenant sinon (ex: garder "Tir" en passant sur Courbe).
@@ -3801,7 +3804,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           ? "fixed inset-0 z-[900] bg-white overflow-hidden flex items-center justify-center"
           : "relative border border-[#1B2A4A]/15 rounded-lg overflow-hidden bg-white mb-4"}
         style={{ touchAction: "none" }}>
-        <button type="button" onClick={() => setFullscreen(f => !f)}
+        <button type="button" onClick={() => { setFullscreen(f => !f); setActiveSwipePanel(null); }}
           className="absolute top-2 left-2 z-40 w-8 h-8 rounded-lg bg-white/90 shadow border border-[#1B2A4A]/15 flex items-center justify-center text-[#1B2A4A] hover:bg-white no-print"
           title={fullscreen ? "Réduire" : "Agrandir en plein écran"}>
           {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
@@ -3860,11 +3863,13 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         })()}
         <DrawQuickPanel courtType={courtType} tool={tool} lineStyle={lineStyle} setTool={setTool} setToolLineStyles={setToolLineStyles}
           playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall}
-          playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender} />
+          playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender} playerSize={playerSize} setPlayerSize={setPlayerSize}
+          open={activeSwipePanel === "quick"} setOpen={(v) => setActiveSwipePanel(v ? "quick" : null)} />
         {fullscreen && (
           <DrawModifyPanel tool={tool} setTool={setTool} color={color} setColor={setColor} lineWidth={lineWidth} setLineWidth={setLineWidth}
             eraserSize={eraserSize} setEraserSize={setEraserSize} arrowEnd={arrowEnd} setArrowEnd={setArrowEnd}
-            onUndo={undo} onClearAll={() => { if (window.confirm("Effacer tout le dessin ? Cette action est irréversible.")) clearAll(); }} />
+            onUndo={undo} onClearAll={() => { if (window.confirm("Effacer tout le dessin ? Cette action est irréversible.")) clearAll(); }}
+            open={activeSwipePanel === "modify"} setOpen={(v) => setActiveSwipePanel(v ? "modify" : null)} />
         )}
       </div>
 
@@ -3938,6 +3943,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
   const [arrowEnd, setArrowEnd] = useState(true);
   const [tool, setTool] = useState("pen");
   const [fullscreen, setFullscreen] = useState(false);
+  const [activeSwipePanel, setActiveSwipePanel] = useState(null); // "quick" | "modify" | null — jamais les deux ouverts en même temps
   // Style de trait mémorisé séparément par outil (Stylo vs Courbe) — voir DrawSheetView.
   const [toolLineStyles, setToolLineStyles] = useState({});
   const lineStyle = toolLineStyles[tool] ?? "simple";
@@ -4580,11 +4586,13 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
           })()}
           <DrawQuickPanel courtType={courtType} tool={tool} lineStyle={lineStyle} setTool={setTool} setToolLineStyles={setToolLineStyles}
             playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall}
-          playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender} />
+          playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender} playerSize={playerSize} setPlayerSize={setPlayerSize}
+          open={activeSwipePanel === "quick"} setOpen={(v) => setActiveSwipePanel(v ? "quick" : null)} />
           {fullscreen && (
             <DrawModifyPanel tool={tool} setTool={setTool} color={color} setColor={setColor} lineWidth={lineWidth} setLineWidth={setLineWidth}
               eraserSize={eraserSize} setEraserSize={setEraserSize} arrowEnd={arrowEnd} setArrowEnd={setArrowEnd}
-              onUndo={undo} onClearAll={clearAll} />
+              onUndo={undo} onClearAll={clearAll}
+              open={activeSwipePanel === "modify"} setOpen={(v) => setActiveSwipePanel(v ? "modify" : null)} />
           )}
         </div>
         {referencePhotoOptions.length > 0 && (
