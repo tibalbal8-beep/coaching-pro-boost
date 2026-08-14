@@ -1123,7 +1123,7 @@ function ExerciseFormImagePreview({ ex }) {
   return <img src={fileImage} alt="" className="w-full rounded-lg border border-[#1B2A4A]/15" />;
 }
 
-function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes, saveFormats, sportPhases = PHASES, sportFormats = FORMATS, sportCategories = CATEGORIES, courtType = "basketball" }) {
+function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes, saveFormats, sportPhases = PHASES, sportFormats = FORMATS, sportCategories = CATEGORIES, courtType = "basketball", autoOpenDraw = false }) {
   const [titre, setTitre] = useState(initial?.titre || "");
   const [sel, setSel] = useState(initial?.themes || []);
   const [phases, setPhases] = useState(initial?.phases || []);
@@ -1161,13 +1161,13 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
   const [photoIdx, setPhotoIdx] = useState(0);
   const [extraCropSource, setExtraCropSource] = useState(null);
   const hasFilePhoto = file?.type?.startsWith("image/") && !!file?.data;
-  const [editingSchemaIdx, setEditingSchemaIdx] = useState(null);
+  const [editingSchemaIdx, setEditingSchemaIdx] = useState(autoOpenDraw ? 0 : null);
   const [lastMaterial, setLastMaterial] = useState(null);
   const [newTheme, setNewTheme] = useState("");
   const [themesOpen, setThemesOpen] = useState(false);
   const [newFormat, setNewFormat] = useState("");
   const [newFormatOpen, setNewFormatOpen] = useState(false);
-  const [showDraw, setShowDraw] = useState(false);
+  const [showDraw, setShowDraw] = useState(autoOpenDraw);
 
   const toggle = (arr, setArr, v) => setArr(arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
 
@@ -5832,7 +5832,7 @@ function PlayImageSlot({ img, playId, onChange, onRemove }) {
   );
 }
 
-function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes = PLAY_TYPES, savePlayTypes, courtType = "basketball", cpbAlert }) {
+function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes = PLAY_TYPES, savePlayTypes, courtType = "basketball", cpbAlert, autoOpenDraw = false }) {
   const [titre, setTitre] = useState(initial?.titre || "");
   const [type, setType] = useState(initial?.type || playTypes[0]);
   const [newTypeInput, setNewTypeInput] = useState("");
@@ -5851,7 +5851,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
     initial?.images?.map(img => ({ ...img, file: img.hasFile ? { name: img.fileName, type: img.fileType, data: null } : null })) || []
   );
   const [schemas, setSchemas] = useState(initial?.schemas || []);
-  const [editingSchemaIdx, setEditingSchemaIdx] = useState(null);
+  const [editingSchemaIdx, setEditingSchemaIdx] = useState(autoOpenDraw ? 0 : null);
   const [selectedTags, setSelectedTags] = useState(initial?.tags || []);
   const [newTagInput, setNewTagInput] = useState("");
   const [tagsOpen, setTagsOpen] = useState(false);
@@ -6656,6 +6656,8 @@ function CoachingProBoost({ session }) {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddTarget, setQuickAddTarget] = useState(null); // "exercise" | "play" | "session"
   const quickAddCameraRef = useRef();
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const [autoOpenDrawForNew, setAutoOpenDrawForNew] = useState(false);
   const [sharedExercise, setSharedExercise] = useState(null);
   const [sharedExerciseCollection, setSharedExerciseCollection] = useState(null);
   const [sharedSession, setSharedSession] = useState(null);
@@ -8205,7 +8207,10 @@ function CoachingProBoost({ session }) {
         {view === "library" && showForm && (
           <div className="max-w-xl">
             <h2 className="text-xl font-bold text-[#1B2A4A] mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>{editing ? "MODIFIER L'EXERCICE" : "NOUVEL EXERCICE"}</h2>
-            <ExerciseForm themes={themes} saveThemes={saveThemes} saveFormats={saveFormats} initial={editing} onSave={upsertExercise} onCancel={() => { setShowForm(false); setEditing(null); }} cpbAlert={cpbAlert} sportPhases={SPORT_PHASES} sportFormats={SPORT_FORMATS} sportCategories={SPORT_CATEGORIES} courtType={SPORT_COURT} />
+            <ExerciseForm themes={themes} saveThemes={saveThemes} saveFormats={saveFormats} initial={editing}
+              onSave={(ex) => { upsertExercise(ex); setAutoOpenDrawForNew(false); }}
+              onCancel={() => { setShowForm(false); setEditing(null); setAutoOpenDrawForNew(false); }}
+              cpbAlert={cpbAlert} sportPhases={SPORT_PHASES} sportFormats={SPORT_FORMATS} sportCategories={SPORT_CATEGORIES} courtType={SPORT_COURT} autoOpenDraw={autoOpenDrawForNew} />
           </div>
         )}
 
@@ -8345,14 +8350,15 @@ function CoachingProBoost({ session }) {
         {view === "playbook" && playbookForm && (
           <div className="max-w-xl">
             <h2 className="text-xl font-bold text-[#1B2A4A] mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>{editingPlay ? "MODIFIER LE PLAY" : "NOUVEAU PLAY"}</h2>
-            <PlayForm initial={editingPlay} playTags={playTags} savePlayTags={savePlayTags} playTypes={playTypes} savePlayTypes={savePlayTypes} courtType={SPORT_COURT} cpbAlert={cpbAlert}
+            <PlayForm initial={editingPlay} playTags={playTags} savePlayTags={savePlayTags} playTypes={playTypes} savePlayTypes={savePlayTypes} courtType={SPORT_COURT} cpbAlert={cpbAlert} autoOpenDraw={autoOpenDrawForNew}
               onSave={(play) => {
                 const next = editingPlay ? plays.map(p => p.id === play.id ? play : p) : [...plays, play];
                 savePlays(next);
                 setPlaybookForm(false);
                 setEditingPlay(null);
+                setAutoOpenDrawForNew(false);
               }}
-              onCancel={() => { setPlaybookForm(false); setEditingPlay(null); }} />
+              onCancel={() => { setPlaybookForm(false); setEditingPlay(null); setAutoOpenDrawForNew(false); }} />
           </div>
         )}
 
@@ -9961,7 +9967,6 @@ function CoachingProBoost({ session }) {
           </button>
           {[
             { key: "playbook", label: "Play Book", icon: BookOpen },
-            { key: "account", label: "Mon compte", icon: Users },
           ].map(item => {
             const active = view === item.key;
             const Icon = item.icon;
@@ -9974,6 +9979,11 @@ function CoachingProBoost({ session }) {
               </button>
             );
           })}
+          <button onClick={() => setQuickCreateOpen(true)}
+            className="flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg" style={{ color: "#1B2A4A80" }}>
+            <Plus size={20} />
+            <span className="text-[10px] font-medium">Créer</span>
+          </button>
         </div>
       </nav>
 
@@ -9999,6 +10009,26 @@ function CoachingProBoost({ session }) {
               })}
             </div>
             <button onClick={() => setQuickAddOpen(false)} className="w-full mt-3 py-2 text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">Annuler</button>
+          </div>
+        </div>
+      )}
+      {quickCreateOpen && (
+        <div className="fixed inset-0 z-[600] bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setQuickCreateOpen(false)}>
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-sm p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={e => e.stopPropagation()}>
+            <div className="text-center text-sm font-semibold text-[#1B2A4A]/70 mb-3">Créer avec le dessinateur pour...</div>
+            <div className="space-y-2">
+              <button onClick={() => { setAutoOpenDrawForNew(true); setEditing(null); setShowForm(true); setViewPersist("library"); setQuickCreateOpen(false); }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-[#1B2A4A]/10 hover:border-[#FF6B35]/50 hover:bg-[#FF6B35]/5 transition-colors text-left">
+                <Library size={20} className="text-[#FF6B35]" />
+                <span className="font-medium text-[#1B2A4A]">Un exercice</span>
+              </button>
+              <button onClick={() => { setAutoOpenDrawForNew(true); setEditingPlay(null); setPlaybookForm(true); setViewPersist("playbook"); setQuickCreateOpen(false); }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-[#1B2A4A]/10 hover:border-[#FF6B35]/50 hover:bg-[#FF6B35]/5 transition-colors text-left">
+                <BookOpen size={20} className="text-[#FF6B35]" />
+                <span className="font-medium text-[#1B2A4A]">Un play</span>
+              </button>
+            </div>
+            <button onClick={() => setQuickCreateOpen(false)} className="w-full mt-3 py-2 text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">Annuler</button>
           </div>
         </div>
       )}
