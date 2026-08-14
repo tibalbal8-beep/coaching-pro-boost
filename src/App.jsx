@@ -2676,7 +2676,7 @@ function EQUIPMENT_ITEMS(courtType) {
 // Panneau de modification, uniquement en plein écran : glisser de gauche à droite (ou taper
 // la poignée) ouvre l'accès à annuler/effacer, sélection-déplacement, gomme, couleurs, épaisseur,
 // flèche — sans avoir à quitter le plein écran. Miroir de DrawQuickPanel mais côté gauche.
-function DrawModifyPanel({ tool, setTool, color, setColor, lineWidth, setLineWidth, eraserSize, setEraserSize, arrowEnd, setArrowEnd, onUndo, onClearAll, open, setOpen }) {
+function DrawModifyPanel({ tool, setTool, color, setColor, lineWidth, setLineWidth, eraserSize, setEraserSize, arrowEnd, setArrowEnd, playerSize, setPlayerSize, onUndo, onClearAll, open, setOpen }) {
   const touchStartX = useRef(null);
 
   const onEdgeTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
@@ -2737,6 +2737,10 @@ function DrawModifyPanel({ tool, setTool, color, setColor, lineWidth, setLineWid
             <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Épaisseur du trait</div>
             <SizeSlider value={lineWidth} onChange={setLineWidth} min={1} max={10} step={0.5} presets={[{v:1.5,l:"S"},{v:2.5,l:"M"},{v:4,l:"L"}]} />
           </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Épaisseur joueur</div>
+            <SizeSlider value={playerSize} onChange={setPlayerSize} min={0.4} max={2.2} step={0.1} presets={[{v:0.6,l:"S"},{v:1,l:"M"},{v:1.5,l:"L"}]} />
+          </div>
           <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
             <input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche en bout de trait
           </label>
@@ -2746,7 +2750,7 @@ function DrawModifyPanel({ tool, setTool, color, setColor, lineWidth, setLineWid
   );
 }
 
-function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles, playerLabel, setPlayerLabel, playerHasBall, setPlayerHasBall, playerIsDefender, setPlayerIsDefender, playerSize, setPlayerSize, open, setOpen }) {
+function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles, playerLabel, setPlayerLabel, playerHasBall, setPlayerHasBall, playerIsDefender, setPlayerIsDefender, open, setOpen }) {
   const touchStartX = useRef(null);
 
   const onEdgeTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
@@ -2818,10 +2822,6 @@ function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles
                   X{n}
                 </button>
               ))}
-            </div>
-            <div className="mt-1.5">
-              <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40 mb-1">Épaisseur joueur</div>
-              <SizeSlider value={playerSize} onChange={setPlayerSize} min={0.4} max={2.2} step={0.1} presets={[{v:0.6,l:"S"},{v:1,l:"M"},{v:1.5,l:"L"}]} />
             </div>
           </div>
           <div>
@@ -3863,11 +3863,11 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
         })()}
         <DrawQuickPanel courtType={courtType} tool={tool} lineStyle={lineStyle} setTool={setTool} setToolLineStyles={setToolLineStyles}
           playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall}
-          playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender} playerSize={playerSize} setPlayerSize={setPlayerSize}
+          playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender}
           open={activeSwipePanel === "quick"} setOpen={(v) => setActiveSwipePanel(v ? "quick" : null)} />
         {fullscreen && (
           <DrawModifyPanel tool={tool} setTool={setTool} color={color} setColor={setColor} lineWidth={lineWidth} setLineWidth={setLineWidth}
-            eraserSize={eraserSize} setEraserSize={setEraserSize} arrowEnd={arrowEnd} setArrowEnd={setArrowEnd}
+            eraserSize={eraserSize} setEraserSize={setEraserSize} arrowEnd={arrowEnd} setArrowEnd={setArrowEnd} playerSize={playerSize} setPlayerSize={setPlayerSize}
             onUndo={undo} onClearAll={() => { if (window.confirm("Effacer tout le dessin ? Cette action est irréversible.")) clearAll(); }}
             open={activeSwipePanel === "modify"} setOpen={(v) => setActiveSwipePanel(v ? "modify" : null)} />
         )}
@@ -4586,11 +4586,11 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
           })()}
           <DrawQuickPanel courtType={courtType} tool={tool} lineStyle={lineStyle} setTool={setTool} setToolLineStyles={setToolLineStyles}
             playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall}
-          playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender} playerSize={playerSize} setPlayerSize={setPlayerSize}
+          playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender}
           open={activeSwipePanel === "quick"} setOpen={(v) => setActiveSwipePanel(v ? "quick" : null)} />
           {fullscreen && (
             <DrawModifyPanel tool={tool} setTool={setTool} color={color} setColor={setColor} lineWidth={lineWidth} setLineWidth={setLineWidth}
-              eraserSize={eraserSize} setEraserSize={setEraserSize} arrowEnd={arrowEnd} setArrowEnd={setArrowEnd}
+              eraserSize={eraserSize} setEraserSize={setEraserSize} arrowEnd={arrowEnd} setArrowEnd={setArrowEnd} playerSize={playerSize} setPlayerSize={setPlayerSize}
               onUndo={undo} onClearAll={clearAll}
               open={activeSwipePanel === "modify"} setOpen={(v) => setActiveSwipePanel(v ? "modify" : null)} />
           )}
