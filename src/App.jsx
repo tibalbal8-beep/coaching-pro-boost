@@ -2669,6 +2669,98 @@ function EQUIPMENT_ITEMS(courtType) {
   return generic;
 }
 
+// Panneau d'accès rapide au matériel/style de trait, en plus des sélecteurs compacts déjà en
+// place (jamais remplacés) — ouvert par un glisser depuis le bord droit du dessinateur ou en
+// tapant la poignée. Réutilise directement les setters existants (setTool/setToolLineStyles/
+// setPlayerLabel) pour rester strictement cohérent avec le reste de la barre d'outils.
+function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles, playerLabel, setPlayerLabel }) {
+  const [open, setOpen] = useState(false);
+  const touchStartX = useRef(null);
+
+  const onEdgeTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
+  const onEdgeTouchEnd = (e) => {
+    if (touchStartX.current == null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    if (dx < -24) setOpen(true);
+    else if (dx > 24) setOpen(false);
+    touchStartX.current = null;
+  };
+
+  const actions = [
+    { key: "simple", glyph: "⟶" },
+    { key: "pointille", glyph: "┄┄▶" },
+    { key: "zigzag", glyph: "∿▶" },
+    { key: "ecran", glyph: "⊣" },
+    { key: "tir", glyph: "⇒" },
+  ].filter(a => !(courtType === "football" && (a.key === "ecran" || a.key === "tir")));
+
+  const isActionActive = (key) => key === "zigzag" ? (tool === "curve" && lineStyle === "zigzag") : (tool === "pen" && lineStyle === key);
+
+  const chooseAction = (key) => {
+    const targetTool = key === "zigzag" ? "curve" : "pen";
+    setTool(targetTool);
+    setToolLineStyles(s => ({ ...s, [targetTool]: key }));
+    setOpen(false);
+  };
+  const choosePlayer = (n) => { setTool("player"); setPlayerLabel(String(n)); setOpen(false); };
+  const chooseMaterial = (v) => { setTool("player"); setPlayerLabel(v); setOpen(false); };
+  const chooseText = () => { setTool("text"); setOpen(false); };
+
+  return (
+    <>
+      <div onTouchStart={onEdgeTouchStart} onTouchEnd={onEdgeTouchEnd} onClick={() => setOpen(o => !o)}
+        className="absolute top-1/2 -translate-y-1/2 z-40 flex items-center justify-center w-6 h-16 bg-[#1B2A4A] text-white rounded-l-lg shadow-lg cursor-pointer transition-[right] duration-200 no-print"
+        style={{ right: open ? 224 : 0, touchAction: "pan-y" }} title="Menu rapide (glisser ou taper)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? "rotate(180deg)" : "none" }}><polyline points="9 18 15 12 9 6" /></svg>
+      </div>
+      {open && <div className="absolute inset-0 z-30 bg-black/10 no-print" onClick={() => setOpen(false)} />}
+      <div onPointerDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+        className={`absolute top-0 right-0 bottom-0 z-[35] w-56 bg-white shadow-2xl border-l border-[#1B2A4A]/10 overflow-y-auto transition-transform duration-200 no-print ${open ? "translate-x-0" : "translate-x-full"}`}>
+        <div className="p-3 space-y-4">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Joueurs</div>
+            <div className="flex flex-wrap gap-1.5">
+              {[1, 2, 3, 4, 5].map(n => (
+                <button key={n} type="button" onClick={() => choosePlayer(n)}
+                  className={`w-9 h-9 rounded-full border-2 flex items-center justify-center text-sm font-bold transition-colors ${tool === "player" && playerLabel === String(n) ? "bg-[#1B2A4A] border-[#1B2A4A] text-white" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Actions</div>
+            <div className="space-y-1">
+              {actions.map(a => (
+                <button key={a.key} type="button" onClick={() => chooseAction(a.key)}
+                  className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg border text-left transition-colors ${isActionActive(a.key) ? "bg-[#1B2A4A] border-[#1B2A4A] text-white" : "border-[#1B2A4A]/15 text-[#1B2A4A] hover:bg-[#1B2A4A]/5"}`}>
+                  <span className="w-8 text-center font-mono text-sm flex-shrink-0">{a.glyph}</span>
+                  <span className="text-xs font-medium">{styleLabel(courtType, a.key)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Divers</div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {EQUIPMENT_ITEMS(courtType).map(eq => (
+                <button key={eq.v} type="button" onClick={() => chooseMaterial(eq.v)}
+                  className={`aspect-square rounded-lg border flex items-center justify-center transition-colors ${tool === "player" && playerLabel === eq.v ? "bg-[#1B2A4A] border-[#1B2A4A]" : "border-[#1B2A4A]/15 hover:bg-[#1B2A4A]/5"}`}>
+                  {eq.icon}
+                </button>
+              ))}
+              <button type="button" onClick={chooseText}
+                className={`aspect-square rounded-lg border flex items-center justify-center font-bold text-sm transition-colors ${tool === "text" ? "bg-[#1B2A4A] border-[#1B2A4A] text-white" : "border-[#1B2A4A]/15 text-[#1B2A4A] hover:bg-[#1B2A4A]/5"}`}>
+                T
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function _drawPlayerToken(ctx, t) {
   const sc = t.size ?? 1; const r = 16 * sc;
   ctx.save();
@@ -3655,6 +3747,8 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           </div>
           );
         })()}
+        <DrawQuickPanel courtType={courtType} tool={tool} lineStyle={lineStyle} setTool={setTool} setToolLineStyles={setToolLineStyles}
+          playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} />
       </div>
 
       {/* Notes structurées */}
@@ -4357,6 +4451,8 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
               </div>
             );
           })()}
+          <DrawQuickPanel courtType={courtType} tool={tool} lineStyle={lineStyle} setTool={setTool} setToolLineStyles={setToolLineStyles}
+            playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} />
         </div>
         {referencePhotoOptions.length > 0 && (
           <div className={`hidden lg:flex lg:flex-col flex-shrink-0 ${refPhotoCollapsed ? "lg:w-8" : "lg:w-64"}`}>
