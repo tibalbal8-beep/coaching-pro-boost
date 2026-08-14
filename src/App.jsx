@@ -7275,6 +7275,8 @@ function CoachingProBoost({ session }) {
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
   const [viewSessionPhotoFull, setViewSessionPhotoFull] = useState(false);
   const [noteFormOpen, setNoteFormOpen] = useState(false);
+  const [addExerciseThemeSearch, setAddExerciseThemeSearch] = useState("");
+  const [addExerciseThemeFilter, setAddExerciseThemeFilter] = useState([]);
   const [noteTitre, setNoteTitre] = useState("");
   const [noteDuree, setNoteDuree] = useState(10);
   const [noteTheme, setNoteTheme] = useState("");
@@ -9823,14 +9825,44 @@ function CoachingProBoost({ session }) {
               {(() => {
                 const sessionThemes = activeSession.themes || [];
                 const notInSession = exercises.filter(e => !activeSession.exerciseIds.includes(e.id));
-                const suggested = sessionThemes.length > 0
-                  ? notInSession.filter(e => (e.themes || []).some(t => sessionThemes.includes(t))).slice(0, 8)
-                  : notInSession.slice(0, 8);
+                const filtered = addExerciseThemeFilter.length > 0
+                  ? notInSession.filter(e => (e.themes || []).some(t => addExerciseThemeFilter.includes(t)))
+                  : sessionThemes.length > 0
+                    ? notInSession.filter(e => (e.themes || []).some(t => sessionThemes.includes(t)))
+                    : notInSession;
+                const suggested = filtered.slice(0, addExerciseThemeFilter.length > 0 ? 30 : 8);
                 return (
                   <>
-                    <h3 className="text-sm font-semibold text-[#1B2A4A]/60 uppercase tracking-wide mb-2">Suggestions</h3>
+                    <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                      <h3 className="text-sm font-semibold text-[#1B2A4A]/60 uppercase tracking-wide">Suggestions</h3>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {addExerciseThemeFilter.map(t => (
+                          <span key={t} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35]">
+                            {t}
+                            <button type="button" onClick={() => setAddExerciseThemeFilter(f => f.filter(x => x !== t))} className="hover:text-red-600"><X size={9} /></button>
+                          </span>
+                        ))}
+                        <div className="relative">
+                          <input value={addExerciseThemeSearch} onChange={e => setAddExerciseThemeSearch(e.target.value)}
+                            placeholder="Rechercher par thème..." className="text-xs border border-[#1B2A4A]/20 rounded-full px-3 py-1 w-40 bg-white/60 outline-none focus:border-[#FF6B35]" />
+                          {addExerciseThemeSearch.trim() && (
+                            <div className="absolute right-0 top-full mt-1 z-20 bg-white rounded-lg shadow-lg border border-[#1B2A4A]/10 py-1 w-52 max-h-48 overflow-y-auto">
+                              {themes.filter(t => t.toLowerCase().includes(addExerciseThemeSearch.trim().toLowerCase()) && !addExerciseThemeFilter.includes(t)).length === 0 ? (
+                                <p className="text-xs text-[#1B2A4A]/40 px-3 py-2">Aucun thème ne correspond.</p>
+                              ) : themes.filter(t => t.toLowerCase().includes(addExerciseThemeSearch.trim().toLowerCase()) && !addExerciseThemeFilter.includes(t)).map(t => (
+                                <button key={t} type="button"
+                                  onClick={() => { setAddExerciseThemeFilter(f => [...f, t]); setAddExerciseThemeSearch(""); }}
+                                  className="w-full text-left px-3 py-1.5 text-xs text-[#1B2A4A] hover:bg-[#FF6B35]/5">{t}</button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                     {suggested.length === 0 ? (
-                      <p className="text-xs text-[#1B2A4A]/40">Aucune suggestion — tous les exercices sont déjà dans la séance.</p>
+                      <p className="text-xs text-[#1B2A4A]/40">
+                        {addExerciseThemeFilter.length > 0 ? "Aucun exercice avec ce(s) thème(s)." : "Aucune suggestion — tous les exercices sont déjà dans la séance."}
+                      </p>
                     ) : (
                       <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
                         {suggested.map(ex => (
