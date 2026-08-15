@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
-import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera, Share2, Zap, Maximize2, Minimize2 } from "lucide-react";
+import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera, Share2, Zap, Maximize2, Minimize2, Lock, Unlock, Undo2 } from "lucide-react";
 import { storage, supabase, isPasswordRecoveryUrl } from "./storage";
 import JSZip from "jszip";
 import QRCode from "qrcode";
@@ -2676,6 +2676,63 @@ function EQUIPMENT_ITEMS(courtType) {
 // Panneau de modification, uniquement en plein écran : glisser de gauche à droite (ou taper
 // la poignée) ouvre l'accès à annuler/effacer, sélection-déplacement, gomme, couleurs, épaisseur,
 // flèche — sans avoir à quitter le plein écran. Miroir de DrawQuickPanel mais côté gauche.
+// Bouton "Annuler" flottant et déplaçable (surtout utile en plein écran) : glisser pour le
+// positionner où on veut, taper pour annuler. Un petit cadenas fige la position une fois placé,
+// pour ne plus le déplacer par erreur en dessinant à côté. Position/verrouillage mémorisés
+// (localStorage) pour rester où on les a mis d'une session à l'autre.
+function FloatingUndoButton({ onUndo }) {
+  const [pos, setPos] = useState(() => {
+    try { const saved = JSON.parse(localStorage.getItem("cpb_floating_undo_pos")); if (saved?.x != null) return saved; } catch {}
+    return { x: 16, y: 90 };
+  });
+  const [locked, setLocked] = useState(() => localStorage.getItem("cpb_floating_undo_locked") === "1");
+  const dragRef = useRef(null);
+
+  const onPointerDown = (e) => {
+    if (locked) return;
+    e.stopPropagation();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: pos.x, origY: pos.y, moved: false };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const onPointerMove = (e) => {
+    if (!dragRef.current) return;
+    e.stopPropagation();
+    const dx = e.clientX - dragRef.current.startX, dy = e.clientY - dragRef.current.startY;
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) dragRef.current.moved = true;
+    setPos({ x: dragRef.current.origX + dx, y: dragRef.current.origY + dy });
+  };
+  const onPointerUp = (e) => {
+    if (!dragRef.current) return;
+    e.stopPropagation();
+    const { moved } = dragRef.current;
+    dragRef.current = null;
+    if (moved) {
+      setPos(p => { localStorage.setItem("cpb_floating_undo_pos", JSON.stringify(p)); return p; });
+    } else {
+      onUndo();
+    }
+  };
+  const toggleLock = (e) => {
+    e.stopPropagation();
+    setLocked(l => { const next = !l; localStorage.setItem("cpb_floating_undo_locked", next ? "1" : "0"); return next; });
+  };
+
+  return (
+    <div style={{ position: "absolute", left: pos.x, top: pos.y, touchAction: "none" }} className="z-50 no-print"
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
+      <div className={`relative w-12 h-12 rounded-full bg-[#1B2A4A] text-white shadow-lg flex items-center justify-center select-none ${locked ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"}`}
+        title="Annuler (glisser pour déplacer)">
+        <Undo2 size={18} />
+        <button type="button" onPointerDown={e => e.stopPropagation()} onClick={toggleLock}
+          className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center border-2 border-white ${locked ? "bg-[#FF6B35] text-white" : "bg-white text-[#1B2A4A]"}`}
+          title={locked ? "Déverrouiller la position" : "Verrouiller la position"}>
+          {locked ? <Lock size={10} /> : <Unlock size={10} />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function DrawModifyPanel({ tool, setTool, color, setColor, lineWidth, setLineWidth, eraserSize, setEraserSize, arrowEnd, setArrowEnd, playerSize, setPlayerSize, onUndo, onClearAll, open, setOpen }) {
   const touchStartX = useRef(null);
 
@@ -2750,7 +2807,7 @@ function DrawModifyPanel({ tool, setTool, color, setColor, lineWidth, setLineWid
   );
 }
 
-function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles, playerLabel, setPlayerLabel, playerHasBall, setPlayerHasBall, playerIsDefender, setPlayerIsDefender, open, setOpen }) {
+function DrawQuickPanel({ courtType, tool, lastLineTool, toolLineStyles, setTool, setToolLineStyles, playerLabel, setPlayerLabel, playerHasBall, setPlayerHasBall, playerIsDefender, setPlayerIsDefender, open, setOpen }) {
   const touchStartX = useRef(null);
 
   const onEdgeTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
@@ -2770,10 +2827,11 @@ function DrawQuickPanel({ courtType, tool, lineStyle, setTool, setToolLineStyles
     { key: "tir", glyph: "⇒" },
   ].filter(a => !(courtType === "football" && (a.key === "ecran" || a.key === "tir")));
 
-  // L'outil (Stylo vs Courbe) suit le sélecteur du haut : chaque style choisi ensuite s'applique
-  // à l'outil actuellement actif (sauf "Dribble"/zigzag, toujours en Courbe pour la vague lissée).
-  const targetToolFor = (key) => key === "zigzag" ? "curve" : (tool === "curve" ? "curve" : "pen");
-  const isActionActive = (key) => tool === targetToolFor(key) && lineStyle === key;
+  // L'outil (Stylo vs Courbe) suit le DERNIER outil de trait utilisé (lastLineTool), pas l'outil
+  // actuellement affiché — sinon passer par "Joueur" pour ajouter un joueur puis choisir une
+  // action retombait toujours sur Stylo, en perdant le fait qu'on dessinait au Courbe juste avant.
+  const targetToolFor = (key) => key === "zigzag" ? "curve" : (lastLineTool === "curve" ? "curve" : "pen");
+  const isActionActive = (key) => tool === targetToolFor(key) && (toolLineStyles[targetToolFor(key)] ?? "simple") === key;
 
   const chooseAction = (key) => {
     const targetTool = targetToolFor(key);
@@ -3003,6 +3061,11 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const [toolLineStyles, setToolLineStyles] = useState({});
   const lineStyle = toolLineStyles[tool] ?? "simple";
   const setLineStyle = (val) => setToolLineStyles(s => ({ ...s, [tool]: val }));
+  // Dernier outil de trait utilisé (Stylo/Courbe) — distinct de `tool`, qui peut valoir "player"/
+  // "text"/etc. entre-temps. Sert au panneau rapide pour retomber sur le bon outil quand on
+  // choisit une action après être passé par "Joueur" (sinon ça retombait toujours sur Stylo).
+  const [lastLineTool, setLastLineTool] = useState("pen");
+  useEffect(() => { if (tool === "pen" || tool === "curve") setLastLineTool(tool); }, [tool]);
   const draggingRef = useRef(null); // { el, startX, startY, moved }
   const [textSize, setTextSize] = useState(16);
   const [textBold, setTextBold] = useState(false);
@@ -3861,7 +3924,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           </div>
           );
         })()}
-        <DrawQuickPanel courtType={courtType} tool={tool} lineStyle={lineStyle} setTool={setTool} setToolLineStyles={setToolLineStyles}
+        <DrawQuickPanel courtType={courtType} tool={tool} lastLineTool={lastLineTool} toolLineStyles={toolLineStyles} setTool={setTool} setToolLineStyles={setToolLineStyles}
           playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall}
           playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender}
           open={activeSwipePanel === "quick"} setOpen={(v) => setActiveSwipePanel(v ? "quick" : null)} />
@@ -3871,6 +3934,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
             onUndo={undo} onClearAll={() => { if (window.confirm("Effacer tout le dessin ? Cette action est irréversible.")) clearAll(); }}
             open={activeSwipePanel === "modify"} setOpen={(v) => setActiveSwipePanel(v ? "modify" : null)} />
         )}
+        {fullscreen && <FloatingUndoButton onUndo={undo} />}
       </div>
 
       {/* Notes structurées */}
@@ -3948,6 +4012,11 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
   const [toolLineStyles, setToolLineStyles] = useState({});
   const lineStyle = toolLineStyles[tool] ?? "simple";
   const setLineStyle = (val) => setToolLineStyles(s => ({ ...s, [tool]: val }));
+  // Dernier outil de trait utilisé (Stylo/Courbe) — distinct de `tool`, qui peut valoir "player"/
+  // "text"/etc. entre-temps. Sert au panneau rapide pour retomber sur le bon outil quand on
+  // choisit une action après être passé par "Joueur" (sinon ça retombait toujours sur Stylo).
+  const [lastLineTool, setLastLineTool] = useState("pen");
+  useEffect(() => { if (tool === "pen" || tool === "curve") setLastLineTool(tool); }, [tool]);
   const draggingRef = useRef(null);
   const [textSize, setTextSize] = useState(16);
   const [textBold, setTextBold] = useState(false);
@@ -4584,7 +4653,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
               </div>
             );
           })()}
-          <DrawQuickPanel courtType={courtType} tool={tool} lineStyle={lineStyle} setTool={setTool} setToolLineStyles={setToolLineStyles}
+          <DrawQuickPanel courtType={courtType} tool={tool} lastLineTool={lastLineTool} toolLineStyles={toolLineStyles} setTool={setTool} setToolLineStyles={setToolLineStyles}
             playerLabel={playerLabel} setPlayerLabel={setPlayerLabel} playerHasBall={playerHasBall} setPlayerHasBall={setPlayerHasBall}
           playerIsDefender={playerIsDefender} setPlayerIsDefender={setPlayerIsDefender}
           open={activeSwipePanel === "quick"} setOpen={(v) => setActiveSwipePanel(v ? "quick" : null)} />
@@ -4594,6 +4663,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
               onUndo={undo} onClearAll={clearAll}
               open={activeSwipePanel === "modify"} setOpen={(v) => setActiveSwipePanel(v ? "modify" : null)} />
           )}
+          {fullscreen && <FloatingUndoButton onUndo={undo} />}
         </div>
         {referencePhotoOptions.length > 0 && (
           <div className={`hidden lg:flex lg:flex-col flex-shrink-0 ${refPhotoCollapsed ? "lg:w-8" : "lg:w-64"}`}>
