@@ -2281,8 +2281,11 @@ function buildSessionHTML(session, exercises, { clubLogo, sessionPhoto, teams = 
     .play-block-title{font-family:'Oswald',sans-serif;font-size:calc(15px * var(--ts, 1));flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .play-block-type{font-size:calc(11px * var(--ts, 1));color:rgba(255,255,255,.6);white-space:nowrap;flex-shrink:0}
     .plays-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px}
-    .play-img{background:#eef2f7;border-radius:6px;overflow:hidden;border:1px solid #1B2A4A12}
-    .play-img img{width:100%;height:auto;display:block}
+    /* Hauteur fixe + object-fit:contain : sans ça, un demi-terrain et un terrain complet (ou un
+       schéma avec du texte qui prend plus de place que le terrain seul) n'ont pas la même
+       hauteur naturelle et se décalent les uns des autres dans la grille. */
+    .play-img{background:#eef2f7;border-radius:6px;overflow:hidden;border:1px solid #1B2A4A12;height:150px;display:flex;align-items:center;justify-content:center}
+    .play-img img{width:100%;height:100%;object-fit:contain;display:block}
 
     @media print{
       @page{margin:0;size:A4}
@@ -6936,10 +6939,16 @@ function CoachingProBoost({ session }) {
     );
 
     const playsHtml = selectedPlaysData.map((play, idx) => {
+      // Hauteur fixe + object-fit:contain sur l'image (pas juste width:100%) : sans ça, un
+      // demi-terrain, un terrain complet et un schéma avec du texte qui déborde au-dessus du
+      // terrain ont chacun une hauteur naturelle différente et se décalent entre eux dans la
+      // rangée — même avec une légende de hauteur variable au-dessus.
       const imgsHtml = play._images.map(img => `
-        <div style="flex:1;min-width:180px;max-width:260px;">
-          ${img.annotation ? `<div style="font-size:10px;color:#888;margin-bottom:3px;font-style:italic;">${img.annotation}</div>` : ""}
-          <img src="${img.data}" style="width:100%;border-radius:6px;border:1px solid #ddd;" />
+        <div style="flex:1;min-width:180px;max-width:260px;display:flex;flex-direction:column;">
+          <div style="font-size:10px;color:#888;margin-bottom:3px;font-style:italic;min-height:12px;">${img.annotation || ""}</div>
+          <div style="height:180px;background:#f5f5f5;border-radius:6px;border:1px solid #ddd;display:flex;align-items:center;justify-content:center;overflow:hidden;">
+            <img src="${img.data}" style="width:100%;height:100%;object-fit:contain;" />
+          </div>
         </div>
       `).join("");
 
