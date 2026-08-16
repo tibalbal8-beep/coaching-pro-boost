@@ -7532,6 +7532,12 @@ function CoachingProBoost({ session }) {
 
   const deleteSessionPhoto = async () => {
     if (!activeSession) return;
+    // Contrairement aux exercices/séances/thèmes, la photo/dessin de séance n'est PAS couverte
+    // par la restauration d'historique (exclue volontairement pour éviter de recharger
+    // kv_store_history en images, cause de la crise de quota résolue cet été) — une suppression
+    // ici est définitive, d'où la confirmation qui manquait.
+    const confirmed = await cpbAlert("Supprimer le dessin/la photo de cette séance ? Cette action est définitive (pas récupérable via la restauration d'historique).", { confirm: true });
+    if (!confirmed) return;
     setCurrentSessionPhoto(null);
     await storage.delete(`sessionPhoto:${activeSession.id}`);
   };
