@@ -2733,7 +2733,7 @@ function FloatingUndoButton({ onUndo }) {
   );
 }
 
-function DrawModifyPanel({ tool, setTool, color, setColor, lineWidth, setLineWidth, eraserSize, setEraserSize, arrowEnd, setArrowEnd, playerSize, setPlayerSize, onUndo, onClearAll, open, setOpen }) {
+function DrawModifyPanel({ tool, setTool, color, setColor, lineWidth, setLineWidth, eraserSize, setEraserSize, arrowEnd, setArrowEnd, playerSize, setPlayerSize, playerColor, setPlayerColor, onUndo, onClearAll, open, setOpen }) {
   const touchStartX = useRef(null);
 
   const onEdgeTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
@@ -2797,6 +2797,15 @@ function DrawModifyPanel({ tool, setTool, color, setColor, lineWidth, setLineWid
           <div>
             <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Épaisseur joueur</div>
             <SizeSlider value={playerSize} onChange={setPlayerSize} min={0.4} max={2.2} step={0.1} presets={[{v:0.6,l:"S"},{v:1,l:"M"},{v:1.5,l:"L"}]} />
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Couleur joueur</div>
+            <div className="flex flex-wrap gap-1.5">
+              {["#1B2A4A", "#D62828", "#2563EB", "#16a34a", "#FF6B35"].map(c => (
+                <button key={c} type="button" onClick={() => setPlayerColor(c)}
+                  className="w-8 h-8 rounded-full border-2" style={{ backgroundColor: c, borderColor: playerColor === c ? "#FF6B35" : "transparent" }} />
+              ))}
+            </div>
           </div>
           <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none">
             <input type="checkbox" checked={arrowEnd} onChange={e => setArrowEnd(e.target.checked)} /> Flèche en bout de trait
@@ -2984,12 +2993,12 @@ function _drawPlayerToken(ctx, t) {
     ctx.font = `${Math.round(24 * sc)}px sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText("🏉", t.x, t.y + 1 * sc);
   } else if (t.role === "defender") {
-    ctx.font = `bold ${Math.round(17 * sc)}px sans-serif`; ctx.fillStyle = "#D62828"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t.label, t.x, t.y);
+    ctx.font = `bold ${Math.round(17 * sc)}px sans-serif`; ctx.fillStyle = t.color || "#D62828"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t.label, t.x, t.y);
   } else if (t.hasBall) {
-    ctx.beginPath(); ctx.arc(t.x, t.y, r, 0, Math.PI * 2); ctx.fillStyle = "white"; ctx.fill(); ctx.lineWidth = 2 * sc; ctx.strokeStyle = "#1B2A4A"; ctx.stroke();
-    ctx.font = `bold ${Math.round(15 * sc)}px sans-serif`; ctx.fillStyle = "#1B2A4A"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t.label, t.x, t.y);
+    ctx.beginPath(); ctx.arc(t.x, t.y, r, 0, Math.PI * 2); ctx.fillStyle = "white"; ctx.fill(); ctx.lineWidth = 2 * sc; ctx.strokeStyle = t.color || "#1B2A4A"; ctx.stroke();
+    ctx.font = `bold ${Math.round(15 * sc)}px sans-serif`; ctx.fillStyle = t.color || "#1B2A4A"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t.label, t.x, t.y);
   } else {
-    ctx.font = `bold ${Math.round(17 * sc)}px sans-serif`; ctx.fillStyle = "#1B2A4A"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t.label, t.x, t.y);
+    ctx.font = `bold ${Math.round(17 * sc)}px sans-serif`; ctx.fillStyle = t.color || "#1B2A4A"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t.label, t.x, t.y);
   }
   ctx.restore();
 }
@@ -3085,6 +3094,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
   const renameNoteField = (id, label) => setNoteFields(f => f.map(x => x.id === id ? { ...x, label } : x));
   const [playerLabel, setPlayerLabel] = useState("1");
   const [playerHasBall, setPlayerHasBall] = useState(false);
+  const [playerColor, setPlayerColor] = useState("#1B2A4A"); // permet de distinguer plusieurs "équipes"/groupes de joueurs
   const [playerIsDefender, setPlayerIsDefender] = useState(false);
   const [playerSize, setPlayerSize] = useState(1); // 0.6 petit, 1 moyen, 1.5 grand
   const [dims, setDims] = useState({ width: 900, height: 1273 });
@@ -3416,7 +3426,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
       const isEquip = equipKinds.includes(playerLabel);
       elementsRef.current.push(isEquip
         ? { type: "token", x: pt.x, y: pt.y, kind: playerLabel, size: playerSize }
-        : { type: "token", x: pt.x, y: pt.y, label: playerLabel, hasBall: playerHasBall, role: playerIsDefender ? "defender" : "offense", size: playerSize });
+        : { type: "token", x: pt.x, y: pt.y, label: playerLabel, hasBall: playerHasBall, role: playerIsDefender ? "defender" : "offense", size: playerSize, color: playerColor });
       redraw();
       // Auto-incrément du numéro de joueur
       const numSeq = ["1","2","3","4","5","6","7","8","9","10","11","12"];
@@ -3720,6 +3730,12 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
                   else { const i = xNums.indexOf(playerLabel); if (i >= 0) setPlayerLabel(nums[i]); else setPlayerLabel("1"); }
                 }} /> Défenseur
               </label>
+              <div className="flex items-center gap-1">
+                {["#1B2A4A", "#D62828", "#2563EB", "#16a34a", "#FF6B35"].map(c => (
+                  <button key={c} type="button" onClick={() => setPlayerColor(c)}
+                    className="w-6 h-6 rounded-full border-2 flex-shrink-0" style={{ backgroundColor: c, borderColor: playerColor === c ? "#FF6B35" : "transparent" }} />
+                ))}
+              </div>
             </>}
             <SizeSlider value={playerSize} onChange={setPlayerSize} min={0.4} max={2.2} step={0.1} presets={[{v:0.6,l:"S"},{v:1,l:"M"},{v:1.5,l:"L"}]} />
             <span className="text-xs text-[#1B2A4A]/40">Touche le terrain pour placer</span>
@@ -3934,7 +3950,7 @@ function DrawSheetView({ onValidate, onAddDirect, onCancel, processing, courtTyp
           open={activeSwipePanel === "quick"} setOpen={(v) => setActiveSwipePanel(v ? "quick" : null)} />
         {fullscreen && (
           <DrawModifyPanel tool={tool} setTool={setTool} color={color} setColor={setColor} lineWidth={lineWidth} setLineWidth={setLineWidth}
-            eraserSize={eraserSize} setEraserSize={setEraserSize} arrowEnd={arrowEnd} setArrowEnd={setArrowEnd} playerSize={playerSize} setPlayerSize={setPlayerSize}
+            eraserSize={eraserSize} setEraserSize={setEraserSize} arrowEnd={arrowEnd} setArrowEnd={setArrowEnd} playerSize={playerSize} setPlayerSize={setPlayerSize} playerColor={playerColor} setPlayerColor={setPlayerColor}
             onUndo={undo} onClearAll={() => { if (window.confirm("Effacer tout le dessin ? Cette action est irréversible.")) clearAll(); }}
             open={activeSwipePanel === "modify"} setOpen={(v) => setActiveSwipePanel(v ? "modify" : null)} />
         )}
@@ -4029,6 +4045,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
   const [pendingText, setPendingText] = useState(null);
   const [playerLabel, setPlayerLabel] = useState("1");
   const [playerHasBall, setPlayerHasBall] = useState(false);
+  const [playerColor, setPlayerColor] = useState("#1B2A4A"); // permet de distinguer plusieurs "équipes"/groupes de joueurs
   const [playerIsDefender, setPlayerIsDefender] = useState(false);
   const [playerSize, setPlayerSize] = useState(1);
   const [dims, setDims] = useState({ width: 900, height: 600 });
@@ -4334,7 +4351,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       const isEquip = equipKinds.includes(playerLabel);
       elementsRef.current.push(isEquip
         ? { type: "token", x: pt.x, y: pt.y, kind: playerLabel, size: playerSize }
-        : { type: "token", x: pt.x, y: pt.y, label: playerLabel, hasBall: playerHasBall, role: playerIsDefender ? "defender" : "offense", size: playerSize });
+        : { type: "token", x: pt.x, y: pt.y, label: playerLabel, hasBall: playerHasBall, role: playerIsDefender ? "defender" : "offense", size: playerSize, color: playerColor });
       redraw();
       const numSeq = ["1","2","3","4","5","6","7","8","9","10","11","12"];
       const xSeq = ["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"];
@@ -4568,6 +4585,12 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
             {!["plot","chaise","cerceau","handball","cage","haie","jalon","coupelle","ballonfoot","ballonbasket","ballonvolley","ballonrugby"].includes(playerLabel) && <>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={playerHasBall} onChange={e => setPlayerHasBall(e.target.checked)} disabled={playerIsDefender} /> Ballon</label>
               <label className="flex items-center gap-1.5 text-sm text-[#1B2A4A] cursor-pointer select-none"><input type="checkbox" checked={playerIsDefender} onChange={e => { const def=e.target.checked; setPlayerIsDefender(def); const nums=["1","2","3","4","5","6","7","8","9","10","11","12"],xNums=["X1","X2","X3","X4","X5","X6","X7","X8","X9","X10","X11","X12"]; if(def){const i=nums.indexOf(playerLabel);if(i>=0)setPlayerLabel(xNums[i]);else setPlayerLabel("X1");}else{const i=xNums.indexOf(playerLabel);if(i>=0)setPlayerLabel(nums[i]);else setPlayerLabel("1");} }} /> Défenseur</label>
+              <div className="flex items-center gap-1">
+                {["#1B2A4A", "#D62828", "#2563EB", "#16a34a", "#FF6B35"].map(c => (
+                  <button key={c} type="button" onClick={() => setPlayerColor(c)}
+                    className="w-6 h-6 rounded-full border-2 flex-shrink-0" style={{ backgroundColor: c, borderColor: playerColor === c ? "#FF6B35" : "transparent" }} />
+                ))}
+              </div>
             </>}
             <SizeSlider value={playerSize} onChange={setPlayerSize} min={0.4} max={2.2} step={0.1} presets={[{v:0.6,l:"S"},{v:1,l:"M"},{v:1.5,l:"L"}]} />
           </>
@@ -4663,7 +4686,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
           open={activeSwipePanel === "quick"} setOpen={(v) => setActiveSwipePanel(v ? "quick" : null)} />
           {fullscreen && (
             <DrawModifyPanel tool={tool} setTool={setTool} color={color} setColor={setColor} lineWidth={lineWidth} setLineWidth={setLineWidth}
-              eraserSize={eraserSize} setEraserSize={setEraserSize} arrowEnd={arrowEnd} setArrowEnd={setArrowEnd} playerSize={playerSize} setPlayerSize={setPlayerSize}
+              eraserSize={eraserSize} setEraserSize={setEraserSize} arrowEnd={arrowEnd} setArrowEnd={setArrowEnd} playerSize={playerSize} setPlayerSize={setPlayerSize} playerColor={playerColor} setPlayerColor={setPlayerColor}
               onUndo={undo} onClearAll={clearAll}
               open={activeSwipePanel === "modify"} setOpen={(v) => setActiveSwipePanel(v ? "modify" : null)} />
           )}
