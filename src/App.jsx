@@ -7403,7 +7403,10 @@ function CoachingProBoost({ session }) {
       setPaywallReason(`La version gratuite est limitée à ${FREE_MAX_SESSIONS} séances. Passez en Premium pour en créer autant que vous voulez.`);
       return;
     }
-    const s = { id: uid(), titre: "Nouvelle séance", date: new Date().toISOString().slice(0, 10), exerciseIds: [], playIds: [], notes: [], teamId: teamId || null };
+    // Numérotée par équipe (compte toutes les séances déjà créées pour cette équipe, y compris
+    // les anciennes saisons) plutôt qu'un titre générique "Nouvelle séance" à renommer à chaque fois.
+    const teamSessionCount = sessions.filter(s => (s.teamId || null) === (teamId || null)).length;
+    const s = { id: uid(), titre: `Séance ${teamSessionCount + 1}`, date: new Date().toISOString().slice(0, 10), exerciseIds: [], playIds: [], notes: [], teamId: teamId || null };
     saveSessions([...sessions, s]); setActiveSession(s); setView("session"); history.pushState({ view: "session" }, "", "#session");
   };
 
