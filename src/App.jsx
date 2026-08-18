@@ -7141,6 +7141,7 @@ function CoachingProBoost({ session }) {
   const [filterScoutedTeam, setFilterScoutedTeam] = useState("");
   const [playbookSearch, setPlaybookSearch] = useState("");
   const [playbookTagsOpen, setPlaybookTagsOpen] = useState(false);
+  const [playTagSearch, setPlayTagSearch] = useState("");
   // Catalogue des mots-clés reconstruit à partir des tags réellement présents sur les plays
   // (plus fiable que la liste playTags séparée, qui peut se désynchroniser).
   const usedPlayTags = [...new Set(plays.flatMap(p => p.tags || []))].sort();
@@ -8412,10 +8413,20 @@ function CoachingProBoost({ session }) {
                   )}
                   {playbookTagsOpen && (
                     <div className="px-4 py-3 bg-white/20 border-t border-[#1B2A4A]/10">
+                      {usedPlayTags.length > 8 && (
+                        <input value={playTagSearch} onChange={e => setPlayTagSearch(e.target.value)}
+                          placeholder="Rechercher un mot-clé... (ex: Iverson)"
+                          className="w-full mb-2 text-xs border border-[#1B2A4A]/20 rounded-full px-3 py-1.5 bg-white/60 outline-none focus:border-[#FF6B35]" />
+                      )}
                       <div className="flex flex-wrap gap-1.5">
-                        {usedPlayTags.map(t => (
-                          <Tag key={t} active={filterPlayTags.includes(t)} onClick={() => setFilterPlayTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])} color="orange">{t}</Tag>
-                        ))}
+                        {usedPlayTags
+                          .filter(t => t.toLowerCase().includes(playTagSearch.trim().toLowerCase()))
+                          .map(t => (
+                            <Tag key={t} active={filterPlayTags.includes(t)} onClick={() => setFilterPlayTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])} color="orange">{t}</Tag>
+                          ))}
+                        {playTagSearch.trim() && !usedPlayTags.some(t => t.toLowerCase().includes(playTagSearch.trim().toLowerCase())) && (
+                          <p className="text-xs text-[#1B2A4A]/40 w-full">Aucun mot-clé ne correspond.</p>
+                        )}
                       </div>
                     </div>
                   )}
