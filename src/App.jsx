@@ -7384,6 +7384,7 @@ function CoachingProBoost({ session }) {
   const [noteFormOpen, setNoteFormOpen] = useState(false);
   const [addExerciseThemeSearch, setAddExerciseThemeSearch] = useState("");
   const [sessionThemeSearch, setSessionThemeSearch] = useState("");
+  const [sessionPlaySearch, setSessionPlaySearch] = useState("");
   const [addExerciseThemeFilter, setAddExerciseThemeFilter] = useState([]);
   const [noteTitre, setNoteTitre] = useState("");
   const [noteDuree, setNoteDuree] = useState(10);
@@ -10047,14 +10048,31 @@ function CoachingProBoost({ session }) {
                   </div>
                 )}
                 <h3 className="text-sm font-semibold text-[#1B2A4A]/60 uppercase tracking-wide mb-2">Ajouter depuis le Play Book</h3>
+                <div className="relative mb-2">
+                  <input value={sessionPlaySearch} onChange={e => setSessionPlaySearch(e.target.value)}
+                    placeholder="Rechercher un play par titre, mot-clé, type..."
+                    className="w-full text-sm border border-[#1B2A4A]/20 rounded-lg pl-9 pr-8 py-2 bg-white/60 outline-none focus:border-[#FF6B35]" />
+                  <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#1B2A4A]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 10.5A6.5 6.5 0 114 10.5a6.5 6.5 0 0113 0z" /></svg>
+                  {sessionPlaySearch && (
+                    <button onClick={() => setSessionPlaySearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={14} /></button>
+                  )}
+                </div>
                 <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-                  {plays.filter(p => !(activeSession.playIds || []).includes(p.id)).map(play => (
-                    <div key={play.id} onClick={() => updateSession({ ...activeSession, playIds: [...(activeSession.playIds || []), play.id] })}
-                      className="flex-shrink-0 w-40 border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3 cursor-pointer hover:shadow-md hover:border-[#FF6B35]/40 transition-all">
-                      <div className="font-medium text-[#1B2A4A] text-sm leading-tight mb-1 line-clamp-2">{play.titre}</div>
-                      <div className="text-xs font-medium" style={{ color: "var(--sport-accent)" }}>{play.type}</div>
-                    </div>
-                  ))}
+                  {(() => {
+                    const q = sessionPlaySearch.trim().toLowerCase();
+                    const available = plays.filter(p => !(activeSession.playIds || []).includes(p.id));
+                    const matching = q
+                      ? available.filter(p => p.titre?.toLowerCase().includes(q) || p.type?.toLowerCase().includes(q) || (p.tags || []).some(t => t.toLowerCase().includes(q)))
+                      : available;
+                    if (matching.length === 0) return <p className="text-xs text-[#1B2A4A]/40">Aucun play ne correspond.</p>;
+                    return matching.map(play => (
+                      <div key={play.id} onClick={() => updateSession({ ...activeSession, playIds: [...(activeSession.playIds || []), play.id] })}
+                        className="flex-shrink-0 w-40 border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3 cursor-pointer hover:shadow-md hover:border-[#FF6B35]/40 transition-all">
+                        <div className="font-medium text-[#1B2A4A] text-sm leading-tight mb-1 line-clamp-2">{play.titre}</div>
+                        <div className="text-xs font-medium" style={{ color: "var(--sport-accent)" }}>{play.type}</div>
+                      </div>
+                    ));
+                  })()}
                 </div>
               </div>
             )}
