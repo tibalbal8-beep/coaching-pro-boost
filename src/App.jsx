@@ -7383,6 +7383,7 @@ function CoachingProBoost({ session }) {
   const [viewSessionPhotoFull, setViewSessionPhotoFull] = useState(false);
   const [noteFormOpen, setNoteFormOpen] = useState(false);
   const [addExerciseThemeSearch, setAddExerciseThemeSearch] = useState("");
+  const [sessionThemeSearch, setSessionThemeSearch] = useState("");
   const [addExerciseThemeFilter, setAddExerciseThemeFilter] = useState([]);
   const [noteTitre, setNoteTitre] = useState("");
   const [noteDuree, setNoteDuree] = useState(10);
@@ -9826,14 +9827,30 @@ function CoachingProBoost({ session }) {
             )}
             <div className="mb-6 no-print">
               <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5">Thèmes de la séance</div>
+              <input value={sessionThemeSearch} onChange={e => setSessionThemeSearch(e.target.value)}
+                placeholder="Rechercher ou + nouveau thème..."
+                className="w-full mb-2 text-xs border border-[#1B2A4A]/20 rounded-full px-3 py-1.5 bg-white/60 outline-none focus:border-[#FF6B35]"
+                onKeyDown={e => {
+                  if (e.key !== "Enter" || !sessionThemeSearch.trim()) return;
+                  const t = sessionThemeSearch.trim();
+                  if (!themes.some(x => x.toLowerCase() === t.toLowerCase())) saveThemes([...themes, t]);
+                  const cur = activeSession.themes || [];
+                  if (!cur.includes(t)) updateSession({ ...activeSession, themes: [...cur, t] });
+                  setSessionThemeSearch("");
+                }} />
               <div className="flex flex-wrap gap-1.5">
-                {themes.map(t => (
-                  <Tag key={t} color="orange" active={(activeSession.themes || []).includes(t)}
-                    onClick={() => {
-                      const cur = activeSession.themes || [];
-                      updateSession({ ...activeSession, themes: cur.includes(t) ? cur.filter(x => x !== t) : [...cur, t] });
-                    }}>{t}</Tag>
-                ))}
+                {themes
+                  .filter(t => t.toLowerCase().includes(sessionThemeSearch.trim().toLowerCase()))
+                  .map(t => (
+                    <Tag key={t} color="orange" active={(activeSession.themes || []).includes(t)}
+                      onClick={() => {
+                        const cur = activeSession.themes || [];
+                        updateSession({ ...activeSession, themes: cur.includes(t) ? cur.filter(x => x !== t) : [...cur, t] });
+                      }}>{t}</Tag>
+                  ))}
+                {sessionThemeSearch.trim() && !themes.some(t => t.toLowerCase().includes(sessionThemeSearch.trim().toLowerCase())) && (
+                  <p className="text-xs text-[#1B2A4A]/40 w-full">Aucun thème existant ne correspond — Entrée pour l'ajouter.</p>
+                )}
               </div>
             </div>
             <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/40 mb-2 no-print">Durée totale : {totalDuree(activeSession)} min</div>
