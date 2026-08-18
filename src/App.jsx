@@ -6535,7 +6535,7 @@ function SessionOrganizerModal({ session, exercises, plays, onClose, onDownload,
           <button onClick={onClose} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A] p-1"><X size={20} /></button>
         </div>
 
-        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[minmax(0,320px)_1fr]">
+        <div className="flex-1 min-h-0 overflow-y-auto md:overflow-visible grid grid-cols-1 md:grid-cols-[minmax(0,320px)_1fr]">
           <div className="px-5 py-4 overflow-y-auto space-y-4 border-b md:border-b-0 md:border-r border-[#1B2A4A]/10">
           <p className="text-xs text-[#1B2A4A]/50">Glisse-dépose une carte pour réorganiser, ou utilise les flèches. L'aperçu à droite se met à jour automatiquement.</p>
 
