@@ -6535,8 +6535,8 @@ function SessionOrganizerModal({ session, exercises, plays, onClose, onDownload,
           <button onClick={onClose} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A] p-1"><X size={20} /></button>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto md:overflow-visible grid grid-cols-1 md:grid-cols-[minmax(0,320px)_1fr]">
-          <div className="px-5 py-4 overflow-y-auto space-y-4 border-b md:border-b-0 md:border-r border-[#1B2A4A]/10">
+        <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden grid grid-cols-1 md:grid-cols-[minmax(0,320px)_1fr]">
+          <div className="px-5 py-4 md:h-full md:overflow-y-auto space-y-4 border-b md:border-b-0 md:border-r border-[#1B2A4A]/10">
           <p className="text-xs text-[#1B2A4A]/50">Glisse-dépose une carte pour réorganiser, ou utilise les flèches. L'aperçu à droite se met à jour automatiquement.</p>
 
           <div className="space-y-2">
@@ -6583,12 +6583,12 @@ function SessionOrganizerModal({ session, exercises, plays, onClose, onDownload,
           </div>
           </div>
 
-          <div className="relative bg-[#F2EDE4] min-h-[300px] md:min-h-0">
+          <div className="relative bg-[#F2EDE4] min-h-[300px] md:min-h-0 md:h-full">
             {previewLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#F2EDE4]/80 text-sm text-[#1B2A4A]/50 z-10">Mise à jour de l'aperçu...</div>
             )}
             {previewHtml ? (
-              <iframe title="Aperçu de la séance" srcDoc={previewHtml} className="w-full h-full min-h-[300px] md:min-h-[500px] border-0" />
+              <iframe title="Aperçu de la séance" srcDoc={previewHtml} className="w-full h-full min-h-[300px] border-0" />
             ) : (
               <div className="flex items-center justify-center h-full min-h-[300px] text-sm text-[#1B2A4A]/40">Génération de l'aperçu...</div>
             )}
