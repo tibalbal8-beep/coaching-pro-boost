@@ -5477,6 +5477,61 @@ function usePlayImages(play) {
   return images;
 }
 
+// Un des systèmes "proposés au coach" en Mode match : carrousel de ses visuels (schémas/photos)
+// pour rester lisible en un coup d'oeil pendant le match.
+function MatchFavoritePlayCard({ play }) {
+  const images = usePlayImages(play);
+  const [idx, setIdx] = useState(0);
+  const visibleImgs = images.filter(img => img.data && img.fileType?.startsWith("image/")).map(img => img.data);
+  const items = [...visibleImgs, ...(play.schemas || [])];
+  return (
+    <div className="border border-[#1B2A4A]/15 rounded-xl bg-white overflow-hidden shadow-sm">
+      <div className="px-3 py-2 border-b border-[#1B2A4A]/10">
+        <div className="font-semibold text-[#1B2A4A] text-sm leading-tight">{play.titre}</div>
+        {play.type && <div className="text-[10px] font-medium" style={{ color: "var(--sport-accent)" }}>{play.type}</div>}
+      </div>
+      {items.length > 0 ? (
+        <MediaCarousel items={items} index={idx} onIndexChange={setIdx} card={false} height="h-40" />
+      ) : (
+        <div className="h-40 flex items-center justify-center text-xs text-[#1B2A4A]/30">Aucun visuel</div>
+      )}
+    </div>
+  );
+}
+
+// Panneau "Mes systèmes" en Mode match : glisser depuis le bord droit (ou taper la poignée)
+// pour afficher jusqu'à 3 plays choisis en amont du match, à proposer au coach en direct —
+// même geste swipe que dans les dessinateurs, pour rester cohérent avec le reste de l'app.
+function MatchFavoritesPanel({ plays }) {
+  const [open, setOpen] = useState(false);
+  const touchStartX = useRef(null);
+  const onEdgeTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
+  const onEdgeTouchEnd = (e) => {
+    if (touchStartX.current == null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    if (dx < -24) setOpen(true);
+    else if (dx > 24) setOpen(false);
+    touchStartX.current = null;
+  };
+  if (!plays.length) return null;
+  return (
+    <>
+      <div onTouchStart={onEdgeTouchStart} onTouchEnd={onEdgeTouchEnd} onClick={() => setOpen(o => !o)}
+        className="fixed top-1/2 -translate-y-1/2 z-40 flex items-center justify-center w-6 h-16 bg-[#1B2A4A] text-white rounded-l-lg shadow-lg cursor-pointer transition-[right] duration-200 no-print"
+        style={{ right: open ? 288 : 0, touchAction: "pan-y" }} title="Mes systèmes (glisser ou taper)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? "rotate(180deg)" : "none" }}><polyline points="9 18 15 12 9 6" /></svg>
+      </div>
+      {open && <div className="fixed inset-0 z-30 bg-black/10 no-print" onClick={() => setOpen(false)} />}
+      <div className={`fixed top-0 right-0 bottom-0 z-[35] w-72 bg-[#F2EDE4] shadow-2xl border-l border-[#1B2A4A]/10 overflow-y-auto transition-transform duration-200 no-print ${open ? "translate-x-0" : "translate-x-full"}`}>
+        <div className="p-3 space-y-3">
+          <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40">Mes systèmes</div>
+          {plays.map(play => <MatchFavoritePlayCard key={play.id} play={play} />)}
+        </div>
+      </div>
+    </>
+  );
+}
+
 function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare, onSelect, selected }) {
   const images = usePlayImages(play);
   const [imgIdx, setImgIdx] = useState(0);
@@ -7216,6 +7271,8 @@ function CoachingProBoost({ session }) {
       .then(({ data }) => setWellnessCheckins(data || []));
   }, [wellnessOpenFormId]);
   const [newPlayOpen, setNewPlayOpen] = useState(false);
+  const [favPlayPickerOpen, setFavPlayPickerOpen] = useState(false);
+  const [favPlaySearch, setFavPlaySearch] = useState("");
   const [newPlayName, setNewPlayName] = useState("");
   const [bookletSelection, setBookletSelection] = useState(null); // null = tous sélectionnés (défaut)
   const bookletSelectedIds = bookletSelection ?? exercises.map(e => e.id);
@@ -8834,9 +8891,12 @@ function CoachingProBoost({ session }) {
                 <button onClick={() => { setActiveMatchId(null); setTfFilters([]); setNewPlayOpen(false); }}
                   className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] mb-3">← Retour aux matchs</button>
                 <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>{team?.nom || "Nous"} vs {activeMatch.scoutedTeam}</h2>
-                <p className="text-xs text-[#1B2A4A]/40 mb-5">
+                <p className="text-xs text-[#1B2A4A]/40 mb-2">
                   {activeMatch.date ? new Date(activeMatch.date).toLocaleDateString("fr-FR") : "Date inconnue"}{activeMatch.championnat && ` · ${activeMatch.championnat}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} comptabilisé{totalTally !== 1 ? "s" : ""}
                 </p>
+                <button onClick={() => setFavPlayPickerOpen(true)} className="text-xs font-medium text-[#FF6B35] hover:underline mb-5">
+                  🎯 Mes systèmes proposés au coach ({(activeMatch.favoritePlayIds || []).length}/3)
+                </button>
 
                 <div className="mb-3">
                   <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Temps fort observé</div>
@@ -8941,6 +9001,40 @@ function CoachingProBoost({ session }) {
                     if (ok) updateActiveMatch({ tally: {} });
                   }} className="text-xs text-red-500 hover:underline flex-shrink-0 ml-3">Réinitialiser</button>
                 </div>
+
+                <MatchFavoritesPanel plays={plays.filter(p => (activeMatch.favoritePlayIds || []).includes(p.id))} />
+
+                {favPlayPickerOpen && (
+                  <div className="fixed inset-0 z-[600] bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setFavPlayPickerOpen(false)}>
+                    <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-sm max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                      <div className="p-4 border-b border-[#1B2A4A]/10">
+                        <div className="text-sm font-semibold text-[#1B2A4A] mb-2">Mes systèmes proposés au coach (max 3)</div>
+                        <input value={favPlaySearch} onChange={e => setFavPlaySearch(e.target.value)} placeholder="Rechercher un play..."
+                          className="w-full text-sm border border-[#1B2A4A]/20 rounded-lg px-3 py-2 bg-white/60 outline-none focus:border-[#FF6B35]" />
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                        {plays.filter(p => p.titre?.toLowerCase().includes(favPlaySearch.trim().toLowerCase())).map(p => {
+                          const chosen = (activeMatch.favoritePlayIds || []).includes(p.id);
+                          const maxed = (activeMatch.favoritePlayIds || []).length >= 3;
+                          return (
+                            <button key={p.id} disabled={!chosen && maxed}
+                              onClick={() => {
+                                const cur = activeMatch.favoritePlayIds || [];
+                                updateActiveMatch({ favoritePlayIds: chosen ? cur.filter(id => id !== p.id) : [...cur, p.id] });
+                              }}
+                              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-left text-sm transition-colors ${chosen ? "bg-[#FF6B35]/10 border-[#FF6B35] text-[#1B2A4A]" : maxed ? "border-[#1B2A4A]/10 text-[#1B2A4A]/30 cursor-not-allowed" : "border-[#1B2A4A]/15 text-[#1B2A4A] hover:border-[#FF6B35]/40"}`}>
+                              <span className="truncate">{p.titre}</span>
+                              {chosen && <Check size={14} className="text-[#FF6B35] flex-shrink-0 ml-2" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="p-4 border-t border-[#1B2A4A]/10">
+                        <button onClick={() => setFavPlayPickerOpen(false)} className="w-full py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>Fermer</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           }
