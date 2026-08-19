@@ -5500,7 +5500,7 @@ function MatchFavoritePlayCard({ play }) {
 }
 
 // Panneau "Mes systèmes" en Mode match : glisser depuis le bord droit (ou taper la poignée)
-// pour afficher jusqu'à 3 plays choisis en amont du match, à proposer au coach en direct —
+// pour afficher jusqu'à 4 plays choisis en amont du match, à proposer au coach en direct —
 // même geste swipe que dans les dessinateurs, pour rester cohérent avec le reste de l'app.
 function MatchFavoritesPanel({ plays }) {
   const [open, setOpen] = useState(false);
@@ -8895,7 +8895,7 @@ function CoachingProBoost({ session }) {
                   {activeMatch.date ? new Date(activeMatch.date).toLocaleDateString("fr-FR") : "Date inconnue"}{activeMatch.championnat && ` · ${activeMatch.championnat}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} comptabilisé{totalTally !== 1 ? "s" : ""}
                 </p>
                 <button onClick={() => setFavPlayPickerOpen(true)} className="text-xs font-medium text-[#FF6B35] hover:underline mb-5">
-                  🎯 Mes systèmes proposés au coach ({(activeMatch.favoritePlayIds || []).length}/3)
+                  🎯 Mes systèmes proposés au coach ({(activeMatch.favoritePlayIds || []).length}/4)
                 </button>
 
                 <div className="mb-3">
@@ -9008,14 +9008,14 @@ function CoachingProBoost({ session }) {
                   <div className="fixed inset-0 z-[600] bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setFavPlayPickerOpen(false)}>
                     <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-sm max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
                       <div className="p-4 border-b border-[#1B2A4A]/10">
-                        <div className="text-sm font-semibold text-[#1B2A4A] mb-2">Mes systèmes proposés au coach (max 3)</div>
+                        <div className="text-sm font-semibold text-[#1B2A4A] mb-2">Mes systèmes proposés au coach (max 4)</div>
                         <input value={favPlaySearch} onChange={e => setFavPlaySearch(e.target.value)} placeholder="Rechercher un play..."
                           className="w-full text-sm border border-[#1B2A4A]/20 rounded-lg px-3 py-2 bg-white/60 outline-none focus:border-[#FF6B35]" />
                       </div>
                       <div className="flex-1 overflow-y-auto p-4 space-y-2">
                         {plays.filter(p => p.titre?.toLowerCase().includes(favPlaySearch.trim().toLowerCase())).map(p => {
                           const chosen = (activeMatch.favoritePlayIds || []).includes(p.id);
-                          const maxed = (activeMatch.favoritePlayIds || []).length >= 3;
+                          const maxed = (activeMatch.favoritePlayIds || []).length >= 4;
                           return (
                             <button key={p.id} disabled={!chosen && maxed}
                               onClick={() => {
