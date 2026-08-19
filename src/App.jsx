@@ -7382,6 +7382,7 @@ function CoachingProBoost({ session }) {
   const [teamPickerOpen, setTeamPickerOpen] = useState(false);
   const [viewSessionPhotoFull, setViewSessionPhotoFull] = useState(false);
   const [noteFormOpen, setNoteFormOpen] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState(null);
   const [addExerciseThemeSearch, setAddExerciseThemeSearch] = useState("");
   const [sessionThemeSearch, setSessionThemeSearch] = useState("");
   const [sessionPlaySearch, setSessionPlaySearch] = useState("");
@@ -9919,12 +9920,19 @@ function CoachingProBoost({ session }) {
               {(activeSession.notes || []).length > 0 && (
                 <div className="space-y-2 mb-2">
                   {activeSession.notes.map((n) => (
-                    <div key={n.id} className="border border-dashed border-[#1B2A4A]/25 rounded-lg bg-[#1B2A4A]/[0.03] p-3 flex items-center justify-between">
+                    <div key={n.id} className="border border-dashed border-[#1B2A4A]/25 rounded-lg bg-[#1B2A4A]/[0.03] p-3 flex items-center justify-between cursor-pointer hover:bg-[#1B2A4A]/[0.06] transition-colors"
+                      onClick={() => {
+                        setEditingNoteId(n.id);
+                        setNoteTitre(n.titre);
+                        setNoteDuree(n.duree);
+                        setNoteTheme(n.theme || "");
+                        setNoteFormOpen(true);
+                      }}>
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-[#1B2A4A] truncate">{n.titre}</div>
                         <div className="text-xs text-[#1B2A4A]/50">{n.duree} min{n.theme ? ` · ${n.theme}` : ""} · hors bibliothèque</div>
                       </div>
-                      <button onClick={() => updateSession({ ...activeSession, notes: activeSession.notes.filter(x => x.id !== n.id) })}
+                      <button onClick={(e) => { e.stopPropagation(); updateSession({ ...activeSession, notes: activeSession.notes.filter(x => x.id !== n.id) }); }}
                         className="text-[#1B2A4A]/40 hover:text-red-600 no-print ml-3 flex-shrink-0"><X size={16} /></button>
                     </div>
                   ))}
@@ -9949,16 +9957,25 @@ function CoachingProBoost({ session }) {
                   <div className="flex gap-2">
                     <button onClick={() => {
                       if (!noteTitre.trim()) return;
-                      const note = { id: uid(), titre: noteTitre.trim(), duree: noteDuree || 1, theme: noteTheme || null };
-                      updateSession({ ...activeSession, notes: [...(activeSession.notes || []), note] });
-                      setNoteTitre(""); setNoteDuree(10); setNoteTheme(""); setNoteFormOpen(false);
-                    }} className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>Ajouter</button>
-                    <button onClick={() => { setNoteFormOpen(false); setNoteTitre(""); }}
+                      if (editingNoteId) {
+                        updateSession({
+                          ...activeSession,
+                          notes: activeSession.notes.map(x => x.id === editingNoteId
+                            ? { ...x, titre: noteTitre.trim(), duree: noteDuree || 1, theme: noteTheme || null }
+                            : x),
+                        });
+                      } else {
+                        const note = { id: uid(), titre: noteTitre.trim(), duree: noteDuree || 1, theme: noteTheme || null };
+                        updateSession({ ...activeSession, notes: [...(activeSession.notes || []), note] });
+                      }
+                      setNoteTitre(""); setNoteDuree(10); setNoteTheme(""); setNoteFormOpen(false); setEditingNoteId(null);
+                    }} className="flex-1 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>{editingNoteId ? "Enregistrer" : "Ajouter"}</button>
+                    <button onClick={() => { setNoteFormOpen(false); setNoteTitre(""); setEditingNoteId(null); }}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium border border-[#1B2A4A]/20 text-[#1B2A4A]/60">Annuler</button>
                   </div>
                 </div>
               ) : (
-                <button onClick={() => setNoteFormOpen(true)}
+                <button onClick={() => { setEditingNoteId(null); setNoteTitre(""); setNoteDuree(10); setNoteTheme(""); setNoteFormOpen(true); }}
                   className="w-full border-2 border-dashed border-[#1B2A4A]/20 rounded-lg py-2.5 text-xs font-semibold text-[#1B2A4A]/50 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors no-print">
                   + Ajouter un bloc texte (hors bibliothèque)
                 </button>
