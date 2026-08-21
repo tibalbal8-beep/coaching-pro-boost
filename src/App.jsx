@@ -7273,6 +7273,8 @@ function CoachingProBoost({ session }) {
   const [newPlayOpen, setNewPlayOpen] = useState(false);
   const [favPlayPickerOpen, setFavPlayPickerOpen] = useState(false);
   const [scoresheetAnalyzing, setScoresheetAnalyzing] = useState(false);
+  const [qsFormOpen, setQsFormOpen] = useState(false);
+  const [qsDraft, setQsDraft] = useState(null); // { quarter, nous:{...}, adverse:{...} } en cours de saisie
   const [scoresheetError, setScoresheetError] = useState(null);
   const [scoresheetDraft, setScoresheetDraft] = useState(null); // résultat IA en cours de vérification, avant enregistrement
   const scoresheetCameraRef = useRef();
@@ -8898,6 +8900,25 @@ function CoachingProBoost({ session }) {
             }
             setScoresheetAnalyzing(false);
           };
+
+          // Four Factors (Dean Oliver) calculés à la main à partir de stats saisies par quart-temps
+          // — gratuit, pas d'IA nécessaire. ORB% d'une équipe dépend des rebonds défensifs de
+          // l'AUTRE équipe (rebonds "disputés"), d'où le besoin de saisir les deux équipes.
+          const emptyQuarterTeamStats = () => ({ fgm: "", fga: "", tpm: "", tov: "", oreb: "", dreb: "", ftm: "", fta: "" });
+          const qsNum = (v) => Number(v) || 0;
+          const sumQuarterStats = (side) => (activeMatch.quarterStats || []).reduce((acc, q) => {
+            const t = q[side] || {};
+            Object.keys(acc).forEach(k => { acc[k] += qsNum(t[k]); });
+            return acc;
+          }, { fgm: 0, fga: 0, tpm: 0, tov: 0, oreb: 0, dreb: 0, ftm: 0, fta: 0 });
+          const computeFourFactors = (own, opp) => {
+            const efg = own.fga > 0 ? (own.fgm + 0.5 * own.tpm) / own.fga * 100 : 0;
+            const tovPct = (own.fga + 0.44 * own.fta + own.tov) > 0 ? own.tov / (own.fga + 0.44 * own.fta + own.tov) * 100 : 0;
+            const orbPct = (own.oreb + opp.dreb) > 0 ? own.oreb / (own.oreb + opp.dreb) * 100 : 0;
+            const ftRate = own.fga > 0 ? own.ftm / own.fga * 100 : 0;
+            return { efg, tovPct, orbPct, ftRate };
+          };
+
           // value = null (juste compter, pas de tir) ou un nombre signé : positif = panier marqué
           // de cette valeur, négatif = tir tenté de cette valeur mais manqué.
           const recordOutcome = (playId, value) => {
@@ -8977,6 +8998,62 @@ function CoachingProBoost({ session }) {
                     ))}
                   </div>
                 )}
+
+                {/* Four Factors : saisie manuelle par quart-temps, gratuite (pas d'IA) — voir
+                    computeFourFactors/sumQuarterStats ci-dessus. */}
+                <div className="mb-6 border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-[#1B2A4A] uppercase tracking-wide">Four Factors</h3>
+                    <button onClick={() => { setQsDraft({ quarter: (activeMatch.quarterStats || []).length + 1, nous: emptyQuarterTeamStats(), adverse: emptyQuarterTeamStats() }); setQsFormOpen(true); }}
+                      className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>
+                      + Stats du quart-temps
+                    </button>
+                  </div>
+                  {(activeMatch.quarterStats || []).length === 0 ? (
+                    <p className="text-xs text-[#1B2A4A]/40">Aucune stat saisie pour l'instant.</p>
+                  ) : (() => {
+                    const nousTotal = sumQuarterStats("nous");
+                    const advTotal = sumQuarterStats("adverse");
+                    const nousFF = computeFourFactors(nousTotal, advTotal);
+                    const advFF = computeFourFactors(advTotal, nousTotal);
+                    const rows = [
+                      { label: "eFG% (efficacité tirs)", nous: nousFF.efg, adv: advFF.efg },
+                      { label: "TOV% (pertes de balle)", nous: nousFF.tovPct, adv: advFF.tovPct, lowerIsBetter: true },
+                      { label: "ORB% (rebonds offensifs)", nous: nousFF.orbPct, adv: advFF.orbPct },
+                      { label: "FT Rate (lancers francs)", nous: nousFF.ftRate, adv: advFF.ftRate },
+                    ];
+                    return (
+                      <div>
+                        <div className="grid grid-cols-3 gap-2 text-[10px] uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5 px-1">
+                          <span>Facteur</span><span className="text-center">Nous</span><span className="text-center">Adverse</span>
+                        </div>
+                        <div className="space-y-1">
+                          {rows.map(r => {
+                            const nousBetter = r.lowerIsBetter ? r.nous < r.adv : r.nous > r.adv;
+                            const advBetter = r.lowerIsBetter ? r.adv < r.nous : r.adv > r.nous;
+                            return (
+                              <div key={r.label} className="grid grid-cols-3 gap-2 items-center bg-[#F2EDE4] rounded-lg px-2 py-1.5">
+                                <span className="text-xs text-[#1B2A4A]">{r.label}</span>
+                                <span className={`text-sm font-bold text-center ${nousBetter ? "text-green-600" : "text-[#1B2A4A]"}`}>{r.nous.toFixed(1)}%</span>
+                                <span className={`text-sm font-bold text-center ${advBetter ? "text-red-600" : "text-[#1B2A4A]/60"}`}>{r.adv.toFixed(1)}%</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[10px] text-[#1B2A4A]/40 mt-2 mb-1">Cumul sur {activeMatch.quarterStats.length} quart(s)-temps saisi(s) :</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {activeMatch.quarterStats.map(q => (
+                            <span key={q.id} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-[#1B2A4A]/8 text-[#1B2A4A]/70">
+                              Q{q.quarter}
+                              <button onClick={() => updateActiveMatch({ quarterStats: activeMatch.quarterStats.filter(x => x.id !== q.id) })}
+                                className="hover:text-red-600"><X size={10} /></button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
 
                 <div className="mb-3">
                   <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Temps fort observé</div>
@@ -9083,6 +9160,60 @@ function CoachingProBoost({ session }) {
                 </div>
 
                 <MatchFavoritesPanel plays={plays.filter(p => (activeMatch.favoritePlayIds || []).includes(p.id))} />
+
+                {qsFormOpen && qsDraft && (() => {
+                  const fields = [
+                    { key: "fgm", label: "Tirs réussis" },
+                    { key: "fga", label: "Tirs tentés" },
+                    { key: "tpm", label: "dont 3pts réussis" },
+                    { key: "tov", label: "Balles perdues" },
+                    { key: "oreb", label: "Rebonds offensifs" },
+                    { key: "dreb", label: "Rebonds défensifs" },
+                    { key: "ftm", label: "LF réussis" },
+                    { key: "fta", label: "LF tentés" },
+                  ];
+                  const setField = (side, key, val) => setQsDraft(d => ({ ...d, [side]: { ...d[side], [key]: val } }));
+                  return (
+                    <div className="fixed inset-0 z-[600] bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setQsFormOpen(false)}>
+                      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b border-[#1B2A4A]/10 flex items-center gap-3">
+                          <span className="text-sm font-semibold text-[#1B2A4A]">Stats du quart-temps</span>
+                          <input type="number" min={1} value={qsDraft.quarter}
+                            onChange={e => setQsDraft(d => ({ ...d, quarter: Number(e.target.value) || 1 }))}
+                            className="w-16 border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm" />
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            {[{ side: "nous", label: "Nous" }, { side: "adverse", label: "Adverse" }].map(({ side, label }) => (
+                              <div key={side}>
+                                <div className="text-xs font-bold uppercase tracking-wide text-[#1B2A4A]/50 mb-2">{label}</div>
+                                <div className="space-y-1.5">
+                                  {fields.map(f => (
+                                    <div key={f.key}>
+                                      <div className="text-[10px] text-[#1B2A4A]/40">{f.label}</div>
+                                      <input type="number" min={0} value={qsDraft[side][f.key]}
+                                        onFocus={e => e.target.select()}
+                                        onChange={e => setField(side, f.key, e.target.value)}
+                                        className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm" />
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="p-4 border-t border-[#1B2A4A]/10 flex gap-2">
+                          <button onClick={() => setQsFormOpen(false)} className="flex-1 border border-[#1B2A4A]/20 text-[#1B2A4A] py-2 rounded-lg text-sm">Annuler</button>
+                          <button onClick={() => {
+                            const entry = { id: uid(), ...qsDraft };
+                            updateActiveMatch({ quarterStats: [...(activeMatch.quarterStats || []), entry] });
+                            setQsFormOpen(false); setQsDraft(null);
+                          }} className="flex-1 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>Enregistrer</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {scoresheetDraft && (
                   <div className="fixed inset-0 z-[600] bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setScoresheetDraft(null)}>
