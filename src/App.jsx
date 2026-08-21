@@ -5479,21 +5479,21 @@ function usePlayImages(play) {
 
 // Un des systèmes "proposés au coach" en Mode match : carrousel de ses visuels (schémas/photos)
 // pour rester lisible en un coup d'oeil pendant le match.
-function MatchFavoritePlayCard({ play }) {
+function MatchFavoritePlayCard({ play, onView }) {
   const images = usePlayImages(play);
   const [idx, setIdx] = useState(0);
   const visibleImgs = images.filter(img => img.data && img.fileType?.startsWith("image/")).map(img => img.data);
   const items = [...visibleImgs, ...(play.schemas || [])];
   return (
     <div className="border border-[#1B2A4A]/15 rounded-xl bg-white overflow-hidden shadow-sm">
-      <div className="px-3 py-2 border-b border-[#1B2A4A]/10">
+      <div className="px-3 py-2 border-b border-[#1B2A4A]/10 cursor-pointer" onClick={onView}>
         <div className="font-semibold text-[#1B2A4A] text-sm leading-tight">{play.titre}</div>
         {play.type && <div className="text-[10px] font-medium" style={{ color: "var(--sport-accent)" }}>{play.type}</div>}
       </div>
       {items.length > 0 ? (
-        <MediaCarousel items={items} index={idx} onIndexChange={setIdx} card={false} height="h-40" />
+        <MediaCarousel items={items} index={idx} onIndexChange={setIdx} card={false} height="h-40" onClickImage={onView} />
       ) : (
-        <div className="h-40 flex items-center justify-center text-xs text-[#1B2A4A]/30">Aucun visuel</div>
+        <div className="h-40 flex items-center justify-center text-xs text-[#1B2A4A]/30 cursor-pointer" onClick={onView}>Aucun visuel</div>
       )}
     </div>
   );
@@ -5502,7 +5502,7 @@ function MatchFavoritePlayCard({ play }) {
 // Panneau "Mes systèmes" en Mode match : glisser depuis le bord droit (ou taper la poignée)
 // pour afficher jusqu'à 4 plays choisis en amont du match, à proposer au coach en direct —
 // même geste swipe que dans les dessinateurs, pour rester cohérent avec le reste de l'app.
-function MatchFavoritesPanel({ plays }) {
+function MatchFavoritesPanel({ plays, onViewPlay }) {
   const [open, setOpen] = useState(false);
   const touchStartX = useRef(null);
   const onEdgeTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
@@ -5525,7 +5525,7 @@ function MatchFavoritesPanel({ plays }) {
       <div className={`fixed top-0 right-0 bottom-0 z-[35] w-72 bg-[#F2EDE4] shadow-2xl border-l border-[#1B2A4A]/10 overflow-y-auto transition-transform duration-200 no-print ${open ? "translate-x-0" : "translate-x-full"}`}>
         <div className="p-3 space-y-3">
           <div className="text-[10px] font-bold uppercase tracking-wide text-[#1B2A4A]/40">Mes systèmes</div>
-          {plays.map(play => <MatchFavoritePlayCard key={play.id} play={play} />)}
+          {plays.map(play => <MatchFavoritePlayCard key={play.id} play={play} onView={() => onViewPlay?.(play)} />)}
         </div>
       </div>
     </>
@@ -9175,7 +9175,7 @@ function CoachingProBoost({ session }) {
                   }} className="text-xs text-red-500 hover:underline flex-shrink-0 ml-3">Réinitialiser</button>
                 </div>
 
-                <MatchFavoritesPanel plays={plays.filter(p => (activeMatch.favoritePlayIds || []).includes(p.id))} />
+                <MatchFavoritesPanel plays={plays.filter(p => (activeMatch.favoritePlayIds || []).includes(p.id))} onViewPlay={setViewingPlay} />
 
                 {qsFormOpen && qsDraft && (() => {
                   const fields = [
