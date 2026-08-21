@@ -9016,30 +9016,46 @@ function CoachingProBoost({ session }) {
                     const advTotal = sumQuarterStats("adverse");
                     const nousFF = computeFourFactors(nousTotal, advTotal);
                     const advFF = computeFourFactors(advTotal, nousTotal);
+                    // Pondération classique de Dean Oliver : eFG% pèse le plus dans le résultat
+                    // (40%), puis pertes de balle (25%), rebonds offensifs (20%), lancers francs (15%).
                     const rows = [
-                      { label: "eFG% (efficacité tirs)", nous: nousFF.efg, adv: advFF.efg },
-                      { label: "TOV% (pertes de balle)", nous: nousFF.tovPct, adv: advFF.tovPct, lowerIsBetter: true },
-                      { label: "ORB% (rebonds offensifs)", nous: nousFF.orbPct, adv: advFF.orbPct },
-                      { label: "FT Rate (lancers francs)", nous: nousFF.ftRate, adv: advFF.ftRate },
-                    ];
+                      { key: "eFG%", noun: "l'efficacité aux tirs", label: "eFG% (efficacité tirs)", nous: nousFF.efg, adv: advFF.efg, weight: 0.4 },
+                      { key: "TOV%", noun: "la gestion du ballon", label: "TOV% (pertes de balle)", nous: nousFF.tovPct, adv: advFF.tovPct, lowerIsBetter: true, weight: 0.25 },
+                      { key: "ORB%", noun: "les rebonds offensifs", label: "ORB% (rebonds offensifs)", nous: nousFF.orbPct, adv: advFF.orbPct, weight: 0.2 },
+                      { key: "FT Rate", noun: "les lancers francs", label: "FT Rate (lancers francs)", nous: nousFF.ftRate, adv: advFF.ftRate, weight: 0.15 },
+                    ].map(r => ({ ...r, nousBetter: r.lowerIsBetter ? r.nous < r.adv : r.nous > r.adv, advBetter: r.lowerIsBetter ? r.adv < r.nous : r.adv > r.nous }));
+
+                    const nousWins = rows.filter(r => r.nousBetter);
+                    const advWins = rows.filter(r => r.advBetter);
+                    const nousScore = nousWins.reduce((s, r) => s + r.weight, 0);
+                    const advScore = advWins.reduce((s, r) => s + r.weight, 0);
+                    const listNouns = (list) => list.map(r => r.noun).join(", ").replace(/, ([^,]*)$/, " et $1");
+                    let interpretation;
+                    if (nousWins.length === 0 && advWins.length === 0) {
+                      interpretation = "Statistiques trop proches ou incomplètes pour dégager une tendance claire.";
+                    } else if (nousScore > advScore) {
+                      interpretation = `Avantage à NOUS : meilleurs sur ${listNouns(nousWins) || "aucun facteur à égalité"}${advWins.length ? `, l'adversaire ne prend le dessus que sur ${listNouns(advWins)}` : ""} — et le facteur le plus déterminant (eFG%) penche ${rows[0].nousBetter ? "en notre faveur" : "du côté adverse"}.`;
+                    } else if (advScore > nousScore) {
+                      interpretation = `Avantage à L'ADVERSAIRE : meilleur sur ${listNouns(advWins) || "aucun facteur à égalité"}${nousWins.length ? `, nous ne prenons le dessus que sur ${listNouns(nousWins)}` : ""} — et le facteur le plus déterminant (eFG%) penche ${rows[0].advBetter ? "de leur côté" : "en notre faveur"}.`;
+                    } else {
+                      interpretation = "Match très équilibré sur les Four Factors — aucun camp ne domine clairement.";
+                    }
+
                     return (
                       <div>
                         <div className="grid grid-cols-3 gap-2 text-[10px] uppercase tracking-wide text-[#1B2A4A]/40 mb-1.5 px-1">
                           <span>Facteur</span><span className="text-center">Nous</span><span className="text-center">Adverse</span>
                         </div>
                         <div className="space-y-1">
-                          {rows.map(r => {
-                            const nousBetter = r.lowerIsBetter ? r.nous < r.adv : r.nous > r.adv;
-                            const advBetter = r.lowerIsBetter ? r.adv < r.nous : r.adv > r.nous;
-                            return (
-                              <div key={r.label} className="grid grid-cols-3 gap-2 items-center bg-[#F2EDE4] rounded-lg px-2 py-1.5">
-                                <span className="text-xs text-[#1B2A4A]">{r.label}</span>
-                                <span className={`text-sm font-bold text-center ${nousBetter ? "text-green-600" : "text-[#1B2A4A]"}`}>{r.nous.toFixed(1)}%</span>
-                                <span className={`text-sm font-bold text-center ${advBetter ? "text-red-600" : "text-[#1B2A4A]/60"}`}>{r.adv.toFixed(1)}%</span>
-                              </div>
-                            );
-                          })}
+                          {rows.map(r => (
+                            <div key={r.label} className="grid grid-cols-3 gap-2 items-center bg-[#F2EDE4] rounded-lg px-2 py-1.5">
+                              <span className="text-xs text-[#1B2A4A]">{r.label}</span>
+                              <span className={`text-sm font-bold text-center ${r.nousBetter ? "text-green-600" : "text-[#1B2A4A]"}`}>{r.nous.toFixed(1)}%</span>
+                              <span className={`text-sm font-bold text-center ${r.advBetter ? "text-red-600" : "text-[#1B2A4A]/60"}`}>{r.adv.toFixed(1)}%</span>
+                            </div>
+                          ))}
                         </div>
+                        <p className="text-xs text-[#1B2A4A] bg-[#FF6B35]/8 border border-[#FF6B35]/20 rounded-lg px-3 py-2 mt-3">{interpretation}</p>
                         <p className="text-[10px] text-[#1B2A4A]/40 mt-2 mb-1">Cumul sur {activeMatch.quarterStats.length} quart(s)-temps saisi(s) :</p>
                         <div className="flex flex-wrap gap-1.5">
                           {activeMatch.quarterStats.map(q => (
