@@ -7272,6 +7272,10 @@ function CoachingProBoost({ session }) {
   }, [wellnessOpenFormId]);
   const [newPlayOpen, setNewPlayOpen] = useState(false);
   const [favPlayPickerOpen, setFavPlayPickerOpen] = useState(false);
+  const [scoresheetAnalyzing, setScoresheetAnalyzing] = useState(false);
+  const [scoresheetError, setScoresheetError] = useState(null);
+  const [scoresheetDraft, setScoresheetDraft] = useState(null); // résultat IA en cours de vérification, avant enregistrement
+  const scoresheetCameraRef = useRef();
   const [favPlaySearch, setFavPlaySearch] = useState("");
   const [newPlayName, setNewPlayName] = useState("");
   const [bookletSelection, setBookletSelection] = useState(null); // null = tous sélectionnés (défaut)
@@ -8864,6 +8868,36 @@ function CoachingProBoost({ session }) {
           const possibleOf = (entry) => typeof entry === "number" ? 0 : (entry?.possible || 0);
 
           const updateActiveMatch = (patch) => saveMatchSessions(matchSessions.map(m => m.id === activeMatchId ? { ...m, ...patch } : m));
+
+          // Analyse d'une photo de feuille de match (côté serveur, voir api/analyze-scoresheet.js) :
+          // résultat affiché en vérification (scoresheetDraft) avant tout enregistrement — une IA
+          // vision sur écriture manuscrite se trompe, on ne fait jamais confiance en aveugle.
+          const analyzeScoresheet = async (file) => {
+            if (!file) return;
+            setScoresheetError(null);
+            setScoresheetAnalyzing(true);
+            try {
+              const dataUrl = await readImageAsJpeg(file, 1600, 0.85);
+              const res = await fetch("/api/analyze-scoresheet", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ image: dataUrl }),
+              });
+              const data = await res.json();
+              if (!res.ok || data.error) throw new Error(data.error || "Erreur inconnue");
+              setScoresheetDraft({
+                quartTemps: data.quartTemps ?? null,
+                scoreEquipe: data.scoreEquipe ?? null,
+                scoreAdverse: data.scoreAdverse ?? null,
+                scoreParQuartTemps: data.scoreParQuartTemps || [],
+                joueurs: (data.joueurs || []).map(j => ({ numero: j.numero || "", points: j.points ?? "", fautes: j.fautes ?? "" })),
+                incertitudes: data.incertitudes || "",
+              });
+            } catch (e) {
+              setScoresheetError(e.message || "Impossible d'analyser la photo.");
+            }
+            setScoresheetAnalyzing(false);
+          };
           // value = null (juste compter, pas de tir) ou un nombre signé : positif = panier marqué
           // de cette valeur, négatif = tir tenté de cette valeur mais manqué.
           const recordOutcome = (playId, value) => {
@@ -8894,9 +8928,55 @@ function CoachingProBoost({ session }) {
                 <p className="text-xs text-[#1B2A4A]/40 mb-2">
                   {activeMatch.date ? new Date(activeMatch.date).toLocaleDateString("fr-FR") : "Date inconnue"}{activeMatch.championnat && ` · ${activeMatch.championnat}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} comptabilisé{totalTally !== 1 ? "s" : ""}
                 </p>
-                <button onClick={() => setFavPlayPickerOpen(true)} className="text-xs font-medium text-[#FF6B35] hover:underline mb-5">
-                  🎯 Mes systèmes proposés au coach ({(activeMatch.favoritePlayIds || []).length}/4)
-                </button>
+                <div className="flex flex-wrap items-center gap-3 mb-5">
+                  <button onClick={() => setFavPlayPickerOpen(true)} className="text-xs font-medium text-[#FF6B35] hover:underline">
+                    🎯 Mes systèmes proposés au coach ({(activeMatch.favoritePlayIds || []).length}/4)
+                  </button>
+                  <span className="text-[#1B2A4A]/15">·</span>
+                  <input ref={scoresheetCameraRef} type="file" accept="image/*" capture="environment" className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; analyzeScoresheet(f); }} />
+                  <button onClick={() => scoresheetCameraRef.current?.click()} disabled={scoresheetAnalyzing}
+                    className="text-xs font-medium text-[#FF6B35] hover:underline disabled:opacity-50 flex items-center gap-1">
+                    <Camera size={12} /> {scoresheetAnalyzing ? "Analyse en cours..." : "Analyser la feuille de match"}
+                  </button>
+                  {(activeMatch.scoresheetStats || []).length > 0 && (
+                    <span className="text-[10px] text-[#1B2A4A]/40">{activeMatch.scoresheetStats.length} relevé{activeMatch.scoresheetStats.length > 1 ? "s" : ""} enregistré{activeMatch.scoresheetStats.length > 1 ? "s" : ""}</span>
+                  )}
+                </div>
+                {scoresheetError && (
+                  <div className="mb-4 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex items-center justify-between">
+                    <span>{scoresheetError}</span>
+                    <button onClick={() => setScoresheetError(null)} className="text-red-400 hover:text-red-600 ml-2"><X size={12} /></button>
+                  </div>
+                )}
+                {(activeMatch.scoresheetStats || []).length > 0 && (
+                  <div className="mb-6 space-y-2">
+                    {activeMatch.scoresheetStats.map((s, i) => (
+                      <div key={s.id} className="border border-[#1B2A4A]/15 rounded-lg bg-white/70 p-3">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-sm font-semibold text-[#1B2A4A]">{s.quartTemps ? `Quart-temps ${s.quartTemps}` : `Relevé ${i + 1}`}</span>
+                          <div className="flex items-center gap-2">
+                            {(s.scoreEquipe != null || s.scoreAdverse != null) && (
+                              <span className="text-xs text-[#1B2A4A]/60">{s.scoreEquipe ?? "?"} - {s.scoreAdverse ?? "?"}</span>
+                            )}
+                            <button onClick={() => updateActiveMatch({ scoresheetStats: activeMatch.scoresheetStats.filter(x => x.id !== s.id) })}
+                              className="text-[#1B2A4A]/30 hover:text-red-600"><X size={14} /></button>
+                          </div>
+                        </div>
+                        {s.joueurs?.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {s.joueurs.map((j, ji) => (
+                              <span key={ji} className="text-[10px] px-2 py-0.5 rounded-full bg-[#1B2A4A]/8 text-[#1B2A4A]/70">
+                                #{j.numero} · {j.points ?? "?"}pts{j.fautes !== "" && j.fautes != null ? ` · ${j.fautes}f` : ""}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {s.incertitudes && <p className="text-[10px] text-[#1B2A4A]/40 italic mt-1.5">⚠️ {s.incertitudes}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <div className="mb-3">
                   <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Temps fort observé</div>
@@ -9003,6 +9083,72 @@ function CoachingProBoost({ session }) {
                 </div>
 
                 <MatchFavoritesPanel plays={plays.filter(p => (activeMatch.favoritePlayIds || []).includes(p.id))} />
+
+                {scoresheetDraft && (
+                  <div className="fixed inset-0 z-[600] bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setScoresheetDraft(null)}>
+                    <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                      <div className="p-4 border-b border-[#1B2A4A]/10">
+                        <div className="text-sm font-semibold text-[#1B2A4A]">Vérifie avant d'enregistrer</div>
+                        <p className="text-[10px] text-[#1B2A4A]/40 mt-0.5">L'IA peut se tromper sur une écriture manuscrite — corrige ce qui ne va pas avant d'enregistrer.</p>
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <div className="text-[10px] uppercase text-[#1B2A4A]/40 mb-1">Quart-temps</div>
+                            <input type="number" min={1} value={scoresheetDraft.quartTemps ?? ""}
+                              onChange={e => setScoresheetDraft(d => ({ ...d, quartTemps: e.target.value === "" ? null : Number(e.target.value) }))}
+                              className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm" />
+                          </div>
+                          <div>
+                            <div className="text-[10px] uppercase text-[#1B2A4A]/40 mb-1">Score nous</div>
+                            <input type="number" value={scoresheetDraft.scoreEquipe ?? ""}
+                              onChange={e => setScoresheetDraft(d => ({ ...d, scoreEquipe: e.target.value === "" ? null : Number(e.target.value) }))}
+                              className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm" />
+                          </div>
+                          <div>
+                            <div className="text-[10px] uppercase text-[#1B2A4A]/40 mb-1">Score adverse</div>
+                            <input type="number" value={scoresheetDraft.scoreAdverse ?? ""}
+                              onChange={e => setScoresheetDraft(d => ({ ...d, scoreAdverse: e.target.value === "" ? null : Number(e.target.value) }))}
+                              className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm" />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] uppercase text-[#1B2A4A]/40 mb-1.5">Joueurs</div>
+                          <div className="space-y-1.5">
+                            {scoresheetDraft.joueurs.map((j, i) => (
+                              <div key={i} className="flex items-center gap-1.5">
+                                <input value={j.numero}
+                                  onChange={e => setScoresheetDraft(d => ({ ...d, joueurs: d.joueurs.map((x, xi) => xi === i ? { ...x, numero: e.target.value } : x) }))}
+                                  placeholder="N°" className="w-14 border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-xs" />
+                                <input type="number" value={j.points}
+                                  onChange={e => setScoresheetDraft(d => ({ ...d, joueurs: d.joueurs.map((x, xi) => xi === i ? { ...x, points: e.target.value } : x) }))}
+                                  placeholder="Pts" className="flex-1 border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-xs" />
+                                <input type="number" value={j.fautes}
+                                  onChange={e => setScoresheetDraft(d => ({ ...d, joueurs: d.joueurs.map((x, xi) => xi === i ? { ...x, fautes: e.target.value } : x) }))}
+                                  placeholder="Fautes" className="flex-1 border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-xs" />
+                                <button onClick={() => setScoresheetDraft(d => ({ ...d, joueurs: d.joueurs.filter((_, xi) => xi !== i) }))}
+                                  className="text-[#1B2A4A]/30 hover:text-red-600 flex-shrink-0"><X size={14} /></button>
+                              </div>
+                            ))}
+                            <button onClick={() => setScoresheetDraft(d => ({ ...d, joueurs: [...d.joueurs, { numero: "", points: "", fautes: "" }] }))}
+                              className="text-xs text-[#FF6B35] hover:underline">+ Ajouter un joueur</button>
+                          </div>
+                        </div>
+                        {scoresheetDraft.incertitudes && (
+                          <p className="text-xs text-[#1B2A4A]/50 italic">⚠️ L'IA signale : {scoresheetDraft.incertitudes}</p>
+                        )}
+                      </div>
+                      <div className="p-4 border-t border-[#1B2A4A]/10 flex gap-2">
+                        <button onClick={() => setScoresheetDraft(null)} className="flex-1 border border-[#1B2A4A]/20 text-[#1B2A4A] py-2 rounded-lg text-sm">Annuler</button>
+                        <button onClick={() => {
+                          const entry = { id: uid(), ...scoresheetDraft, createdAt: new Date().toISOString() };
+                          updateActiveMatch({ scoresheetStats: [...(activeMatch.scoresheetStats || []), entry] });
+                          setScoresheetDraft(null);
+                        }} className="flex-1 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>Enregistrer</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {favPlayPickerOpen && (
                   <div className="fixed inset-0 z-[600] bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setFavPlayPickerOpen(false)}>
