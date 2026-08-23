@@ -6097,16 +6097,24 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
             </div>
           )}
           {tempsFort.length < 3 && (
-            <input value={newTempsFort} onChange={e => setNewTempsFort(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === "Enter" && newTempsFort.trim()) {
-                  e.preventDefault();
-                  setTempsFort(arr => [...arr, newTempsFort.trim()]);
-                  setNewTempsFort("");
-                }
-              }}
-              placeholder="Ex: Horn, Ram pick... (Entrée pour ajouter)"
-              className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm bg-white/60" />
+            <div className="flex gap-2">
+              <input value={newTempsFort} onChange={e => setNewTempsFort(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && newTempsFort.trim()) {
+                    e.preventDefault();
+                    setTempsFort(arr => [...arr, newTempsFort.trim()]);
+                    setNewTempsFort("");
+                  }
+                }}
+                placeholder="Ex: Horn, Ram pick..."
+                className="flex-1 border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm bg-white/60" />
+              {newTempsFort.trim() && (
+                <button type="button" onClick={() => { setTempsFort(arr => [...arr, newTempsFort.trim()]); setNewTempsFort(""); }}
+                  className="px-3 py-2 rounded-md text-xs font-semibold text-white flex-shrink-0" style={{ backgroundColor: "var(--sport-accent)" }}>
+                  Ajouter
+                </button>
+              )}
+            </div>
           )}
         </div>
         <div>
@@ -9094,6 +9102,12 @@ function CoachingProBoost({ session }) {
                         }
                       }}
                       placeholder="+ Écrire un temps fort..." className="px-3 py-1.5 rounded-full text-sm border border-dashed border-[#1B2A4A]/30 outline-none focus:border-[#FF6B35] w-44" />
+                    {newTfInput.trim() && (
+                      <button onClick={() => { const tf = newTfInput.trim(); setTfFilters(f => f.includes(tf) ? f : [...f, tf]); setNewTfInput(""); }}
+                        className="px-3 py-1.5 rounded-full text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>
+                        Ajouter
+                      </button>
+                    )}
                   </div>
                 </div>
 
