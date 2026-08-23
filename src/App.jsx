@@ -6097,7 +6097,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
             </div>
           )}
           {tempsFort.length < 3 && (
-            <div className="flex gap-2">
+            <div className="space-y-1.5">
               <input value={newTempsFort} onChange={e => setNewTempsFort(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === "Enter" && newTempsFort.trim()) {
@@ -6107,10 +6107,10 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
                   }
                 }}
                 placeholder="Ex: Horn, Ram pick..."
-                className="flex-1 border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm bg-white/60" />
+                className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm bg-white/60" />
               {newTempsFort.trim() && (
                 <button type="button" onClick={() => { setTempsFort(arr => [...arr, newTempsFort.trim()]); setNewTempsFort(""); }}
-                  className="px-3 py-2 rounded-md text-xs font-semibold text-white flex-shrink-0" style={{ backgroundColor: "var(--sport-accent)" }}>
+                  className="w-full px-3 py-2 rounded-md text-xs font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>
                   Ajouter
                 </button>
               )}
