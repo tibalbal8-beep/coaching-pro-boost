@@ -5987,7 +5987,7 @@ function PlayImageSlot({ img, playId, onChange, onRemove }) {
   );
 }
 
-function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes = PLAY_TYPES, savePlayTypes, courtType = "basketball", cpbAlert, autoOpenDraw = false }) {
+function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes = PLAY_TYPES, savePlayTypes, courtType = "basketball", cpbAlert, autoOpenDraw = false, allTempsForts = [] }) {
   const [titre, setTitre] = useState(initial?.titre || "");
   const [type, setType] = useState(initial?.type || playTypes[0]);
   const [newTypeInput, setNewTypeInput] = useState("");
@@ -6096,26 +6096,41 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
               ))}
             </div>
           )}
-          {tempsFort.length < 3 && (
-            <div className="space-y-1.5">
-              <input value={newTempsFort} onChange={e => setNewTempsFort(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === "Enter" && newTempsFort.trim()) {
-                    e.preventDefault();
-                    setTempsFort(arr => [...arr, newTempsFort.trim()]);
-                    setNewTempsFort("");
-                  }
-                }}
-                placeholder="Ex: Horn, Ram pick..."
-                className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm bg-white/60" />
-              {newTempsFort.trim() && (
-                <button type="button" onClick={() => { setTempsFort(arr => [...arr, newTempsFort.trim()]); setNewTempsFort(""); }}
-                  className="w-full px-3 py-2 rounded-md text-xs font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>
-                  Ajouter
-                </button>
-              )}
-            </div>
-          )}
+          {tempsFort.length < 3 && (() => {
+            const q = newTempsFort.trim().toLowerCase();
+            const suggestions = q ? allTempsForts.filter(t => t.toLowerCase().includes(q) && !tempsFort.includes(t)) : [];
+            const exactMatch = allTempsForts.some(t => t.toLowerCase() === q);
+            return (
+              <div className="space-y-1.5">
+                <input value={newTempsFort} onChange={e => setNewTempsFort(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && newTempsFort.trim()) {
+                      e.preventDefault();
+                      setTempsFort(arr => [...arr, newTempsFort.trim()]);
+                      setNewTempsFort("");
+                    }
+                  }}
+                  placeholder="Rechercher ou + nouveau temps fort..."
+                  className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm bg-white/60" />
+                {suggestions.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {suggestions.map(t => (
+                      <button key={t} type="button" onClick={() => { setTempsFort(arr => [...arr, t]); setNewTempsFort(""); }}
+                        className="text-xs px-2.5 py-1 rounded-full bg-[#1B2A4A]/8 text-[#1B2A4A] hover:bg-[#FF6B35]/15 hover:text-[#FF6B35] transition-colors">
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {newTempsFort.trim() && !exactMatch && (
+                  <button type="button" onClick={() => { setTempsFort(arr => [...arr, newTempsFort.trim()]); setNewTempsFort(""); }}
+                    className="w-full px-3 py-2 rounded-md text-xs font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>
+                    + Ajouter "{newTempsFort.trim()}"
+                  </button>
+                )}
+              </div>
+            );
+          })()}
         </div>
         <div>
           <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1.5">Intention</div>
@@ -7208,6 +7223,7 @@ function CoachingProBoost({ session }) {
   // Catalogue des mots-clés reconstruit à partir des tags réellement présents sur les plays
   // (plus fiable que la liste playTags séparée, qui peut se désynchroniser).
   const usedPlayTags = [...new Set(plays.flatMap(p => p.tags || []))].sort();
+  const usedTempsForts = [...new Set(plays.flatMap(p => Array.isArray(p.tempsFort) ? p.tempsFort : (p.tempsFort ? [p.tempsFort] : [])))].sort();
   const filteredPlays = plays.filter(p => {
     const q = playbookSearch.trim().toLowerCase();
     return (filterPlayType.length === 0 || filterPlayType.includes(p.type)) &&
@@ -8553,7 +8569,7 @@ function CoachingProBoost({ session }) {
         {view === "playbook" && playbookForm && (
           <div className="max-w-xl">
             <h2 className="text-xl font-bold text-[#1B2A4A] mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>{editingPlay ? "MODIFIER LE PLAY" : "NOUVEAU PLAY"}</h2>
-            <PlayForm initial={editingPlay} playTags={playTags} savePlayTags={savePlayTags} playTypes={playTypes} savePlayTypes={savePlayTypes} courtType={SPORT_COURT} cpbAlert={cpbAlert} autoOpenDraw={autoOpenDrawForNew}
+            <PlayForm initial={editingPlay} playTags={playTags} savePlayTags={savePlayTags} playTypes={playTypes} savePlayTypes={savePlayTypes} courtType={SPORT_COURT} cpbAlert={cpbAlert} autoOpenDraw={autoOpenDrawForNew} allTempsForts={usedTempsForts}
               onSave={(play) => {
                 const next = editingPlay ? plays.map(p => p.id === play.id ? play : p) : [...plays, play];
                 savePlays(next);
