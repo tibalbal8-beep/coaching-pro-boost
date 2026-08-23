@@ -7268,8 +7268,11 @@ function CoachingProBoost({ session }) {
   const [activeMatchId, setActiveMatchId] = useState(null);
   const [newMatchOpen, setNewMatchOpen] = useState(false);
   const [newMatchDate, setNewMatchDate] = useState(new Date().toISOString().slice(0, 10));
+  const [newMatchTime, setNewMatchTime] = useState("");
   const [newMatchChampionnat, setNewMatchChampionnat] = useState("");
   const [newMatchScoutedTeam, setNewMatchScoutedTeam] = useState("");
+  const [newMatchTeamId, setNewMatchTeamId] = useState(null); // null = équipe active par défaut
+  const [newMatchHomeAway, setNewMatchHomeAway] = useState("domicile");
   const [tfFilters, setTfFilters] = useState([]);
   const [newTfInput, setNewTfInput] = useState("");
   const [wellnessForms, setWellnessForms] = useState([]);
@@ -8969,9 +8972,13 @@ function CoachingProBoost({ session }) {
               <div className="max-w-3xl">
                 <button onClick={() => { setActiveMatchId(null); setTfFilters([]); setNewPlayOpen(false); }}
                   className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] mb-3">← Retour aux matchs</button>
-                <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>{team?.nom || "Nous"} vs {activeMatch.scoutedTeam}</h2>
+                <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>
+                  {activeMatch.homeAway === "exterieur"
+                    ? `${activeMatch.scoutedTeam} vs ${activeMatch.ourTeam || "Nous"}`
+                    : `${activeMatch.ourTeam || "Nous"} vs ${activeMatch.scoutedTeam}`}
+                </h2>
                 <p className="text-xs text-[#1B2A4A]/40 mb-2">
-                  {activeMatch.date ? new Date(activeMatch.date).toLocaleDateString("fr-FR") : "Date inconnue"}{activeMatch.championnat && ` · ${activeMatch.championnat}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} comptabilisé{totalTally !== 1 ? "s" : ""}
+                  {activeMatch.date ? new Date(activeMatch.date).toLocaleDateString("fr-FR") : "Date inconnue"}{activeMatch.time && ` · ${activeMatch.time}`}{activeMatch.championnat && ` · ${activeMatch.championnat}`}{activeMatch.homeAway && ` · ${activeMatch.homeAway === "domicile" ? "Domicile" : "Extérieur"}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} comptabilisé{totalTally !== 1 ? "s" : ""}
                 </p>
                 <div className="flex flex-wrap items-center gap-3 mb-5">
                   <button onClick={() => setFavPlayPickerOpen(true)} className="text-xs font-medium text-[#FF6B35] hover:underline">
@@ -9393,23 +9400,58 @@ function CoachingProBoost({ session }) {
                       className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
                   </div>
                   <div>
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Heure</div>
+                    <input type="time" value={newMatchTime} onChange={e => setNewMatchTime(e.target.value)}
+                      className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
                     <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Championnat</div>
                     <input value={newMatchChampionnat} onChange={e => setNewMatchChampionnat(e.target.value)} placeholder="Ex: NM1"
                       className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
                   </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Domicile / Extérieur</div>
+                    <select value={newMatchHomeAway} onChange={e => setNewMatchHomeAway(e.target.value)}
+                      className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white">
+                      <option value="domicile">À domicile</option>
+                      <option value="exterieur">À l'extérieur</option>
+                    </select>
+                  </div>
                 </div>
+                {teams.length > 1 && (
+                  <div className="mb-3">
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Notre équipe</div>
+                    <select value={newMatchTeamId || activeTeamId || ""} onChange={e => setNewMatchTeamId(e.target.value)}
+                      className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white">
+                      {teams.map(t => <option key={t.id} value={t.id}>{t.nom}{t.niveau ? ` · ${t.niveau}` : ""}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div className="mb-3">
                   <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Équipe adverse (scoutée dans le Playbook)</div>
                   <input value={newMatchScoutedTeam} onChange={e => setNewMatchScoutedTeam(e.target.value)} placeholder="Ex: Besançon"
                     list="scouted-teams-list" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
                   <datalist id="scouted-teams-list">{scoutedTeams.map(t => <option key={t} value={t} />)}</datalist>
                 </div>
+                {newMatchScoutedTeam.trim() && (() => {
+                  const ourName = (teams.find(t => t.id === (newMatchTeamId || activeTeamId))?.nom) || team?.nom || "Nous";
+                  const home = newMatchHomeAway === "domicile" ? ourName : newMatchScoutedTeam.trim();
+                  const away = newMatchHomeAway === "domicile" ? newMatchScoutedTeam.trim() : ourName;
+                  return <p className="text-xs text-[#1B2A4A]/50 mb-3 italic">{home} vs {away}{newMatchTime ? ` · ${newMatchTime}` : ""}</p>;
+                })()}
                 <div className="flex gap-2">
                   <button onClick={() => {
                     if (!newMatchScoutedTeam.trim()) { cpbAlert?.("Indique l'équipe adverse."); return; }
-                    const m = { id: uid(), date: newMatchDate, championnat: newMatchChampionnat.trim(), ourTeam: team?.nom || "", scoutedTeam: newMatchScoutedTeam.trim(), tally: {}, createdAt: new Date().toISOString() };
+                    const chosenTeam = teams.find(t => t.id === (newMatchTeamId || activeTeamId)) || team;
+                    const m = {
+                      id: uid(), date: newMatchDate, time: newMatchTime || null, championnat: newMatchChampionnat.trim(),
+                      ourTeam: chosenTeam?.nom || "", teamId: chosenTeam?.id || null, homeAway: newMatchHomeAway,
+                      scoutedTeam: newMatchScoutedTeam.trim(), tally: {}, createdAt: new Date().toISOString(),
+                    };
                     saveMatchSessions([...matchSessions, m]);
-                    setNewMatchOpen(false); setNewMatchChampionnat(""); setNewMatchScoutedTeam("");
+                    setNewMatchOpen(false); setNewMatchChampionnat(""); setNewMatchScoutedTeam(""); setNewMatchTime(""); setNewMatchTeamId(null); setNewMatchHomeAway("domicile");
                     setActiveMatchId(m.id);
                   }} className="text-sm font-semibold text-white px-4 py-2 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>Créer le match</button>
                   <button onClick={() => setNewMatchOpen(false)} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] px-4 py-2">Annuler</button>
@@ -9431,8 +9473,10 @@ function CoachingProBoost({ session }) {
                   <div key={m.id} onClick={() => setActiveMatchId(m.id)}
                     className="flex items-center justify-between border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 cursor-pointer hover:border-[#FF6B35] hover:shadow-md transition-all">
                     <div>
-                      <div className="font-semibold text-[#1B2A4A]">{m.ourTeam || "Nous"} vs {m.scoutedTeam}</div>
-                      <div className="text-xs text-[#1B2A4A]/50">{m.date ? new Date(m.date).toLocaleDateString("fr-FR") : "Date inconnue"}{m.championnat && ` · ${m.championnat}`}{total > 0 && ` · ${total} système${total !== 1 ? "s" : ""} comptabilisé${total !== 1 ? "s" : ""}`}{topPlay && ` · Le + joué : ${topPlay.titre}`}</div>
+                      <div className="font-semibold text-[#1B2A4A]">
+                        {m.homeAway === "exterieur" ? `${m.scoutedTeam} vs ${m.ourTeam || "Nous"}` : `${m.ourTeam || "Nous"} vs ${m.scoutedTeam}`}
+                      </div>
+                      <div className="text-xs text-[#1B2A4A]/50">{m.date ? new Date(m.date).toLocaleDateString("fr-FR") : "Date inconnue"}{m.time && ` · ${m.time}`}{m.championnat && ` · ${m.championnat}`}{total > 0 && ` · ${total} système${total !== 1 ? "s" : ""} comptabilisé${total !== 1 ? "s" : ""}`}{topPlay && ` · Le + joué : ${topPlay.titre}`}</div>
                     </div>
                     <button onClick={(e) => { e.stopPropagation(); saveMatchSessions(matchSessions.filter(x => x.id !== m.id)); }}
                       className="text-[#1B2A4A]/30 hover:text-red-600 flex-shrink-0 ml-3"><Trash2 size={16} /></button>
