@@ -9117,13 +9117,29 @@ function CoachingProBoost({ session }) {
                           setNewTfInput("");
                         }
                       }}
-                      placeholder="+ Écrire un temps fort..." className="px-3 py-1.5 rounded-full text-sm border border-dashed border-[#1B2A4A]/30 outline-none focus:border-[#FF6B35] w-44" />
-                    {newTfInput.trim() && (
-                      <button onClick={() => { const tf = newTfInput.trim(); setTfFilters(f => f.includes(tf) ? f : [...f, tf]); setNewTfInput(""); }}
-                        className="px-3 py-1.5 rounded-full text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>
-                        Ajouter
-                      </button>
-                    )}
+                      placeholder="Rechercher ou + écrire un temps fort..." className="px-3 py-1.5 rounded-full text-sm border border-dashed border-[#1B2A4A]/30 outline-none focus:border-[#FF6B35] w-56" />
+                    {(() => {
+                      const q = newTfInput.trim().toLowerCase();
+                      if (!q) return null;
+                      const suggestions = usedTempsForts.filter(t => t.toLowerCase().includes(q) && !tfFilters.includes(t));
+                      const exactMatch = usedTempsForts.some(t => t.toLowerCase() === q);
+                      return (
+                        <>
+                          {suggestions.map(t => (
+                            <button key={t} onClick={() => { setTfFilters(f => [...f, t]); setNewTfInput(""); }}
+                              className="px-3 py-1.5 rounded-full text-sm bg-[#1B2A4A]/8 text-[#1B2A4A] hover:bg-[#FF6B35]/15 hover:text-[#FF6B35] transition-colors">
+                              {t}
+                            </button>
+                          ))}
+                          {!exactMatch && (
+                            <button onClick={() => { const tf = newTfInput.trim(); setTfFilters(f => f.includes(tf) ? f : [...f, tf]); setNewTfInput(""); }}
+                              className="px-3 py-1.5 rounded-full text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>
+                              + Ajouter "{newTfInput.trim()}"
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 
