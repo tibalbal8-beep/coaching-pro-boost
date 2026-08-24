@@ -213,6 +213,7 @@ function useAnnouncement(userId) {
   const [announcement, setAnnouncement] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [canManageWellness, setCanManageWellness] = useState(false);
+  const [canUseMatchmode, setCanUseMatchmode] = useState(false);
 
   useEffect(() => {
     supabase.from("announcements").select("id, message").eq("active", true)
@@ -226,8 +227,8 @@ function useAnnouncement(userId) {
 
   useEffect(() => {
     if (!userId) return;
-    supabase.from("profiles").select("is_admin, can_manage_wellness").eq("id", userId).maybeSingle()
-      .then(({ data }) => { setIsAdmin(!!data?.is_admin); setCanManageWellness(!!data?.can_manage_wellness); });
+    supabase.from("profiles").select("is_admin, can_manage_wellness, can_use_matchmode").eq("id", userId).maybeSingle()
+      .then(({ data }) => { setIsAdmin(!!data?.is_admin); setCanManageWellness(!!data?.can_manage_wellness); setCanUseMatchmode(!!data?.can_use_matchmode); });
   }, [userId]);
 
   const dismiss = () => {
@@ -244,7 +245,7 @@ function useAnnouncement(userId) {
     await supabase.from("announcements").update({ active: false }).eq("active", true);
   };
 
-  return { announcement, dismiss, isAdmin, canManageWellness, publish, deactivate };
+  return { announcement, dismiss, isAdmin, canManageWellness, canUseMatchmode, publish, deactivate };
 }
 
 async function startCheckout(priceId) {
@@ -6717,7 +6718,7 @@ function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAl
 
 function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
-  const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
+  const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, canUseMatchmode, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
   const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
@@ -8197,7 +8198,7 @@ function CoachingProBoost({ session }) {
               { key: "playbook", label: "Play Book", icon: BookOpen },
               { key: "stats", label: "Stats", icon: BarChart3 },
               ...(isAdmin ? [{ key: "suivi", label: "Suivi individuel (admin)", icon: UserCheck }] : []),
-              ...(isAdmin ? [{ key: "matchmode", label: "Mode match (admin)", icon: Zap }] : []),
+              ...(isAdmin || canUseMatchmode ? [{ key: "matchmode", label: isAdmin ? "Mode match (admin)" : "Mode match", icon: Zap }] : []),
               ...(isAdmin || canManageWellness ? [{ key: "wellness", label: "Bien-être joueurs", icon: UserCheck }] : []),
               { key: "account", label: "Mon compte", icon: Users },
             ].map(item => {
@@ -8887,7 +8888,7 @@ function CoachingProBoost({ session }) {
           );
         })()}
 
-        {view === "matchmode" && isAdmin && (() => {
+        {view === "matchmode" && (isAdmin || canUseMatchmode) && (() => {
           const scoutedTeams = [...new Set(plays.map(p => p.scoutedTeam).filter(Boolean))].sort();
           const activeMatch = matchSessions.find(m => m.id === activeMatchId) || null;
           const tfOf = (p) => Array.isArray(p.tempsFort) ? p.tempsFort : (p.tempsFort ? [p.tempsFort] : []);
