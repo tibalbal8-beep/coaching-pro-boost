@@ -5593,7 +5593,7 @@ function MatchFavoritesPanel({ plays, onViewPlay }) {
   );
 }
 
-function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare, onSelect, selected }) {
+function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare, onSelect, selected, onToggleFavorite }) {
   const images = usePlayImages(play);
   const [imgIdx, setImgIdx] = useState(0);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -5607,7 +5607,14 @@ function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare, onS
   const currentItem = carouselItems[Math.min(imgIdx, carouselItems.length - 1)];
 
   return (
-    <div className={`border rounded-xl bg-white shadow-md shadow-[#1B2A4A]/10 hover:shadow-lg overflow-hidden transition-all ${selected ? "border-[#FF6B35] ring-2 ring-[#FF6B35]/30" : "border-[#1B2A4A]/10 hover:border-[#FF6B35]/50"}`}>
+    <div className={`relative border rounded-xl bg-white shadow-md shadow-[#1B2A4A]/10 hover:shadow-lg overflow-hidden transition-all ${selected ? "border-[#FF6B35] ring-2 ring-[#FF6B35]/30" : play.favorite ? "border-[#FF6B35]/40" : "border-[#1B2A4A]/10 hover:border-[#FF6B35]/50"}`}>
+      {onToggleFavorite && (
+        <button onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+          className="absolute top-2 right-2 z-20 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white"
+          title={play.favorite ? "Retirer des favoris" : "Mettre en favori"}>
+          <Star size={14} fill={play.favorite ? "#FF6B35" : "none"} className={play.favorite ? "text-[#FF6B35]" : "text-[#1B2A4A]/30"} />
+        </button>
+      )}
       {onSelect && (
         <div className="flex items-center gap-2 px-3 pt-2" onClick={onSelect}>
           <div className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-colors ${selected ? "bg-[#FF6B35] border-[#FF6B35]" : "border-[#1B2A4A]/30"}`}>
@@ -7291,7 +7298,7 @@ function CoachingProBoost({ session }) {
       (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t))) &&
       (!filterScoutedTeam || p.scoutedTeam === filterScoutedTeam) &&
       (!q || p.titre?.toLowerCase().includes(q) || (p.tags || []).some(t => t.toLowerCase().includes(q)));
-  }).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  }).sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   const [activeSession, setActiveSession] = useState(null);
   const activeSessionRef = useRef(null);
   useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
@@ -8614,6 +8621,7 @@ function CoachingProBoost({ session }) {
                 {filteredPlays.map(play => (
                   <PlayCard key={play.id} play={play}
                     onView={() => setViewingPlay(play)}
+                    onToggleFavorite={() => savePlays(plays.map(p => p.id === play.id ? { ...p, favorite: !p.favorite } : p))}
                     onShare={() => sharePlay(play)}
                     onSelect={isPremium ? () => setSelectedPlays(prev => prev.includes(play.id) ? prev.filter(id => id !== play.id) : [...prev, play.id]) : null}
                     selected={selectedPlays.includes(play.id)}
