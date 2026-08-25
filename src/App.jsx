@@ -7345,6 +7345,7 @@ function CoachingProBoost({ session }) {
   const [newTfInput, setNewTfInput] = useState("");
   const [matchTypeFilters, setMatchTypeFilters] = useState([]);
   const [lastMatchAction, setLastMatchAction] = useState(null); // { playId, playTitre, value, prevTally, ts }
+  const [pendingMiss, setPendingMiss] = useState(null); // { playId, value } tir manqué (-2/-3) en attente du contexte
   const [wellnessForms, setWellnessForms] = useState([]);
   const [wellnessLoading, setWellnessLoading] = useState(false);
   const [wellnessNewOpen, setWellnessNewOpen] = useState(false);
@@ -8966,6 +8967,8 @@ function CoachingProBoost({ session }) {
           const playedOf = (entry) => typeof entry === "number" ? entry : (entry?.played || 0);
           const pointsOf = (entry) => typeof entry === "number" ? 0 : (entry?.points || 0);
           const possibleOf = (entry) => typeof entry === "number" ? 0 : (entry?.possible || 0);
+          const openMissesOf = (entry) => typeof entry === "number" ? 0 : (entry?.openMisses || 0);
+          const contestedMissesOf = (entry) => typeof entry === "number" ? 0 : (entry?.contestedMisses || 0);
 
           const updateActiveMatch = (patch) => saveMatchSessions(matchSessions.map(m => m.id === activeMatchId ? { ...m, ...patch } : m));
 
@@ -9019,20 +9022,31 @@ function CoachingProBoost({ session }) {
 
           // value = null (juste compter, pas de tir) ou un nombre signé : positif = panier marqué
           // de cette valeur, négatif = tir tenté de cette valeur mais manqué.
-          const recordOutcome = (playId, value) => {
+          // missContext (uniquement pour un tir manqué à 2 ou 3 pts) = "ouvert" ou "conteste".
+          const recordOutcome = (playId, value, missContext = null) => {
             const cur = activeMatch.tally?.[playId];
             const next = {
               played: playedOf(cur) + 1,
               points: pointsOf(cur) + (value > 0 ? value : 0),
               possible: possibleOf(cur) + (value ? Math.abs(value) : 0),
+              openMisses: openMissesOf(cur) + (missContext === "ouvert" ? 1 : 0),
+              contestedMisses: contestedMissesOf(cur) + (missContext === "conteste" ? 1 : 0),
             };
             updateActiveMatch({ tally: { ...(activeMatch.tally || {}), [playId]: next } });
             setTfFilters([]);
             setNewPlayOpen(false); setNewPlayName("");
             const playTitre = plays.find(p => p.id === playId)?.titre || "Système";
             const label = value ? (value > 0 ? `+${value}` : `${value}`) : "sans tir";
-            toast?.(`✓ ${playTitre} — ${label}`);
+            const contextLabel = missContext === "ouvert" ? " (tir ouvert)" : missContext === "conteste" ? " (tir contesté)" : "";
+            toast?.(`✓ ${playTitre} — ${label}${contextLabel}`);
             setLastMatchAction({ playId, playTitre, value, prevTally: cur, ts: Date.now() });
+          };
+
+          const requestMissContext = (playId, value) => setPendingMiss({ playId, value });
+          const resolveMissContext = (context) => {
+            if (!pendingMiss) return;
+            recordOutcome(pendingMiss.playId, pendingMiss.value, context);
+            setPendingMiss(null);
           };
 
           const undoLastMatchAction = () => {
@@ -9059,7 +9073,7 @@ function CoachingProBoost({ session }) {
 
             return (
               <div className="max-w-3xl">
-                <button onClick={() => { setActiveMatchId(null); setTfFilters([]); setMatchTypeFilters([]); setNewPlayOpen(false); setLastMatchAction(null); }}
+                <button onClick={() => { setActiveMatchId(null); setTfFilters([]); setMatchTypeFilters([]); setNewPlayOpen(false); setLastMatchAction(null); setPendingMiss(null); }}
                   className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] mb-3">← Retour aux matchs</button>
                 <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>
                   {activeMatch.homeAway === "exterieur"
@@ -9075,6 +9089,22 @@ function CoachingProBoost({ session }) {
                       Dernier : <strong>{lastMatchAction.playTitre}</strong> {lastMatchAction.value ? (lastMatchAction.value > 0 ? `+${lastMatchAction.value}` : lastMatchAction.value) : "sans tir"} comptabilisé
                     </span>
                     <button onClick={undoLastMatchAction} className="ml-auto font-semibold hover:underline">↩ Annuler</button>
+                  </div>
+                )}
+                {pendingMiss && (
+                  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setPendingMiss(null)}>
+                    <div className="bg-white rounded-xl p-5 w-full max-w-xs" onClick={e => e.stopPropagation()}>
+                      <p className="text-sm font-semibold text-[#1B2A4A] mb-1">Tir à {pendingMiss.value} pts manqué</p>
+                      <p className="text-xs text-[#1B2A4A]/50 mb-4">Le tir était-il ouvert ou contesté ?</p>
+                      <div className="flex flex-col gap-2">
+                        <button onClick={() => resolveMissContext("ouvert")}
+                          className="w-full py-2.5 rounded-lg text-sm font-semibold border-2 border-green-300 text-green-700 hover:bg-green-50">🟢 Tir ouvert</button>
+                        <button onClick={() => resolveMissContext("conteste")}
+                          className="w-full py-2.5 rounded-lg text-sm font-semibold border-2 border-red-300 text-red-700 hover:bg-red-50">🔴 Tir contesté</button>
+                        <button onClick={() => setPendingMiss(null)}
+                          className="w-full py-2 rounded-lg text-xs text-[#1B2A4A]/50 hover:text-[#1B2A4A]">Annuler</button>
+                      </div>
+                    </div>
                   </div>
                 )}
                 <div className="flex flex-wrap items-center gap-3 mb-5">
@@ -9299,10 +9329,12 @@ function CoachingProBoost({ session }) {
                           <button onClick={() => recordOutcome(p.id, null)}
                             className="px-4 py-3 rounded-lg text-sm font-semibold border border-[#1B2A4A]/20 text-[#1B2A4A]/70 hover:bg-[#1B2A4A]/5 active:bg-[#1B2A4A]/10">Compter (sans tir)</button>
                           <span className="w-px h-9 bg-[#1B2A4A]/10 mx-1" />
-                          {[-3, -2, -1].map(v => (
-                            <button key={v} onClick={() => recordOutcome(p.id, v)}
+                          {[-3, -2].map(v => (
+                            <button key={v} onClick={() => requestMissContext(p.id, v)}
                               className="w-14 h-14 rounded-lg text-xl font-bold border-2 border-red-200 text-red-600 hover:bg-red-50 active:bg-red-100">{v}</button>
                           ))}
+                          <button onClick={() => recordOutcome(p.id, -1)}
+                            className="w-14 h-14 rounded-lg text-xl font-bold border-2 border-red-200 text-red-600 hover:bg-red-50 active:bg-red-100">-1</button>
                           {[1, 2, 3].map(v => (
                             <button key={v} onClick={() => recordOutcome(p.id, v)}
                               className="w-14 h-14 rounded-lg text-xl font-bold border-2 border-green-300 text-green-700 hover:bg-green-50 active:bg-green-100">+{v}</button>
