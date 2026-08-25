@@ -9032,14 +9032,16 @@ function CoachingProBoost({ session }) {
               openMisses: openMissesOf(cur) + (missContext === "ouvert" ? 1 : 0),
               contestedMisses: contestedMissesOf(cur) + (missContext === "conteste" ? 1 : 0),
             };
-            updateActiveMatch({ tally: { ...(activeMatch.tally || {}), [playId]: next } });
+            const prevScoreLog = activeMatch.scoreLog || [];
+            const scoreLog = value > 0 ? [...prevScoreLog, { id: uid(), team: "us", points: value, ts: Date.now() }] : prevScoreLog;
+            updateActiveMatch({ tally: { ...(activeMatch.tally || {}), [playId]: next }, scoreLog });
             setTfFilters([]);
             setNewPlayOpen(false); setNewPlayName("");
             const playTitre = plays.find(p => p.id === playId)?.titre || "Système";
             const label = value ? (value > 0 ? `+${value}` : `${value}`) : "sans tir";
             const contextLabel = missContext === "ouvert" ? " (tir ouvert)" : missContext === "conteste" ? " (tir contesté)" : "";
             toast?.(`✓ ${playTitre} — ${label}${contextLabel}`);
-            setLastMatchAction({ playId, playTitre, value, prevTally: cur, ts: Date.now() });
+            setLastMatchAction({ team: "us", playId, playTitre, value, prevTally: cur, prevScoreLog, ts: Date.now() });
           };
 
           const requestMissContext = (playId, value) => setPendingMiss({ playId, value });
@@ -9049,18 +9051,42 @@ function CoachingProBoost({ session }) {
             setPendingMiss(null);
           };
 
+          const recordOpponentScore = (value) => {
+            const prevScoreLog = activeMatch.scoreLog || [];
+            const scoreLog = [...prevScoreLog, { id: uid(), team: "adv", points: value, ts: Date.now() }];
+            updateActiveMatch({ scoreLog });
+            toast?.(`✓ ${activeMatch.scoutedTeam || "Adversaire"} — +${value}`);
+            setLastMatchAction({ team: "adv", value, prevScoreLog, ts: Date.now() });
+          };
+
           const undoLastMatchAction = () => {
             if (!lastMatchAction) return;
-            const { playId, prevTally } = lastMatchAction;
-            const tally = { ...(activeMatch.tally || {}) };
-            if (prevTally) tally[playId] = prevTally; else delete tally[playId];
-            updateActiveMatch({ tally });
+            const { team, playId, prevTally, prevScoreLog } = lastMatchAction;
+            const patch = { scoreLog: prevScoreLog };
+            if (team === "us") {
+              const tally = { ...(activeMatch.tally || {}) };
+              if (prevTally) tally[playId] = prevTally; else delete tally[playId];
+              patch.tally = tally;
+            }
+            updateActiveMatch(patch);
             toast?.("↩ Action annulée");
             setLastMatchAction(null);
           };
 
           // ── Vue "saisie" : un match est actif ──────────────────────────────────
           if (activeMatch) {
+            const scoreLog = activeMatch.scoreLog || [];
+            const scoreUs = scoreLog.filter(e => e.team === "us").reduce((s, e) => s + e.points, 0);
+            const scoreAdv = scoreLog.filter(e => e.team === "adv").reduce((s, e) => s + e.points, 0);
+            let currentRun = null;
+            if (scoreLog.length > 0) {
+              const lastTeam = scoreLog[scoreLog.length - 1].team;
+              let runPoints = 0, runCount = 0;
+              for (let i = scoreLog.length - 1; i >= 0 && scoreLog[i].team === lastTeam; i--) {
+                runPoints += scoreLog[i].points; runCount++;
+              }
+              currentRun = { team: lastTeam, points: runPoints, count: runCount };
+            }
             const teamPlays = plays.filter(p => p.scoutedTeam === activeMatch.scoutedTeam);
             const tfOptions = [...new Set(teamPlays.flatMap(tfOf))];
             const matchTypeOptions = playTypes.filter(t => teamPlays.some(p => p.type === t));
@@ -9083,10 +9109,35 @@ function CoachingProBoost({ session }) {
                 <p className="text-xs text-[#1B2A4A]/40 mb-2">
                   {activeMatch.date ? new Date(activeMatch.date).toLocaleDateString("fr-FR") : "Date inconnue"}{activeMatch.time && ` · ${activeMatch.time}`}{activeMatch.championnat && ` · ${activeMatch.championnat}`}{activeMatch.homeAway && ` · ${activeMatch.homeAway === "domicile" ? "Domicile" : "Extérieur"}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} comptabilisé{totalTally !== 1 ? "s" : ""}
                 </p>
+                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-3">
+                  <div className="flex items-center justify-around text-center mb-3">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold">{activeMatch.ourTeam || "Nous"}</div>
+                      <div className="text-3xl font-bold" style={{ color: "var(--sport-accent)" }}>{scoreUs}</div>
+                    </div>
+                    <div className="text-lg text-[#1B2A4A]/20 font-bold">—</div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold">{activeMatch.scoutedTeam || "Adversaire"}</div>
+                      <div className="text-3xl font-bold text-[#1B2A4A]">{scoreAdv}</div>
+                    </div>
+                  </div>
+                  {currentRun && currentRun.points > 0 && (
+                    <p className={`text-center text-xs font-semibold rounded-lg py-1.5 mb-3 ${currentRun.team === "us" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                      🔥 Série en cours : {currentRun.team === "us" ? (activeMatch.ourTeam || "Nous") : (activeMatch.scoutedTeam || "Adversaire")} +{currentRun.points} ({currentRun.count} action{currentRun.count > 1 ? "s" : ""})
+                    </p>
+                  )}
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="text-xs text-[#1B2A4A]/40 mr-1">Score {activeMatch.scoutedTeam || "adverse"} :</span>
+                    {[1, 2, 3].map(v => (
+                      <button key={v} onClick={() => recordOpponentScore(v)}
+                        className="w-11 h-11 rounded-lg text-base font-bold border-2 border-[#1B2A4A]/20 text-[#1B2A4A] hover:bg-[#1B2A4A]/5 active:bg-[#1B2A4A]/10">+{v}</button>
+                    ))}
+                  </div>
+                </div>
                 {lastMatchAction && (
                   <div className="flex items-center gap-2 text-xs bg-green-50 border border-green-200 text-green-800 rounded-lg px-3 py-2 mb-3">
                     <span>
-                      Dernier : <strong>{lastMatchAction.playTitre}</strong> {lastMatchAction.value ? (lastMatchAction.value > 0 ? `+${lastMatchAction.value}` : lastMatchAction.value) : "sans tir"} comptabilisé
+                      Dernier : <strong>{lastMatchAction.team === "adv" ? (activeMatch.scoutedTeam || "Adversaire") : lastMatchAction.playTitre}</strong> {lastMatchAction.value ? (lastMatchAction.value > 0 ? `+${lastMatchAction.value}` : lastMatchAction.value) : "sans tir"} comptabilisé
                     </span>
                     <button onClick={undoLastMatchAction} className="ml-auto font-semibold hover:underline">↩ Annuler</button>
                   </div>
