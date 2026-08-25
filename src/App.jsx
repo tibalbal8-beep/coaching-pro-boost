@@ -9033,7 +9033,8 @@ function CoachingProBoost({ session }) {
           if (activeMatch) {
             const teamPlays = plays.filter(p => p.scoutedTeam === activeMatch.scoutedTeam);
             const tfOptions = [...new Set(teamPlays.flatMap(tfOf))];
-            const filteredPlays = teamPlays.filter(p => tfFilters.every(f => tfOf(p).includes(f)));
+            const filteredPlays = teamPlays.filter(p => tfFilters.every(f => tfOf(p).includes(f)))
+              .sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || playedOf(activeMatch.tally?.[b.id]) - playedOf(activeMatch.tally?.[a.id]));
             const sorted = [...teamPlays].sort((a, b) => playedOf(activeMatch.tally?.[b.id]) - playedOf(activeMatch.tally?.[a.id]));
             const totalTally = teamPlays.reduce((sum, p) => sum + playedOf(activeMatch.tally?.[p.id]), 0);
 
@@ -9231,7 +9232,13 @@ function CoachingProBoost({ session }) {
                       <div key={p.id} className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4">
                         <div className="flex items-start justify-between mb-2 gap-2">
                           <div>
-                            <div className="font-semibold text-[#1B2A4A]">{p.titre}</div>
+                            <div className="flex items-center gap-1.5">
+                              <button onClick={() => savePlays(plays.map(x => x.id === p.id ? { ...x, favorite: !x.favorite } : x))}
+                                title={p.favorite ? "Retirer des favoris" : "Mettre en favori"} className="flex-shrink-0">
+                                <Star size={15} fill={p.favorite ? "#FF6B35" : "none"} className={p.favorite ? "text-[#FF6B35]" : "text-[#1B2A4A]/25 hover:text-[#1B2A4A]/50"} />
+                              </button>
+                              <div className="font-semibold text-[#1B2A4A]">{p.titre}</div>
+                            </div>
                             <div className="flex flex-wrap gap-1 mt-1">
                               {tfOf(p).map((t, i) => <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-[#1B2A4A]/10 text-[#1B2A4A]/70">{t}</span>)}
                               {p.intention && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35]">{p.intention}</span>}
