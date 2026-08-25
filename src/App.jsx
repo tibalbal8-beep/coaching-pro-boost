@@ -7343,6 +7343,7 @@ function CoachingProBoost({ session }) {
   const [newMatchHomeAway, setNewMatchHomeAway] = useState("domicile");
   const [tfFilters, setTfFilters] = useState([]);
   const [newTfInput, setNewTfInput] = useState("");
+  const [matchTypeFilters, setMatchTypeFilters] = useState([]);
   const [lastMatchAction, setLastMatchAction] = useState(null); // { playId, playTitre, value, prevTally, ts }
   const [wellnessForms, setWellnessForms] = useState([]);
   const [wellnessLoading, setWellnessLoading] = useState(false);
@@ -9048,14 +9049,17 @@ function CoachingProBoost({ session }) {
           if (activeMatch) {
             const teamPlays = plays.filter(p => p.scoutedTeam === activeMatch.scoutedTeam);
             const tfOptions = [...new Set(teamPlays.flatMap(tfOf))];
-            const filteredPlays = teamPlays.filter(p => tfFilters.every(f => tfOf(p).includes(f)))
+            const matchTypeOptions = playTypes.filter(t => teamPlays.some(p => p.type === t));
+            const filteredPlays = teamPlays
+              .filter(p => tfFilters.every(f => tfOf(p).includes(f)))
+              .filter(p => matchTypeFilters.length === 0 || matchTypeFilters.includes(p.type))
               .sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || playedOf(activeMatch.tally?.[b.id]) - playedOf(activeMatch.tally?.[a.id]));
             const sorted = [...teamPlays].sort((a, b) => playedOf(activeMatch.tally?.[b.id]) - playedOf(activeMatch.tally?.[a.id]));
             const totalTally = teamPlays.reduce((sum, p) => sum + playedOf(activeMatch.tally?.[p.id]), 0);
 
             return (
               <div className="max-w-3xl">
-                <button onClick={() => { setActiveMatchId(null); setTfFilters([]); setNewPlayOpen(false); setLastMatchAction(null); }}
+                <button onClick={() => { setActiveMatchId(null); setTfFilters([]); setMatchTypeFilters([]); setNewPlayOpen(false); setLastMatchAction(null); }}
                   className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] mb-3">← Retour aux matchs</button>
                 <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>
                   {activeMatch.homeAway === "exterieur"
@@ -9194,6 +9198,24 @@ function CoachingProBoost({ session }) {
                     );
                   })()}
                 </div>
+
+                {matchTypeOptions.length > 0 && (
+                  <div className="mb-3">
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Type</div>
+                    <div className="flex flex-wrap gap-1.5 items-center">
+                      {matchTypeOptions.map(t => (
+                        <button key={t} onClick={() => setMatchTypeFilters(f => f.includes(t) ? f.filter(x => x !== t) : [...f, t])}
+                          className={`px-3 py-1.5 rounded-full text-sm font-medium border ${matchTypeFilters.includes(t) ? "" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
+                          style={matchTypeFilters.includes(t) ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
+                          {t}
+                        </button>
+                      ))}
+                      {matchTypeFilters.length > 0 && (
+                        <button onClick={() => setMatchTypeFilters([])} className="px-3 py-1.5 rounded-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A]">✕ Effacer</button>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="mb-3">
                   <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Temps fort observé</div>
