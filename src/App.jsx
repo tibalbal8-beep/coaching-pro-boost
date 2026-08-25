@@ -7343,6 +7343,7 @@ function CoachingProBoost({ session }) {
   const [newMatchHomeAway, setNewMatchHomeAway] = useState("domicile");
   const [tfFilters, setTfFilters] = useState([]);
   const [newTfInput, setNewTfInput] = useState("");
+  const [lastMatchAction, setLastMatchAction] = useState(null); // { playId, playTitre, value, prevTally, ts }
   const [wellnessForms, setWellnessForms] = useState([]);
   const [wellnessLoading, setWellnessLoading] = useState(false);
   const [wellnessNewOpen, setWellnessNewOpen] = useState(false);
@@ -9027,6 +9028,20 @@ function CoachingProBoost({ session }) {
             updateActiveMatch({ tally: { ...(activeMatch.tally || {}), [playId]: next } });
             setTfFilters([]);
             setNewPlayOpen(false); setNewPlayName("");
+            const playTitre = plays.find(p => p.id === playId)?.titre || "Système";
+            const label = value ? (value > 0 ? `+${value}` : `${value}`) : "sans tir";
+            toast?.(`✓ ${playTitre} — ${label}`);
+            setLastMatchAction({ playId, playTitre, value, prevTally: cur, ts: Date.now() });
+          };
+
+          const undoLastMatchAction = () => {
+            if (!lastMatchAction) return;
+            const { playId, prevTally } = lastMatchAction;
+            const tally = { ...(activeMatch.tally || {}) };
+            if (prevTally) tally[playId] = prevTally; else delete tally[playId];
+            updateActiveMatch({ tally });
+            toast?.("↩ Action annulée");
+            setLastMatchAction(null);
           };
 
           // ── Vue "saisie" : un match est actif ──────────────────────────────────
@@ -9040,7 +9055,7 @@ function CoachingProBoost({ session }) {
 
             return (
               <div className="max-w-3xl">
-                <button onClick={() => { setActiveMatchId(null); setTfFilters([]); setNewPlayOpen(false); }}
+                <button onClick={() => { setActiveMatchId(null); setTfFilters([]); setNewPlayOpen(false); setLastMatchAction(null); }}
                   className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] mb-3">← Retour aux matchs</button>
                 <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>
                   {activeMatch.homeAway === "exterieur"
@@ -9050,6 +9065,14 @@ function CoachingProBoost({ session }) {
                 <p className="text-xs text-[#1B2A4A]/40 mb-2">
                   {activeMatch.date ? new Date(activeMatch.date).toLocaleDateString("fr-FR") : "Date inconnue"}{activeMatch.time && ` · ${activeMatch.time}`}{activeMatch.championnat && ` · ${activeMatch.championnat}`}{activeMatch.homeAway && ` · ${activeMatch.homeAway === "domicile" ? "Domicile" : "Extérieur"}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} comptabilisé{totalTally !== 1 ? "s" : ""}
                 </p>
+                {lastMatchAction && (
+                  <div className="flex items-center gap-2 text-xs bg-green-50 border border-green-200 text-green-800 rounded-lg px-3 py-2 mb-3">
+                    <span>
+                      Dernier : <strong>{lastMatchAction.playTitre}</strong> {lastMatchAction.value ? (lastMatchAction.value > 0 ? `+${lastMatchAction.value}` : lastMatchAction.value) : "sans tir"} comptabilisé
+                    </span>
+                    <button onClick={undoLastMatchAction} className="ml-auto font-semibold hover:underline">↩ Annuler</button>
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-3 mb-5">
                   <button onClick={() => setFavPlayPickerOpen(true)} className="text-xs font-medium text-[#FF6B35] hover:underline">
                     🎯 Mes systèmes proposés au coach ({(activeMatch.favoritePlayIds || []).length}/4)
