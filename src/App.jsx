@@ -762,6 +762,66 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// Export "Mode match" : les systèmes joués et leur rentabilité (points/possession), triés par
+// fréquence — même esprit que buildScoutingReportHtml, en plus simple (un seul tableau).
+function buildMatchReportHtml(match, rows, fourFactorsHtml) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const homeAwayLabel = match.homeAway === "exterieur" ? "Extérieur" : match.homeAway === "domicile" ? "Domicile" : "";
+  const title = match.homeAway === "exterieur" ? `${match.scoutedTeam} vs ${match.ourTeam || "Nous"}` : `${match.ourTeam || "Nous"} vs ${match.scoutedTeam}`;
+  const dateStr = match.date ? new Date(match.date).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
+  const rowsHtml = rows.map((r, i) => `
+    <tr>
+      <td class="rank">${i + 1}</td>
+      <td class="titre">${esc(r.titre)}${r.tempsFort?.length ? `<div class="tf">${r.tempsFort.map(esc).join(", ")}</div>` : ""}</td>
+      <td class="num">${r.played}</td>
+      <td class="num">${r.points}${r.possible > 0 ? ` / ${r.possible}` : ""}</td>
+      <td class="num ppp">${r.played > 0 ? (r.points / r.played).toFixed(2) : "—"}</td>
+    </tr>`).join("");
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>${esc(title)} — Rapport Mode match</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',sans-serif;background:#F2EDE4;color:#1B2A4A;padding:24px}
+  .card{max-width:760px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+  .header{background:#1B2A4A;color:#fff;padding:24px}
+  .header h1{font-family:'Oswald',sans-serif;font-size:24px;letter-spacing:.3px}
+  .header .meta{color:rgba(255,255,255,.65);font-size:13px;margin-top:6px;text-transform:capitalize}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#1B2A4A80;padding:10px 16px;border-bottom:2px solid #1B2A4A15}
+  th.num,td.num{text-align:center}
+  td{padding:10px 16px;border-bottom:1px solid #1B2A4A0f;font-size:14px;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .rank{font-family:'Oswald',sans-serif;font-weight:700;color:#FF6B35;width:28px}
+  .titre{font-weight:600}
+  .tf{font-size:11px;color:#1B2A4A60;margin-top:2px;font-weight:400}
+  .ppp{font-weight:700}
+  .empty{padding:24px;text-align:center;color:#1B2A4A60;font-size:13px}
+  .ff{padding:16px 16px 20px}
+  @media print{body{background:#fff;padding:0}.card{box-shadow:none;border-radius:0}}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>${esc(title)}</h1>
+      <div class="meta">${esc(dateStr)}${match.time ? ` · ${esc(match.time)}` : ""}${match.championnat ? ` · ${esc(match.championnat)}` : ""}${homeAwayLabel ? ` · ${esc(homeAwayLabel)}` : ""}</div>
+    </div>
+    ${rows.length === 0 ? `<div class="empty">Aucun système comptabilisé pour ce match.</div>` : `
+    <table>
+      <thead><tr><th></th><th>Système</th><th class="num">Joué</th><th class="num">Points</th><th class="num">Pts/possession</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>`}
+    ${fourFactorsHtml ? `<div class="ff">${fourFactorsHtml}</div>` : ""}
+  </div>
+</body>
+</html>`;
+}
+
 async function renderPdfPages(file, maxPages = 25) {
   const buf = await file.arrayBuffer();
   const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
@@ -9221,12 +9281,26 @@ function CoachingProBoost({ session }) {
                   </button>
                 )}
 
-                <div className="flex items-center justify-between border-t border-[#1B2A4A]/10 pt-4">
+                <div className="flex items-center justify-between border-t border-[#1B2A4A]/10 pt-4 flex-wrap gap-2">
                   <span className="text-xs text-[#1B2A4A]/40">Classement par fréquence : {sorted.filter(p => playedOf(activeMatch.tally?.[p.id]) > 0).map(p => `${p.titre} (${playedOf(activeMatch.tally[p.id])})`).join(", ") || "aucun système compté pour l'instant"}</span>
-                  <button onClick={async () => {
-                    const ok = await cpbAlert?.("Réinitialiser le comptage de ce match ? Les valeurs actuelles seront perdues.", { confirm: true });
-                    if (ok) updateActiveMatch({ tally: {} });
-                  }} className="text-xs text-red-500 hover:underline flex-shrink-0 ml-3">Réinitialiser</button>
+                  <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                    <button onClick={() => {
+                      const rows = sorted.map(p => ({
+                        titre: p.titre,
+                        tempsFort: tfOf(p),
+                        played: playedOf(activeMatch.tally?.[p.id]),
+                        points: pointsOf(activeMatch.tally?.[p.id]),
+                        possible: possibleOf(activeMatch.tally?.[p.id]),
+                      })).filter(r => r.played > 0);
+                      const html = buildMatchReportHtml(activeMatch, rows);
+                      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+                      downloadBlob(blob, `${slugifyForFile(activeMatch.scoutedTeam || "match")}-${activeMatch.date || ""}.html`);
+                    }} className="text-xs font-medium text-[#FF6B35] hover:underline">📤 Exporter les systèmes joués</button>
+                    <button onClick={async () => {
+                      const ok = await cpbAlert?.("Réinitialiser le comptage de ce match ? Les valeurs actuelles seront perdues.", { confirm: true });
+                      if (ok) updateActiveMatch({ tally: {} });
+                    }} className="text-xs text-red-500 hover:underline">Réinitialiser</button>
+                  </div>
                 </div>
 
                 <MatchFavoritesPanel plays={plays.filter(p => (activeMatch.favoritePlayIds || []).includes(p.id))} onViewPlay={setViewingPlay} />
