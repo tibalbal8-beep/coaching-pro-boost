@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
-import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera, Share2, Zap, Maximize2, Minimize2, Lock, Unlock, Undo2 } from "lucide-react";
+import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera, Share2, Zap, Maximize2, Minimize2, Lock, Unlock, Undo2, StickyNote } from "lucide-react";
 import { storage, supabase, isPasswordRecoveryUrl } from "./storage";
 import JSZip from "jszip";
 import QRCode from "qrcode";
@@ -7411,6 +7411,7 @@ function CoachingProBoost({ session }) {
   const [matchTypeFilters, setMatchTypeFilters] = useState([]);
   const [lastMatchAction, setLastMatchAction] = useState(null); // { playId, playTitre, value, prevTally, ts }
   const [pendingMiss, setPendingMiss] = useState(null); // { playId, value } tir manqué (-2/-3) en attente du contexte
+  const [matchNotesOpen, setMatchNotesOpen] = useState(false);
   const [wellnessForms, setWellnessForms] = useState([]);
   const [wellnessLoading, setWellnessLoading] = useState(false);
   const [wellnessNewOpen, setWellnessNewOpen] = useState(false);
@@ -9173,7 +9174,7 @@ function CoachingProBoost({ session }) {
 
             return (
               <div className="max-w-3xl">
-                <button onClick={() => { setActiveMatchId(null); setTfFilters([]); setMatchTypeFilters([]); setNewPlayOpen(false); setLastMatchAction(null); setPendingMiss(null); }}
+                <button onClick={() => { setActiveMatchId(null); setTfFilters([]); setMatchTypeFilters([]); setNewPlayOpen(false); setLastMatchAction(null); setPendingMiss(null); setMatchNotesOpen(false); }}
                   className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] mb-3">← Retour aux matchs</button>
                 <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>
                   {activeMatch.homeAway === "exterieur"
@@ -9232,6 +9233,26 @@ function CoachingProBoost({ session }) {
                     </div>
                   </div>
                 )}
+
+                <button onClick={() => setMatchNotesOpen(o => !o)}
+                  title="Notes du coach"
+                  className="fixed bottom-24 right-4 z-40 w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-white"
+                  style={{ backgroundColor: "var(--sport-accent)" }}>
+                  <StickyNote size={20} />
+                  {activeMatch.notes?.trim() && <span className="absolute top-0 right-0 w-3 h-3 rounded-full bg-green-500 border-2 border-white" />}
+                </button>
+                {matchNotesOpen && (
+                  <div className="fixed bottom-40 right-4 z-40 w-72 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-[#1B2A4A]/15 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[#1B2A4A]/50">Notes du coach</span>
+                      <button onClick={() => setMatchNotesOpen(false)} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={16} /></button>
+                    </div>
+                    <textarea value={activeMatch.notes || ""} onChange={e => updateActiveMatch({ notes: e.target.value })}
+                      autoFocus placeholder="Ajustements, consignes de mi-temps, joueurs à surveiller..."
+                      className="w-full h-40 border border-[#1B2A4A]/20 rounded-lg p-2 text-sm outline-none focus:border-[#FF6B35] resize-none" />
+                  </div>
+                )}
+
                 <div className="flex flex-wrap items-center gap-3 mb-5">
                   <button onClick={() => setFavPlayPickerOpen(true)} className="text-xs font-medium text-[#FF6B35] hover:underline">
                     🎯 Mes systèmes proposés au coach ({(activeMatch.favoritePlayIds || []).length}/4)
