@@ -9160,6 +9160,20 @@ function CoachingProBoost({ session }) {
             setLastMatchAction(null);
           };
 
+          // Match "les deux équipes scoutées" : le bouton de bascule échange simplement
+          // scoutedTeam/ourTeam (et homeAway avec, pour garder Locaux/Visiteurs cohérents).
+          // Comme tout le reste (liste des systèmes, temps forts, tableau de score, export)
+          // se base sur ces deux champs, rien d'autre n'a besoin de changer.
+          const switchScoutSide = () => {
+            updateActiveMatch({
+              scoutedTeam: activeMatch.ourTeam,
+              ourTeam: activeMatch.scoutedTeam,
+              homeAway: activeMatch.homeAway === "domicile" ? "exterieur" : "domicile",
+            });
+            setTfFilters([]); setMatchTypeFilters([]); setNewPlayOpen(false);
+            toast?.(`🔁 Scouting : ${activeMatch.ourTeam}`);
+          };
+
           // ── Vue "saisie" : un match est actif ──────────────────────────────────
           if (activeMatch) {
             // homeAway décrit si "ourTeam" (l'équipe non scoutée) joue à domicile.
@@ -9218,6 +9232,13 @@ function CoachingProBoost({ session }) {
                     <p className={`text-center text-xs font-semibold rounded-lg py-1.5 mb-3 ${currentRun.team === "scouted" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
                       🔥 Série en cours : {currentRun.team === "scouted" ? (activeMatch.scoutedTeam || "Équipe scoutée") : (activeMatch.ourTeam || "Autre équipe")} +{currentRun.points} ({currentRun.count} action{currentRun.count > 1 ? "s" : ""})
                     </p>
+                  )}
+                  {activeMatch.bothScouted && (
+                    <button onClick={switchScoutSide}
+                      className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-white rounded-lg py-2 mb-3"
+                      style={{ backgroundColor: "var(--sport-accent)" }}>
+                      🔁 Playbook affiché : <strong>{activeMatch.scoutedTeam}</strong> — basculer vers {activeMatch.ourTeam}
+                    </button>
                   )}
                   <div className="flex items-center justify-center gap-2">
                     <span className="text-xs text-[#1B2A4A]/40 mr-1">Score {activeMatch.ourTeam || "autre équipe"} :</span>
@@ -9461,7 +9482,7 @@ function CoachingProBoost({ session }) {
 
                 <div className="mb-6">
                   <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">
-                    {tfFilters.length > 0 ? `${filteredPlays.length} système${filteredPlays.length !== 1 ? "s" : ""} correspondant${filteredPlays.length !== 1 ? "s" : ""}` : "Tous les systèmes"}
+                    {tfFilters.length > 0 ? `${filteredPlays.length} système${filteredPlays.length !== 1 ? "s" : ""} correspondant${filteredPlays.length !== 1 ? "s" : ""}` : "Tous les systèmes"}{activeMatch.bothScouted ? ` — ${activeMatch.scoutedTeam}` : ""}
                   </div>
                   <div className="flex flex-col gap-2">
                     {filteredPlays.map(p => {
@@ -9772,7 +9793,7 @@ function CoachingProBoost({ session }) {
                   <div className="mb-3">
                     <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Équipe que je scoute en direct</div>
                     <div className="flex gap-2">
-                      {[{ v: "home", label: newMatchTeamHome.trim() }, { v: "away", label: newMatchTeamAway.trim() }].map(opt => (
+                      {[{ v: "home", label: newMatchTeamHome.trim() }, { v: "away", label: newMatchTeamAway.trim() }, { v: "both", label: "Les deux" }].map(opt => (
                         <button key={opt.v} onClick={() => setNewMatchScoutTarget(opt.v)}
                           className={`flex-1 px-3 py-1.5 rounded-md text-sm font-medium border ${newMatchScoutTarget === opt.v ? "text-white" : "border-[#1B2A4A]/20 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
                           style={newMatchScoutTarget === opt.v ? { backgroundColor: "var(--sport-accent)", borderColor: "var(--sport-accent)" } : undefined}>
@@ -9780,6 +9801,9 @@ function CoachingProBoost({ session }) {
                         </button>
                       ))}
                     </div>
+                    {newMatchScoutTarget === "both" && (
+                      <p className="text-[11px] text-[#1B2A4A]/40 mt-1.5">Un bouton dans l'écran de saisie permettra de basculer rapidement entre les deux Playbooks.</p>
+                    )}
                   </div>
                 )}
                 {newMatchTeamHome.trim() && newMatchTeamAway.trim() && (
@@ -9790,12 +9814,15 @@ function CoachingProBoost({ session }) {
                     if (!newMatchTeamHome.trim() || !newMatchTeamAway.trim()) { cpbAlert?.("Indique le nom des deux équipes."); return; }
                     if (!newMatchScoutTarget) { cpbAlert?.("Choisis l'équipe que tu scoutes en direct."); return; }
                     const chosenTeam = teams.find(t => t.id === (newMatchTeamId || activeTeamId)) || team;
-                    const scoutedTeam = (newMatchScoutTarget === "home" ? newMatchTeamHome : newMatchTeamAway).trim();
-                    const ourTeam = (newMatchScoutTarget === "home" ? newMatchTeamAway : newMatchTeamHome).trim();
-                    const homeAway = newMatchScoutTarget === "home" ? "exterieur" : "domicile";
+                    // "both" scoute d'abord l'équipe qui reçoit ; le bouton de bascule en direct
+                    // échange ensuite scoutedTeam/ourTeam/homeAway (voir switchScoutSide).
+                    const initialSide = newMatchScoutTarget === "away" ? "away" : "home";
+                    const scoutedTeam = (initialSide === "home" ? newMatchTeamHome : newMatchTeamAway).trim();
+                    const ourTeam = (initialSide === "home" ? newMatchTeamAway : newMatchTeamHome).trim();
+                    const homeAway = initialSide === "home" ? "exterieur" : "domicile";
                     const m = {
                       id: uid(), date: newMatchDate, time: newMatchTime || null, championnat: newMatchChampionnat.trim(),
-                      ourTeam, teamId: chosenTeam?.id || null, homeAway,
+                      ourTeam, teamId: chosenTeam?.id || null, homeAway, bothScouted: newMatchScoutTarget === "both",
                       scoutedTeam, tally: {}, createdAt: new Date().toISOString(),
                     };
                     saveMatchSessions([...matchSessions, m]);
