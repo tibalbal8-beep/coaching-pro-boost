@@ -9497,8 +9497,6 @@ function CoachingProBoost({ session }) {
                             <button key={v} onClick={() => requestMissContext(p.id, v)}
                               className="w-14 h-14 rounded-lg text-xl font-bold border-2 border-red-200 text-red-600 hover:bg-red-50 active:bg-red-100">{v}</button>
                           ))}
-                          <button onClick={() => recordOutcome(p.id, -1)}
-                            className="w-14 h-14 rounded-lg text-xl font-bold border-2 border-red-200 text-red-600 hover:bg-red-50 active:bg-red-100">-1</button>
                           <button onClick={() => recordOutcome(p.id, 1)} title="Tir manqué avec faute, lancer franc marqué : compte une nouvelle action"
                             className="w-14 h-14 rounded-lg text-sm font-bold border-2 border-green-300 text-green-700 hover:bg-green-50 active:bg-green-100">LF1</button>
                           <button onClick={() => addBonusPoint(p.id, "&1")} title="Et-1 : panier marqué + faute, le lancer franc s'ajoute à la même action"
