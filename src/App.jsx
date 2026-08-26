@@ -9179,6 +9179,7 @@ function CoachingProBoost({ session }) {
             });
             setTfFilters([]); setMatchTypeFilters([]); setNewPlayOpen(false);
             toast?.(`🔁 Scouting : ${activeMatch.ourTeam}`);
+            document.getElementById("match-tf-filters")?.scrollIntoView({ behavior: "smooth", block: "start" });
           };
           // Sélection directe d'un côté (au lieu d'une simple bascule) pour les deux boutons
           // gauche/droite : ne fait rien si le côté demandé est déjà celui affiché.
@@ -9461,7 +9462,7 @@ function CoachingProBoost({ session }) {
                   </div>
                 )}
 
-                <div className="mb-3">
+                <div className="mb-3" id="match-tf-filters">
                   <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Temps fort observé</div>
                   <div className="flex flex-wrap gap-1.5 items-center">
                     {[...new Set([...tfOptions, ...tfFilters])].map(tf => (
