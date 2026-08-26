@@ -9086,6 +9086,12 @@ function CoachingProBoost({ session }) {
             return { efg, tovPct, orbPct, ftRate };
           };
 
+          // Camp physique (domicile/extérieur) de l'équipe actuellement scoutée. Sert à taguer
+          // chaque entrée du journal de score avec une identité STABLE : contrairement à
+          // "scouted"/"other", ce tag ne doit jamais changer de sens si on bascule ensuite
+          // le Playbook affiché (switchScoutSide) — sinon les anciens points changent de camp.
+          const scoutedSideNow = () => (activeMatch.homeAway === "exterieur" ? "home" : "away");
+
           // value = null (juste compter, pas de tir) ou un nombre signé : positif = panier marqué
           // de cette valeur, négatif = tir tenté de cette valeur mais manqué.
           // missContext (uniquement pour un tir manqué à 2 ou 3 pts) = "ouvert" ou "conteste".
@@ -9101,7 +9107,7 @@ function CoachingProBoost({ session }) {
             // Les points marqués via un système appartiennent à l'équipe SCOUTÉE
             // (celle dont on suit le Playbook), pas à "nous" au sens propre.
             const prevScoreLog = activeMatch.scoreLog || [];
-            const scoreLog = value > 0 ? [...prevScoreLog, { id: uid(), team: "scouted", points: value, ts: Date.now() }] : prevScoreLog;
+            const scoreLog = value > 0 ? [...prevScoreLog, { id: uid(), team: "scouted", side: scoutedSideNow(), points: value, ts: Date.now() }] : prevScoreLog;
             updateActiveMatch({ tally: { ...(activeMatch.tally || {}), [playId]: next }, scoreLog });
             setTfFilters([]);
             setNewPlayOpen(false); setNewPlayName("");
@@ -9130,7 +9136,7 @@ function CoachingProBoost({ session }) {
               openMisses: openMissesOf(cur), contestedMisses: contestedMissesOf(cur),
             };
             const prevScoreLog = activeMatch.scoreLog || [];
-            const scoreLog = [...prevScoreLog, { id: uid(), team: "scouted", points: 1, ts: Date.now() }];
+            const scoreLog = [...prevScoreLog, { id: uid(), team: "scouted", side: scoutedSideNow(), points: 1, ts: Date.now() }];
             updateActiveMatch({ tally: { ...(activeMatch.tally || {}), [playId]: next }, scoreLog });
             const playTitre = plays.find(p => p.id === playId)?.titre || "Système";
             toast?.(`✓ ${playTitre} — +1 (${label}, même action)`);
@@ -9140,7 +9146,8 @@ function CoachingProBoost({ session }) {
           // Les boutons manuels servent à saisir le score de l'AUTRE équipe (celle qu'on ne scoute pas).
           const recordOpponentScore = (value) => {
             const prevScoreLog = activeMatch.scoreLog || [];
-            const scoreLog = [...prevScoreLog, { id: uid(), team: "other", points: value, ts: Date.now() }];
+            const otherSide = scoutedSideNow() === "home" ? "away" : "home";
+            const scoreLog = [...prevScoreLog, { id: uid(), team: "other", side: otherSide, points: value, ts: Date.now() }];
             updateActiveMatch({ scoreLog });
             toast?.(`✓ ${activeMatch.ourTeam || "Adversaire"} — +${value}`);
             setLastMatchAction({ team: "other", value, prevScoreLog, ts: Date.now() });
@@ -9186,19 +9193,20 @@ function CoachingProBoost({ session }) {
             const scoutedIsHome = activeMatch.homeAway === "exterieur";
             const homeTeamName = scoutedIsHome ? activeMatch.scoutedTeam : activeMatch.ourTeam;
             const awayTeamName = scoutedIsHome ? activeMatch.ourTeam : activeMatch.scoutedTeam;
-            const scoreLog = activeMatch.scoreLog || [];
-            const scoreScouted = scoreLog.filter(e => e.team === "scouted").reduce((s, e) => s + e.points, 0);
-            const scoreOther = scoreLog.filter(e => e.team === "other").reduce((s, e) => s + e.points, 0);
-            const scoreHome = scoutedIsHome ? scoreScouted : scoreOther;
-            const scoreAway = scoutedIsHome ? scoreOther : scoreScouted;
+            // Le camp (side: "home"/"away") de chaque entrée est stable, contrairement à team
+            // ("scouted"/"other") qui ne décrit que la situation au moment de l'action et change
+            // de sens si on bascule ensuite le Playbook affiché (voir switchScoutSide plus haut).
+            const scoreLog = (activeMatch.scoreLog || []).map(e => ({ ...e, side: e.side || (e.team === "scouted" ? (scoutedIsHome ? "home" : "away") : (scoutedIsHome ? "away" : "home")) }));
+            const scoreHome = scoreLog.filter(e => e.side === "home").reduce((s, e) => s + e.points, 0);
+            const scoreAway = scoreLog.filter(e => e.side === "away").reduce((s, e) => s + e.points, 0);
             let currentRun = null;
             if (scoreLog.length > 0) {
-              const lastTeam = scoreLog[scoreLog.length - 1].team;
+              const lastSide = scoreLog[scoreLog.length - 1].side;
               let runPoints = 0, runCount = 0;
-              for (let i = scoreLog.length - 1; i >= 0 && scoreLog[i].team === lastTeam; i--) {
+              for (let i = scoreLog.length - 1; i >= 0 && scoreLog[i].side === lastSide; i--) {
                 runPoints += scoreLog[i].points; runCount++;
               }
-              currentRun = { team: lastTeam, points: runPoints, count: runCount };
+              currentRun = { side: lastSide, points: runPoints, count: runCount };
             }
             const teamPlays = plays.filter(p => p.scoutedTeam === activeMatch.scoutedTeam);
             const tfOptions = [...new Set(teamPlays.flatMap(tfOf))];
@@ -9235,8 +9243,8 @@ function CoachingProBoost({ session }) {
                     </div>
                   </div>
                   {currentRun && currentRun.points > 0 && (
-                    <p className={`text-center text-xs font-semibold rounded-lg py-1.5 mb-3 ${currentRun.team === "scouted" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-                      🔥 Série en cours : {currentRun.team === "scouted" ? (activeMatch.scoutedTeam || "Équipe scoutée") : (activeMatch.ourTeam || "Autre équipe")} +{currentRun.points} ({currentRun.count} action{currentRun.count > 1 ? "s" : ""})
+                    <p className={`text-center text-xs font-semibold rounded-lg py-1.5 mb-3 ${currentRun.side === "home" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                      🔥 Série en cours : {currentRun.side === "home" ? (homeTeamName || "Locaux") : (awayTeamName || "Visiteurs")} +{currentRun.points} ({currentRun.count} action{currentRun.count > 1 ? "s" : ""})
                     </p>
                   )}
                   {activeMatch.bothScouted && (
