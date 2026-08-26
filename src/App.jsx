@@ -9109,7 +9109,7 @@ function CoachingProBoost({ session }) {
                 <p className="text-xs text-[#1B2A4A]/40 mb-2">
                   {activeMatch.date ? new Date(activeMatch.date).toLocaleDateString("fr-FR") : "Date inconnue"}{activeMatch.time && ` · ${activeMatch.time}`}{activeMatch.championnat && ` · ${activeMatch.championnat}`}{activeMatch.homeAway && ` · ${activeMatch.homeAway === "domicile" ? "Domicile" : "Extérieur"}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} comptabilisé{totalTally !== 1 ? "s" : ""}
                 </p>
-                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-3">
+                <div className="sticky top-0 z-30 border border-[#1B2A4A]/15 rounded-xl bg-[#F2EDE4] shadow-md p-4 mb-3">
                   <div className="flex items-center justify-around text-center mb-3">
                     <div>
                       <div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold">{activeMatch.ourTeam || "Nous"}</div>
