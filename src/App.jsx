@@ -9119,6 +9119,24 @@ function CoachingProBoost({ session }) {
             setPendingMiss(null);
           };
 
+          // LF1 / &1 : ajoute un point de lancer franc à l'action EN COURS (même possession),
+          // sans compter une nouvelle occurrence du système — contrairement à +1/+2/+3.
+          // LF1 : lancers francs après un tir manqué avec faute (l'action déjà comptée reçoit son point).
+          // &1  : "and-one", le tir (+2/+3) est déjà marqué, le lancer franc bonus s'ajoute à la même action.
+          const addBonusPoint = (playId, label) => {
+            const cur = activeMatch.tally?.[playId];
+            const next = {
+              played: playedOf(cur), points: pointsOf(cur) + 1, possible: possibleOf(cur),
+              openMisses: openMissesOf(cur), contestedMisses: contestedMissesOf(cur),
+            };
+            const prevScoreLog = activeMatch.scoreLog || [];
+            const scoreLog = [...prevScoreLog, { id: uid(), team: "scouted", points: 1, ts: Date.now() }];
+            updateActiveMatch({ tally: { ...(activeMatch.tally || {}), [playId]: next }, scoreLog });
+            const playTitre = plays.find(p => p.id === playId)?.titre || "Système";
+            toast?.(`✓ ${playTitre} — +1 (${label}, même action)`);
+            setLastMatchAction({ team: "scouted", playId, playTitre, value: 1, bonus: label, prevTally: cur, prevScoreLog, ts: Date.now() });
+          };
+
           // Les boutons manuels servent à saisir le score de l'AUTRE équipe (celle qu'on ne scoute pas).
           const recordOpponentScore = (value) => {
             const prevScoreLog = activeMatch.scoreLog || [];
@@ -9212,7 +9230,7 @@ function CoachingProBoost({ session }) {
                 {lastMatchAction && (
                   <div className="flex items-center gap-2 text-xs bg-green-50 border border-green-200 text-green-800 rounded-lg px-3 py-2 mb-3">
                     <span>
-                      Dernier : <strong>{lastMatchAction.team === "other" ? (activeMatch.ourTeam || "Autre équipe") : lastMatchAction.playTitre}</strong> {lastMatchAction.value ? (lastMatchAction.value > 0 ? `+${lastMatchAction.value}` : lastMatchAction.value) : "sans tir"} comptabilisé
+                      Dernier : <strong>{lastMatchAction.team === "other" ? (activeMatch.ourTeam || "Autre équipe") : lastMatchAction.playTitre}</strong> {lastMatchAction.value ? (lastMatchAction.value > 0 ? `+${lastMatchAction.value}` : lastMatchAction.value) : "sans tir"}{lastMatchAction.bonus ? ` (${lastMatchAction.bonus}, même action)` : ""} comptabilisé
                     </span>
                     <button onClick={undoLastMatchAction} className="ml-auto font-semibold hover:underline">↩ Annuler</button>
                   </div>
@@ -9481,7 +9499,11 @@ function CoachingProBoost({ session }) {
                           ))}
                           <button onClick={() => recordOutcome(p.id, -1)}
                             className="w-14 h-14 rounded-lg text-xl font-bold border-2 border-red-200 text-red-600 hover:bg-red-50 active:bg-red-100">-1</button>
-                          {[1, 2, 3].map(v => (
+                          <button onClick={() => addBonusPoint(p.id, "LF1")} title="Lancer franc marqué : ajoute +1 à l'action en cours"
+                            className="w-14 h-14 rounded-lg text-sm font-bold border-2 border-green-300 text-green-700 hover:bg-green-50 active:bg-green-100">LF1</button>
+                          <button onClick={() => addBonusPoint(p.id, "&1")} title="Et-1 : panier marqué + faute, le lancer franc s'ajoute à la même action"
+                            className="w-14 h-14 rounded-lg text-sm font-bold border-2 border-green-300 text-green-700 hover:bg-green-50 active:bg-green-100">&amp;1</button>
+                          {[2, 3].map(v => (
                             <button key={v} onClick={() => recordOutcome(p.id, v)}
                               className="w-14 h-14 rounded-lg text-xl font-bold border-2 border-green-300 text-green-700 hover:bg-green-50 active:bg-green-100">+{v}</button>
                           ))}
