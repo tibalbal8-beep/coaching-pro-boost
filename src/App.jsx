@@ -9119,10 +9119,10 @@ function CoachingProBoost({ session }) {
             setPendingMiss(null);
           };
 
-          // LF1 / &1 : ajoute un point de lancer franc à l'action EN COURS (même possession),
-          // sans compter une nouvelle occurrence du système — contrairement à +1/+2/+3.
-          // LF1 : lancers francs après un tir manqué avec faute (l'action déjà comptée reçoit son point).
-          // &1  : "and-one", le tir (+2/+3) est déjà marqué, le lancer franc bonus s'ajoute à la même action.
+          // &1 ("and-one") : le tir (+2/+3) est déjà marqué comme une action, le lancer franc bonus
+          // s'ajoute à cette MÊME action (pas de nouvelle occurrence du système comptée).
+          // LF1 (tir manqué avec faute, aucun -2/-3 n'a été saisi) est en revanche une action à part
+          // entière : il utilise recordOutcome(p.id, 1), comme +2/+3.
           const addBonusPoint = (playId, label) => {
             const cur = activeMatch.tally?.[playId];
             const next = {
@@ -9499,7 +9499,7 @@ function CoachingProBoost({ session }) {
                           ))}
                           <button onClick={() => recordOutcome(p.id, -1)}
                             className="w-14 h-14 rounded-lg text-xl font-bold border-2 border-red-200 text-red-600 hover:bg-red-50 active:bg-red-100">-1</button>
-                          <button onClick={() => addBonusPoint(p.id, "LF1")} title="Lancer franc marqué : ajoute +1 à l'action en cours"
+                          <button onClick={() => recordOutcome(p.id, 1)} title="Tir manqué avec faute, lancer franc marqué : compte une nouvelle action"
                             className="w-14 h-14 rounded-lg text-sm font-bold border-2 border-green-300 text-green-700 hover:bg-green-50 active:bg-green-100">LF1</button>
                           <button onClick={() => addBonusPoint(p.id, "&1")} title="Et-1 : panier marqué + faute, le lancer franc s'ajoute à la même action"
                             className="w-14 h-14 rounded-lg text-sm font-bold border-2 border-green-300 text-green-700 hover:bg-green-50 active:bg-green-100">&amp;1</button>
