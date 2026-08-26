@@ -762,9 +762,10 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Export "Mode match" : les systèmes joués et leur rentabilité (points/possession), triés par
-// fréquence — même esprit que buildScoutingReportHtml, en plus simple (un seul tableau).
-function buildMatchReportHtml(match, rows, fourFactorsHtml) {
+// Export "Mode match" : score final, systèmes joués et leur rentabilité (points/possession)
+// triés par fréquence, détail tirs ouverts/contestés, et quelques graphiques en SVG inline
+// (pas de dépendance externe : le fichier exporté doit rester autonome).
+function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const homeAwayLabel = match.homeAway === "exterieur" ? "Extérieur" : match.homeAway === "domicile" ? "Domicile" : "";
   const title = match.homeAway === "exterieur" ? `${match.scoutedTeam} vs ${match.ourTeam || "Nous"}` : `${match.ourTeam || "Nous"} vs ${match.scoutedTeam}`;
@@ -776,7 +777,47 @@ function buildMatchReportHtml(match, rows, fourFactorsHtml) {
       <td class="num">${r.played}</td>
       <td class="num">${r.points}${r.possible > 0 ? ` / ${r.possible}` : ""}</td>
       <td class="num ppp">${r.played > 0 ? (r.points / r.played).toFixed(2) : "—"}</td>
+      <td class="num miss">${r.openMisses || 0}</td>
+      <td class="num miss">${r.contestedMisses || 0}</td>
     </tr>`).join("");
+
+  // Graphique 1 : points marqués par système (barres horizontales, les 8 plus utilisés).
+  const barRows = rows.slice(0, 8);
+  const maxPoints = Math.max(1, ...barRows.map(r => r.points));
+  const barChartHtml = barRows.length === 0 ? "" : `
+    <div class="chart-block">
+      <div class="chart-title">Points marqués par système</div>
+      ${barRows.map(r => `
+        <div class="bar-row">
+          <div class="bar-label">${esc(r.titre)}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.round((r.points / maxPoints) * 100)}%"></div></div>
+          <div class="bar-value">${r.points} pt${r.points !== 1 ? "s" : ""}</div>
+        </div>`).join("")}
+    </div>`;
+
+  // Graphique 2 : répartition tirs ouverts / contestés (barre empilée simple).
+  const totalOpen = rows.reduce((s, r) => s + (r.openMisses || 0), 0);
+  const totalContested = rows.reduce((s, r) => s + (r.contestedMisses || 0), 0);
+  const totalMisses = totalOpen + totalContested;
+  const missChartHtml = totalMisses === 0 ? "" : `
+    <div class="chart-block">
+      <div class="chart-title">Tirs manqués à 2/3 pts : ouverts vs contestés</div>
+      <div class="stack-track">
+        <div class="stack-open" style="width:${Math.round((totalOpen / totalMisses) * 100)}%"></div>
+        <div class="stack-contested" style="width:${Math.round((totalContested / totalMisses) * 100)}%"></div>
+      </div>
+      <div class="stack-legend">
+        <span><i class="dot dot-open"></i> Ouverts : ${totalOpen}</span>
+        <span><i class="dot dot-contested"></i> Contestés : ${totalContested}</span>
+      </div>
+    </div>`;
+
+  const scoreHtml = !scoreInfo ? "" : `
+    <div class="scoreboard">
+      <div class="score-side"><div class="score-name">${esc(scoreInfo.homeLabel || "Locaux")} · ${esc(scoreInfo.homeTeamName || "?")}</div><div class="score-value">${scoreInfo.scoreHome ?? 0}</div></div>
+      <div class="score-sep">—</div>
+      <div class="score-side"><div class="score-name">${esc(scoreInfo.awayLabel || "Visiteurs")} · ${esc(scoreInfo.awayTeamName || "?")}</div><div class="score-value">${scoreInfo.scoreAway ?? 0}</div></div>
+    </div>`;
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -791,6 +832,11 @@ function buildMatchReportHtml(match, rows, fourFactorsHtml) {
   .header{background:#1B2A4A;color:#fff;padding:24px}
   .header h1{font-family:'Oswald',sans-serif;font-size:24px;letter-spacing:.3px}
   .header .meta{color:rgba(255,255,255,.65);font-size:13px;margin-top:6px;text-transform:capitalize}
+  .scoreboard{display:flex;align-items:center;justify-content:center;gap:28px;padding:20px 16px;border-bottom:1px solid #1B2A4A0f}
+  .score-side{text-align:center}
+  .score-name{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#1B2A4A80;margin-bottom:4px}
+  .score-value{font-family:'Oswald',sans-serif;font-size:34px;font-weight:700}
+  .score-sep{font-size:20px;color:#1B2A4A30;font-weight:700}
   table{width:100%;border-collapse:collapse}
   th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#1B2A4A80;padding:10px 16px;border-bottom:2px solid #1B2A4A15}
   th.num,td.num{text-align:center}
@@ -800,8 +846,23 @@ function buildMatchReportHtml(match, rows, fourFactorsHtml) {
   .titre{font-weight:600}
   .tf{font-size:11px;color:#1B2A4A60;margin-top:2px;font-weight:400}
   .ppp{font-weight:700}
+  .miss{color:#1B2A4A80;font-size:13px}
   .empty{padding:24px;text-align:center;color:#1B2A4A60;font-size:13px}
   .ff{padding:16px 16px 20px}
+  .chart-block{padding:18px 20px;border-top:1px solid #1B2A4A0f}
+  .chart-title{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:#1B2A4A80;font-weight:600;margin-bottom:12px}
+  .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .bar-label{width:150px;font-size:12px;font-weight:600;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bar-track{flex:1;background:#1B2A4A0d;border-radius:5px;height:14px;overflow:hidden}
+  .bar-fill{background:#FF6B35;height:100%;border-radius:5px}
+  .bar-value{width:52px;flex-shrink:0;font-size:12px;font-weight:700;text-align:right}
+  .stack-track{display:flex;height:20px;border-radius:6px;overflow:hidden;background:#1B2A4A0d}
+  .stack-open{background:#22c55e}
+  .stack-contested{background:#ef4444}
+  .stack-legend{display:flex;gap:18px;margin-top:10px;font-size:12px;color:#1B2A4A}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
+  .dot-open{background:#22c55e}
+  .dot-contested{background:#ef4444}
   @media print{body{background:#fff;padding:0}.card{box-shadow:none;border-radius:0}}
 </style>
 </head>
@@ -811,11 +872,14 @@ function buildMatchReportHtml(match, rows, fourFactorsHtml) {
       <h1>${esc(title)}</h1>
       <div class="meta">${esc(dateStr)}${match.time ? ` · ${esc(match.time)}` : ""}${match.championnat ? ` · ${esc(match.championnat)}` : ""}${homeAwayLabel ? ` · ${esc(homeAwayLabel)}` : ""}</div>
     </div>
+    ${scoreHtml}
     ${rows.length === 0 ? `<div class="empty">Aucun système comptabilisé pour ce match.</div>` : `
     <table>
-      <thead><tr><th></th><th>Système</th><th class="num">Joué</th><th class="num">Points</th><th class="num">Pts/possession</th></tr></thead>
+      <thead><tr><th></th><th>Système</th><th class="num">Joué</th><th class="num">Points</th><th class="num">Pts/possession</th><th class="num">Tirs ouverts</th><th class="num">Tirs contestés</th></tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table>`}
+    ${barChartHtml}
+    ${missChartHtml}
     ${fourFactorsHtml ? `<div class="ff">${fourFactorsHtml}</div>` : ""}
   </div>
 </body>
@@ -9444,8 +9508,11 @@ function CoachingProBoost({ session }) {
                         played: playedOf(activeMatch.tally?.[p.id]),
                         points: pointsOf(activeMatch.tally?.[p.id]),
                         possible: possibleOf(activeMatch.tally?.[p.id]),
+                        openMisses: openMissesOf(activeMatch.tally?.[p.id]),
+                        contestedMisses: contestedMissesOf(activeMatch.tally?.[p.id]),
                       })).filter(r => r.played > 0);
-                      const html = buildMatchReportHtml(activeMatch, rows);
+                      const scoreInfo = { homeLabel: "Locaux", awayLabel: "Visiteurs", homeTeamName, awayTeamName, scoreHome, scoreAway };
+                      const html = buildMatchReportHtml(activeMatch, rows, scoreInfo);
                       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
                       downloadBlob(blob, `${slugifyForFile(activeMatch.scoutedTeam || "match")}-${activeMatch.date || ""}.html`);
                     }} className="text-xs font-medium text-[#FF6B35] hover:underline">📤 Exporter les systèmes joués</button>
