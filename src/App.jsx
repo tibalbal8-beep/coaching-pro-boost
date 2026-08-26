@@ -9254,13 +9254,13 @@ function CoachingProBoost({ session }) {
 
                 <button onClick={() => setMatchNotesOpen(o => !o)}
                   title="Notes du coach"
-                  className="fixed bottom-24 right-4 z-40 w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-white"
+                  className="fixed bottom-40 right-4 z-40 w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-white"
                   style={{ backgroundColor: "var(--sport-accent)" }}>
                   <StickyNote size={20} />
                   {activeMatch.notes?.trim() && <span className="absolute top-0 right-0 w-3 h-3 rounded-full bg-green-500 border-2 border-white" />}
                 </button>
                 {matchNotesOpen && (
-                  <div className="fixed bottom-40 right-4 z-40 w-72 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-[#1B2A4A]/15 p-3">
+                  <div className="fixed bottom-56 right-4 z-40 w-72 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-[#1B2A4A]/15 p-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-semibold uppercase tracking-wide text-[#1B2A4A]/50">Notes du coach</span>
                       <button onClick={() => setMatchNotesOpen(false)} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={16} /></button>
