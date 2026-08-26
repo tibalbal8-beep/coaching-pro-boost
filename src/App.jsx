@@ -7338,9 +7338,10 @@ function CoachingProBoost({ session }) {
   const [newMatchDate, setNewMatchDate] = useState(new Date().toISOString().slice(0, 10));
   const [newMatchTime, setNewMatchTime] = useState("");
   const [newMatchChampionnat, setNewMatchChampionnat] = useState("");
-  const [newMatchScoutedTeam, setNewMatchScoutedTeam] = useState("");
   const [newMatchTeamId, setNewMatchTeamId] = useState(null); // null = équipe active par défaut
-  const [newMatchHomeAway, setNewMatchHomeAway] = useState("domicile");
+  const [newMatchTeamHome, setNewMatchTeamHome] = useState(""); // nom de l'équipe qui reçoit
+  const [newMatchTeamAway, setNewMatchTeamAway] = useState(""); // nom de l'équipe qui se déplace
+  const [newMatchScoutTarget, setNewMatchScoutTarget] = useState(""); // "home" ou "away" : équipe scoutée en direct
   const [tfFilters, setTfFilters] = useState([]);
   const [newTfInput, setNewTfInput] = useState("");
   const [matchTypeFilters, setMatchTypeFilters] = useState([]);
@@ -9623,53 +9624,66 @@ function CoachingProBoost({ session }) {
                       className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Championnat</div>
-                    <input value={newMatchChampionnat} onChange={e => setNewMatchChampionnat(e.target.value)} placeholder="Ex: NM1"
-                      className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Domicile / Extérieur</div>
-                    <select value={newMatchHomeAway} onChange={e => setNewMatchHomeAway(e.target.value)}
-                      className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white">
-                      <option value="domicile">À domicile</option>
-                      <option value="exterieur">À l'extérieur</option>
-                    </select>
-                  </div>
+                <div className="mb-3">
+                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Championnat</div>
+                  <input value={newMatchChampionnat} onChange={e => setNewMatchChampionnat(e.target.value)} placeholder="Ex: NM1"
+                    className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
                 </div>
                 {teams.length > 1 && (
                   <div className="mb-3">
-                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Notre équipe</div>
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Rattacher à (stats internes)</div>
                     <select value={newMatchTeamId || activeTeamId || ""} onChange={e => setNewMatchTeamId(e.target.value)}
                       className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white">
                       {teams.map(t => <option key={t.id} value={t.id}>{t.nom}{t.niveau ? ` · ${t.niveau}` : ""}</option>)}
                     </select>
                   </div>
                 )}
-                <div className="mb-3">
-                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Équipe adverse (scoutée dans le Playbook)</div>
-                  <input value={newMatchScoutedTeam} onChange={e => setNewMatchScoutedTeam(e.target.value)} placeholder="Ex: Besançon"
-                    list="scouted-teams-list" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Équipe qui reçoit</div>
+                    <input value={newMatchTeamHome} onChange={e => setNewMatchTeamHome(e.target.value)} placeholder="Ex: Besançon"
+                      list="scouted-teams-list" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Équipe qui se déplace</div>
+                    <input value={newMatchTeamAway} onChange={e => setNewMatchTeamAway(e.target.value)} placeholder="Ex: SCABB"
+                      list="scouted-teams-list" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                  </div>
                   <datalist id="scouted-teams-list">{scoutedTeams.map(t => <option key={t} value={t} />)}</datalist>
                 </div>
-                {newMatchScoutedTeam.trim() && (() => {
-                  const ourName = (teams.find(t => t.id === (newMatchTeamId || activeTeamId))?.nom) || team?.nom || "Nous";
-                  const home = newMatchHomeAway === "domicile" ? ourName : newMatchScoutedTeam.trim();
-                  const away = newMatchHomeAway === "domicile" ? newMatchScoutedTeam.trim() : ourName;
-                  return <p className="text-xs text-[#1B2A4A]/50 mb-3 italic">{home} vs {away}{newMatchTime ? ` · ${newMatchTime}` : ""}</p>;
-                })()}
+                {newMatchTeamHome.trim() && newMatchTeamAway.trim() && (
+                  <div className="mb-3">
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Équipe que je scoute en direct</div>
+                    <div className="flex gap-2">
+                      {[{ v: "home", label: newMatchTeamHome.trim() }, { v: "away", label: newMatchTeamAway.trim() }].map(opt => (
+                        <button key={opt.v} onClick={() => setNewMatchScoutTarget(opt.v)}
+                          className={`flex-1 px-3 py-1.5 rounded-md text-sm font-medium border ${newMatchScoutTarget === opt.v ? "text-white" : "border-[#1B2A4A]/20 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
+                          style={newMatchScoutTarget === opt.v ? { backgroundColor: "var(--sport-accent)", borderColor: "var(--sport-accent)" } : undefined}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {newMatchTeamHome.trim() && newMatchTeamAway.trim() && (
+                  <p className="text-xs text-[#1B2A4A]/50 mb-3 italic">{newMatchTeamHome.trim()} vs {newMatchTeamAway.trim()}{newMatchTime ? ` · ${newMatchTime}` : ""}</p>
+                )}
                 <div className="flex gap-2">
                   <button onClick={() => {
-                    if (!newMatchScoutedTeam.trim()) { cpbAlert?.("Indique l'équipe adverse."); return; }
+                    if (!newMatchTeamHome.trim() || !newMatchTeamAway.trim()) { cpbAlert?.("Indique le nom des deux équipes."); return; }
+                    if (!newMatchScoutTarget) { cpbAlert?.("Choisis l'équipe que tu scoutes en direct."); return; }
                     const chosenTeam = teams.find(t => t.id === (newMatchTeamId || activeTeamId)) || team;
+                    const scoutedTeam = (newMatchScoutTarget === "home" ? newMatchTeamHome : newMatchTeamAway).trim();
+                    const ourTeam = (newMatchScoutTarget === "home" ? newMatchTeamAway : newMatchTeamHome).trim();
+                    const homeAway = newMatchScoutTarget === "home" ? "exterieur" : "domicile";
                     const m = {
                       id: uid(), date: newMatchDate, time: newMatchTime || null, championnat: newMatchChampionnat.trim(),
-                      ourTeam: chosenTeam?.nom || "", teamId: chosenTeam?.id || null, homeAway: newMatchHomeAway,
-                      scoutedTeam: newMatchScoutedTeam.trim(), tally: {}, createdAt: new Date().toISOString(),
+                      ourTeam, teamId: chosenTeam?.id || null, homeAway,
+                      scoutedTeam, tally: {}, createdAt: new Date().toISOString(),
                     };
                     saveMatchSessions([...matchSessions, m]);
-                    setNewMatchOpen(false); setNewMatchChampionnat(""); setNewMatchScoutedTeam(""); setNewMatchTime(""); setNewMatchTeamId(null); setNewMatchHomeAway("domicile");
+                    setNewMatchOpen(false); setNewMatchChampionnat(""); setNewMatchTime(""); setNewMatchTeamId(null);
+                    setNewMatchTeamHome(""); setNewMatchTeamAway(""); setNewMatchScoutTarget("");
                     setActiveMatchId(m.id);
                   }} className="text-sm font-semibold text-white px-4 py-2 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>Créer le match</button>
                   <button onClick={() => setNewMatchOpen(false)} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] px-4 py-2">Annuler</button>
