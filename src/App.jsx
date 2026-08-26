@@ -9173,6 +9173,12 @@ function CoachingProBoost({ session }) {
             setTfFilters([]); setMatchTypeFilters([]); setNewPlayOpen(false);
             toast?.(`🔁 Scouting : ${activeMatch.ourTeam}`);
           };
+          // Sélection directe d'un côté (au lieu d'une simple bascule) pour les deux boutons
+          // gauche/droite : ne fait rien si le côté demandé est déjà celui affiché.
+          const setScoutSide = (side) => {
+            const currentSide = activeMatch.homeAway === "exterieur" ? "home" : "away";
+            if (side !== currentSide) switchScoutSide();
+          };
 
           // ── Vue "saisie" : un match est actif ──────────────────────────────────
           if (activeMatch) {
@@ -9234,11 +9240,7 @@ function CoachingProBoost({ session }) {
                     </p>
                   )}
                   {activeMatch.bothScouted && (
-                    <button onClick={switchScoutSide}
-                      className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-white rounded-lg py-2 mb-3"
-                      style={{ backgroundColor: "var(--sport-accent)" }}>
-                      🔁 Playbook affiché : <strong>{activeMatch.scoutedTeam}</strong> — basculer vers {activeMatch.ourTeam}
-                    </button>
+                    <p className="text-center text-[11px] text-[#1B2A4A]/40 mb-3">Playbook affiché : <strong className="text-[#1B2A4A]/70">{activeMatch.scoutedTeam}</strong> — boutons de bascule à gauche/droite de l'écran</p>
                   )}
                   <div className="flex items-center justify-center gap-2">
                     <span className="text-xs text-[#1B2A4A]/40 mr-1">Score {activeMatch.ourTeam || "autre équipe"} :</span>
@@ -9275,13 +9277,13 @@ function CoachingProBoost({ session }) {
 
                 <button onClick={() => setMatchNotesOpen(o => !o)}
                   title="Notes du coach"
-                  className="fixed bottom-40 right-4 z-40 w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-white"
+                  className="fixed top-4 right-4 z-40 w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-white"
                   style={{ backgroundColor: "var(--sport-accent)" }}>
                   <StickyNote size={20} />
                   {activeMatch.notes?.trim() && <span className="absolute top-0 right-0 w-3 h-3 rounded-full bg-green-500 border-2 border-white" />}
                 </button>
                 {matchNotesOpen && (
-                  <div className="fixed bottom-56 right-4 z-40 w-72 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-[#1B2A4A]/15 p-3">
+                  <div className="fixed top-20 right-4 z-40 w-72 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-2xl border border-[#1B2A4A]/15 p-3">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-semibold uppercase tracking-wide text-[#1B2A4A]/50">Notes du coach</span>
                       <button onClick={() => setMatchNotesOpen(false)} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={16} /></button>
@@ -9290,6 +9292,25 @@ function CoachingProBoost({ session }) {
                       autoFocus placeholder="Ajustements, consignes de mi-temps, joueurs à surveiller..."
                       className="w-full h-40 border border-[#1B2A4A]/20 rounded-lg p-2 text-sm outline-none focus:border-[#FF6B35] resize-none" />
                   </div>
+                )}
+
+                {activeMatch.bothScouted && (
+                  <>
+                    <button onClick={() => setScoutSide("home")} title={`Scouter ${homeTeamName}`}
+                      className="fixed bottom-40 left-4 z-40 w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-[10px] font-bold text-center leading-tight px-1"
+                      style={activeMatch.scoutedTeam === homeTeamName
+                        ? { backgroundColor: "var(--sport-accent)", color: "#fff" }
+                        : { backgroundColor: "#fff", color: "#1B2A4A", border: "2px solid #1B2A4A30" }}>
+                      {(homeTeamName || "Locaux").slice(0, 8)}
+                    </button>
+                    <button onClick={() => setScoutSide("away")} title={`Scouter ${awayTeamName}`}
+                      className="fixed bottom-40 right-4 z-40 w-12 h-12 rounded-full shadow-lg flex items-center justify-center text-[10px] font-bold text-center leading-tight px-1"
+                      style={activeMatch.scoutedTeam === awayTeamName
+                        ? { backgroundColor: "var(--sport-accent)", color: "#fff" }
+                        : { backgroundColor: "#fff", color: "#1B2A4A", border: "2px solid #1B2A4A30" }}>
+                      {(awayTeamName || "Visiteurs").slice(0, 8)}
+                    </button>
+                  </>
                 )}
 
                 <div className="flex flex-wrap items-center gap-3 mb-5">
