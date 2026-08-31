@@ -7153,8 +7153,11 @@ function CoachingProBoost({ session }) {
       // demi-terrain, un terrain complet et un schéma avec du texte qui déborde au-dessus du
       // terrain ont chacun une hauteur naturelle différente et se décalent entre eux dans la
       // rangée — même avec une légende de hauteur variable au-dessus.
+      // Grille à 3 colonnes fixes (pas flex:1 qui étirait un 4e schéma seul sur sa ligne
+      // plus large que les 3 du dessus) : chaque case fait la même largeur, quel que soit
+      // le nombre de schémas ou leur position dans la dernière ligne.
       const imgsHtml = play._images.map(img => `
-        <div style="flex:1;min-width:180px;max-width:260px;display:flex;flex-direction:column;">
+        <div style="display:flex;flex-direction:column;">
           <div style="font-size:10px;color:#888;margin-bottom:3px;font-style:italic;min-height:12px;">${img.annotation || ""}</div>
           <div style="height:180px;background:#f5f5f5;border-radius:6px;border:1px solid #ddd;display:flex;align-items:center;justify-content:center;overflow:hidden;">
             <img src="${img.data}" style="width:100%;height:100%;object-fit:contain;" />
@@ -7176,7 +7179,7 @@ function CoachingProBoost({ session }) {
             <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
               ${play.tags.map(t => `<span style="font-size:10px;padding:2px 7px;background:rgba(255,107,53,0.12);color:#FF6B35;border-radius:20px;">${t}</span>`).join("")}
             </div>` : ""}
-          ${play._images.length > 0 ? `<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;">${imgsHtml}</div>` : ""}
+          ${play._images.length > 0 ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px;">${imgsHtml}</div>` : ""}
         </div>`;
     }).join("");
 
