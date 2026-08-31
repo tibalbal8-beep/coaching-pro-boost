@@ -8468,24 +8468,7 @@ function CoachingProBoost({ session }) {
                           .filter(t => t.toLowerCase().includes(newThemeInput.trim().toLowerCase()))
                           .sort((a, b) => a.localeCompare(b, "fr"))
                           .map(t => (
-                            <span key={t} className="inline-flex items-center gap-0.5">
-                              <Tag active={filterTheme.includes(t)} onClick={() => toggleFilter(filterTheme, setFilterTheme, t)} color="orange">{t}</Tag>
-                              <button type="button" title={`Supprimer le thème "${t}"`}
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  const count = exercises.filter(ex => ex.themes?.includes(t)).length;
-                                  const confirmed = await cpbAlert(
-                                    count > 0
-                                      ? `Supprimer le thème "${t}" ? Il est utilisé par ${count} exercice${count > 1 ? "s" : ""} — ils le garderont, mais il ne sera plus proposé dans la liste (utile pour retirer un doublon).`
-                                      : `Supprimer le thème "${t}" ?`,
-                                    { confirm: true }
-                                  );
-                                  if (!confirmed) return;
-                                  saveThemes(themes.filter(x => x !== t));
-                                  setFilterTheme(filterTheme.filter(x => x !== t));
-                                }}
-                                className="text-[#1B2A4A]/25 hover:text-red-600 -ml-1.5"><X size={11} /></button>
-                            </span>
+                            <Tag key={t} active={filterTheme.includes(t)} onClick={() => toggleFilter(filterTheme, setFilterTheme, t)} color="orange">{t}</Tag>
                           ))}
                         {newThemeInput.trim() && !themes.some(t => t.toLowerCase().includes(newThemeInput.trim().toLowerCase())) && (
                           <p className="text-xs text-[#1B2A4A]/40 w-full">Aucun thème existant ne correspond — Entrée pour l'ajouter.</p>
