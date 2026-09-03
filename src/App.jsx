@@ -407,6 +407,12 @@ function useStore(sport = DEFAULT_SPORT) {
   const individualSessionsKey = `individualSessions:${sport}`;
   const [matchSessions, setMatchSessions] = useState([]);
   const matchSessionsKey = `matchSessions:${sport}`;
+  // Copie locale (localStorage, synchrone) du Mode match — seule donnée de l'app à en avoir
+  // une : c'est la seule pensée pour être utilisée en direct, sans connexion, pendant un match.
+  const matchSessionsLocalKey = `cpb_local_matchSessions:${sport}`;
+  const [matchSyncPending, setMatchSyncPending] = useState(false);
+  const matchSyncPendingRef = useRef(false);
+  useEffect(() => { matchSyncPendingRef.current = matchSyncPending; }, [matchSyncPending]);
   const [plays, setPlays] = useState([]);
   const [playTags, setPlayTags] = useState([]);
   const [clubLogo, setClubLogo] = useState(null);
@@ -482,7 +488,16 @@ function useStore(sport = DEFAULT_SPORT) {
       try {
         const ms = await storage.get(matchSessionsKey);
         setMatchSessions(ms ? JSON.parse(ms.value) : []);
-      } catch { hadError = true; }
+      } catch {
+        // Repli hors-ligne : si une copie locale pas encore synchronisée existe (match en
+        // cours saisi sans connexion), on l'utilise plutôt que de bloquer tout le chargement —
+        // permet de rouvrir l'app sans réseau et de continuer un match déjà commencé.
+        try {
+          const cached = localStorage.getItem(matchSessionsLocalKey);
+          if (cached) { setMatchSessions(JSON.parse(cached)); setMatchSyncPending(true); }
+          else hadError = true;
+        } catch { hadError = true; }
+      }
       if (hadError) setLoadError(true);
       setLoaded(true);
     })();
@@ -560,7 +575,39 @@ function useStore(sport = DEFAULT_SPORT) {
   const saveActiveTeamId = (next) => { setActiveTeamId(next); persist("activeTeamId", JSON.stringify(next)); };
   const savePlayers = (next) => { setPlayers(next); persist("players", JSON.stringify(next)); };
   const saveIndividualSessions = (next) => { setIndividualSessions(next); persist(individualSessionsKey, JSON.stringify(next)); };
-  const saveMatchSessions = (next) => { setMatchSessions(next); persist(matchSessionsKey, JSON.stringify(next)); };
+  // Le Mode match a besoin de continuer à fonctionner sans connexion (gymnase sans réseau,
+  // coupure en cours de match) : contrairement à persist() utilisé pour le reste de l'app,
+  // aucune alerte bloquante à chaque échec — juste une resynchronisation silencieuse en fond
+  // dès que la connexion revient, avec un indicateur discret côté écran de saisie.
+  const matchSessionsRef = useRef(matchSessions);
+  useEffect(() => { matchSessionsRef.current = matchSessions; }, [matchSessions]);
+  const trySyncMatchSessions = useCallback(async (data) => {
+    try {
+      const r = await storage.set(matchSessionsKey, JSON.stringify(data));
+      if (!r) throw new Error("Storage set returned null for " + matchSessionsKey);
+      setMatchSyncPending(false);
+      storage.snapshot(matchSessionsKey, JSON.stringify(data)).catch(() => {});
+      return true;
+    } catch (e) {
+      console.error("Match sync failed, will retry", e);
+      setMatchSyncPending(true);
+      return false;
+    }
+  }, [matchSessionsKey]);
+  // Retente toutes les 10s tant qu'une écriture est en attente, et immédiatement dès que le
+  // navigateur signale le retour du réseau ("online").
+  useEffect(() => {
+    if (!matchSyncPending) return;
+    const retry = () => { if (matchSyncPendingRef.current) trySyncMatchSessions(matchSessionsRef.current); };
+    const id = setInterval(retry, 10000);
+    window.addEventListener("online", retry);
+    return () => { clearInterval(id); window.removeEventListener("online", retry); };
+  }, [matchSyncPending, trySyncMatchSessions]);
+  const saveMatchSessions = (next) => {
+    setMatchSessions(next);
+    try { localStorage.setItem(matchSessionsLocalKey, JSON.stringify(next)); } catch {}
+    trySyncMatchSessions(next);
+  };
   const savePlays = async (next) => {
     for (const play of next) {
       for (const img of play.images || []) {
@@ -593,7 +640,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, loadError, persist };
+  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
 }
 
 function usePdfJs() {
@@ -6860,7 +6907,7 @@ function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAl
 function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
   const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, canUseMatchmode, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
-  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, loadError, persist } = useStore(sport);
+  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
   const SPORT_FORMATS = formats;
@@ -9249,6 +9296,11 @@ function CoachingProBoost({ session }) {
                 <p className="text-xs text-[#1B2A4A]/40 mb-2">
                   {activeMatch.date ? new Date(activeMatch.date).toLocaleDateString("fr-FR") : "Date inconnue"}{activeMatch.time && ` · ${activeMatch.time}`}{activeMatch.championnat && ` · ${activeMatch.championnat}`}{activeMatch.homeAway && ` · ${activeMatch.homeAway === "domicile" ? "Domicile" : "Extérieur"}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} comptabilisé{totalTally !== 1 ? "s" : ""}
                 </p>
+                {matchSyncPending && (
+                  <p className="flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                    🔌 Pas de connexion — tes actions sont gardées sur cet appareil et se synchroniseront automatiquement dès que le réseau reviendra. Ne ferme pas l'appli entre-temps.
+                  </p>
+                )}
                 <div className="sticky top-0 z-30 border border-[#1B2A4A]/15 rounded-xl bg-[#F2EDE4] shadow-md p-4 mb-3">
                   <div className="flex items-center justify-around text-center mb-3">
                     <div>
