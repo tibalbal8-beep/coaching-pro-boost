@@ -7380,8 +7380,12 @@ function CoachingProBoost({ session }) {
   const activeSessionRef = useRef(null);
   useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
 
-  // Autosave toutes les 30 secondes
+  // Autosave toutes les 30 secondes. Ne doit JAMAIS tourner si le chargement initial a
+  // échoué (loadError) : exercises/sessions seraient alors des tableaux vides par défaut
+  // (pas encore récupérés du serveur), et cet autosave les aurait réécrits par-dessus les
+  // vraies données au bout de 30 secondes, sans aucune action de l'utilisateur.
   useEffect(() => {
+    if (loadError) return;
     const interval = setInterval(async () => {
       try {
         await Promise.all([
@@ -7392,7 +7396,7 @@ function CoachingProBoost({ session }) {
       } catch {}
     }, 30000);
     return () => clearInterval(interval);
-  }, [exercises, sessions, sport]);
+  }, [exercises, sessions, sport, loadError]);
   const [newThemeInput, setNewThemeInput] = useState("");
   const [lastSaved, setLastSaved] = useState(null);
   const [repairingVisuals, setRepairingVisuals] = useState(false);
