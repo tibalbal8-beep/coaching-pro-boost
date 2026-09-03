@@ -411,14 +411,22 @@ function useStore(sport = DEFAULT_SPORT) {
   const [playTags, setPlayTags] = useState([]);
   const [clubLogo, setClubLogo] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  // Une coupure réseau (partage de connexion, etc.) PENDANT le chargement initial faisait
+  // échouer chaque storage.get() silencieusement (try/catch vide) : l'app affichait alors un
+  // catalogue vide comme si tout avait été perdu, alors que les données étaient toujours là
+  // côté serveur — le vrai risque étant qu'un enregistrement ultérieur écrase le bon état
+  // distant avec cet état local vide. loadError permet d'avertir au lieu de continuer en silence.
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     (async () => {
-      try { const tm = await storage.get("teams"); if (tm) setTeams(JSON.parse(tm.value)); } catch {}
-      try { const at = await storage.get("activeTeamId"); if (at) setActiveTeamId(JSON.parse(at.value)); } catch {}
-      try { const pl = await storage.get("players"); setPlayers(pl ? JSON.parse(pl.value) : []); } catch {}
-      try { const pt = await storage.get("playTags"); setPlayTags(pt ? JSON.parse(pt.value) : []); } catch {}
-      try { const cl = await storage.get("clubLogo"); if (cl) setClubLogo(cl.value); } catch {}
+      let hadError = false;
+      try { const tm = await storage.get("teams"); if (tm) setTeams(JSON.parse(tm.value)); } catch { hadError = true; }
+      try { const at = await storage.get("activeTeamId"); if (at) setActiveTeamId(JSON.parse(at.value)); } catch { hadError = true; }
+      try { const pl = await storage.get("players"); setPlayers(pl ? JSON.parse(pl.value) : []); } catch { hadError = true; }
+      try { const pt = await storage.get("playTags"); setPlayTags(pt ? JSON.parse(pt.value) : []); } catch { hadError = true; }
+      try { const cl = await storage.get("clubLogo"); if (cl) setClubLogo(cl.value); } catch { hadError = true; }
+      if (hadError) setLoadError(true);
       setLoaded(true);
     })();
   }, []);
@@ -430,6 +438,7 @@ function useStore(sport = DEFAULT_SPORT) {
   // destructif, l'ancienne clé n'est jamais supprimée, seulement lue en fallback.
   useEffect(() => {
     (async () => {
+      let hadError = false;
       try {
         const th = await storage.get(themesKey);
         if (th) {
@@ -441,39 +450,40 @@ function useStore(sport = DEFAULT_SPORT) {
         } else {
           setThemes(SPORTS_CONFIG[sport]?.themes || []);
         }
-      } catch {}
+      } catch { hadError = true; }
       try {
         const fm = await storage.get(formatsKey);
         setFormats(fm ? JSON.parse(fm.value) : (SPORTS_CONFIG[sport]?.formats || FORMATS));
-      } catch {}
+      } catch { hadError = true; }
       try {
         const pt = await storage.get(playTypesKey);
         setPlayTypes(pt ? JSON.parse(pt.value) : PLAY_TYPES);
-      } catch {}
+      } catch { hadError = true; }
       try {
         let ex = await storage.get(exercisesKey);
         if (!ex) { const legacy = await storage.get("exercises"); if (legacy) ex = legacy; }
         const list = ex ? JSON.parse(ex.value) : [];
         setExercises(list.map(e => e.hasFile ? { ...e, file: { name: e.fileName, type: e.fileType, data: null } } : e));
-      } catch {}
+      } catch { hadError = true; }
       try {
         let se = await storage.get(sessionsKey);
         if (!se) { const legacy = await storage.get("sessions"); if (legacy) se = legacy; }
         setSessions(se ? JSON.parse(se.value) : []);
-      } catch {}
+      } catch { hadError = true; }
       try {
         let pb = await storage.get(playsKey);
         if (!pb) { const legacy = await storage.get("plays"); if (legacy) pb = legacy; }
         setPlays(pb ? JSON.parse(pb.value) : []);
-      } catch {}
+      } catch { hadError = true; }
       try {
         const is = await storage.get(individualSessionsKey);
         setIndividualSessions(is ? JSON.parse(is.value) : []);
-      } catch {}
+      } catch { hadError = true; }
       try {
         const ms = await storage.get(matchSessionsKey);
         setMatchSessions(ms ? JSON.parse(ms.value) : []);
-      } catch {}
+      } catch { hadError = true; }
+      if (hadError) setLoadError(true);
       setLoaded(true);
     })();
   }, [sport]);
@@ -583,7 +593,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist };
+  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, loadError, persist };
 }
 
 function usePdfJs() {
@@ -6850,7 +6860,7 @@ function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAl
 function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
   const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, canUseMatchmode, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
-  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, persist } = useStore(sport);
+  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, loadError, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
   const SPORT_FORMATS = formats;
@@ -7921,6 +7931,24 @@ function CoachingProBoost({ session }) {
   };
 
   if (!loaded) return <div className="p-8 text-[#1B2A4A]/50 text-sm">Chargement...</div>;
+
+  // Une partie des données n'a pas pu être récupérée (coupure réseau pendant le chargement,
+  // souvent un partage de connexion instable) : on bloque plutôt que d'afficher un catalogue
+  // vide qui ressemble à une perte de données — rien n'a été effacé côté serveur, mais
+  // continuer ici pourrait écraser le bon état distant avec cet état local incomplet dès la
+  // prochaine sauvegarde.
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6" style={{ backgroundColor: "#F2EDE4" }}>
+        <div className="max-w-sm bg-white rounded-xl shadow-lg border border-[#1B2A4A]/10 p-6 text-center">
+          <div className="text-3xl mb-3">📡</div>
+          <h2 className="font-bold text-[#1B2A4A] mb-2" style={{ fontFamily: "Oswald, sans-serif" }}>Connexion instable</h2>
+          <p className="text-sm text-[#1B2A4A]/60 mb-4">Une partie de tes données n'a pas pu être chargée (coupure réseau). Rien n'a été supprimé — mais pour éviter d'écraser tes données par erreur, ne fais aucune modification tant que la connexion n'est pas revenue.</p>
+          <button onClick={() => window.location.reload()} className="px-4 py-2 rounded-md text-sm font-semibold text-white" style={{ backgroundColor: SPORT_COLOR }}>Réessayer</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F2EDE4]" style={{ fontFamily: "Inter, sans-serif", "--sport-accent": SPORT_COLOR }}>
