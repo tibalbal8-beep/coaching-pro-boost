@@ -5082,6 +5082,27 @@ function buildHomography(src4, dst4) {
 
 function dist2pts(a, b) { return Math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2); }
 
+// Pivote une image (dataURL) de 90° par pas — utile pour une photo prise en mauvais sens
+// avant de la redresser (voir PerspectiveCorrectionView).
+function rotateImageDataUrl(dataUrl, degrees) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const swap = ((degrees / 90) % 2 + 2) % 2 !== 0;
+      const canvas = document.createElement("canvas");
+      canvas.width = swap ? img.naturalHeight : img.naturalWidth;
+      canvas.height = swap ? img.naturalWidth : img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((degrees * Math.PI) / 180);
+      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+      resolve(canvas.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
 function warpPerspective(imgEl, corners) {
   const naturalW = imgEl.naturalWidth, naturalH = imgEl.naturalHeight;
   const maxW = 1800;
@@ -5135,6 +5156,23 @@ function PerspectiveCorrectionView({ imageData, onConfirm, onSkip }) {
   const [corners, setCorners] = useState(null); // [TL, TR, BR, BL] image coords
   const [dragging, setDragging] = useState(null);
   const [processing, setProcessing] = useState(false);
+  // Photo pivotée si besoin (avant redressement) — remplace imageData tant qu'on tourne.
+  const [displayImage, setDisplayImage] = useState(imageData);
+  const [rotating, setRotating] = useState(false);
+
+  const handleRotate = async () => {
+    setRotating(true);
+    try {
+      const rotated = await rotateImageDataUrl(displayImage, 90);
+      setImgSize(null);
+      setCorners(null);
+      setDisplayImage(rotated);
+    } catch {
+      /* image illisible pour la rotation, on garde l'affichage actuel */
+    } finally {
+      setRotating(false);
+    }
+  };
 
   const onImgLoad = () => {
     const img = imgRef.current;
@@ -5182,14 +5220,20 @@ function PerspectiveCorrectionView({ imageData, onConfirm, onSkip }) {
           <div className="text-white font-bold text-sm" style={{ fontFamily:"Oswald,sans-serif" }}>REDRESSER LA PHOTO</div>
           <div className="text-white/50 text-xs">Glisse les 4 coins sur les bords de ta feuille</div>
         </div>
-        <button onClick={onSkip} className="text-white/50 text-xs border border-white/20 rounded-lg px-3 py-1.5 hover:text-white">Passer</button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button onClick={handleRotate} disabled={rotating} title="Pivoter la photo de 90°"
+            className="text-white/70 border border-white/20 rounded-lg px-3 py-1.5 hover:text-white disabled:opacity-50 flex items-center justify-center">
+            {rotating ? <Loader2 size={15} className="animate-spin" /> : "⟳ Pivoter"}
+          </button>
+          <button onClick={() => onSkip(displayImage)} className="text-white/50 text-xs border border-white/20 rounded-lg px-3 py-1.5 hover:text-white">Passer</button>
+        </div>
       </div>
 
       <div ref={containerRef} className="flex-1 relative overflow-hidden"
         style={{ touchAction: "none" }}
         onPointerMove={onPointerMove}
         onPointerUp={() => setDragging(null)}>
-        <img ref={imgRef} src={imageData} onLoad={onImgLoad} alt=""
+        <img ref={imgRef} src={displayImage} onLoad={onImgLoad} alt=""
           draggable={false}
           style={layout ? { position:"absolute", left:layout.ox, top:layout.oy, width:layout.dw, height:layout.dh, userSelect:"none", pointerEvents:"none" } : { opacity:0 }} />
 
@@ -5225,7 +5269,7 @@ function PerspectiveCorrectionView({ imageData, onConfirm, onSkip }) {
       </div>
 
       <div className="px-4 py-4 bg-[#1B2A4A] flex gap-3">
-        <button onClick={onSkip} className="flex-1 border border-white/20 text-white/60 rounded-xl py-3 text-sm">
+        <button onClick={() => onSkip(displayImage)} className="flex-1 border border-white/20 text-white/60 rounded-xl py-3 text-sm">
           Sans correction
         </button>
         <button onClick={handleConfirm} disabled={processing || !corners}
@@ -10564,7 +10608,7 @@ function CoachingProBoost({ session }) {
           <PerspectiveCorrectionView
             imageData={pendingPerspectivePhoto}
             onConfirm={confirmSessionPhoto}
-            onSkip={() => confirmSessionPhoto(pendingPerspectivePhoto)} />
+            onSkip={(finalImage) => confirmSessionPhoto(finalImage || pendingPerspectivePhoto)} />
         )}
 
         {view === "crop" && cropImage && (
