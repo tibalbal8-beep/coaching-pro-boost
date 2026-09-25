@@ -7235,9 +7235,12 @@ function CoachingProBoost({ session }) {
 
   // Récupère les visuels (schémas + photos, lazy-loadées depuis playimg:{id}:{id}) d'une
   // sélection de plays — utilisé par l'export HTML/PDF ET par la planche en direct dans l'app.
+  // On mappe sur selectedIds (pas un .filter sur `plays`) pour respecter l'ordre choisi par le
+  // coach (réorganisable dans le bandeau "Mode scouting"), pas l'ordre du Playbook.
   const loadPlaysWithImages = async (selectedIds) => {
+    const byId = new Map(plays.map(p => [p.id, p]));
     return Promise.all(
-      plays.filter(p => selectedIds.includes(p.id)).map(async (play) => {
+      selectedIds.map(id => byId.get(id)).filter(Boolean).map(async (play) => {
         const images = await Promise.all((play.images || []).map(async (img) => {
           if (img.file?.data) return { ...img, data: img.file.data };
           try {
@@ -7366,8 +7369,9 @@ function CoachingProBoost({ session }) {
   const sharePlayCollection = async (selectedIds, title) => {
     try {
       const token = crypto.randomUUID().replace(/-/g, "");
+      const byId = new Map(plays.map(p => [p.id, p]));
       const selectedPlaysData = await Promise.all(
-        plays.filter(p => selectedIds.includes(p.id)).map(async (play) => {
+        selectedIds.map(id => byId.get(id)).filter(Boolean).map(async (play) => {
           const playData = { ...play };
           if (play.images?.length) {
             playData.images = await Promise.all(play.images.map(async (img) => {
@@ -7452,6 +7456,19 @@ function CoachingProBoost({ session }) {
   const [showForm, setShowForm] = useState(false);
   const [playbookForm, setPlaybookForm] = useState(false);
   const [selectedPlays, setSelectedPlays] = useState([]);
+  // Réorganisation manuelle de l'ordre des plays sélectionnés (Mode scouting) avant export —
+  // sinon l'ordre suivait celui du Playbook au lieu de celui voulu par le coach.
+  const [scoutingReorderOpen, setScoutingReorderOpen] = useState(false);
+  const [scoutingDragIdx, setScoutingDragIdx] = useState(null);
+  const moveSelectedPlay = (from, to) => {
+    if (to < 0 || to >= selectedPlays.length) return;
+    setSelectedPlays(prev => {
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+  };
   // Planche des systèmes sélectionnés : vue d'ensemble directement dans l'app (sans export HTML)
   // pour vérifier d'un coup d'œil quel système correspond à un découpage vidéo.
   const [playsBoard, setPlaysBoard] = useState(null); // array de plays enrichis (_images) ou null si fermée
@@ -7471,17 +7488,24 @@ function CoachingProBoost({ session }) {
   const [playbookSearch, setPlaybookSearch] = useState("");
   const [playbookTagsOpen, setPlaybookTagsOpen] = useState(false);
   const [playTagSearch, setPlayTagSearch] = useState("");
+  // "recent" (défaut, favoris puis date), "type" (regroupe par catégorie), "alpha" (A→Z).
+  const [playbookSort, setPlaybookSort] = useState("recent");
   // Catalogue des mots-clés reconstruit à partir des tags réellement présents sur les plays
   // (plus fiable que la liste playTags séparée, qui peut se désynchroniser).
   const usedPlayTags = [...new Set(plays.flatMap(p => p.tags || []))].sort();
   const usedTempsForts = [...new Set(plays.flatMap(p => Array.isArray(p.tempsFort) ? p.tempsFort : (p.tempsFort ? [p.tempsFort] : [])))].sort();
+  const playTypeRank = (t) => { const i = playTypes.indexOf(t); return i === -1 ? playTypes.length : i; };
   const filteredPlays = plays.filter(p => {
     const q = playbookSearch.trim().toLowerCase();
     return (filterPlayType.length === 0 || filterPlayType.includes(p.type)) &&
       (filterPlayTags.length === 0 || filterPlayTags.every(t => (p.tags || []).includes(t))) &&
       (!filterScoutedTeam || p.scoutedTeam === filterScoutedTeam) &&
       (!q || p.titre?.toLowerCase().includes(q) || (p.tags || []).some(t => t.toLowerCase().includes(q)));
-  }).sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  }).sort((a, b) => {
+    if (playbookSort === "type") return playTypeRank(a.type) - playTypeRank(b.type) || (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    if (playbookSort === "alpha") return (a.titre || "").localeCompare(b.titre || "", "fr");
+    return (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+  });
   const [activeSession, setActiveSession] = useState(null);
   const activeSessionRef = useRef(null);
   useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
@@ -8713,7 +8737,42 @@ function CoachingProBoost({ session }) {
             {/* Mode scouting */}
             {selectedPlays.length > 0 && (
               <div className="bg-[#1B2A4A] rounded-2xl p-4 mb-4 flex flex-col gap-3">
-                <div className="text-white font-semibold text-sm">{selectedPlays.length} play{selectedPlays.length > 1 ? "s" : ""} sélectionné{selectedPlays.length > 1 ? "s" : ""}</div>
+                <div className="flex items-center justify-between">
+                  <div className="text-white font-semibold text-sm">{selectedPlays.length} play{selectedPlays.length > 1 ? "s" : ""} sélectionné{selectedPlays.length > 1 ? "s" : ""}</div>
+                  {selectedPlays.length > 1 && (
+                    <button onClick={() => setScoutingReorderOpen(o => !o)} className="text-xs text-white/70 hover:text-white underline">
+                      {scoutingReorderOpen ? "Masquer l'ordre" : "🔀 Réorganiser l'ordre"}
+                    </button>
+                  )}
+                </div>
+                {scoutingReorderOpen && (
+                  <div className="space-y-1.5 bg-white/5 rounded-xl p-2">
+                    <p className="text-[11px] text-white/50 px-1">Glisse-dépose ou utilise les flèches — c'est cet ordre qui sera utilisé pour l'export.</p>
+                    {selectedPlays.map((id, i) => {
+                      const p = plays.find(x => x.id === id);
+                      return (
+                        <div key={id}
+                          draggable
+                          onDragStart={() => setScoutingDragIdx(i)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={(e) => { e.preventDefault(); if (scoutingDragIdx !== null && scoutingDragIdx !== i) moveSelectedPlay(scoutingDragIdx, i); setScoutingDragIdx(null); }}
+                          onDragEnd={() => setScoutingDragIdx(null)}
+                          className="flex items-center gap-2 bg-white rounded-lg px-2.5 py-1.5 cursor-grab active:cursor-grabbing">
+                          <span className="text-[10px] font-bold text-[#FF6B35] w-4 text-center flex-shrink-0">{i + 1}</span>
+                          <span className="flex-1 min-w-0 truncate text-sm text-[#1B2A4A]">{p?.titre || "Play supprimé"}</span>
+                          <div className="flex gap-0.5 flex-shrink-0">
+                            <button onClick={() => moveSelectedPlay(i, i - 1)} disabled={i === 0} className="text-[#1B2A4A]/50 hover:text-[#1B2A4A] disabled:opacity-20 p-0.5">
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
+                            </button>
+                            <button onClick={() => moveSelectedPlay(i, i + 1)} disabled={i === selectedPlays.length - 1} className="text-[#1B2A4A]/50 hover:text-[#1B2A4A] disabled:opacity-20 p-0.5">
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <input value={scoutingTitle} onChange={e => setScoutingTitle(e.target.value)} placeholder="Titre du scouting (ex: Adversaire Finale)" className="w-full rounded-xl px-3 py-2 text-sm outline-none text-[#1B2A4A]" />
                 <div className="flex gap-2 flex-wrap">
                   <button onClick={() => openPlaysBoard(selectedPlays)} disabled={playsBoardLoading}
@@ -8741,6 +8800,15 @@ function CoachingProBoost({ session }) {
                 {playTypes.map(t => (
                   <Tag key={t} active={filterPlayType.includes(t)} onClick={() => setFilterPlayType(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}>{t}</Tag>
                 ))}
+              </div>
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-xs text-[#1B2A4A]/40 mr-1">Trier par :</span>
+                <select value={playbookSort} onChange={e => setPlaybookSort(e.target.value)}
+                  className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white text-[#1B2A4A]">
+                  <option value="recent">Favoris puis récents</option>
+                  <option value="type">Catégorie ({playTypes.join(" → ")})</option>
+                  <option value="alpha">Alphabétique (A → Z)</option>
+                </select>
               </div>
               {[...new Set(plays.map(p => p.scoutedTeam).filter(Boolean))].length > 0 && (
                 <div className="flex flex-wrap gap-1.5 items-center">
