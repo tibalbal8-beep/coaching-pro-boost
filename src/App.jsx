@@ -7233,8 +7233,10 @@ function CoachingProBoost({ session }) {
     }
   };
 
-  const buildScoutingReportHtml = async (selectedIds, title) => {
-    const selectedPlaysData = await Promise.all(
+  // Récupère les visuels (schémas + photos, lazy-loadées depuis playimg:{id}:{id}) d'une
+  // sélection de plays — utilisé par l'export HTML/PDF ET par la planche en direct dans l'app.
+  const loadPlaysWithImages = async (selectedIds) => {
+    return Promise.all(
       plays.filter(p => selectedIds.includes(p.id)).map(async (play) => {
         const images = await Promise.all((play.images || []).map(async (img) => {
           if (img.file?.data) return { ...img, data: img.file.data };
@@ -7248,6 +7250,10 @@ function CoachingProBoost({ session }) {
         return { ...play, _images: [...schemaImages, ...images.filter(i => i.data)] };
       })
     );
+  };
+
+  const buildScoutingReportHtml = async (selectedIds, title) => {
+    const selectedPlaysData = await loadPlaysWithImages(selectedIds);
 
     const playsHtml = selectedPlaysData.map((play, idx) => {
       // Hauteur fixe + object-fit:contain sur l'image (pas juste width:100%) : sans ça, un
@@ -7446,6 +7452,15 @@ function CoachingProBoost({ session }) {
   const [showForm, setShowForm] = useState(false);
   const [playbookForm, setPlaybookForm] = useState(false);
   const [selectedPlays, setSelectedPlays] = useState([]);
+  // Planche des systèmes sélectionnés : vue d'ensemble directement dans l'app (sans export HTML)
+  // pour vérifier d'un coup d'œil quel système correspond à un découpage vidéo.
+  const [playsBoard, setPlaysBoard] = useState(null); // array de plays enrichis (_images) ou null si fermée
+  const [playsBoardLoading, setPlaysBoardLoading] = useState(false);
+  const openPlaysBoard = async (selectedIds) => {
+    setPlaysBoardLoading(true);
+    try { setPlaysBoard(await loadPlaysWithImages(selectedIds)); }
+    finally { setPlaysBoardLoading(false); }
+  };
   const [scoutingTitle, setScoutingTitle] = useState("");
   const [editingPlay, setEditingPlay] = useState(null);
   const [viewingPlay, setViewingPlay] = useState(null);
@@ -8700,9 +8715,13 @@ function CoachingProBoost({ session }) {
               <div className="bg-[#1B2A4A] rounded-2xl p-4 mb-4 flex flex-col gap-3">
                 <div className="text-white font-semibold text-sm">{selectedPlays.length} play{selectedPlays.length > 1 ? "s" : ""} sélectionné{selectedPlays.length > 1 ? "s" : ""}</div>
                 <input value={scoutingTitle} onChange={e => setScoutingTitle(e.target.value)} placeholder="Titre du scouting (ex: Adversaire Finale)" className="w-full rounded-xl px-3 py-2 text-sm outline-none text-[#1B2A4A]" />
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => openPlaysBoard(selectedPlays)} disabled={playsBoardLoading}
+                    className="flex-1 bg-[#FF6B35] text-white py-2 rounded-xl text-sm font-bold disabled:opacity-60 flex items-center justify-center gap-1.5">
+                    {playsBoardLoading ? <Loader2 size={15} className="animate-spin" /> : "🖼"} Voir en planche
+                  </button>
                   <button onClick={() => sharePlayCollection(selectedPlays, scoutingTitle)} className="flex-1 bg-white text-[#1B2A4A] py-2 rounded-xl text-sm font-bold">Partager</button>
-                  <button onClick={() => exportPlaysPrint(selectedPlays, scoutingTitle)} className="flex-1 bg-[#FF6B35] text-white py-2 rounded-xl text-sm font-bold">Export impression/PDF</button>
+                  <button onClick={() => exportPlaysPrint(selectedPlays, scoutingTitle)} className="flex-1 bg-white text-[#1B2A4A] border border-[#1B2A4A]/20 py-2 rounded-xl text-sm font-bold">Export impression/PDF</button>
                   <button onClick={() => exportPlaysHtml(selectedPlays, scoutingTitle)} className="flex-1 bg-white text-[#1B2A4A] border border-[#1B2A4A]/20 py-2 rounded-xl text-sm font-bold">Exporter HTML</button>
                   <button onClick={() => setSelectedPlays([])} className="px-4 py-2 rounded-xl text-sm text-white/60 border border-white/20">✕</button>
                 </div>
@@ -10633,6 +10652,53 @@ function CoachingProBoost({ session }) {
             onEdit={() => { setEditingPlay(viewingPlay); setPlaybookForm(true); setViewingPlay(null); }}
             onUpdatePlay={(updatedPlay) => { savePlays(plays.map(p => p.id === updatedPlay.id ? updatedPlay : p)); setViewingPlay(updatedPlay); }}
             showSocialExport={isAdmin} />
+        )}
+
+        {playsBoard && (
+          <div className="fixed inset-0 z-[500] bg-[#0F1729] flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 bg-[#1B2A4A] flex-shrink-0">
+              <div className="text-white font-bold text-sm" style={{ fontFamily: "Oswald, sans-serif" }}>
+                PLANCHE DES SYSTÈMES — {playsBoard.length} sélectionné{playsBoard.length > 1 ? "s" : ""}
+              </div>
+              <button onClick={() => setPlaysBoard(null)} className="text-white/60 hover:text-white"><X size={22} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
+                {playsBoard.map(play => (
+                  <button key={play.id} onClick={() => { setViewingPlay(play); setPlaysBoard(null); }}
+                    className="bg-white rounded-xl p-3 text-left hover:ring-2 hover:ring-[#FF6B35] transition-all">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div>
+                        {play.type && <div className="text-[10px] font-bold uppercase tracking-wide text-[#FF6B35]">{play.type}</div>}
+                        <div className="font-bold text-[#1B2A4A] leading-tight" style={{ fontFamily: "Oswald, sans-serif" }}>{play.titre || "Sans titre"}</div>
+                      </div>
+                    </div>
+                    {(play.tempsFort?.length || play.tags?.length) > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {[...(play.tempsFort || []), ...(play.tags || [])].map((t, i) => (
+                          <span key={i} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#1B2A4A]/8 text-[#1B2A4A]/70">{t}</span>
+                        ))}
+                      </div>
+                    )}
+                    {play._images.length > 0 ? (
+                      <div className="grid gap-1.5" style={{ gridTemplateColumns: play._images.length > 1 ? "1fr 1fr" : "1fr" }}>
+                        {play._images.slice(0, 4).map((img, i) => (
+                          <div key={i} className="relative bg-[#F2EDE4] rounded-lg overflow-hidden" style={{ aspectRatio: "1 / 1" }}>
+                            <img src={img.data} alt="" className="w-full h-full object-contain" />
+                            {i === 3 && play._images.length > 4 && (
+                              <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white text-sm font-bold">+{play._images.length - 4}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-[#1B2A4A]/40 italic py-4 text-center">Aucun visuel</div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         )}
 
         {viewingExercise && (
