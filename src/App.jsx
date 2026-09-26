@@ -7353,17 +7353,8 @@ function CoachingProBoost({ session }) {
     return html;
   };
 
-  // Propose d'ajouter le logo du club (déjà réglé dans Paramètres) à un export imprimable —
-  // seulement si un logo existe, et toujours annulable ("Non merci") sans bloquer l'export.
-  const askIncludeClubLogo = async () => {
-    if (!clubLogo) return null;
-    const wantsLogo = await cpbAlert("Ajouter le logo du club à ce document ?", { confirm: true, confirmLabel: "Oui, ajouter", cancelLabel: "Non merci" });
-    return wantsLogo ? clubLogo : null;
-  };
-
   // Export classique : télécharge le rapport en fichier .html brut.
-  const exportPlaysHtml = async (selectedIds, title) => {
-    const logo = await askIncludeClubLogo();
+  const doExportPlaysHtml = async (selectedIds, title, logo) => {
     const html = await buildScoutingReportHtml(selectedIds, title, { logo });
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -7381,8 +7372,7 @@ function CoachingProBoost({ session }) {
   // Export impression/PDF : ouvre le rapport dans un nouvel onglet et déclenche directement
   // l'impression — en choisissant "Enregistrer au format PDF" comme destination, ça donne un vrai
   // PDF (rendu par le navigateur, fidèle à la mise en page) au lieu d'un fichier .html brut.
-  const exportPlaysPrint = async (selectedIds, title) => {
-    const logo = await askIncludeClubLogo();
+  const doExportPlaysPrint = async (selectedIds, title, logo) => {
     const html = await buildScoutingReportHtml(selectedIds, title, { logo });
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -7401,6 +7391,22 @@ function CoachingProBoost({ session }) {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
     setSelectedPlays([]);
     setScoutingTitle("");
+  };
+
+  // Avant chaque export imprimable, une popup dédiée (voir logoExportPrompt plus bas dans le
+  // rendu) propose d'ajouter le logo du club : celui déjà enregistré si présent, ou le choix
+  // d'en importer un directement à la volée si aucun n'existe encore — dans les deux cas,
+  // toujours annulable ("Non merci") sans bloquer l'export.
+  const [logoExportPrompt, setLogoExportPrompt] = useState(null); // { selectedIds, title, kind: "html" | "print" }
+  const logoExportInputRef = useRef();
+  const exportPlaysHtml = (selectedIds, title) => setLogoExportPrompt({ selectedIds, title, kind: "html" });
+  const exportPlaysPrint = (selectedIds, title) => setLogoExportPrompt({ selectedIds, title, kind: "print" });
+  const runLogoExportPrompt = (logo) => {
+    const p = logoExportPrompt;
+    setLogoExportPrompt(null);
+    if (!p) return;
+    if (p.kind === "html") doExportPlaysHtml(p.selectedIds, p.title, logo);
+    else doExportPlaysPrint(p.selectedIds, p.title, logo);
   };
 
   const sharePlayCollection = async (selectedIds, title) => {
@@ -10853,6 +10859,45 @@ function CoachingProBoost({ session }) {
                   </button>
                 ))}
               </div>
+            </div>
+          </div>
+        )}
+
+        {logoExportPrompt && (
+          <div className="fixed inset-0 z-[650] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => runLogoExportPrompt(clubLogo || null)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5" onClick={e => e.stopPropagation()}>
+              <h3 className="font-bold text-[#1B2A4A] mb-3" style={{ fontFamily: "Oswald, sans-serif" }}>Logo du club</h3>
+              {clubLogo ? (
+                <>
+                  <div className="flex items-center gap-3 mb-4">
+                    <img src={clubLogo} alt="Logo" className="w-12 h-12 object-contain rounded-lg border border-[#1B2A4A]/10 bg-[#F2EDE4] flex-shrink-0" />
+                    <p className="text-xs text-[#1B2A4A]/60">Ajouter ce logo en en-tête du document ?</p>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <button onClick={() => runLogoExportPrompt(clubLogo)} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>Oui, ajouter</button>
+                    <button onClick={() => runLogoExportPrompt(null)} className="w-full py-2 rounded-lg text-sm text-[#1B2A4A]/60 border border-[#1B2A4A]/15 hover:bg-[#1B2A4A]/5">Non merci</button>
+                    <button onClick={() => logoExportInputRef.current?.click()} className="text-xs text-[#FF6B35] hover:underline mt-1">Utiliser un autre logo</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-[#1B2A4A]/60 mb-4">Aucun logo de club enregistré pour l'instant. Tu peux en choisir un maintenant — il sera aussi réutilisé pour les prochains exports.</p>
+                  <div className="flex flex-col gap-2">
+                    <button onClick={() => logoExportInputRef.current?.click()} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>Choisir un logo</button>
+                    <button onClick={() => runLogoExportPrompt(null)} className="w-full py-2 rounded-lg text-sm text-[#1B2A4A]/60 border border-[#1B2A4A]/15 hover:bg-[#1B2A4A]/5">Non merci</button>
+                  </div>
+                </>
+              )}
+              <input ref={logoExportInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/*" className="hidden" onChange={async e => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                try {
+                  const dataUrl = await readImageAsPng(file, 400);
+                  await saveClubLogo(dataUrl);
+                  runLogoExportPrompt(dataUrl);
+                } catch { cpbAlert?.("Impossible de lire cette image, essaie un autre fichier (PNG, JPEG, WEBP...)."); }
+              }} />
             </div>
           </div>
         )}
