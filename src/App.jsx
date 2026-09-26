@@ -687,6 +687,33 @@ function readImageAsJpeg(file, maxDim = 1200, quality = 0.72) {
   });
 }
 
+// Comme readImageAsJpeg, mais en PNG (sans perte, transparence conservée) — utilisé pour le
+// logo du club : la plupart des logos sont des PNG à fond transparent, et les convertir en JPEG
+// remplissait le fond transparent en noir (JPEG n'a pas de canal alpha).
+function readImageAsPng(file, maxDim = 400) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          const scale = maxDim / Math.max(width, height);
+          width = Math.round(width * scale); height = Math.round(height * scale);
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 function roundRectPath(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -8536,11 +8563,13 @@ function CoachingProBoost({ session }) {
                 <div className="flex flex-col gap-0.5">
                   <label className="text-xs text-[#FF6B35] cursor-pointer hover:underline font-medium">
                     {clubLogo ? "Changer le logo" : "Ajouter le logo du club"}
-                    <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/*" className="hidden" onChange={async e => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      const dataUrl = await readImageAsJpeg(file, 300, 0.9);
-                      await saveClubLogo(dataUrl);
+                      try {
+                        const dataUrl = await readImageAsPng(file, 400);
+                        await saveClubLogo(dataUrl);
+                      } catch { cpbAlert?.("Impossible de lire cette image, essaie un autre fichier (PNG, JPEG, WEBP...)."); }
                       e.target.value = "";
                     }} />
                   </label>
