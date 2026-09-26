@@ -134,7 +134,7 @@ const PHASES = SPORTS_CONFIG.basketball.phases;
 const FORMATS = SPORTS_CONFIG.basketball.formats;
 const CATEGORIES = SPORTS_CONFIG.basketball.categories;
 const NIVEAUX = ["Débutant","Intermédiaire","Confirmé"];
-const PLAY_TYPES = ["Transition", "Système offensif", "SLOB", "BLOB", "ATO"];
+const PLAY_TYPES = ["Transition", "Système offensif", "Zone", "SLOB", "BLOB", "ATO"];
 const JOURS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -8962,7 +8962,12 @@ function CoachingProBoost({ session }) {
                     Tout désélectionner
                   </button>
                 ) : (
-                  <button onClick={() => setSelectedPlays(prev => [...new Set([...prev, ...filteredPlays.map(p => p.id)])])}
+                  <button onClick={() => {
+                    // Toujours par catégorie (indépendamment du tri affiché à l'écran) : c'est
+                    // l'ordre par défaut le plus utile à retrouver dans "Réorganiser l'ordre".
+                    const byCategory = [...filteredPlays].sort((a, b) => playTypeRank(a.type) - playTypeRank(b.type));
+                    setSelectedPlays(prev => [...new Set([...prev, ...byCategory.map(p => p.id)])]);
+                  }}
                     className="text-xs font-medium hover:underline" style={{ color: "var(--sport-accent)" }}>
                     Tout sélectionner ({filteredPlays.length})
                   </button>
