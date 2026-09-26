@@ -8,7 +8,7 @@ const AlertCtx = createContext(null);
 function useAlert() { return useContext(AlertCtx); }
 function AlertProvider({ children }) {
   const [modal, setModal] = useState(null);
-  const show = useCallback((msg, opts = {}) => new Promise(resolve => setModal({ msg, resolve, confirm: opts.confirm })), []);
+  const show = useCallback((msg, opts = {}) => new Promise(resolve => setModal({ msg, resolve, confirm: opts.confirm, confirmLabel: opts.confirmLabel, cancelLabel: opts.cancelLabel })), []);
   const close = (result) => { modal?.resolve(result); setModal(null); };
   return (
     <AlertCtx.Provider value={show}>
@@ -26,12 +26,12 @@ function AlertProvider({ children }) {
                 <div className="flex gap-3">
                   <button onClick={() => close(false)}
                     className="flex-1 border border-[#1B2A4A]/20 text-[#1B2A4A] font-semibold py-2.5 rounded-xl text-sm hover:bg-[#1B2A4A]/5 transition-colors">
-                    Annuler
+                    {modal.cancelLabel || "Annuler"}
                   </button>
                   <button onClick={() => close(true)}
                     className="flex-1 bg-[#FF6B35] text-white font-semibold py-2.5 rounded-xl text-sm hover:bg-[#e85a28] transition-colors"
                     style={{ fontFamily: "Oswald, sans-serif" }}>
-                    Confirmer
+                    {modal.confirmLabel || "Confirmer"}
                   </button>
                 </div>
               ) : (
@@ -7255,7 +7255,7 @@ function CoachingProBoost({ session }) {
     );
   };
 
-  const buildScoutingReportHtml = async (selectedIds, title) => {
+  const buildScoutingReportHtml = async (selectedIds, title, { logo } = {}) => {
     const selectedPlaysData = await loadPlaysWithImages(selectedIds);
 
     const playsHtml = selectedPlaysData.map((play, idx) => {
@@ -7279,7 +7279,7 @@ function CoachingProBoost({ session }) {
         <div style="background:#fff;border-radius:10px;padding:18px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);page-break-inside:avoid;">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;">
             <div>
-              <div style="font-size:10px;color:#FF6B35;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">${play.type || ""}</div>
+              <div style="font-size:10px;color:#FF6B35;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">${play.type || ""}${play.scoutedTeam ? ` · ${play.scoutedTeam}` : ""}</div>
               <div style="font-size:17px;font-weight:800;color:#1B2A4A;font-family:'Oswald',sans-serif;">${play.titre || "Sans titre"}</div>
               ${play.description ? `<div style="font-size:12px;color:#666;margin-top:3px;">${play.description}</div>` : ""}
             </div>
@@ -7308,7 +7308,7 @@ function CoachingProBoost({ session }) {
 <body>
   <div style="max-width:780px;margin:0 auto;">
     <div style="background:#1B2A4A;color:white;border-radius:12px;padding:24px;margin-bottom:20px;text-align:center;">
-      <div style="font-size:32px;margin-bottom:8px;">🏀</div>
+      ${logo ? `<img src="${logo}" alt="Logo" style="width:56px;height:56px;object-fit:contain;border-radius:8px;background:white;padding:4px;margin-bottom:8px;" />` : `<div style="font-size:32px;margin-bottom:8px;">🏀</div>`}
       <div style="font-family:'Oswald',sans-serif;font-size:26px;font-weight:800;">${title || "SCOUTING REPORT"}</div>
       <div style="color:rgba(255,255,255,0.6);font-size:13px;margin-top:5px;">${selectedPlaysData.length} play${selectedPlaysData.length > 1 ? "s" : ""} • Coaching Pro Boost</div>
     </div>
@@ -7326,9 +7326,18 @@ function CoachingProBoost({ session }) {
     return html;
   };
 
+  // Propose d'ajouter le logo du club (déjà réglé dans Paramètres) à un export imprimable —
+  // seulement si un logo existe, et toujours annulable ("Non merci") sans bloquer l'export.
+  const askIncludeClubLogo = async () => {
+    if (!clubLogo) return null;
+    const wantsLogo = await cpbAlert("Ajouter le logo du club à ce document ?", { confirm: true, confirmLabel: "Oui, ajouter", cancelLabel: "Non merci" });
+    return wantsLogo ? clubLogo : null;
+  };
+
   // Export classique : télécharge le rapport en fichier .html brut.
   const exportPlaysHtml = async (selectedIds, title) => {
-    const html = await buildScoutingReportHtml(selectedIds, title);
+    const logo = await askIncludeClubLogo();
+    const html = await buildScoutingReportHtml(selectedIds, title, { logo });
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -7346,7 +7355,8 @@ function CoachingProBoost({ session }) {
   // l'impression — en choisissant "Enregistrer au format PDF" comme destination, ça donne un vrai
   // PDF (rendu par le navigateur, fidèle à la mise en page) au lieu d'un fichier .html brut.
   const exportPlaysPrint = async (selectedIds, title) => {
-    const html = await buildScoutingReportHtml(selectedIds, title);
+    const logo = await askIncludeClubLogo();
+    const html = await buildScoutingReportHtml(selectedIds, title, { logo });
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const win = window.open(url, "_blank");
