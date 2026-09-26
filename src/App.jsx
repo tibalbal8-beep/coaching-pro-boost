@@ -134,7 +134,7 @@ const PHASES = SPORTS_CONFIG.basketball.phases;
 const FORMATS = SPORTS_CONFIG.basketball.formats;
 const CATEGORIES = SPORTS_CONFIG.basketball.categories;
 const NIVEAUX = ["Débutant","Intermédiaire","Confirmé"];
-const PLAY_TYPES = ["Système offensif", "ATO", "SLOB", "BLOB"];
+const PLAY_TYPES = ["Transition", "Système offensif", "SLOB", "BLOB", "ATO"];
 const JOURS = ["Lun","Mar","Mer","Jeu","Ven","Sam","Dim"];
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -7527,6 +7527,18 @@ function CoachingProBoost({ session }) {
   const [playTagSearch, setPlayTagSearch] = useState("");
   // "recent" (défaut, favoris puis date), "type" (regroupe par catégorie), "alpha" (A→Z).
   const [playbookSort, setPlaybookSort] = useState("recent");
+  // Gestion de l'ordre des catégories (Type) du Playbook — c'est cet ordre qui détermine le
+  // tri "Catégorie" ci-dessus, donc l'ordre d'export quand on choisit ce tri.
+  const [playTypesManagerOpen, setPlayTypesManagerOpen] = useState(false);
+  const [playTypeDragIdx, setPlayTypeDragIdx] = useState(null);
+  const [newPlayTypeInput, setNewPlayTypeInput] = useState("");
+  const movePlayType = (from, to) => {
+    if (to < 0 || to >= playTypes.length) return;
+    const next = [...playTypes];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    savePlayTypes(next);
+  };
   // Catalogue des mots-clés reconstruit à partir des tags réellement présents sur les plays
   // (plus fiable que la liste playTags séparée, qui peut se désynchroniser).
   const usedPlayTags = [...new Set(plays.flatMap(p => p.tags || []))].sort();
@@ -8839,7 +8851,42 @@ function CoachingProBoost({ session }) {
                 {playTypes.map(t => (
                   <Tag key={t} active={filterPlayType.includes(t)} onClick={() => setFilterPlayType(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}>{t}</Tag>
                 ))}
+                <button onClick={() => setPlayTypesManagerOpen(o => !o)} className="text-xs text-[#1B2A4A]/40 hover:text-[#FF6B35] underline ml-1">
+                  {playTypesManagerOpen ? "Fermer" : "⚙️ Gérer les catégories"}
+                </button>
               </div>
+              {playTypesManagerOpen && (
+                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/60 p-3 space-y-1.5">
+                  <p className="text-[11px] text-[#1B2A4A]/40 mb-1">Glisse-dépose ou utilise les flèches — c'est cet ordre qui sert au tri "Catégorie" et donc à l'export.</p>
+                  {playTypes.map((t, i) => (
+                    <div key={t}
+                      draggable
+                      onDragStart={() => setPlayTypeDragIdx(i)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => { e.preventDefault(); if (playTypeDragIdx !== null && playTypeDragIdx !== i) movePlayType(playTypeDragIdx, i); setPlayTypeDragIdx(null); }}
+                      onDragEnd={() => setPlayTypeDragIdx(null)}
+                      className="flex items-center gap-2 bg-white border border-[#1B2A4A]/10 rounded-lg px-2.5 py-1.5 cursor-grab active:cursor-grabbing">
+                      <span className="text-[10px] font-bold text-[#FF6B35] w-4 text-center flex-shrink-0">{i + 1}</span>
+                      <span className="flex-1 text-sm text-[#1B2A4A]">{t}</span>
+                      <div className="flex gap-0.5 flex-shrink-0">
+                        <button onClick={() => movePlayType(i, i - 1)} disabled={i === 0} className="text-[#1B2A4A]/50 hover:text-[#1B2A4A] disabled:opacity-20 p-0.5">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
+                        </button>
+                        <button onClick={() => movePlayType(i, i + 1)} disabled={i === playTypes.length - 1} className="text-[#1B2A4A]/50 hover:text-[#1B2A4A] disabled:opacity-20 p-0.5">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex gap-2 pt-1">
+                    <input value={newPlayTypeInput} onChange={e => setNewPlayTypeInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter" && newPlayTypeInput.trim() && !playTypes.includes(newPlayTypeInput.trim())) { savePlayTypes([...playTypes, newPlayTypeInput.trim()]); setNewPlayTypeInput(""); } }}
+                      placeholder="Nouvelle catégorie (ex: Transition)" className="flex-1 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm outline-none focus:border-[#FF6B35]" />
+                    <button onClick={() => { if (newPlayTypeInput.trim() && !playTypes.includes(newPlayTypeInput.trim())) { savePlayTypes([...playTypes, newPlayTypeInput.trim()]); setNewPlayTypeInput(""); } }}
+                      className="px-3 py-1.5 rounded-md text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>Ajouter</button>
+                  </div>
+                </div>
+              )}
               <div className="flex flex-wrap gap-1.5 items-center">
                 <span className="text-xs text-[#1B2A4A]/40 mr-1">Trier par :</span>
                 <select value={playbookSort} onChange={e => setPlaybookSort(e.target.value)}
