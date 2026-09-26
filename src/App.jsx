@@ -7638,6 +7638,7 @@ function CoachingProBoost({ session }) {
   const [scoresheetError, setScoresheetError] = useState(null);
   const [scoresheetDraft, setScoresheetDraft] = useState(null); // résultat IA en cours de vérification, avant enregistrement
   const scoresheetCameraRef = useRef();
+  const clubLogoInputRef = useRef();
   const [favPlaySearch, setFavPlaySearch] = useState("");
   const [newPlayName, setNewPlayName] = useState("");
   const [bookletSelection, setBookletSelection] = useState(null); // null = tous sélectionnés (défaut)
@@ -8573,18 +8574,19 @@ function CoachingProBoost({ session }) {
                   </div>
                 )}
                 <div className="flex flex-col gap-0.5">
-                  <label className="text-xs text-[#FF6B35] cursor-pointer hover:underline font-medium">
+                  <input ref={clubLogoInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/*" className="hidden" onChange={async e => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const dataUrl = await readImageAsPng(file, 400);
+                      await saveClubLogo(dataUrl);
+                    } catch { cpbAlert?.("Impossible de lire cette image, essaie un autre fichier (PNG, JPEG, WEBP...)."); }
+                    e.target.value = "";
+                  }} />
+                  <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); clubLogoInputRef.current?.click(); }}
+                    className="text-xs text-[#FF6B35] hover:underline font-medium text-left">
                     {clubLogo ? "Changer le logo" : "Ajouter le logo du club"}
-                    <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,image/*" className="hidden" onChange={async e => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      try {
-                        const dataUrl = await readImageAsPng(file, 400);
-                        await saveClubLogo(dataUrl);
-                      } catch { cpbAlert?.("Impossible de lire cette image, essaie un autre fichier (PNG, JPEG, WEBP...)."); }
-                      e.target.value = "";
-                    }} />
-                  </label>
+                  </button>
                   {clubLogo && <button onClick={() => saveClubLogo(null)} className="text-xs text-[#1B2A4A]/30 hover:text-red-500 text-left">Supprimer</button>}
                 </div>
               </div>
