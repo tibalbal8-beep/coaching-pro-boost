@@ -7624,6 +7624,7 @@ function CoachingProBoost({ session }) {
   const [vsNewOpponent, setVsNewOpponent] = useState("");
   const [vsNewDate, setVsNewDate] = useState("");
   const [vsNewNote, setVsNewNote] = useState("");
+  const [vsNewDefenseInput, setVsNewDefenseInput] = useState("");
   const [newMatchOpen, setNewMatchOpen] = useState(false);
   const [newMatchDate, setNewMatchDate] = useState(new Date().toISOString().slice(0, 10));
   const [newMatchTime, setNewMatchTime] = useState("");
@@ -10228,8 +10229,16 @@ function CoachingProBoost({ session }) {
           const openMissesOf = (entry) => typeof entry === "number" ? 0 : (entry?.openMisses || 0);
           const contestedMissesOf = (entry) => typeof entry === "number" ? 0 : (entry?.contestedMisses || 0);
           const scoutedTeams = [...new Set(plays.map(p => p.scoutedTeam).filter(Boolean))].sort();
+          // Suggestions réutilisées d'une session à l'autre (mêmes défenses souvent nommées pareil).
+          const usedDefenses = [...new Set(videoScoutSessions.flatMap(s => Object.keys(s.defenses || {})))].sort();
           const activeVs = videoScoutSessions.find(s => s.id === activeVideoScoutId) || null;
           const updateActiveVs = (patch) => saveVideoScoutSessions(videoScoutSessions.map(s => s.id === activeVideoScoutId ? { ...s, ...patch } : s));
+          const bumpDefense = (name, delta) => {
+            const next = { ...(activeVs.defenses || {}) };
+            const v = (next[name] || 0) + delta;
+            if (v <= 0) delete next[name]; else next[name] = v;
+            updateActiveVs({ defenses: next });
+          };
 
           const recordVsOutcome = (playId, value, missContext = null) => {
             const cur = activeVs.tally?.[playId];
@@ -10274,6 +10283,46 @@ function CoachingProBoost({ session }) {
                 <p className="text-xs text-[#1B2A4A]/40 mb-4">
                   {activeVs.date ? new Date(activeVs.date).toLocaleDateString("fr-FR") : "Date non précisée"}{activeVs.note && ` · ${activeVs.note}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} noté{totalTally !== 1 ? "s" : ""}
                 </p>
+
+                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
+                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Défenses observées</div>
+                  <div className="flex flex-wrap gap-1.5 items-center mb-3">
+                    {Object.entries(activeVs.defenses || {}).length === 0 && (
+                      <span className="text-xs text-[#1B2A4A]/30 italic">Aucune pour l'instant</span>
+                    )}
+                    {Object.entries(activeVs.defenses || {}).map(([name, count]) => (
+                      <span key={name} className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-sm font-medium bg-[#1B2A4A]/8 text-[#1B2A4A]">
+                        {name} <strong>×{count}</strong>
+                        <button onClick={() => bumpDefense(name, 1)} title="Encore une fois" className="w-5 h-5 rounded-full bg-white hover:bg-[#FF6B35] hover:text-white text-[#1B2A4A]/60 flex items-center justify-center text-xs font-bold">+</button>
+                        <button onClick={() => bumpDefense(name, -count)} title="Retirer" className="w-5 h-5 rounded-full text-[#1B2A4A]/30 hover:text-red-600 flex items-center justify-center"><X size={11} /></button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    <input value={vsNewDefenseInput} onChange={e => setVsNewDefenseInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && vsNewDefenseInput.trim()) { bumpDefense(vsNewDefenseInput.trim(), 1); setVsNewDefenseInput(""); }
+                      }}
+                      placeholder="Ex: Zone 2-3, Homme à homme, Press..." className="px-3 py-1.5 rounded-full text-sm border border-dashed border-[#1B2A4A]/30 outline-none focus:border-[#FF6B35] w-56" />
+                    {vsNewDefenseInput.trim() && usedDefenses.filter(d => d.toLowerCase().includes(vsNewDefenseInput.trim().toLowerCase()) && !(activeVs.defenses || {})[d]).map(d => (
+                      <button key={d} onClick={() => { bumpDefense(d, 1); setVsNewDefenseInput(""); }}
+                        className="px-3 py-1.5 rounded-full text-sm bg-[#1B2A4A]/8 text-[#1B2A4A] hover:bg-[#FF6B35]/15 hover:text-[#FF6B35] transition-colors">{d}</button>
+                    ))}
+                    {vsNewDefenseInput.trim() && (
+                      <button onClick={() => { bumpDefense(vsNewDefenseInput.trim(), 1); setVsNewDefenseInput(""); }}
+                        className="px-3 py-1.5 rounded-full text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>
+                        + Ajouter "{vsNewDefenseInput.trim()}"
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Notes</div>
+                  <textarea value={activeVs.notes || ""} onChange={e => updateActiveVs({ notes: e.target.value })}
+                    placeholder="Joueurs clés, habitudes, consignes à donner à l'équipe..."
+                    className="w-full h-24 border border-[#1B2A4A]/20 rounded-lg p-2 text-sm outline-none focus:border-[#FF6B35] resize-none bg-white/70" />
+                </div>
 
                 {vsPendingMiss && (
                   <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setVsPendingMiss(null)}>
