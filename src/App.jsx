@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from "react";
-import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera, Share2, Zap, Maximize2, Minimize2, Lock, Unlock, Undo2, StickyNote } from "lucide-react";
+import { Plus, X, Upload, FileText, Image as ImageIcon, Clock, Layers, Trash2, Printer, ChevronRight, ListPlus, Library, FileUp, Check, Loader2, Pencil, Users, UserCheck, UserX, Star, BarChart3, Menu, Mic, LogOut, BookOpen, Camera, Share2, Zap, Maximize2, Minimize2, Lock, Unlock, Undo2, StickyNote, Video } from "lucide-react";
 import { storage, supabase, isPasswordRecoveryUrl } from "./storage";
 import JSZip from "jszip";
 import QRCode from "qrcode";
@@ -407,6 +407,13 @@ function useStore(sport = DEFAULT_SPORT) {
   const individualSessionsKey = `individualSessions:${sport}`;
   const [matchSessions, setMatchSessions] = useState([]);
   const matchSessionsKey = `matchSessions:${sport}`;
+  // Scouting vidéo (admin) : dépouillement d'un match adverse filmé, en amont d'une rencontre —
+  // distinct du Mode match (qui scoute EN DIRECT pendant un match réel). Même mécanique de
+  // recherche par temps forts pour retrouver/réutiliser un système déjà noté (pas de re-saisie
+  // en texte libre = pas de doublon), et même tally {played, points, possible, ...} pour la
+  // rentabilité, mais dans une liste de sessions séparée.
+  const [videoScoutSessions, setVideoScoutSessions] = useState([]);
+  const videoScoutSessionsKey = `videoScoutSessions:${sport}`;
   // Copie locale (localStorage, synchrone) du Mode match — seule donnée de l'app à en avoir
   // une : c'est la seule pensée pour être utilisée en direct, sans connexion, pendant un match.
   const matchSessionsLocalKey = `cpb_local_matchSessions:${sport}`;
@@ -498,6 +505,10 @@ function useStore(sport = DEFAULT_SPORT) {
           else hadError = true;
         } catch { hadError = true; }
       }
+      try {
+        const vs = await storage.get(videoScoutSessionsKey);
+        setVideoScoutSessions(vs ? JSON.parse(vs.value) : []);
+      } catch { hadError = true; }
       if (hadError) setLoadError(true);
       setLoaded(true);
     })();
@@ -608,6 +619,7 @@ function useStore(sport = DEFAULT_SPORT) {
     try { localStorage.setItem(matchSessionsLocalKey, JSON.stringify(next)); } catch {}
     trySyncMatchSessions(next);
   };
+  const saveVideoScoutSessions = (next) => { setVideoScoutSessions(next); persist(videoScoutSessionsKey, JSON.stringify(next)); };
   const savePlays = async (next) => {
     for (const play of next) {
       for (const img of play.images || []) {
@@ -640,7 +652,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
+  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
 }
 
 function usePdfJs() {
@@ -6978,7 +6990,7 @@ function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAl
 function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
   const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, canUseMatchmode, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
-  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
+  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
   const SPORT_FORMATS = formats;
@@ -7600,6 +7612,18 @@ function CoachingProBoost({ session }) {
   const [newPlayerName, setNewPlayerName] = useState("");
   const [indivForm, setIndivForm] = useState(null); // { date, duree, theme, contenu, notes } en cours d'ajout
   const [activeMatchId, setActiveMatchId] = useState(null);
+  // Scouting vidéo (voir view === "videoscout" plus bas)
+  const [activeVideoScoutId, setActiveVideoScoutId] = useState(null);
+  const [vsTfFilters, setVsTfFilters] = useState([]);
+  const [vsTypeFilters, setVsTypeFilters] = useState([]);
+  const [vsNewTfInput, setVsNewTfInput] = useState("");
+  const [vsNewPlayOpen, setVsNewPlayOpen] = useState(false);
+  const [vsNewPlayName, setVsNewPlayName] = useState("");
+  const [vsPendingMiss, setVsPendingMiss] = useState(null);
+  const [vsNewSessionOpen, setVsNewSessionOpen] = useState(false);
+  const [vsNewOpponent, setVsNewOpponent] = useState("");
+  const [vsNewDate, setVsNewDate] = useState("");
+  const [vsNewNote, setVsNewNote] = useState("");
   const [newMatchOpen, setNewMatchOpen] = useState(false);
   const [newMatchDate, setNewMatchDate] = useState(new Date().toISOString().slice(0, 10));
   const [newMatchTime, setNewMatchTime] = useState("");
@@ -8556,6 +8580,7 @@ function CoachingProBoost({ session }) {
               { key: "stats", label: "Stats", icon: BarChart3 },
               ...(isAdmin ? [{ key: "suivi", label: "Suivi individuel (admin)", icon: UserCheck }] : []),
               ...(isAdmin || canUseMatchmode ? [{ key: "matchmode", label: isAdmin ? "Mode match (admin)" : "Mode match", icon: Zap }] : []),
+              ...(isAdmin ? [{ key: "videoscout", label: "Scouting vidéo (admin)", icon: Video }] : []),
               ...(isAdmin || canManageWellness ? [{ key: "wellness", label: "Bien-être joueurs", icon: UserCheck }] : []),
               { key: "account", label: "Mon compte", icon: Users },
             ].map(item => {
@@ -10192,6 +10217,290 @@ function CoachingProBoost({ session }) {
               {matchSessions.length === 0 && !newMatchOpen && <p className="text-sm text-[#1B2A4A]/40">Aucun match planifié pour l'instant.</p>}
             </div>
           </div>
+          );
+        })()}
+
+        {view === "videoscout" && isAdmin && (() => {
+          const tfOf = (p) => Array.isArray(p.tempsFort) ? p.tempsFort : (p.tempsFort ? [p.tempsFort] : []);
+          const playedOf = (entry) => typeof entry === "number" ? entry : (entry?.played || 0);
+          const pointsOf = (entry) => typeof entry === "number" ? 0 : (entry?.points || 0);
+          const possibleOf = (entry) => typeof entry === "number" ? 0 : (entry?.possible || 0);
+          const openMissesOf = (entry) => typeof entry === "number" ? 0 : (entry?.openMisses || 0);
+          const contestedMissesOf = (entry) => typeof entry === "number" ? 0 : (entry?.contestedMisses || 0);
+          const scoutedTeams = [...new Set(plays.map(p => p.scoutedTeam).filter(Boolean))].sort();
+          const activeVs = videoScoutSessions.find(s => s.id === activeVideoScoutId) || null;
+          const updateActiveVs = (patch) => saveVideoScoutSessions(videoScoutSessions.map(s => s.id === activeVideoScoutId ? { ...s, ...patch } : s));
+
+          const recordVsOutcome = (playId, value, missContext = null) => {
+            const cur = activeVs.tally?.[playId];
+            const next = {
+              played: playedOf(cur) + 1,
+              points: pointsOf(cur) + (value > 0 ? value : 0),
+              possible: possibleOf(cur) + (value ? Math.abs(value) : 0),
+              openMisses: openMissesOf(cur) + (missContext === "ouvert" ? 1 : 0),
+              contestedMisses: contestedMissesOf(cur) + (missContext === "conteste" ? 1 : 0),
+            };
+            updateActiveVs({ tally: { ...(activeVs.tally || {}), [playId]: next } });
+            setVsTfFilters([]);
+            setVsNewPlayOpen(false); setVsNewPlayName("");
+            const playTitre = plays.find(p => p.id === playId)?.titre || "Système";
+            const label = value ? (value > 0 ? `+${value}` : `${value}`) : "sans tir";
+            const contextLabel = missContext === "ouvert" ? " (tir ouvert)" : missContext === "conteste" ? " (tir contesté)" : "";
+            toast?.(`✓ ${playTitre} — ${label}${contextLabel}`);
+          };
+          const requestVsMissContext = (playId, value) => setVsPendingMiss({ playId, value });
+          const resolveVsMissContext = (context) => {
+            if (!vsPendingMiss) return;
+            recordVsOutcome(vsPendingMiss.playId, vsPendingMiss.value, context);
+            setVsPendingMiss(null);
+          };
+
+          if (activeVs) {
+            const teamPlays = plays.filter(p => p.scoutedTeam === activeVs.opponent);
+            const tfOptions = [...new Set(teamPlays.flatMap(tfOf))];
+            const matchTypeOptions = playTypes.filter(t => teamPlays.some(p => p.type === t));
+            const filteredPlays = teamPlays
+              .filter(p => vsTfFilters.every(f => tfOf(p).includes(f)))
+              .filter(p => vsTypeFilters.length === 0 || vsTypeFilters.includes(p.type))
+              .sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || playedOf(activeVs.tally?.[b.id]) - playedOf(activeVs.tally?.[a.id]));
+            const sorted = [...teamPlays].sort((a, b) => playedOf(activeVs.tally?.[b.id]) - playedOf(activeVs.tally?.[a.id]));
+            const totalTally = teamPlays.reduce((sum, p) => sum + playedOf(activeVs.tally?.[p.id]), 0);
+
+            return (
+              <div className="max-w-3xl">
+                <button onClick={() => { setActiveVideoScoutId(null); setVsTfFilters([]); setVsTypeFilters([]); setVsNewPlayOpen(false); setVsPendingMiss(null); }}
+                  className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] mb-3">← Retour au scouting vidéo</button>
+                <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>{activeVs.opponent}</h2>
+                <p className="text-xs text-[#1B2A4A]/40 mb-4">
+                  {activeVs.date ? new Date(activeVs.date).toLocaleDateString("fr-FR") : "Date non précisée"}{activeVs.note && ` · ${activeVs.note}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} noté{totalTally !== 1 ? "s" : ""}
+                </p>
+
+                {vsPendingMiss && (
+                  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setVsPendingMiss(null)}>
+                    <div className="bg-white rounded-xl p-5 w-full max-w-xs" onClick={e => e.stopPropagation()}>
+                      <p className="text-sm font-semibold text-[#1B2A4A] mb-1">Tir à {vsPendingMiss.value} pts manqué</p>
+                      <p className="text-xs text-[#1B2A4A]/50 mb-4">Le tir était-il ouvert ou contesté ?</p>
+                      <div className="flex flex-col gap-2">
+                        <button onClick={() => resolveVsMissContext("ouvert")}
+                          className="w-full py-2.5 rounded-lg text-sm font-semibold border-2 border-green-300 text-green-700 hover:bg-green-50">🟢 Tir ouvert</button>
+                        <button onClick={() => resolveVsMissContext("conteste")}
+                          className="w-full py-2.5 rounded-lg text-sm font-semibold border-2 border-red-300 text-red-700 hover:bg-red-50">🔴 Tir contesté</button>
+                        <button onClick={() => setVsPendingMiss(null)}
+                          className="w-full py-2 rounded-lg text-xs text-[#1B2A4A]/50 hover:text-[#1B2A4A]">Annuler</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {matchTypeOptions.length > 0 && (
+                  <div className="mb-3">
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Type</div>
+                    <div className="flex flex-wrap gap-1.5 items-center">
+                      {matchTypeOptions.map(t => (
+                        <button key={t} onClick={() => setVsTypeFilters(f => f.includes(t) ? f.filter(x => x !== t) : [...f, t])}
+                          className={`px-3 py-1.5 rounded-full text-sm font-medium border ${vsTypeFilters.includes(t) ? "" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
+                          style={vsTypeFilters.includes(t) ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
+                          {t}
+                        </button>
+                      ))}
+                      {vsTypeFilters.length > 0 && (
+                        <button onClick={() => setVsTypeFilters([])} className="px-3 py-1.5 rounded-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A]">✕ Effacer</button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mb-3">
+                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Temps fort — pour retrouver un système déjà noté au lieu de le recréer</div>
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    {[...new Set([...tfOptions, ...vsTfFilters])].map(tf => (
+                      <button key={tf} onClick={() => setVsTfFilters(f => f.includes(tf) ? f.filter(x => x !== tf) : [...f, tf])}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium border ${vsTfFilters.includes(tf) ? "" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
+                        style={vsTfFilters.includes(tf) ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
+                        {tf}
+                      </button>
+                    ))}
+                    {vsTfFilters.length > 0 && (
+                      <button onClick={() => setVsTfFilters([])} className="px-3 py-1.5 rounded-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A]">✕ Effacer</button>
+                    )}
+                    <input value={vsNewTfInput} onChange={e => setVsNewTfInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && vsNewTfInput.trim()) {
+                          e.preventDefault();
+                          const tf = vsNewTfInput.trim();
+                          setVsTfFilters(f => f.includes(tf) ? f : [...f, tf]);
+                          setVsNewTfInput("");
+                        }
+                      }}
+                      placeholder="Rechercher ou + écrire un temps fort..." className="px-3 py-1.5 rounded-full text-sm border border-dashed border-[#1B2A4A]/30 outline-none focus:border-[#FF6B35] w-56" />
+                    {(() => {
+                      const q = vsNewTfInput.trim().toLowerCase();
+                      if (!q) return null;
+                      const usedTempsForts = [...new Set(plays.flatMap(p => tfOf(p)))];
+                      const suggestions = usedTempsForts.filter(t => t.toLowerCase().includes(q) && !vsTfFilters.includes(t));
+                      const exactMatch = usedTempsForts.some(t => t.toLowerCase() === q);
+                      return (
+                        <>
+                          {suggestions.map(t => (
+                            <button key={t} onClick={() => { setVsTfFilters(f => [...f, t]); setVsNewTfInput(""); }}
+                              className="px-3 py-1.5 rounded-full text-sm bg-[#1B2A4A]/8 text-[#1B2A4A] hover:bg-[#FF6B35]/15 hover:text-[#FF6B35] transition-colors">
+                              {t}
+                            </button>
+                          ))}
+                          {!exactMatch && (
+                            <button onClick={() => { const tf = vsNewTfInput.trim(); setVsTfFilters(f => f.includes(tf) ? f : [...f, tf]); setVsNewTfInput(""); }}
+                              className="px-3 py-1.5 rounded-full text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>
+                              + Ajouter "{vsNewTfInput.trim()}"
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                <div className="mb-6">
+                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">
+                    {vsTfFilters.length > 0 || vsTypeFilters.length > 0 ? `${filteredPlays.length} système${filteredPlays.length !== 1 ? "s" : ""} correspondant${filteredPlays.length !== 1 ? "s" : ""}` : "Tous les systèmes déjà notés pour cette équipe"}
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {filteredPlays.map(p => {
+                      const entry = activeVs.tally?.[p.id];
+                      const played = playedOf(entry), points = pointsOf(entry), possible = possibleOf(entry);
+                      return (
+                        <div key={p.id} className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4">
+                          <div className="flex items-start justify-between mb-2 gap-2">
+                            <div>
+                              <div className="font-semibold text-[#1B2A4A]">{p.titre}</div>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {p.type && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35]">{p.type}</span>}
+                                {tfOf(p).map((t, i) => <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-[#1B2A4A]/10 text-[#1B2A4A]/70">{t}</span>)}
+                              </div>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <div className="text-xl font-bold" style={{ color: "var(--sport-accent)" }}>{played}</div>
+                              {possible > 0 && <div className="text-[10px] text-[#1B2A4A]/40">{points}/{possible} pts</div>}
+                              {played > 0 && <div className="text-[10px] font-semibold text-[#1B2A4A]/60">{(points / played).toFixed(2)} pts/poss.</div>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button onClick={() => recordVsOutcome(p.id, null)}
+                              className="px-4 py-3 rounded-lg text-sm font-semibold border border-[#1B2A4A]/20 text-[#1B2A4A]/70 hover:bg-[#1B2A4A]/5 active:bg-[#1B2A4A]/10">Compter (sans tir)</button>
+                            <span className="w-px h-9 bg-[#1B2A4A]/10 mx-1" />
+                            {[-3, -2].map(v => (
+                              <button key={v} onClick={() => requestVsMissContext(p.id, v)}
+                                className="w-14 h-14 rounded-lg text-xl font-bold border-2 border-red-200 text-red-600 hover:bg-red-50 active:bg-red-100">{v}</button>
+                            ))}
+                            {[2, 3].map(v => (
+                              <button key={v} onClick={() => recordVsOutcome(p.id, v)}
+                                className="w-14 h-14 rounded-lg text-xl font-bold border-2 border-green-300 text-green-700 hover:bg-green-50 active:bg-green-100">+{v}</button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {filteredPlays.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucun système ne correspond à ce filtre.</p>}
+                  </div>
+                </div>
+
+                {vsNewPlayOpen ? (
+                  <div className="flex items-center gap-2 mb-6">
+                    <input autoFocus value={vsNewPlayName} onChange={e => setVsNewPlayName(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && vsNewPlayName.trim()) {
+                          const np = { id: uid(), titre: vsNewPlayName.trim(), type: playTypes[0], scoutedTeam: activeVs.opponent, tempsFort: vsTfFilters, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
+                          savePlays([...plays, np]);
+                          recordVsOutcome(np.id, null);
+                        }
+                        if (e.key === "Escape") { setVsNewPlayOpen(false); setVsNewPlayName(""); }
+                      }}
+                      placeholder="Nom du nouveau système observé" className="flex-1 border border-[#FF6B35] rounded-md px-3 py-2 text-sm outline-none" />
+                    <button onClick={() => {
+                      if (!vsNewPlayName.trim()) return;
+                      const np = { id: uid(), titre: vsNewPlayName.trim(), type: playTypes[0], scoutedTeam: activeVs.opponent, tempsFort: vsTfFilters, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
+                      savePlays([...plays, np]);
+                      recordVsOutcome(np.id, null);
+                    }} className="text-sm font-semibold text-white px-3 py-2 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>Ajouter</button>
+                    <button onClick={() => { setVsNewPlayOpen(false); setVsNewPlayName(""); }} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={18} /></button>
+                  </div>
+                ) : (
+                  <button onClick={() => setVsNewPlayOpen(true)} className="mb-6 px-4 py-2 rounded-md text-sm font-semibold border-2 border-dashed border-[#FF6B35]/40 text-[#FF6B35] hover:border-[#FF6B35] hover:bg-[#FF6B35]/5 transition-colors">
+                    + Nouveau système observé (pas encore dans le Playbook)
+                  </button>
+                )}
+
+                <div className="flex items-center justify-between border-t border-[#1B2A4A]/10 pt-4 flex-wrap gap-2">
+                  <span className="text-xs text-[#1B2A4A]/40">Classement par fréquence : {sorted.filter(p => playedOf(activeVs.tally?.[p.id]) > 0).map(p => `${p.titre} (${playedOf(activeVs.tally[p.id])})`).join(", ") || "aucun système compté pour l'instant"}</span>
+                  <button onClick={async () => {
+                    const ok = await cpbAlert?.("Réinitialiser le comptage de cette session ? Les valeurs actuelles seront perdues.", { confirm: true });
+                    if (ok) updateActiveVs({ tally: {} });
+                  }} className="text-xs text-red-500 hover:underline">Réinitialiser</button>
+                </div>
+              </div>
+            );
+          }
+
+          // ── Liste des sessions de scouting vidéo ────────────────────────────────
+          return (
+            <div className="max-w-3xl">
+              <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>SCOUTING VIDÉO</h2>
+              <p className="text-xs text-[#1B2A4A]/40 mb-5">Dépouille un match adverse filmé avant la rencontre : retrouve un système déjà noté par ses temps forts au lieu de le retaper, et suis sa rentabilité (marqué/raté) au fil du montage.</p>
+
+              {vsNewSessionOpen ? (
+                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-5">
+                  <div className="mb-3">
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Équipe adverse observée</div>
+                    <input value={vsNewOpponent} onChange={e => setVsNewOpponent(e.target.value)} placeholder="Ex: SCABB"
+                      list="video-scout-teams-list" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                    <datalist id="video-scout-teams-list">{scoutedTeams.map(t => <option key={t} value={t} />)}</datalist>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Date du match observé (facultatif)</div>
+                      <input type="date" value={vsNewDate} onChange={e => setVsNewDate(e.target.value)}
+                        className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                    </div>
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Note (facultatif)</div>
+                      <input value={vsNewNote} onChange={e => setVsNewNote(e.target.value)} placeholder="Ex: Montage vidéo semaine 12"
+                        className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => {
+                      if (!vsNewOpponent.trim()) { cpbAlert?.("Indique l'équipe observée."); return; }
+                      const s = { id: uid(), opponent: vsNewOpponent.trim(), date: vsNewDate || null, note: vsNewNote.trim(), tally: {}, createdAt: new Date().toISOString() };
+                      saveVideoScoutSessions([...videoScoutSessions, s]);
+                      setVsNewSessionOpen(false); setVsNewOpponent(""); setVsNewDate(""); setVsNewNote("");
+                      setActiveVideoScoutId(s.id);
+                    }} className="text-sm font-semibold text-white px-4 py-2 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>Créer la session</button>
+                    <button onClick={() => setVsNewSessionOpen(false)} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] px-4 py-2">Annuler</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setVsNewSessionOpen(true)} className="mb-5 px-4 py-2 rounded-md text-sm font-semibold text-white flex items-center gap-1.5" style={{ backgroundColor: "var(--sport-accent)" }}>
+                  <Plus size={15} /> Nouvelle session de scouting
+                </button>
+              )}
+
+              <div className="flex flex-col gap-2">
+                {[...videoScoutSessions].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).map(s => {
+                  const total = Object.values(s.tally || {}).reduce((sum, e) => sum + playedOf(e), 0);
+                  return (
+                    <div key={s.id} onClick={() => setActiveVideoScoutId(s.id)}
+                      className="flex items-center justify-between border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 cursor-pointer hover:border-[#FF6B35] hover:shadow-md transition-all">
+                      <div>
+                        <div className="font-semibold text-[#1B2A4A]">{s.opponent}</div>
+                        <div className="text-xs text-[#1B2A4A]/50">{s.date ? new Date(s.date).toLocaleDateString("fr-FR") : "Date non précisée"}{s.note && ` · ${s.note}`}{total > 0 && ` · ${total} système${total !== 1 ? "s" : ""} noté${total !== 1 ? "s" : ""}`}</div>
+                      </div>
+                      <button onClick={(e) => { e.stopPropagation(); saveVideoScoutSessions(videoScoutSessions.filter(x => x.id !== s.id)); }}
+                        className="text-[#1B2A4A]/30 hover:text-red-600 flex-shrink-0 ml-3"><Trash2 size={16} /></button>
+                    </div>
+                  );
+                })}
+                {videoScoutSessions.length === 0 && !vsNewSessionOpen && <p className="text-sm text-[#1B2A4A]/40">Aucune session de scouting vidéo pour l'instant.</p>}
+              </div>
+            </div>
           );
         })()}
 
