@@ -7617,14 +7617,18 @@ function CoachingProBoost({ session }) {
   const [vsTfFilters, setVsTfFilters] = useState([]);
   const [vsTypeFilters, setVsTypeFilters] = useState([]);
   const [vsNewTfInput, setVsNewTfInput] = useState("");
-  const [vsNewPlayOpen, setVsNewPlayOpen] = useState(false);
-  const [vsNewPlayName, setVsNewPlayName] = useState("");
   const [vsPendingMiss, setVsPendingMiss] = useState(null);
   const [vsNewSessionOpen, setVsNewSessionOpen] = useState(false);
   const [vsNewOpponent, setVsNewOpponent] = useState("");
   const [vsNewDate, setVsNewDate] = useState("");
   const [vsNewNote, setVsNewNote] = useState("");
   const [vsNewDefenseInput, setVsNewDefenseInput] = useState("");
+  // Saisie rapide "annonce entendue" : on tape le nom du play annoncé (corrigeable avant de
+  // valider), PUIS on lui attache des temps forts, PUIS on valide — plutôt que l'inverse
+  // (choisir des temps forts pour filtrer une liste existante).
+  const [vsAnnounceName, setVsAnnounceName] = useState("");
+  const [vsAnnounceTf, setVsAnnounceTf] = useState([]);
+  const [vsAnnounceTfInput, setVsAnnounceTfInput] = useState("");
   const [newMatchOpen, setNewMatchOpen] = useState(false);
   const [newMatchDate, setNewMatchDate] = useState(new Date().toISOString().slice(0, 10));
   const [newMatchTime, setNewMatchTime] = useState("");
@@ -10240,6 +10244,25 @@ function CoachingProBoost({ session }) {
             updateActiveVs({ defenses: next });
           };
 
+          // Valide l'annonce en cours de saisie : retrouve le play existant (même titre pour
+          // cette équipe, insensible à la casse) pour lui ajouter les temps forts éventuellement
+          // manquants sans le dupliquer, ou en crée un nouveau si aucun ne correspond.
+          const validateAnnounce = () => {
+            const name = vsAnnounceName.trim();
+            if (!name) return;
+            const existing = plays.find(p => p.scoutedTeam === activeVs.opponent && p.titre?.trim().toLowerCase() === name.toLowerCase());
+            if (existing) {
+              const mergedTf = [...new Set([...(Array.isArray(existing.tempsFort) ? existing.tempsFort : (existing.tempsFort ? [existing.tempsFort] : [])), ...vsAnnounceTf])];
+              savePlays(plays.map(p => p.id === existing.id ? { ...p, tempsFort: mergedTf } : p));
+              toast?.(`✓ ${existing.titre} — temps forts mis à jour`);
+            } else {
+              const np = { id: uid(), titre: name, type: playTypes[0], scoutedTeam: activeVs.opponent, tempsFort: vsAnnounceTf, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
+              savePlays([...plays, np]);
+              toast?.(`✓ ${name} — nouveau système noté`);
+            }
+            setVsAnnounceName(""); setVsAnnounceTf([]); setVsAnnounceTfInput("");
+          };
+
           const recordVsOutcome = (playId, value, missContext = null) => {
             const cur = activeVs.tally?.[playId];
             const next = {
@@ -10277,12 +10300,52 @@ function CoachingProBoost({ session }) {
 
             return (
               <div className="max-w-3xl">
-                <button onClick={() => { setActiveVideoScoutId(null); setVsTfFilters([]); setVsTypeFilters([]); setVsNewPlayOpen(false); setVsPendingMiss(null); }}
+                <button onClick={() => { setActiveVideoScoutId(null); setVsTfFilters([]); setVsTypeFilters([]); setVsPendingMiss(null); setVsAnnounceName(""); setVsAnnounceTf([]); }}
                   className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] mb-3">← Retour au scouting vidéo</button>
                 <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>{activeVs.opponent}</h2>
                 <p className="text-xs text-[#1B2A4A]/40 mb-4">
                   {activeVs.date ? new Date(activeVs.date).toLocaleDateString("fr-FR") : "Date non précisée"}{activeVs.note && ` · ${activeVs.note}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} noté{totalTally !== 1 ? "s" : ""}
                 </p>
+
+                <div className="border-2 border-[#FF6B35]/30 rounded-xl bg-white p-4 mb-4">
+                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Noter une annonce</div>
+                  <input value={vsAnnounceName} onChange={e => setVsAnnounceName(e.target.value)}
+                    list="video-scout-announce-list" placeholder="Nom du play annoncé (ex: Ram 21)..."
+                    className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm outline-none focus:border-[#FF6B35] mb-2" />
+                  <datalist id="video-scout-announce-list">{teamPlays.map(p => <option key={p.id} value={p.titre} />)}</datalist>
+                  {vsAnnounceName.trim() && (
+                    <>
+                      <div className="text-[11px] text-[#1B2A4A]/40 mb-1">
+                        {teamPlays.some(p => p.titre?.trim().toLowerCase() === vsAnnounceName.trim().toLowerCase())
+                          ? "Système déjà noté — les temps forts choisis ci-dessous s'y ajouteront."
+                          : "Nouveau système — temps forts à lui attacher avant de valider :"}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 items-center mb-2">
+                        {[...new Set([...tfOptions, ...vsAnnounceTf])].map(tf => (
+                          <button key={tf} onClick={() => setVsAnnounceTf(f => f.includes(tf) ? f.filter(x => x !== tf) : [...f, tf])}
+                            className={`px-3 py-1.5 rounded-full text-sm font-medium border ${vsAnnounceTf.includes(tf) ? "" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
+                            style={vsAnnounceTf.includes(tf) ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
+                            {tf}
+                          </button>
+                        ))}
+                        <input value={vsAnnounceTfInput} onChange={e => setVsAnnounceTfInput(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter" && vsAnnounceTfInput.trim()) {
+                              e.preventDefault();
+                              const tf = vsAnnounceTfInput.trim();
+                              setVsAnnounceTf(f => f.includes(tf) ? f : [...f, tf]);
+                              setVsAnnounceTfInput("");
+                            }
+                          }}
+                          placeholder="+ temps fort..." className="px-3 py-1.5 rounded-full text-sm border border-dashed border-[#1B2A4A]/30 outline-none focus:border-[#FF6B35] w-40" />
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={validateAnnounce} className="px-4 py-2 rounded-md text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>✓ Valider</button>
+                        <button onClick={() => { setVsAnnounceName(""); setVsAnnounceTf([]); setVsAnnounceTfInput(""); }} className="px-4 py-2 rounded-md text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">Annuler</button>
+                      </div>
+                    </>
+                  )}
+                </div>
 
                 <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
                   <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Défenses observées</div>
@@ -10451,32 +10514,6 @@ function CoachingProBoost({ session }) {
                     {filteredPlays.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucun système ne correspond à ce filtre.</p>}
                   </div>
                 </div>
-
-                {vsNewPlayOpen ? (
-                  <div className="flex items-center gap-2 mb-6">
-                    <input autoFocus value={vsNewPlayName} onChange={e => setVsNewPlayName(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === "Enter" && vsNewPlayName.trim()) {
-                          const np = { id: uid(), titre: vsNewPlayName.trim(), type: playTypes[0], scoutedTeam: activeVs.opponent, tempsFort: vsTfFilters, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
-                          savePlays([...plays, np]);
-                          recordVsOutcome(np.id, null);
-                        }
-                        if (e.key === "Escape") { setVsNewPlayOpen(false); setVsNewPlayName(""); }
-                      }}
-                      placeholder="Nom du nouveau système observé" className="flex-1 border border-[#FF6B35] rounded-md px-3 py-2 text-sm outline-none" />
-                    <button onClick={() => {
-                      if (!vsNewPlayName.trim()) return;
-                      const np = { id: uid(), titre: vsNewPlayName.trim(), type: playTypes[0], scoutedTeam: activeVs.opponent, tempsFort: vsTfFilters, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
-                      savePlays([...plays, np]);
-                      recordVsOutcome(np.id, null);
-                    }} className="text-sm font-semibold text-white px-3 py-2 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>Ajouter</button>
-                    <button onClick={() => { setVsNewPlayOpen(false); setVsNewPlayName(""); }} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={18} /></button>
-                  </div>
-                ) : (
-                  <button onClick={() => setVsNewPlayOpen(true)} className="mb-6 px-4 py-2 rounded-md text-sm font-semibold border-2 border-dashed border-[#FF6B35]/40 text-[#FF6B35] hover:border-[#FF6B35] hover:bg-[#FF6B35]/5 transition-colors">
-                    + Nouveau système observé (pas encore dans le Playbook)
-                  </button>
-                )}
 
                 <div className="flex items-center justify-between border-t border-[#1B2A4A]/10 pt-4 flex-wrap gap-2">
                   <span className="text-xs text-[#1B2A4A]/40">Classement par fréquence : {sorted.filter(p => playedOf(activeVs.tally?.[p.id]) > 0).map(p => `${p.titre} (${playedOf(activeVs.tally[p.id])})`).join(", ") || "aucun système compté pour l'instant"}</span>
