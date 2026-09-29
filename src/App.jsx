@@ -10290,7 +10290,9 @@ function CoachingProBoost({ session }) {
           if (activeVs) {
             const teamPlays = plays.filter(p => p.scoutedTeam === activeVs.opponent);
             const tfOptions = [...new Set(teamPlays.flatMap(tfOf))];
-            const matchTypeOptions = playTypes.filter(t => teamPlays.some(p => p.type === t));
+            // Toutes les catégories du Playbook (pas seulement celles déjà utilisées par cette
+            // équipe) : utile pour filtrer par type avant même d'avoir noté un système dedans.
+            const matchTypeOptions = playTypes;
             const filteredPlays = teamPlays
               .filter(p => vsTfFilters.every(f => tfOf(p).includes(f)))
               .filter(p => vsTypeFilters.length === 0 || vsTypeFilters.includes(p.type))
