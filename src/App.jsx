@@ -10470,15 +10470,40 @@ function CoachingProBoost({ session }) {
                     className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm outline-none focus:border-[#FF6B35] mb-2" />
                   <datalist id="video-scout-announce-list">{teamPlays.map(p => <option key={p.id} value={p.titre} />)}</datalist>
                   {(() => {
-                    const isExisting = teamPlays.some(p => p.titre?.trim().toLowerCase() === vsAnnounceName.trim().toLowerCase());
+                    const q = vsAnnounceName.trim().toLowerCase();
+                    const isExisting = teamPlays.some(p => p.titre?.trim().toLowerCase() === q);
+                    // Suggestions visibles et cliquables (le <datalist> natif ne se voit pas
+                    // pareil partout) : tout système dont le nom contient ce qui est tapé,
+                    // triés pour mettre en avant ceux qui COMMENCENT pareil (ex: "FIST" avant
+                    // "Anti-FIST"). N'a plus de raison d'être une fois le nom déjà exact.
+                    const matches = !q || isExisting ? [] : teamPlays
+                      .filter(p => p.titre?.toLowerCase().includes(q))
+                      .sort((a, b) => a.titre.toLowerCase().indexOf(q) - b.titre.toLowerCase().indexOf(q))
+                      .slice(0, 6);
                     return (
-                      <div className="text-[11px] text-[#1B2A4A]/40 mb-1">
-                        {!vsAnnounceName.trim()
-                          ? "Tape le nom d'un système pour lui attacher des temps forts et valider."
-                          : isExisting
-                            ? "Système déjà noté — les temps forts choisis ci-dessous s'y ajouteront."
-                            : "Nouveau système — choisis son type et ses temps forts avant de valider :"}
-                      </div>
+                      <>
+                        <div className="text-[11px] text-[#1B2A4A]/40 mb-1">
+                          {!q
+                            ? "Tape le nom d'un système pour lui attacher des temps forts et valider."
+                            : isExisting
+                              ? "Système déjà noté — les temps forts choisis ci-dessous s'y ajouteront."
+                              : "Nouveau système — choisis son type et ses temps forts avant de valider :"}
+                        </div>
+                        {matches.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            {matches.map(p => {
+                              const idx = p.titre.toLowerCase().indexOf(q);
+                              return (
+                                <button key={p.id} onClick={() => setVsAnnounceName(p.titre)}
+                                  className="px-3 py-1.5 rounded-full text-sm bg-[#1B2A4A]/8 text-[#1B2A4A] hover:bg-[#FF6B35]/15 hover:text-[#FF6B35] transition-colors">
+                                  {p.titre.slice(0, idx)}<strong>{p.titre.slice(idx, idx + q.length)}</strong>{p.titre.slice(idx + q.length)}
+                                  {p.type && <span className="text-[10px] text-[#1B2A4A]/40 ml-1">· {p.type}</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
                     );
                   })()}
                   {vsAnnounceName.trim() && !teamPlays.some(p => p.titre?.trim().toLowerCase() === vsAnnounceName.trim().toLowerCase()) && (
