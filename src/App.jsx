@@ -7628,6 +7628,7 @@ function CoachingProBoost({ session }) {
   // (choisir des temps forts pour filtrer une liste existante).
   const [vsAnnounceName, setVsAnnounceName] = useState("");
   const [vsAnnounceTf, setVsAnnounceTf] = useState([]);
+  const [vsAnnounceType, setVsAnnounceType] = useState("");
   const [vsAnnounceTfInput, setVsAnnounceTfInput] = useState("");
   const [newMatchOpen, setNewMatchOpen] = useState(false);
   const [newMatchDate, setNewMatchDate] = useState(new Date().toISOString().slice(0, 10));
@@ -10256,11 +10257,11 @@ function CoachingProBoost({ session }) {
               savePlays(plays.map(p => p.id === existing.id ? { ...p, tempsFort: mergedTf } : p));
               toast?.(`✓ ${existing.titre} — temps forts mis à jour`);
             } else {
-              const np = { id: uid(), titre: name, type: playTypes[0], scoutedTeam: activeVs.opponent, tempsFort: vsAnnounceTf, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
+              const np = { id: uid(), titre: name, type: vsAnnounceType || playTypes[0], scoutedTeam: activeVs.opponent, tempsFort: vsAnnounceTf, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
               savePlays([...plays, np]);
               toast?.(`✓ ${name} — nouveau système noté`);
             }
-            setVsAnnounceName(""); setVsAnnounceTf([]); setVsAnnounceTfInput("");
+            setVsAnnounceName(""); setVsAnnounceTf([]); setVsAnnounceTfInput(""); setVsAnnounceType("");
           };
 
           const recordVsOutcome = (playId, value, missContext = null) => {
@@ -10315,13 +10316,29 @@ function CoachingProBoost({ session }) {
                     list="video-scout-announce-list" placeholder="Nom du play annoncé (ex: Ram 21)..."
                     className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm outline-none focus:border-[#FF6B35] mb-2" />
                   <datalist id="video-scout-announce-list">{teamPlays.map(p => <option key={p.id} value={p.titre} />)}</datalist>
-                  <div className="text-[11px] text-[#1B2A4A]/40 mb-1">
-                    {!vsAnnounceName.trim()
-                      ? "Tape le nom d'un système pour lui attacher des temps forts et valider."
-                      : teamPlays.some(p => p.titre?.trim().toLowerCase() === vsAnnounceName.trim().toLowerCase())
-                        ? "Système déjà noté — les temps forts choisis ci-dessous s'y ajouteront."
-                        : "Nouveau système — temps forts à lui attacher avant de valider :"}
-                  </div>
+                  {(() => {
+                    const isExisting = teamPlays.some(p => p.titre?.trim().toLowerCase() === vsAnnounceName.trim().toLowerCase());
+                    return (
+                      <div className="text-[11px] text-[#1B2A4A]/40 mb-1">
+                        {!vsAnnounceName.trim()
+                          ? "Tape le nom d'un système pour lui attacher des temps forts et valider."
+                          : isExisting
+                            ? "Système déjà noté — les temps forts choisis ci-dessous s'y ajouteront."
+                            : "Nouveau système — choisis son type et ses temps forts avant de valider :"}
+                      </div>
+                    );
+                  })()}
+                  {vsAnnounceName.trim() && !teamPlays.some(p => p.titre?.trim().toLowerCase() === vsAnnounceName.trim().toLowerCase()) && (
+                    <div className="flex flex-wrap gap-1.5 items-center mb-2">
+                      {playTypes.map(t => (
+                        <button key={t} onClick={() => setVsAnnounceType(t)}
+                          className={`px-3 py-1.5 rounded-full text-sm font-medium border ${(vsAnnounceType || playTypes[0]) === t ? "" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
+                          style={(vsAnnounceType || playTypes[0]) === t ? { backgroundColor: "#FF6B35", color: "#fff", borderColor: "#FF6B35" } : undefined}>
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-1.5 items-center mb-2">
                     {[...new Set([...tfOptions, ...vsAnnounceTf])].map(tf => (
                       <button key={tf} onClick={() => setVsAnnounceTf(f => f.includes(tf) ? f.filter(x => x !== tf) : [...f, tf])}
