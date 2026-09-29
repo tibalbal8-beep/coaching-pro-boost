@@ -10340,6 +10340,31 @@ function CoachingProBoost({ session }) {
                         }
                       }}
                       placeholder="+ temps fort..." className="px-3 py-1.5 rounded-full text-sm border border-dashed border-[#1B2A4A]/30 outline-none focus:border-[#FF6B35] w-40" />
+                    {(() => {
+                      const q = vsAnnounceTfInput.trim().toLowerCase();
+                      if (!q) return null;
+                      // Tous les temps forts déjà utilisés dans le Playbook (toutes équipes) — pour
+                      // classer directement dans les catégories existantes, avec la bonne orthographe.
+                      const usedTempsForts = [...new Set(plays.flatMap(p => tfOf(p)))];
+                      const suggestions = usedTempsForts.filter(t => t.toLowerCase().includes(q) && !vsAnnounceTf.includes(t));
+                      const exactMatch = usedTempsForts.some(t => t.toLowerCase() === q);
+                      return (
+                        <>
+                          {suggestions.map(t => (
+                            <button key={t} onClick={() => { setVsAnnounceTf(f => [...f, t]); setVsAnnounceTfInput(""); }}
+                              className="px-3 py-1.5 rounded-full text-sm bg-[#1B2A4A]/8 text-[#1B2A4A] hover:bg-[#FF6B35]/15 hover:text-[#FF6B35] transition-colors">
+                              {t}
+                            </button>
+                          ))}
+                          {!exactMatch && (
+                            <button onClick={() => { const tf = vsAnnounceTfInput.trim(); setVsAnnounceTf(f => f.includes(tf) ? f : [...f, tf]); setVsAnnounceTfInput(""); }}
+                              className="px-3 py-1.5 rounded-full text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>
+                              + Ajouter "{vsAnnounceTfInput.trim()}"
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                   <div className="flex gap-2">
                     <button onClick={validateAnnounce} disabled={!vsAnnounceName.trim()}
