@@ -10315,38 +10315,38 @@ function CoachingProBoost({ session }) {
                     list="video-scout-announce-list" placeholder="Nom du play annoncé (ex: Ram 21)..."
                     className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm outline-none focus:border-[#FF6B35] mb-2" />
                   <datalist id="video-scout-announce-list">{teamPlays.map(p => <option key={p.id} value={p.titre} />)}</datalist>
-                  {vsAnnounceName.trim() && (
-                    <>
-                      <div className="text-[11px] text-[#1B2A4A]/40 mb-1">
-                        {teamPlays.some(p => p.titre?.trim().toLowerCase() === vsAnnounceName.trim().toLowerCase())
-                          ? "Système déjà noté — les temps forts choisis ci-dessous s'y ajouteront."
-                          : "Nouveau système — temps forts à lui attacher avant de valider :"}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 items-center mb-2">
-                        {[...new Set([...tfOptions, ...vsAnnounceTf])].map(tf => (
-                          <button key={tf} onClick={() => setVsAnnounceTf(f => f.includes(tf) ? f.filter(x => x !== tf) : [...f, tf])}
-                            className={`px-3 py-1.5 rounded-full text-sm font-medium border ${vsAnnounceTf.includes(tf) ? "" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
-                            style={vsAnnounceTf.includes(tf) ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
-                            {tf}
-                          </button>
-                        ))}
-                        <input value={vsAnnounceTfInput} onChange={e => setVsAnnounceTfInput(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === "Enter" && vsAnnounceTfInput.trim()) {
-                              e.preventDefault();
-                              const tf = vsAnnounceTfInput.trim();
-                              setVsAnnounceTf(f => f.includes(tf) ? f : [...f, tf]);
-                              setVsAnnounceTfInput("");
-                            }
-                          }}
-                          placeholder="+ temps fort..." className="px-3 py-1.5 rounded-full text-sm border border-dashed border-[#1B2A4A]/30 outline-none focus:border-[#FF6B35] w-40" />
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={validateAnnounce} className="px-4 py-2 rounded-md text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>✓ Valider</button>
-                        <button onClick={() => { setVsAnnounceName(""); setVsAnnounceTf([]); setVsAnnounceTfInput(""); }} className="px-4 py-2 rounded-md text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">Annuler</button>
-                      </div>
-                    </>
-                  )}
+                  <div className="text-[11px] text-[#1B2A4A]/40 mb-1">
+                    {!vsAnnounceName.trim()
+                      ? "Tape le nom d'un système pour lui attacher des temps forts et valider."
+                      : teamPlays.some(p => p.titre?.trim().toLowerCase() === vsAnnounceName.trim().toLowerCase())
+                        ? "Système déjà noté — les temps forts choisis ci-dessous s'y ajouteront."
+                        : "Nouveau système — temps forts à lui attacher avant de valider :"}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 items-center mb-2">
+                    {[...new Set([...tfOptions, ...vsAnnounceTf])].map(tf => (
+                      <button key={tf} onClick={() => setVsAnnounceTf(f => f.includes(tf) ? f.filter(x => x !== tf) : [...f, tf])}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium border ${vsAnnounceTf.includes(tf) ? "" : "border-[#1B2A4A]/30 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
+                        style={vsAnnounceTf.includes(tf) ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>
+                        {tf}
+                      </button>
+                    ))}
+                    <input value={vsAnnounceTfInput} onChange={e => setVsAnnounceTfInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && vsAnnounceTfInput.trim()) {
+                          e.preventDefault();
+                          const tf = vsAnnounceTfInput.trim();
+                          setVsAnnounceTf(f => f.includes(tf) ? f : [...f, tf]);
+                          setVsAnnounceTfInput("");
+                        }
+                      }}
+                      placeholder="+ temps fort..." className="px-3 py-1.5 rounded-full text-sm border border-dashed border-[#1B2A4A]/30 outline-none focus:border-[#FF6B35] w-40" />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={validateAnnounce} disabled={!vsAnnounceName.trim()}
+                      className="px-4 py-2 rounded-md text-sm font-semibold text-white disabled:opacity-40"
+                      style={{ backgroundColor: "var(--sport-accent)" }}>✓ Valider</button>
+                    <button onClick={() => { setVsAnnounceName(""); setVsAnnounceTf([]); setVsAnnounceTfInput(""); }} className="px-4 py-2 rounded-md text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">Annuler</button>
+                  </div>
                 </div>
 
                 <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
