@@ -10430,8 +10430,26 @@ function CoachingProBoost({ session }) {
 
             return (
               <div className="max-w-3xl">
-                <button onClick={() => { setActiveVideoScoutId(null); setVsTfFilters([]); setVsTypeFilters([]); setVsPendingMiss(null); setVsAnnounceName(""); setVsAnnounceTf([]); }}
-                  className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] mb-3">← Retour au scouting vidéo</button>
+                <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                  <button onClick={() => { setActiveVideoScoutId(null); setVsTfFilters([]); setVsTypeFilters([]); setVsPendingMiss(null); setVsAnnounceName(""); setVsAnnounceTf([]); }}
+                    className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Retour au scouting vidéo</button>
+                  <button onClick={() => {
+                    // Tous les systèmes notés pour cette équipe, même sans action comptée : les
+                    // avoir notés suffit à les juger importants pour le récap donné au coach.
+                    const rows = sorted.map(p => ({
+                      titre: p.titre,
+                      type: p.type,
+                      tempsFort: tfOf(p),
+                      played: playedOf(activeVs.tally?.[p.id]),
+                      points: pointsOf(activeVs.tally?.[p.id]),
+                      possible: possibleOf(activeVs.tally?.[p.id]),
+                      openMisses: openMissesOf(activeVs.tally?.[p.id]),
+                      contestedMisses: contestedMissesOf(activeVs.tally?.[p.id]),
+                    }));
+                    const html = buildVideoScoutReportHtml(activeVs, rows, playTypes);
+                    downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `scouting-${slugifyForFile(activeVs.opponent)}-${activeVs.date || ""}.html`);
+                  }} className="text-sm font-semibold text-white px-4 py-2 rounded-md" style={{ backgroundColor: "#2563EB" }}>📤 Exporter le récap</button>
+                </div>
                 <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>{activeVs.opponent}</h2>
                 <p className="text-xs text-[#1B2A4A]/40 mb-4">
                   {activeVs.date ? new Date(activeVs.date).toLocaleDateString("fr-FR") : "Date non précisée"}{activeVs.note && ` · ${activeVs.note}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} noté{totalTally !== 1 ? "s" : ""}
@@ -10698,26 +10716,10 @@ function CoachingProBoost({ session }) {
 
                 <div className="flex items-center justify-between border-t border-[#1B2A4A]/10 pt-4 flex-wrap gap-2">
                   <span className="text-xs text-[#1B2A4A]/40">Classement par fréquence : {sorted.filter(p => playedOf(activeVs.tally?.[p.id]) > 0).map(p => `${p.titre} (${playedOf(activeVs.tally[p.id])})`).join(", ") || "aucun système compté pour l'instant"}</span>
-                  <div className="flex items-center gap-3 flex-shrink-0 ml-3">
-                    <button onClick={() => {
-                      const rows = sorted.map(p => ({
-                        titre: p.titre,
-                        type: p.type,
-                        tempsFort: tfOf(p),
-                        played: playedOf(activeVs.tally?.[p.id]),
-                        points: pointsOf(activeVs.tally?.[p.id]),
-                        possible: possibleOf(activeVs.tally?.[p.id]),
-                        openMisses: openMissesOf(activeVs.tally?.[p.id]),
-                        contestedMisses: contestedMissesOf(activeVs.tally?.[p.id]),
-                      })).filter(r => r.played > 0);
-                      const html = buildVideoScoutReportHtml(activeVs, rows, playTypes);
-                      downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `scouting-${slugifyForFile(activeVs.opponent)}-${activeVs.date || ""}.html`);
-                    }} className="text-xs font-medium text-[#FF6B35] hover:underline">📤 Exporter le récap</button>
-                    <button onClick={async () => {
-                      const ok = await cpbAlert?.("Réinitialiser le comptage de cette session ? Les valeurs actuelles seront perdues.", { confirm: true });
-                      if (ok) updateActiveVs({ tally: {} });
-                    }} className="text-xs text-red-500 hover:underline">Réinitialiser</button>
-                  </div>
+                  <button onClick={async () => {
+                    const ok = await cpbAlert?.("Réinitialiser le comptage de cette session ? Les valeurs actuelles seront perdues.", { confirm: true });
+                    if (ok) updateActiveVs({ tally: {} });
+                  }} className="text-xs text-red-500 hover:underline">Réinitialiser</button>
                 </div>
               </div>
             );
