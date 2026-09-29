@@ -10307,7 +10307,7 @@ function CoachingProBoost({ session }) {
                   {activeVs.date ? new Date(activeVs.date).toLocaleDateString("fr-FR") : "Date non précisée"}{activeVs.note && ` · ${activeVs.note}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} noté{totalTally !== 1 ? "s" : ""}
                 </p>
 
-                <div className="border-2 border-[#FF6B35]/30 rounded-xl bg-white p-4 mb-4">
+                <div className="sticky top-0 z-30 border-2 border-[#FF6B35]/30 rounded-xl bg-white shadow-md p-4 mb-4">
                   <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Noter une annonce</div>
                   <input value={vsAnnounceName} onChange={e => setVsAnnounceName(e.target.value)}
                     list="video-scout-announce-list" placeholder="Nom du play annoncé (ex: Ram 21)..."
