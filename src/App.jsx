@@ -8849,7 +8849,10 @@ function CoachingProBoost({ session }) {
                           onDragEnd={() => setScoutingDragIdx(null)}
                           className="flex items-center gap-2 bg-white rounded-lg px-2.5 py-1.5 cursor-grab active:cursor-grabbing">
                           <span className="text-[10px] font-bold text-[#FF6B35] w-4 text-center flex-shrink-0">{i + 1}</span>
-                          <span className="flex-1 min-w-0 truncate text-sm text-[#1B2A4A]">{p?.titre || "Play supprimé"}</span>
+                          <span className="flex-1 min-w-0 truncate text-sm text-[#1B2A4A]">
+                            {p?.titre || "Play supprimé"}
+                            {p?.type && <span className="text-[10px] font-medium text-[#1B2A4A]/40 ml-1.5">· {p.type}</span>}
+                          </span>
                           <div className="flex gap-0.5 flex-shrink-0">
                             <button onClick={() => moveSelectedPlay(i, i - 1)} disabled={i === 0} className="text-[#1B2A4A]/50 hover:text-[#1B2A4A] disabled:opacity-20 p-0.5">
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15" /></svg>
