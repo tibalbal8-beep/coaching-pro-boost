@@ -982,6 +982,111 @@ function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
 </html>`;
 }
 
+// Export "Scouting vidéo" : récap présentable pour le staff — équipe observée, défenses
+// vues, notes libres, et le classement des systèmes avec leur rentabilité (même mécanique
+// que buildMatchReportHtml, sans le tableau de score qui n'a pas de sens hors match réel).
+function buildVideoScoutReportHtml(session, rows) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const dateStr = session.date ? new Date(session.date).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
+  const rowsHtml = rows.map((r, i) => `
+    <tr>
+      <td class="rank">${i + 1}</td>
+      <td class="titre">${esc(r.titre)}${r.type ? `<span class="type-badge">${esc(r.type)}</span>` : ""}${r.tempsFort?.length ? `<div class="tf">${r.tempsFort.map(esc).join(", ")}</div>` : ""}</td>
+      <td class="num">${r.played}</td>
+      <td class="num">${r.points}${r.possible > 0 ? ` / ${r.possible}` : ""}</td>
+      <td class="num ppp">${r.played > 0 ? (r.points / r.played).toFixed(2) : "—"}</td>
+      <td class="num miss">${r.openMisses || 0}</td>
+      <td class="num miss">${r.contestedMisses || 0}</td>
+    </tr>`).join("");
+
+  const barRows = rows.filter(r => r.played > 0).slice(0, 8);
+  const maxPoints = Math.max(1, ...barRows.map(r => r.points));
+  const barChartHtml = barRows.length === 0 ? "" : `
+    <div class="chart-block">
+      <div class="chart-title">Points marqués par système</div>
+      ${barRows.map(r => `
+        <div class="bar-row">
+          <div class="bar-label">${esc(r.titre)}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.round((r.points / maxPoints) * 100)}%"></div></div>
+          <div class="bar-value">${r.points} pt${r.points !== 1 ? "s" : ""}</div>
+        </div>`).join("")}
+    </div>`;
+
+  const defenseEntries = Object.entries(session.defenses || {}).sort((a, b) => b[1] - a[1]);
+  const defensesHtml = defenseEntries.length === 0 ? "" : `
+    <div class="chart-block">
+      <div class="chart-title">Défenses observées</div>
+      <div class="defenses">
+        ${defenseEntries.map(([name, count]) => `<span class="defense-chip">${esc(name)} <b>×${count}</b></span>`).join("")}
+      </div>
+    </div>`;
+
+  const notesHtml = !session.note && !session.notes ? "" : `
+    <div class="chart-block">
+      ${session.note ? `<div class="chart-title">Contexte</div><p class="notes-text">${esc(session.note)}</p>` : ""}
+      ${session.notes ? `<div class="chart-title" style="margin-top:${session.note ? "14px" : "0"}">Notes</div><p class="notes-text">${esc(session.notes).replace(/\n/g, "<br>")}</p>` : ""}
+    </div>`;
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Scouting vidéo — ${esc(session.opponent)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',sans-serif;background:#F2EDE4;color:#1B2A4A;padding:24px}
+  .card{max-width:760px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+  .header{background:#1B2A4A;color:#fff;padding:24px}
+  .header .kicker{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#FF6B35;font-weight:700;margin-bottom:4px}
+  .header h1{font-family:'Oswald',sans-serif;font-size:24px;letter-spacing:.3px}
+  .header .meta{color:rgba(255,255,255,.65);font-size:13px;margin-top:6px;text-transform:capitalize}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#1B2A4A80;padding:10px 16px;border-bottom:2px solid #1B2A4A15}
+  th.num,td.num{text-align:center}
+  td{padding:10px 16px;border-bottom:1px solid #1B2A4A0f;font-size:14px;vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .rank{font-family:'Oswald',sans-serif;font-weight:700;color:#FF6B35;width:28px}
+  .titre{font-weight:600}
+  .type-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#FF6B35;background:#FF6B351a;border-radius:20px;padding:2px 8px;margin-left:8px}
+  .tf{font-size:11px;color:#1B2A4A60;margin-top:2px;font-weight:400}
+  .ppp{font-weight:700}
+  .miss{color:#1B2A4A80;font-size:13px}
+  .empty{padding:24px;text-align:center;color:#1B2A4A60;font-size:13px}
+  .chart-block{padding:18px 20px;border-top:1px solid #1B2A4A0f}
+  .chart-title{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:#1B2A4A80;font-weight:600;margin-bottom:12px}
+  .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  .bar-label{width:150px;font-size:12px;font-weight:600;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bar-track{flex:1;background:#1B2A4A0d;border-radius:5px;height:14px;overflow:hidden}
+  .bar-fill{background:#FF6B35;height:100%;border-radius:5px}
+  .bar-value{width:52px;flex-shrink:0;font-size:12px;font-weight:700;text-align:right}
+  .defenses{display:flex;flex-wrap:wrap;gap:8px}
+  .defense-chip{background:#1B2A4A0d;color:#1B2A4A;font-size:13px;padding:6px 12px;border-radius:20px}
+  .defense-chip b{color:#FF6B35}
+  .notes-text{font-size:13px;line-height:1.6;color:#1B2A4A}
+  @media print{body{background:#fff;padding:0}.card{box-shadow:none;border-radius:0}}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="kicker">Scouting vidéo</div>
+      <h1>${esc(session.opponent)}</h1>
+      <div class="meta">${esc(dateStr) || "Date non précisée"} · ${rows.length} système${rows.length > 1 ? "s" : ""} noté${rows.length > 1 ? "s" : ""}</div>
+    </div>
+    ${rows.length === 0 ? `<div class="empty">Aucun système noté pour cette session.</div>` : `
+    <table>
+      <thead><tr><th></th><th>Système</th><th class="num">Joué</th><th class="num">Points</th><th class="num">Pts/possession</th><th class="num">Tirs ouverts</th><th class="num">Tirs contestés</th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>`}
+    ${barChartHtml}
+    ${defensesHtml}
+    ${notesHtml}
+  </div>
+</body>
+</html>`;
+}
+
 async function renderPdfPages(file, maxPages = 25) {
   const buf = await file.arrayBuffer();
   const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
@@ -10574,10 +10679,26 @@ function CoachingProBoost({ session }) {
 
                 <div className="flex items-center justify-between border-t border-[#1B2A4A]/10 pt-4 flex-wrap gap-2">
                   <span className="text-xs text-[#1B2A4A]/40">Classement par fréquence : {sorted.filter(p => playedOf(activeVs.tally?.[p.id]) > 0).map(p => `${p.titre} (${playedOf(activeVs.tally[p.id])})`).join(", ") || "aucun système compté pour l'instant"}</span>
-                  <button onClick={async () => {
-                    const ok = await cpbAlert?.("Réinitialiser le comptage de cette session ? Les valeurs actuelles seront perdues.", { confirm: true });
-                    if (ok) updateActiveVs({ tally: {} });
-                  }} className="text-xs text-red-500 hover:underline">Réinitialiser</button>
+                  <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                    <button onClick={() => {
+                      const rows = sorted.map(p => ({
+                        titre: p.titre,
+                        type: p.type,
+                        tempsFort: tfOf(p),
+                        played: playedOf(activeVs.tally?.[p.id]),
+                        points: pointsOf(activeVs.tally?.[p.id]),
+                        possible: possibleOf(activeVs.tally?.[p.id]),
+                        openMisses: openMissesOf(activeVs.tally?.[p.id]),
+                        contestedMisses: contestedMissesOf(activeVs.tally?.[p.id]),
+                      })).filter(r => r.played > 0);
+                      const html = buildVideoScoutReportHtml(activeVs, rows);
+                      downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `scouting-${slugifyForFile(activeVs.opponent)}-${activeVs.date || ""}.html`);
+                    }} className="text-xs font-medium text-[#FF6B35] hover:underline">📤 Exporter le récap</button>
+                    <button onClick={async () => {
+                      const ok = await cpbAlert?.("Réinitialiser le comptage de cette session ? Les valeurs actuelles seront perdues.", { confirm: true });
+                      if (ok) updateActiveVs({ tally: {} });
+                    }} className="text-xs text-red-500 hover:underline">Réinitialiser</button>
+                  </div>
                 </div>
               </div>
             );
