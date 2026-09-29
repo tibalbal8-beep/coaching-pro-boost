@@ -10489,10 +10489,20 @@ function CoachingProBoost({ session }) {
                                 {tfOf(p).map((t, i) => <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-[#1B2A4A]/10 text-[#1B2A4A]/70">{t}</span>)}
                               </div>
                             </div>
-                            <div className="text-right flex-shrink-0">
+                            <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
                               <div className="text-xl font-bold" style={{ color: "var(--sport-accent)" }}>{played}</div>
                               {possible > 0 && <div className="text-[10px] text-[#1B2A4A]/40">{points}/{possible} pts</div>}
                               {played > 0 && <div className="text-[10px] font-semibold text-[#1B2A4A]/60">{(points / played).toFixed(2)} pts/poss.</div>}
+                              <div className="flex gap-2 mt-1">
+                                <button onClick={() => { setEditingPlay(p); setPlaybookForm(true); setViewPersist("playbook"); }}
+                                  title="Modifier ce système" className="text-[#1B2A4A]/30 hover:text-[#1B2A4A]"><Pencil size={13} /></button>
+                                <button onClick={async () => {
+                                  const ok = await cpbAlert?.(`Supprimer "${p.titre}" du Playbook ? Cette action est définitive.`, { confirm: true });
+                                  if (!ok) return;
+                                  savePlays(plays.filter(x => x.id !== p.id));
+                                  (p.images || []).forEach(img => { storage.delete(`playimg:${p.id}:${img.id}`).catch(() => {}); });
+                                }} title="Supprimer ce système" className="text-[#1B2A4A]/30 hover:text-red-600"><Trash2 size={13} /></button>
+                              </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-2 flex-wrap">
