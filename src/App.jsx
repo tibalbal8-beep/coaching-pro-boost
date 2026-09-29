@@ -985,7 +985,7 @@ function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
 // Export "Scouting vidéo" : récap présentable pour le staff — équipe observée, défenses
 // vues, notes libres, et le classement des systèmes avec leur rentabilité (même mécanique
 // que buildMatchReportHtml, sans le tableau de score qui n'a pas de sens hors match réel).
-function buildVideoScoutReportHtml(session, rows, typeOrder = []) {
+function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const dateStr = session.date ? new Date(session.date).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
 
@@ -1043,9 +1043,11 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = []) {
       </div>
     </div>`;
 
-  const notesHtml = !session.note && !session.notes ? "" : `
+  // Contexte (matchs scoutés) + Notes : en haut du document, juste après l'équipe/la date —
+  // c'est ce que le coach a besoin de lire en premier, avant le détail des systèmes.
+  const topNotesHtml = !session.note && !session.notes ? "" : `
     <div class="chart-block">
-      ${session.note ? `<div class="chart-title">Contexte</div><p class="notes-text">${esc(session.note)}</p>` : ""}
+      ${session.note ? `<div class="chart-title">Matchs scoutés</div><p class="notes-text">${esc(session.note)}</p>` : ""}
       ${session.notes ? `<div class="chart-title" style="margin-top:${session.note ? "14px" : "0"}">Notes</div><p class="notes-text">${esc(session.notes).replace(/\n/g, "<br>")}</p>` : ""}
     </div>`;
 
@@ -1060,6 +1062,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = []) {
   body{font-family:'Inter',sans-serif;background:#F2EDE4;color:#1B2A4A;padding:24px}
   .card{max-width:760px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06)}
   .header{background:#1B2A4A;color:#fff;padding:24px}
+  .header-logo{width:44px;height:44px;object-fit:contain;border-radius:8px;background:#fff;padding:4px;margin-bottom:10px}
   .header .kicker{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#FF6B35;font-weight:700;margin-bottom:4px}
   .header h1{font-family:'Oswald',sans-serif;font-size:24px;letter-spacing:.3px}
   .header .meta{color:rgba(255,255,255,.65);font-size:13px;margin-top:6px;text-transform:capitalize}
@@ -1093,14 +1096,15 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = []) {
 <body>
   <div class="card">
     <div class="header">
+      ${logo ? `<img src="${logo}" alt="Logo" class="header-logo" />` : ""}
       <div class="kicker">Scouting vidéo</div>
       <h1>${esc(session.opponent)}</h1>
       <div class="meta">${esc(dateStr) || "Date non précisée"} · ${rows.length} système${rows.length > 1 ? "s" : ""} noté${rows.length > 1 ? "s" : ""}</div>
     </div>
+    ${topNotesHtml}
     ${rows.length === 0 ? `<div class="empty">Aucun système noté pour cette session.</div>` : rowsHtml}
     ${barChartHtml}
     ${defensesHtml}
-    ${notesHtml}
   </div>
 </body>
 </html>`;
@@ -7533,16 +7537,21 @@ function CoachingProBoost({ session }) {
   // rendu) propose d'ajouter le logo du club : celui déjà enregistré si présent, ou le choix
   // d'en importer un directement à la volée si aucun n'existe encore — dans les deux cas,
   // toujours annulable ("Non merci") sans bloquer l'export.
-  const [logoExportPrompt, setLogoExportPrompt] = useState(null); // { selectedIds, title, kind: "html" | "print" }
+  const [logoExportPrompt, setLogoExportPrompt] = useState(null); // { selectedIds, title, kind: "html" | "print" | "videoscout", ... }
   const logoExportInputRef = useRef();
   const exportPlaysHtml = (selectedIds, title) => setLogoExportPrompt({ selectedIds, title, kind: "html" });
   const exportPlaysPrint = (selectedIds, title) => setLogoExportPrompt({ selectedIds, title, kind: "print" });
+  const exportVideoScoutReport = (session, rows, typeOrder) => setLogoExportPrompt({ session, rows, typeOrder, kind: "videoscout" });
   const runLogoExportPrompt = (logo) => {
     const p = logoExportPrompt;
     setLogoExportPrompt(null);
     if (!p) return;
     if (p.kind === "html") doExportPlaysHtml(p.selectedIds, p.title, logo);
-    else doExportPlaysPrint(p.selectedIds, p.title, logo);
+    else if (p.kind === "print") doExportPlaysPrint(p.selectedIds, p.title, logo);
+    else if (p.kind === "videoscout") {
+      const html = buildVideoScoutReportHtml(p.session, p.rows, p.typeOrder, logo);
+      downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `scouting-${slugifyForFile(p.session.opponent)}-${p.session.date || ""}.html`);
+    }
   };
 
   const sharePlayCollection = async (selectedIds, title) => {
@@ -10446,8 +10455,7 @@ function CoachingProBoost({ session }) {
                       openMisses: openMissesOf(activeVs.tally?.[p.id]),
                       contestedMisses: contestedMissesOf(activeVs.tally?.[p.id]),
                     }));
-                    const html = buildVideoScoutReportHtml(activeVs, rows, playTypes);
-                    downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `scouting-${slugifyForFile(activeVs.opponent)}-${activeVs.date || ""}.html`);
+                    exportVideoScoutReport(activeVs, rows, playTypes);
                   }} className="text-sm font-semibold text-white px-4 py-2 rounded-md" style={{ backgroundColor: "#2563EB" }}>📤 Exporter le récap</button>
                 </div>
                 <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>{activeVs.opponent}</h2>
