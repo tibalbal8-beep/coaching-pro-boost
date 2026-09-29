@@ -7762,6 +7762,9 @@ function CoachingProBoost({ session }) {
   const [vsAnnounceName, setVsAnnounceName] = useState("");
   const [vsAnnounceTf, setVsAnnounceTf] = useState([]);
   const [vsAnnounceType, setVsAnnounceType] = useState("");
+  // Système remonté en haut de la liste (et surligné) après un clic sur une suggestion, pour
+  // pouvoir enchaîner tout de suite sur les boutons de score sans avoir à le rechercher.
+  const [vsHighlightPlayId, setVsHighlightPlayId] = useState(null);
   const [vsAnnounceTfInput, setVsAnnounceTfInput] = useState("");
   const [newMatchOpen, setNewMatchOpen] = useState(false);
   const [newMatchDate, setNewMatchDate] = useState(new Date().toISOString().slice(0, 10));
@@ -10388,16 +10391,22 @@ function CoachingProBoost({ session }) {
             const name = vsAnnounceName.trim();
             if (!name) return;
             const existing = plays.find(p => p.scoutedTeam === activeVs.opponent && p.titre?.trim().toLowerCase() === name.toLowerCase());
+            let targetId;
             if (existing) {
+              targetId = existing.id;
               const mergedTf = [...new Set([...(Array.isArray(existing.tempsFort) ? existing.tempsFort : (existing.tempsFort ? [existing.tempsFort] : [])), ...vsAnnounceTf])];
               savePlays(plays.map(p => p.id === existing.id ? { ...p, tempsFort: mergedTf } : p));
               toast?.(`✓ ${existing.titre} — temps forts mis à jour`);
             } else {
               const np = { id: uid(), titre: name, type: vsAnnounceType || playTypes[0], scoutedTeam: activeVs.opponent, tempsFort: vsAnnounceTf, intention: "", description: "", notes: "", tags: [], images: [], schemas: [], createdAt: new Date().toISOString() };
+              targetId = np.id;
               savePlays([...plays, np]);
               toast?.(`✓ ${name} — nouveau système noté`);
             }
             setVsAnnounceName(""); setVsAnnounceTf([]); setVsAnnounceTfInput(""); setVsAnnounceType("");
+            setVsTfFilters([]); setVsTypeFilters([]);
+            setVsHighlightPlayId(targetId);
+            setTimeout(() => document.getElementById(`vs-play-${targetId}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
           };
 
           const recordVsOutcome = (playId, value, missContext = null) => {
@@ -10410,8 +10419,7 @@ function CoachingProBoost({ session }) {
               contestedMisses: contestedMissesOf(cur) + (missContext === "conteste" ? 1 : 0),
             };
             updateActiveVs({ tally: { ...(activeVs.tally || {}), [playId]: next } });
-            setVsTfFilters([]);
-            setVsNewPlayOpen(false); setVsNewPlayName("");
+            setVsHighlightPlayId(null);
             const playTitre = plays.find(p => p.id === playId)?.titre || "Système";
             const label = value ? (value > 0 ? `+${value}` : `${value}`) : "sans tir";
             const contextLabel = missContext === "ouvert" ? " (tir ouvert)" : missContext === "conteste" ? " (tir contesté)" : "";
@@ -10433,14 +10441,14 @@ function CoachingProBoost({ session }) {
             const filteredPlays = teamPlays
               .filter(p => vsTfFilters.every(f => tfOf(p).includes(f)))
               .filter(p => vsTypeFilters.length === 0 || vsTypeFilters.includes(p.type))
-              .sort((a, b) => (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || playedOf(activeVs.tally?.[b.id]) - playedOf(activeVs.tally?.[a.id]));
+              .sort((a, b) => (b.id === vsHighlightPlayId ? 1 : 0) - (a.id === vsHighlightPlayId ? 1 : 0) || (b.favorite ? 1 : 0) - (a.favorite ? 1 : 0) || playedOf(activeVs.tally?.[b.id]) - playedOf(activeVs.tally?.[a.id]));
             const sorted = [...teamPlays].sort((a, b) => playedOf(activeVs.tally?.[b.id]) - playedOf(activeVs.tally?.[a.id]));
             const totalTally = teamPlays.reduce((sum, p) => sum + playedOf(activeVs.tally?.[p.id]), 0);
 
             return (
               <div className="max-w-3xl">
                 <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-                  <button onClick={() => { setActiveVideoScoutId(null); setVsTfFilters([]); setVsTypeFilters([]); setVsPendingMiss(null); setVsAnnounceName(""); setVsAnnounceTf([]); }}
+                  <button onClick={() => { setActiveVideoScoutId(null); setVsTfFilters([]); setVsTypeFilters([]); setVsPendingMiss(null); setVsAnnounceName(""); setVsAnnounceTf([]); setVsHighlightPlayId(null); }}
                     className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Retour au scouting vidéo</button>
                   <button onClick={() => {
                     // Tous les systèmes notés pour cette équipe, même sans action comptée : les
@@ -10494,7 +10502,12 @@ function CoachingProBoost({ session }) {
                             {matches.map(p => {
                               const idx = p.titre.toLowerCase().indexOf(q);
                               return (
-                                <button key={p.id} onClick={() => setVsAnnounceName(p.titre)}
+                                <button key={p.id} onClick={() => {
+                                  setVsAnnounceName(p.titre);
+                                  setVsTfFilters([]); setVsTypeFilters([]);
+                                  setVsHighlightPlayId(p.id);
+                                  setTimeout(() => document.getElementById(`vs-play-${p.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+                                }}
                                   className="px-3 py-1.5 rounded-full text-sm bg-[#1B2A4A]/8 text-[#1B2A4A] hover:bg-[#FF6B35]/15 hover:text-[#FF6B35] transition-colors">
                                   {p.titre.slice(0, idx)}<strong>{p.titre.slice(idx, idx + q.length)}</strong>{p.titre.slice(idx + q.length)}
                                   {p.type && <span className="text-[10px] text-[#1B2A4A]/40 ml-1">· {p.type}</span>}
@@ -10565,7 +10578,7 @@ function CoachingProBoost({ session }) {
                     <button onClick={validateAnnounce} disabled={!vsAnnounceName.trim()}
                       className="px-4 py-2 rounded-md text-sm font-semibold text-white disabled:opacity-40"
                       style={{ backgroundColor: "var(--sport-accent)" }}>✓ Valider</button>
-                    <button onClick={() => { setVsAnnounceName(""); setVsAnnounceTf([]); setVsAnnounceTfInput(""); }} className="px-4 py-2 rounded-md text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">Annuler</button>
+                    <button onClick={() => { setVsAnnounceName(""); setVsAnnounceTf([]); setVsAnnounceTfInput(""); setVsHighlightPlayId(null); }} className="px-4 py-2 rounded-md text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">Annuler</button>
                   </div>
                 </div>
 
@@ -10701,8 +10714,10 @@ function CoachingProBoost({ session }) {
                     {filteredPlays.map(p => {
                       const entry = activeVs.tally?.[p.id];
                       const played = playedOf(entry), points = pointsOf(entry), possible = possibleOf(entry);
+                      const isHighlighted = p.id === vsHighlightPlayId;
                       return (
-                        <div key={p.id} className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4">
+                        <div key={p.id} id={`vs-play-${p.id}`}
+                          className={`border rounded-xl bg-white/70 p-4 transition-colors ${isHighlighted ? "border-2 border-[#FF6B35] bg-[#FF6B35]/5" : "border-[#1B2A4A]/15"}`}>
                           <div className="flex items-start justify-between mb-2 gap-2">
                             <div>
                               <div className="font-semibold text-[#1B2A4A]">{p.titre}</div>
