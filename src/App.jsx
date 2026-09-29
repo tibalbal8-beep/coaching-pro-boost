@@ -985,19 +985,41 @@ function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
 // Export "Scouting vidéo" : récap présentable pour le staff — équipe observée, défenses
 // vues, notes libres, et le classement des systèmes avec leur rentabilité (même mécanique
 // que buildMatchReportHtml, sans le tableau de score qui n'a pas de sens hors match réel).
-function buildVideoScoutReportHtml(session, rows) {
+function buildVideoScoutReportHtml(session, rows, typeOrder = []) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const dateStr = session.date ? new Date(session.date).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
-  const rowsHtml = rows.map((r, i) => `
+
+  // Un classement séparé par type (SLOB, Zone, BLOB...) plutôt qu'un seul mélangé — chaque
+  // groupe garde l'ordre de fréquence déjà appliqué à `rows`, et les groupes eux-mêmes suivent
+  // l'ordre des catégories du Playbook (typeOrder) quand il est fourni.
+  const groups = [];
+  rows.forEach(r => {
+    const key = r.type || "Sans catégorie";
+    let g = groups.find(g => g.type === key);
+    if (!g) { g = { type: key, rows: [] }; groups.push(g); }
+    g.rows.push(r);
+  });
+  const rank = (t) => { const i = typeOrder.indexOf(t); return i === -1 ? typeOrder.length : i; };
+  groups.sort((a, b) => rank(a.type) - rank(b.type));
+
+  const tableHtml = (groupRows) => `
+    <table>
+      <thead><tr><th></th><th>Système</th><th class="num">Joué</th><th class="num">Points</th><th class="num">Pts/possession</th><th class="num">Tirs ouverts</th><th class="num">Tirs contestés</th></tr></thead>
+      <tbody>${groupRows.map((r, i) => `
     <tr>
       <td class="rank">${i + 1}</td>
-      <td class="titre">${esc(r.titre)}${r.type ? `<span class="type-badge">${esc(r.type)}</span>` : ""}${r.tempsFort?.length ? `<div class="tf">${r.tempsFort.map(esc).join(", ")}</div>` : ""}</td>
+      <td class="titre">${esc(r.titre)}${r.tempsFort?.length ? `<div class="tf">${r.tempsFort.map(esc).join(", ")}</div>` : ""}</td>
       <td class="num">${r.played}</td>
       <td class="num">${r.points}${r.possible > 0 ? ` / ${r.possible}` : ""}</td>
       <td class="num ppp">${r.played > 0 ? (r.points / r.played).toFixed(2) : "—"}</td>
       <td class="num miss">${r.openMisses || 0}</td>
       <td class="num miss">${r.contestedMisses || 0}</td>
-    </tr>`).join("");
+    </tr>`).join("")}</tbody>
+    </table>`;
+
+  const rowsHtml = groups.map(g => `
+    <div class="group-title">Classement — ${esc(g.type)}</div>
+    ${tableHtml(g.rows)}`).join("");
 
   const barRows = rows.filter(r => r.played > 0).slice(0, 8);
   const maxPoints = Math.max(1, ...barRows.map(r => r.points));
@@ -1049,6 +1071,7 @@ function buildVideoScoutReportHtml(session, rows) {
   .rank{font-family:'Oswald',sans-serif;font-weight:700;color:#FF6B35;width:28px}
   .titre{font-weight:600}
   .type-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#FF6B35;background:#FF6B351a;border-radius:20px;padding:2px 8px;margin-left:8px}
+  .group-title{font-family:'Oswald',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1B2A4A;background:#F2EDE4;padding:10px 16px}
   .tf{font-size:11px;color:#1B2A4A60;margin-top:2px;font-weight:400}
   .ppp{font-weight:700}
   .miss{color:#1B2A4A80;font-size:13px}
@@ -1074,11 +1097,7 @@ function buildVideoScoutReportHtml(session, rows) {
       <h1>${esc(session.opponent)}</h1>
       <div class="meta">${esc(dateStr) || "Date non précisée"} · ${rows.length} système${rows.length > 1 ? "s" : ""} noté${rows.length > 1 ? "s" : ""}</div>
     </div>
-    ${rows.length === 0 ? `<div class="empty">Aucun système noté pour cette session.</div>` : `
-    <table>
-      <thead><tr><th></th><th>Système</th><th class="num">Joué</th><th class="num">Points</th><th class="num">Pts/possession</th><th class="num">Tirs ouverts</th><th class="num">Tirs contestés</th></tr></thead>
-      <tbody>${rowsHtml}</tbody>
-    </table>`}
+    ${rows.length === 0 ? `<div class="empty">Aucun système noté pour cette session.</div>` : rowsHtml}
     ${barChartHtml}
     ${defensesHtml}
     ${notesHtml}
@@ -10691,7 +10710,7 @@ function CoachingProBoost({ session }) {
                         openMisses: openMissesOf(activeVs.tally?.[p.id]),
                         contestedMisses: contestedMissesOf(activeVs.tally?.[p.id]),
                       })).filter(r => r.played > 0);
-                      const html = buildVideoScoutReportHtml(activeVs, rows);
+                      const html = buildVideoScoutReportHtml(activeVs, rows, playTypes);
                       downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `scouting-${slugifyForFile(activeVs.opponent)}-${activeVs.date || ""}.html`);
                     }} className="text-xs font-medium text-[#FF6B35] hover:underline">📤 Exporter le récap</button>
                     <button onClick={async () => {
