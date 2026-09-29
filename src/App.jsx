@@ -7066,7 +7066,7 @@ function CoachingProBoost({ session }) {
   const pdfReady = usePdfJs();
   const [view, setView] = useState(() => {
     const saved = localStorage.getItem("cpb_view");
-    return ["library","sessions","stats","playbook","account"].includes(saved) ? saved : "library";
+    return ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","wellness"].includes(saved) ? saved : "library";
   });
   // Toujours à jour, contrairement à `view` capturé dans la closure de l'effet ci-dessous
   // (qui ne tourne qu'une fois au montage) — évite qu'un retour arrière égaré (ex: swipe
@@ -7086,7 +7086,7 @@ function CoachingProBoost({ session }) {
       const v = e.state?.view;
       if (v === "session" && activeSessionRef.current) {
         setView("session");
-      } else if (v && ["library","sessions","stats","playbook","account"].includes(v)) {
+      } else if (v && ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","wellness"].includes(v)) {
         setView(v);
         localStorage.setItem("cpb_view", v);
       } else if (activeSessionRef.current) {
