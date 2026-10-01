@@ -6554,7 +6554,8 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
         )}
         {tagsOpen && (() => {
           const q = newTagInput.trim().toLowerCase();
-          const filteredTags = q ? playTags.filter(t => t.toLowerCase().includes(q)) : playTags;
+          const sortedPlayTags = [...playTags].sort((a, b) => a.localeCompare(b, "fr"));
+          const filteredTags = q ? sortedPlayTags.filter(t => t.toLowerCase().includes(q)) : sortedPlayTags;
           const exactExists = q && playTags.some(t => t.toLowerCase() === q);
           return (
           <div className="px-4 py-3 bg-white/20 border-t border-[#1B2A4A]/10 space-y-2.5">
