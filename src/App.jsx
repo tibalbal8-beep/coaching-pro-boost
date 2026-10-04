@@ -1031,7 +1031,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
       <tbody>${attacks.map((a, i) => { const st = attackStats(a); return `
         <tr>
           <td class="rank">${i + 1}</td>
-          <td class="titre">${a.labels.map(esc).join(" / ")}</td>
+          <td class="titre">${a.labels.map(l => esc(attackLabelText(l))).join(" / ")}</td>
           <td class="num">${a.count}×</td>
           <td class="num miss">${st.resolved}/${a.count}</td>
           <td class="num">${st.points}${st.possible > 0 ? ` / ${st.possible}` : ""}</td>
@@ -1129,47 +1129,56 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
 </html>`;
 }
 
-// Import d'un export XML de Sportscode : chaque <instance> (une possession taguée) porte un nom
-// de code + des libellés. Les instances qui ont EXACTEMENT les mêmes libellés sont regroupées en
-// une "attaque" (ex. Horn / Stagger / Top 52 — jouée 18 fois). Parseur volontairement tolérant :
-// on ne présume pas d'une structure précise au-delà de <instance>, <code> et <label><text>.
+// Import d'un export XML de Sportscode. Structure lue (confirmée sur un export réel) :
+// <instance><code>ATTAQUE</code><label><group>ENTREE</group><text>E_Horn</text></label>…</instance>.
+// - Seules les instances qui portent des libellés sont des possessions (START/DEFENSE vides ignorées).
+// - Les libellés d'un groupe "POINTS…" à valeur numérique (+2, +3, -2…) sont le RÉSULTAT de la
+//   possession, pas sa définition : ils servent à calculer la rentabilité, pas à regrouper.
+// - Les possessions aux mêmes libellés de définition (ENTREE + INTENTION…) forment une "attaque".
 function parseSportscodeXml(xmlText) {
   const doc = new DOMParser().parseFromString(xmlText, "application/xml");
   if (doc.querySelector("parsererror")) throw new Error("Fichier XML illisible.");
   const nodes = [...doc.getElementsByTagName("instance")];
   if (nodes.length === 0) throw new Error("Aucune instance trouvée dans ce XML (balise <instance> absente).");
   const txt = (el) => (el?.textContent || "").trim().replace(/\s+/g, " ");
-  const raw = nodes.map(n => {
-    const code = txt(n.getElementsByTagName("code")[0]);
-    const labels = [...n.getElementsByTagName("label")].map(l => txt(l.getElementsByTagName("text")[0]) || txt(l)).filter(Boolean);
-    return { code, labels };
-  });
-  // Le nom de code est souvent identique partout (ex. "Attaque") : on ne le garde comme libellé
-  // que s'il varie d'une instance à l'autre.
-  const codeVaries = new Set(raw.map(r => r.code.toLowerCase())).size > 1;
-  return raw.map(r => [...(codeVaries && r.code ? [r.code] : []), ...r.labels]);
+  const all = nodes.map(n => ({
+    code: txt(n.getElementsByTagName("code")[0]),
+    labels: [...n.getElementsByTagName("label")]
+      .map(l => ({ group: txt(l.getElementsByTagName("group")[0]), text: txt(l.getElementsByTagName("text")[0]) || txt(l) }))
+      .filter(l => l.text),
+  }));
+  const instances = all.filter(i => i.labels.length > 0);
+  if (instances.length === 0) throw new Error("Aucune possession avec libellés dans ce XML.");
+  return { instances, ignored: all.length - instances.length };
 }
 
-function groupSportscodeInstances(instances, excludedKeys = []) {
-  const excl = new Set(excludedKeys);
+const isSportscodeResult = (l) => /^points/i.test(l.group || "") && /^[+-]?\d+$/.test(l.text);
+
+function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = []) {
+  const exclL = new Set(excludedKeys), exclC = new Set(excludedCodes.map(c => c.toLowerCase()));
   const groups = new Map();
-  instances.forEach(labels => {
-    const kept = [...new Map(labels.map(l => [l.toLowerCase(), l]).filter(([k]) => !excl.has(k))).values()];
-    if (kept.length === 0) return;
-    const key = kept.map(l => l.toLowerCase()).sort().join("|");
-    const g = groups.get(key) || { key, labels: kept, count: 0 };
-    g.count++; groups.set(key, g);
+  instances.forEach(inst => {
+    if (exclC.has(inst.code.toLowerCase())) return;
+    const defining = [...new Map(inst.labels.filter(l => !isSportscodeResult(l) && !exclL.has(l.text.toLowerCase())).map(l => [l.text.toLowerCase(), l])).values()];
+    if (defining.length === 0) return;
+    const key = defining.map(l => l.text.toLowerCase()).sort().join("|");
+    const g = groups.get(key) || { key, labels: defining, count: 0, xmlOutcomes: [] };
+    g.count++;
+    const res = inst.labels.find(isSportscodeResult);
+    if (res) g.xmlOutcomes.push(parseInt(res.text.replace("+", ""), 10));
+    groups.set(key, g);
   });
-  return [...groups.values()].sort((a, b) => b.count - a.count || a.labels.join().localeCompare(b.labels.join(), "fr"));
+  return [...groups.values()].sort((a, b) => b.count - a.count || a.labels.map(l => l.text).join().localeCompare(b.labels.map(l => l.text).join(), "fr"));
 }
 
-// Résultats saisis sur une attaque importée : liste de valeurs (+2, +3, +1, -2, -3).
+// Résultats d'une attaque : ceux lus dans le XML + ceux ajoutés à la main (+3 +2 +1 0 -2 -3).
 function attackStats(a) {
-  const o = a.outcomes || [];
+  const o = [...(a.xmlOutcomes || []), ...(a.outcomes || [])];
   const points = o.reduce((s, v) => s + (v > 0 ? v : 0), 0);
   const possible = o.reduce((s, v) => s + Math.abs(v), 0);
   return { points, possible, resolved: o.length, ppp: o.length ? points / o.length : null };
 }
+const attackLabelText = (l) => typeof l === "string" ? l : l.text;
 
 // Statistiques sur ce qui a été tagué dans le Playbook (types, mots-clés, temps forts, combinaisons
 // de mots-clés) — calculées sur les plays passés en paramètre (typiquement filtrés sur une équipe
@@ -10640,19 +10649,29 @@ function CoachingProBoost({ session }) {
           const handleXmlFile = async (file) => {
             if (!file) return;
             try {
-              const instances = await file.text().then(parseSportscodeXml);
-              const counts = new Map();
-              instances.forEach(labels => [...new Set(labels.map(l => l.toLowerCase()))].forEach(k => {
-                const label = labels.find(l => l.toLowerCase() === k);
-                const e = counts.get(k) || { key: k, label, count: 0 }; e.count++; counts.set(k, e);
-              }));
-              setVsImportPreview({ fileName: file.name, instances, labels: [...counts.values()].sort((a, b) => b.count - a.count), excluded: [] });
+              const { instances, ignored } = parseSportscodeXml(await file.text());
+              const labelCounts = new Map(), codeCounts = new Map();
+              instances.forEach(inst => {
+                codeCounts.set(inst.code, (codeCounts.get(inst.code) || 0) + 1);
+                inst.labels.filter(l => !isSportscodeResult(l)).forEach(l => {
+                  const k = l.text.toLowerCase(), e = labelCounts.get(k) || { key: k, label: l.text, group: l.group, count: 0 };
+                  e.count++; labelCounts.set(k, e);
+                });
+              });
+              const codes = [...codeCounts.entries()].map(([code, count]) => ({ code, count })).sort((a, b) => b.count - a.count);
+              // Par défaut : les séquences d'attaque seulement (une défense taguée n'est pas une attaque).
+              const hasAtt = codes.some(c => /att/i.test(c.code));
+              setVsImportPreview({
+                fileName: file.name, instances, ignored, codes,
+                labels: [...labelCounts.values()].sort((a, b) => b.count - a.count),
+                excluded: [], excludedCodes: hasAtt ? codes.filter(c => !/att/i.test(c.code)).map(c => c.code) : [],
+              });
             } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
           };
           const confirmXmlImport = () => {
-            const groups = groupSportscodeInstances(vsImportPreview.instances, vsImportPreview.excluded);
+            const groups = groupSportscodeInstances(vsImportPreview.instances, vsImportPreview.excluded, vsImportPreview.excludedCodes);
             const prev = new Map((activeVs.attacks || []).map(a => [a.key, a]));
-            updateActiveVs({ attacks: groups.map(g => ({ id: prev.get(g.key)?.id || uid(), key: g.key, labels: g.labels, count: g.count, outcomes: prev.get(g.key)?.outcomes || [] })) });
+            updateActiveVs({ attacks: groups.map(g => ({ id: prev.get(g.key)?.id || uid(), key: g.key, labels: g.labels, count: g.count, xmlOutcomes: g.xmlOutcomes, outcomes: prev.get(g.key)?.outcomes || [] })) });
             toast?.(`✓ ${groups.length} attaque${groups.length > 1 ? "s" : ""} importée${groups.length > 1 ? "s" : ""}`);
             setVsImportPreview(null);
           };
@@ -10924,7 +10943,12 @@ function CoachingProBoost({ session }) {
                           <div key={a.id} className="border border-[#1B2A4A]/15 rounded-xl bg-white p-3">
                             <div className="flex items-start justify-between gap-2 mb-2">
                               <div className="flex flex-wrap gap-1">
-                                {a.labels.map((l, i) => <span key={i} className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#FF6B35]/12 text-[#FF6B35]" style={{ backgroundColor: "rgba(255,107,53,0.12)" }}>{l}</span>)}
+                                {a.labels.map((l, i) => {
+                                  const grp = typeof l === "string" ? "" : (l.group || "");
+                                  const intention = /intention/i.test(grp);
+                                  return <span key={i} className="text-xs font-semibold px-2.5 py-1 rounded-full"
+                                    style={intention ? { backgroundColor: "#FF6B35", color: "#fff" } : { backgroundColor: "rgba(27,42,74,0.08)", color: "#1B2A4A" }}>{attackLabelText(l)}</span>;
+                                })}
                               </div>
                               <div className="text-right flex-shrink-0">
                                 <div className="text-xl font-bold" style={{ color: "var(--sport-accent)" }}>{a.count}×</div>
@@ -10936,7 +10960,7 @@ function CoachingProBoost({ session }) {
                               {[-3, -2].map(v => <button key={v} onClick={() => addAttackOutcome(a.id, v)} className="w-11 h-11 rounded-lg text-base font-bold border-2 border-red-200 text-red-600 hover:bg-red-50">{v}</button>)}
                               {[1, 2, 3].map(v => <button key={v} onClick={() => addAttackOutcome(a.id, v)} className="w-11 h-11 rounded-lg text-base font-bold border-2 border-green-300 text-green-700 hover:bg-green-50">+{v}</button>)}
                               <button onClick={() => addAttackOutcome(a.id, 0)} title="Possession sans point (perte, faute offensive...)" className="px-3 h-11 rounded-lg text-xs font-semibold border border-[#1B2A4A]/20 text-[#1B2A4A]/60 hover:bg-[#1B2A4A]/5">0 pt</button>
-                              {st.resolved > 0 && <button onClick={() => undoAttackOutcome(a.id)} title="Annuler le dernier résultat" className="px-2 h-11 text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><Undo2 size={16} /></button>}
+                              {(a.outcomes || []).length > 0 && <button onClick={() => undoAttackOutcome(a.id)} title="Annuler le dernier résultat" className="px-2 h-11 text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><Undo2 size={16} /></button>}
                             </div>
                           </div>
                         );
@@ -10946,38 +10970,59 @@ function CoachingProBoost({ session }) {
                 </div>
 
                 {vsImportPreview && (() => {
-                  const groups = groupSportscodeInstances(vsImportPreview.instances, vsImportPreview.excluded);
-                  const toggle = (k) => setVsImportPreview(pv => ({ ...pv, excluded: pv.excluded.includes(k) ? pv.excluded.filter(x => x !== k) : [...pv.excluded, k] }));
+                  const pv = vsImportPreview;
+                  const groups = groupSportscodeInstances(pv.instances, pv.excluded, pv.excludedCodes);
+                  const toggle = (k) => setVsImportPreview(x => ({ ...x, excluded: x.excluded.includes(k) ? x.excluded.filter(y => y !== k) : [...x.excluded, k] }));
+                  const toggleCode = (c) => setVsImportPreview(x => ({ ...x, excludedCodes: x.excludedCodes.includes(c) ? x.excludedCodes.filter(y => y !== c) : [...x.excludedCodes, c] }));
+                  const used = pv.instances.filter(i => !pv.excludedCodes.includes(i.code));
+                  const withResult = used.filter(i => i.labels.some(isSportscodeResult)).length;
+                  const labelGroups = [...new Set(pv.labels.map(l => l.group || "Libellés"))];
                   return (
                     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setVsImportPreview(null)}>
                       <div className="bg-white rounded-2xl w-full max-w-lg max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
                         <div className="px-5 pt-5 pb-3">
-                          <h3 className="font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>Importer {vsImportPreview.fileName}</h3>
-                          <p className="text-xs text-[#1B2A4A]/50 mt-1"><strong>{vsImportPreview.instances.length}</strong> possessions lues → <strong>{groups.length}</strong> attaque{groups.length > 1 ? "s" : ""} distincte{groups.length > 1 ? "s" : ""}.</p>
+                          <h3 className="font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>Importer {pv.fileName}</h3>
+                          <p className="text-xs text-[#1B2A4A]/50 mt-1">
+                            <strong>{used.length}</strong> possession{used.length > 1 ? "s" : ""} → <strong>{groups.length}</strong> attaque{groups.length > 1 ? "s" : ""} distincte{groups.length > 1 ? "s" : ""}
+                            {" · "}résultat lu pour <strong>{withResult}</strong>/{used.length}
+                            {pv.ignored > 0 && <> · {pv.ignored} instance{pv.ignored > 1 ? "s" : ""} sans libellé ignorée{pv.ignored > 1 ? "s" : ""}</>}
+                          </p>
                         </div>
                         <div className="px-5 overflow-y-auto flex-1 pb-3">
-                          <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold mb-1.5">Libellés trouvés — décoche ceux qui ne définissent pas l'attaque (ex. quart-temps, joueur)</div>
-                          <div className="flex flex-wrap gap-1.5 mb-4">
-                            {vsImportPreview.labels.map(l => {
-                              const off = vsImportPreview.excluded.includes(l.key);
-                              return (
-                                <button key={l.key} onClick={() => toggle(l.key)}
-                                  className={`px-2.5 py-1 rounded-full text-xs font-medium border ${off ? "border-[#1B2A4A]/15 text-[#1B2A4A]/30 line-through" : "border-[#2563EB] bg-[#2563EB] text-white"}`}>
-                                  {l.label} <span className="opacity-60">{l.count}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                          <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold mb-1.5">Aperçu des attaques</div>
+                          {pv.codes.length > 1 && (
+                            <>
+                              <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold mb-1.5">Séquences à importer</div>
+                              <div className="flex flex-wrap gap-1.5 mb-4">
+                                {pv.codes.map(c => {
+                                  const off = pv.excludedCodes.includes(c.code);
+                                  return <button key={c.code} onClick={() => toggleCode(c.code)}
+                                    className={`px-2.5 py-1 rounded-full text-xs font-medium border ${off ? "border-[#1B2A4A]/15 text-[#1B2A4A]/30 line-through" : "border-[#FF6B35] bg-[#FF6B35] text-white"}`}>{c.code} <span className="opacity-70">{c.count}</span></button>;
+                                })}
+                              </div>
+                            </>
+                          )}
+                          {labelGroups.map(gr => (
+                            <div key={gr} className="mb-3">
+                              <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold mb-1.5">{gr} — décoche ce qui ne définit pas l'attaque</div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {pv.labels.filter(l => (l.group || "Libellés") === gr).map(l => {
+                                  const off = pv.excluded.includes(l.key);
+                                  return <button key={l.key} onClick={() => toggle(l.key)}
+                                    className={`px-2.5 py-1 rounded-full text-xs font-medium border ${off ? "border-[#1B2A4A]/15 text-[#1B2A4A]/30 line-through" : "border-[#2563EB] bg-[#2563EB] text-white"}`}>{l.label} <span className="opacity-60">{l.count}</span></button>;
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                          <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold mt-4 mb-1.5">Aperçu des attaques</div>
                           <div className="space-y-1">
                             {groups.slice(0, 10).map(g => (
                               <div key={g.key} className="flex items-center justify-between gap-2 text-sm bg-[#F2EDE4] rounded-lg px-3 py-1.5">
-                                <span className="text-[#1B2A4A] font-medium truncate">{g.labels.join(" / ")}</span>
+                                <span className="text-[#1B2A4A] font-medium truncate">{g.labels.map(l => l.text).join(" / ")}</span>
                                 <span className="font-bold text-[#FF6B35] flex-shrink-0">{g.count}×</span>
                               </div>
                             ))}
                             {groups.length > 10 && <p className="text-[11px] text-[#1B2A4A]/40">+ {groups.length - 10} autre{groups.length - 10 > 1 ? "s" : ""}</p>}
-                            {groups.length === 0 && <p className="text-xs text-red-500">Tous les libellés sont exclus — recoche-en au moins un.</p>}
+                            {groups.length === 0 && <p className="text-xs text-red-500">Rien à importer — recoche au moins une séquence et un libellé.</p>}
                           </div>
                         </div>
                         <div className="px-5 py-4 border-t border-[#1B2A4A]/10 flex gap-2">
