@@ -1134,7 +1134,8 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
 // - Seules les instances qui portent des libellés sont des possessions (START/DEFENSE vides ignorées).
 // - Les libellés d'un groupe "POINTS…" à valeur numérique (+2, +3, -2…) sont le RÉSULTAT de la
 //   possession, pas sa définition : ils servent à calculer la rentabilité, pas à regrouper.
-// - Les possessions aux mêmes libellés de définition (ENTREE + INTENTION…) forment une "attaque".
+// - Les possessions aux mêmes libellés de définition (ENTREE + INTENTION…, dans le même ordre au sein
+//   d'un groupe) forment une "attaque".
 function parseSportscodeXml(xmlText) {
   const doc = new DOMParser().parseFromString(xmlText, "application/xml");
   if (doc.querySelector("parsererror")) throw new Error("Fichier XML illisible.");
@@ -1161,7 +1162,11 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
     if (exclC.has(inst.code.toLowerCase())) return;
     const defining = [...new Map(inst.labels.filter(l => !isSportscodeResult(l) && !exclL.has(l.text.toLowerCase())).map(l => [l.text.toLowerCase(), l])).values()];
     if (defining.length === 0) return;
-    const key = defining.map(l => l.text.toLowerCase()).sort().join("|");
+    // L'ordre compte à l'intérieur d'un groupe (ex. ENTREE : Iverson puis Diamand ≠ Diamand
+    // puis Iverson, c'est le déroulé du système) ; l'ordre ENTRE groupes est normalisé.
+    const byGroup = new Map();
+    defining.forEach(l => { const g = (l.group || "").toLowerCase(); byGroup.set(g, [...(byGroup.get(g) || []), l.text.toLowerCase()]); });
+    const key = [...byGroup.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([g, t]) => g + ":" + t.join(">")).join("|");
     const g = groups.get(key) || { key, labels: defining, count: 0, xmlOutcomes: [] };
     g.count++;
     const res = inst.labels.find(isSportscodeResult);
