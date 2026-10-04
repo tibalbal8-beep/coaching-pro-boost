@@ -1159,16 +1159,16 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
   const exclL = new Set(excludedKeys), exclC = new Set(excludedCodes.map(c => c.toLowerCase()));
   const groups = new Map();
   let lastGroup = null; // attaque de la possession précédente, pour rattacher les résultats "seuls"
-  let lastHasResult = false; // la possession précédente a-t-elle déjà son résultat ?
+  let lastPlaceholder = false; // la possession précédente est-elle comptée à 0 faute de résultat (perte de balle) ?
   instances.forEach(inst => {
     if (exclC.has(inst.code.toLowerCase())) return;
     // Instance qui ne porte QUE des résultats (+1, +2, -1...) : suite de l'action précédente
     // (lancer franc, and-one...), jamais une possession de plus. Si la possession précédente
-    // n'avait pas de résultat, c'est son résultat ; sinon ce sont des points en plus sur elle.
+    // était comptée à 0 faute de résultat, c'est son résultat ; sinon ce sont des points en plus.
     if (inst.labels.every(isSportscodeResult)) {
       if (lastGroup) inst.labels.forEach(l => {
         const v = parseInt(l.text.replace("+", ""), 10);
-        if (!lastHasResult) { lastGroup.xmlOutcomes.push(v); lastHasResult = true; }
+        if (lastPlaceholder) { lastGroup.xmlOutcomes[lastGroup.xmlOutcomes.length - 1] = v; lastPlaceholder = false; }
         else lastGroup.xmlBonus.push(v);
       });
       return;
@@ -1184,8 +1184,10 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
     g.count++;
     lastGroup = g;
     const res = inst.labels.find(isSportscodeResult);
-    lastHasResult = !!res;
-    if (res) g.xmlOutcomes.push(parseInt(res.text.replace("+", ""), 10));
+    // Pas de résultat = perte de balle : possession jouée, 0 point (sauf si un résultat seul suit,
+    // typiquement des lancers francs, qui prend alors la place de ce 0).
+    g.xmlOutcomes.push(res ? parseInt(res.text.replace("+", ""), 10) : 0);
+    lastPlaceholder = !res;
     groups.set(key, g);
   });
   return [...groups.values()].sort((a, b) => b.count - a.count || a.labels.map(l => l.text).join().localeCompare(b.labels.map(l => l.text).join(), "fr"));
@@ -11000,8 +11002,8 @@ function CoachingProBoost({ session }) {
                   const toggle = (k) => setVsImportPreview(x => ({ ...x, excluded: x.excluded.includes(k) ? x.excluded.filter(y => y !== k) : [...x.excluded, k] }));
                   const toggleCode = (c) => setVsImportPreview(x => ({ ...x, excludedCodes: x.excludedCodes.includes(c) ? x.excludedCodes.filter(y => y !== c) : [...x.excludedCodes, c] }));
                   const used = pv.instances.filter(i => !pv.excludedCodes.includes(i.code));
-                  const withResult = used.filter(i => i.labels.some(isSportscodeResult) && !i.labels.every(isSportscodeResult)).length;
                   const bonusOnly = used.filter(i => i.labels.every(isSportscodeResult)).length;
+                  const lostBalls = groups.reduce((n, g) => n + g.xmlOutcomes.filter(v => v === 0).length, 0);
                   const labelGroups = [...new Set(pv.labels.map(l => l.group || "Libellés"))];
                   return (
                     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setVsImportPreview(null)}>
@@ -11010,7 +11012,7 @@ function CoachingProBoost({ session }) {
                           <h3 className="font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>Importer {pv.fileName}</h3>
                           <p className="text-xs text-[#1B2A4A]/50 mt-1">
                             <strong>{used.length - bonusOnly}</strong> possession{used.length - bonusOnly > 1 ? "s" : ""} → <strong>{groups.length}</strong> attaque{groups.length > 1 ? "s" : ""} distincte{groups.length > 1 ? "s" : ""}
-                            {" · "}résultat lu pour <strong>{withResult}</strong>/{used.length - bonusOnly}
+                            {lostBalls > 0 && <> · <strong>{lostBalls}</strong> sans point (perte de balle)</>}
                             {bonusOnly > 0 && <> · {bonusOnly} point{bonusOnly > 1 ? "s" : ""} seul{bonusOnly > 1 ? "s" : ""} rattaché{bonusOnly > 1 ? "s" : ""} à l'attaque précédente</>}
                             {pv.ignored > 0 && <> · {pv.ignored} instance{pv.ignored > 1 ? "s" : ""} sans libellé ignorée{pv.ignored > 1 ? "s" : ""}</>}
                           </p>
