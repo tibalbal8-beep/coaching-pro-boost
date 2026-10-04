@@ -1180,13 +1180,14 @@ function parseSportscodeXml(xmlText) {
 
 const isSportscodeResult = (l) => /^points/i.test(l.group || "") && /^[+-]?\d+$/.test(l.text);
 
-function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = [], defenseGroups = []) {
+function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = [], defenseGroups = [], ignoredGroups = []) {
   const exclL = new Set(excludedKeys), exclC = new Set(excludedCodes.map(c => c.toLowerCase()));
   // Groupes de libellés qui décrivent la DÉFENSE adverse (ex. SWITCH sur pick and roll) : ils ne
   // définissent pas l'attaque (sinon "Horn" et "Horn contre switch" seraient deux attaques) mais
   // servent à ventiler la rentabilité d'une même attaque selon la défense rencontrée.
   const defG = new Set(defenseGroups.map(g => g.toLowerCase()));
   const groupOf = (l) => (l.group || "Libellés").toLowerCase();
+  const ignG = new Set(ignoredGroups.map(g => g.toLowerCase())); // groupes à ignorer entièrement (ex. joueurs)
   const groups = new Map();
   let lastGroup = null; // attaque de la possession précédente, pour rattacher les résultats "seuls"
   let lastDefKeys = []; // défenses de cette possession précédente
@@ -1210,7 +1211,7 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
       });
       return;
     }
-    const usable = inst.labels.filter(l => !isSportscodeResult(l) && !exclL.has(l.text.toLowerCase()));
+    const usable = inst.labels.filter(l => !isSportscodeResult(l) && !exclL.has(l.text.toLowerCase()) && !ignG.has(groupOf(l)));
     const defining = [...new Map(usable.filter(l => !defG.has(groupOf(l))).map(l => [l.text.toLowerCase(), l])).values()];
     if (defining.length === 0) return;
     const defs = [...new Map(usable.filter(l => defG.has(groupOf(l))).map(l => [l.text.toLowerCase(), l.text])).values()];
@@ -10749,12 +10750,14 @@ function CoachingProBoost({ session }) {
                 labels: [...labelCounts.values()].sort((a, b) => b.count - a.count),
                 // Groupe dont le nom évoque une défense (DEF, DEFENSE PNR...) : ventilation par défaut.
                 defenseGroups: [...new Set([...labelCounts.values()].map(l => l.group || "Libellés"))].filter(g => /def/i.test(g)),
+                // Groupes de noms de joueurs : sans intérêt pour les stats d'attaque, ignorés par défaut.
+                ignoredGroups: [...new Set([...labelCounts.values()].map(l => l.group || "Libellés"))].filter(g => /joueur|player|nom\b/i.test(g)),
                 excluded: [], excludedCodes: hasAtt ? codes.filter(c => !/att/i.test(c.code)).map(c => c.code) : [],
               });
             } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
           };
           const confirmXmlImport = () => {
-            const groups = groupSportscodeInstances(vsImportPreview.instances, vsImportPreview.excluded, vsImportPreview.excludedCodes, vsImportPreview.defenseGroups);
+            const groups = groupSportscodeInstances(vsImportPreview.instances, vsImportPreview.excluded, vsImportPreview.excludedCodes, vsImportPreview.defenseGroups, vsImportPreview.ignoredGroups);
             const prev = new Map((activeVs.attacks || []).map(a => [a.key, a]));
             updateActiveVs({ attacks: groups.map(g => ({ id: prev.get(g.key)?.id || uid(), key: g.key, labels: g.labels, count: g.count, xmlOutcomes: g.xmlOutcomes, xmlBonus: g.xmlBonus, byDefense: g.byDefense, outcomes: prev.get(g.key)?.outcomes || [] })) });
             toast?.(`✓ ${groups.length} attaque${groups.length > 1 ? "s" : ""} importée${groups.length > 1 ? "s" : ""}`);
@@ -11066,9 +11069,15 @@ function CoachingProBoost({ session }) {
 
                 {vsImportPreview && (() => {
                   const pv = vsImportPreview;
-                  const groups = groupSportscodeInstances(pv.instances, pv.excluded, pv.excludedCodes, pv.defenseGroups);
+                  const groups = groupSportscodeInstances(pv.instances, pv.excluded, pv.excludedCodes, pv.defenseGroups, pv.ignoredGroups);
                   const toggle = (k) => setVsImportPreview(x => ({ ...x, excluded: x.excluded.includes(k) ? x.excluded.filter(y => y !== k) : [...x.excluded, k] }));
-                  const toggleDefGroup = (g) => setVsImportPreview(x => ({ ...x, defenseGroups: x.defenseGroups.includes(g) ? x.defenseGroups.filter(y => y !== g) : [...x.defenseGroups, g] }));
+                  // Rôle d'un groupe de libellés, en cycle : définit l'attaque → défense adverse → ignoré.
+                  const toggleDefGroup = (g) => setVsImportPreview(x => {
+                    const isDef = x.defenseGroups.includes(g), isIgn = x.ignoredGroups.includes(g);
+                    if (isIgn) return { ...x, ignoredGroups: x.ignoredGroups.filter(y => y !== g) };
+                    if (isDef) return { ...x, defenseGroups: x.defenseGroups.filter(y => y !== g), ignoredGroups: [...x.ignoredGroups, g] };
+                    return { ...x, defenseGroups: [...x.defenseGroups, g] };
+                  });
                   const toggleCode = (c) => setVsImportPreview(x => ({ ...x, excludedCodes: x.excludedCodes.includes(c) ? x.excludedCodes.filter(y => y !== c) : [...x.excludedCodes, c] }));
                   const used = pv.instances.filter(i => !pv.excludedCodes.includes(i.code));
                   const bonusOnly = used.filter(i => i.labels.every(isSportscodeResult)).length;
@@ -11104,8 +11113,8 @@ function CoachingProBoost({ session }) {
                               <div className="flex items-center justify-between gap-2 mb-1.5">
                                 <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold">{gr}</div>
                                 <button onClick={() => toggleDefGroup(gr)}
-                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${pv.defenseGroups.includes(gr) ? "border-[#22c55e] bg-[#22c55e] text-white" : "border-[#1B2A4A]/20 text-[#1B2A4A]/50"}`}>
-                                  {pv.defenseGroups.includes(gr) ? "🛡 Défense adverse (ventilation)" : "Définit l'attaque"}
+                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${pv.ignoredGroups.includes(gr) ? "border-[#1B2A4A]/15 text-[#1B2A4A]/30 line-through" : pv.defenseGroups.includes(gr) ? "border-[#22c55e] bg-[#22c55e] text-white" : "border-[#1B2A4A]/20 text-[#1B2A4A]/50"}`}>
+                                  {pv.ignoredGroups.includes(gr) ? "Ignoré" : pv.defenseGroups.includes(gr) ? "🛡 Défense adverse (ventilation)" : "Définit l'attaque"}
                                 </button>
                               </div>
                               <div className="flex flex-wrap gap-1.5">
