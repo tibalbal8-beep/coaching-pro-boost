@@ -1021,6 +1021,24 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
     <div class="group-title">Classement — ${esc(g.type)}</div>
     ${tableHtml(g.rows)}`).join("");
 
+  // Attaques importées depuis Sportscode : combinaison de libellés, fréquence, et rentabilité
+  // (points / possessions dont le résultat a été renseigné).
+  const attacks = [...(session.attacks || [])].sort((a, b) => b.count - a.count);
+  const attacksHtml = attacks.length === 0 ? "" : `
+    <div class="group-title">Attaques observées (import Sportscode)</div>
+    <table>
+      <thead><tr><th></th><th>Attaque</th><th class="num">Jouée</th><th class="num">Résultats</th><th class="num">Points</th><th class="num">Pts/possession</th></tr></thead>
+      <tbody>${attacks.map((a, i) => { const st = attackStats(a); return `
+        <tr>
+          <td class="rank">${i + 1}</td>
+          <td class="titre">${a.labels.map(esc).join(" / ")}</td>
+          <td class="num">${a.count}×</td>
+          <td class="num miss">${st.resolved}/${a.count}</td>
+          <td class="num">${st.points}${st.possible > 0 ? ` / ${st.possible}` : ""}</td>
+          <td class="num ppp">${st.ppp === null ? "—" : st.ppp.toFixed(2)}</td>
+        </tr>`; }).join("")}</tbody>
+    </table>`;
+
   const barRows = rows.filter(r => r.played > 0).slice(0, 8);
   const maxPoints = Math.max(1, ...barRows.map(r => r.points));
   const barChartHtml = barRows.length === 0 ? "" : `
@@ -1102,12 +1120,55 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
       <div class="meta">${esc(dateStr) || "Date non précisée"} · ${rows.length} système${rows.length > 1 ? "s" : ""} noté${rows.length > 1 ? "s" : ""}</div>
     </div>
     ${topNotesHtml}
-    ${rows.length === 0 ? `<div class="empty">Aucun système noté pour cette session.</div>` : rowsHtml}
+    ${attacksHtml}
+    ${rows.length === 0 && attacks.length === 0 ? `<div class="empty">Aucun système noté pour cette session.</div>` : rowsHtml}
     ${barChartHtml}
     ${defensesHtml}
   </div>
 </body>
 </html>`;
+}
+
+// Import d'un export XML de Sportscode : chaque <instance> (une possession taguée) porte un nom
+// de code + des libellés. Les instances qui ont EXACTEMENT les mêmes libellés sont regroupées en
+// une "attaque" (ex. Horn / Stagger / Top 52 — jouée 18 fois). Parseur volontairement tolérant :
+// on ne présume pas d'une structure précise au-delà de <instance>, <code> et <label><text>.
+function parseSportscodeXml(xmlText) {
+  const doc = new DOMParser().parseFromString(xmlText, "application/xml");
+  if (doc.querySelector("parsererror")) throw new Error("Fichier XML illisible.");
+  const nodes = [...doc.getElementsByTagName("instance")];
+  if (nodes.length === 0) throw new Error("Aucune instance trouvée dans ce XML (balise <instance> absente).");
+  const txt = (el) => (el?.textContent || "").trim().replace(/\s+/g, " ");
+  const raw = nodes.map(n => {
+    const code = txt(n.getElementsByTagName("code")[0]);
+    const labels = [...n.getElementsByTagName("label")].map(l => txt(l.getElementsByTagName("text")[0]) || txt(l)).filter(Boolean);
+    return { code, labels };
+  });
+  // Le nom de code est souvent identique partout (ex. "Attaque") : on ne le garde comme libellé
+  // que s'il varie d'une instance à l'autre.
+  const codeVaries = new Set(raw.map(r => r.code.toLowerCase())).size > 1;
+  return raw.map(r => [...(codeVaries && r.code ? [r.code] : []), ...r.labels]);
+}
+
+function groupSportscodeInstances(instances, excludedKeys = []) {
+  const excl = new Set(excludedKeys);
+  const groups = new Map();
+  instances.forEach(labels => {
+    const kept = [...new Map(labels.map(l => [l.toLowerCase(), l]).filter(([k]) => !excl.has(k))).values()];
+    if (kept.length === 0) return;
+    const key = kept.map(l => l.toLowerCase()).sort().join("|");
+    const g = groups.get(key) || { key, labels: kept, count: 0 };
+    g.count++; groups.set(key, g);
+  });
+  return [...groups.values()].sort((a, b) => b.count - a.count || a.labels.join().localeCompare(b.labels.join(), "fr"));
+}
+
+// Résultats saisis sur une attaque importée : liste de valeurs (+2, +3, +1, -2, -3).
+function attackStats(a) {
+  const o = a.outcomes || [];
+  const points = o.reduce((s, v) => s + (v > 0 ? v : 0), 0);
+  const possible = o.reduce((s, v) => s + Math.abs(v), 0);
+  return { points, possible, resolved: o.length, ppp: o.length ? points / o.length : null };
 }
 
 // Statistiques sur ce qui a été tagué dans le Playbook (types, mots-clés, temps forts, combinaisons
@@ -7950,6 +8011,8 @@ function CoachingProBoost({ session }) {
   // Système remonté en haut de la liste (et surligné) après un clic sur une suggestion, pour
   // pouvoir enchaîner tout de suite sur les boutons de score sans avoir à le rechercher.
   const [vsHighlightPlayId, setVsHighlightPlayId] = useState(null);
+  // Import XML Sportscode : aperçu avant d'importer { fileName, instances, labels, excluded }
+  const [vsImportPreview, setVsImportPreview] = useState(null);
   const [vsAnnounceTfInput, setVsAnnounceTfInput] = useState("");
   const [newMatchOpen, setNewMatchOpen] = useState(false);
   const [newMatchDate, setNewMatchDate] = useState(new Date().toISOString().slice(0, 10));
@@ -10573,6 +10636,29 @@ function CoachingProBoost({ session }) {
             updateActiveVs({ defenses: next });
           };
 
+          // ── Attaques importées depuis un XML Sportscode ────────────────────────────
+          const handleXmlFile = async (file) => {
+            if (!file) return;
+            try {
+              const instances = await file.text().then(parseSportscodeXml);
+              const counts = new Map();
+              instances.forEach(labels => [...new Set(labels.map(l => l.toLowerCase()))].forEach(k => {
+                const label = labels.find(l => l.toLowerCase() === k);
+                const e = counts.get(k) || { key: k, label, count: 0 }; e.count++; counts.set(k, e);
+              }));
+              setVsImportPreview({ fileName: file.name, instances, labels: [...counts.values()].sort((a, b) => b.count - a.count), excluded: [] });
+            } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
+          };
+          const confirmXmlImport = () => {
+            const groups = groupSportscodeInstances(vsImportPreview.instances, vsImportPreview.excluded);
+            const prev = new Map((activeVs.attacks || []).map(a => [a.key, a]));
+            updateActiveVs({ attacks: groups.map(g => ({ id: prev.get(g.key)?.id || uid(), key: g.key, labels: g.labels, count: g.count, outcomes: prev.get(g.key)?.outcomes || [] })) });
+            toast?.(`✓ ${groups.length} attaque${groups.length > 1 ? "s" : ""} importée${groups.length > 1 ? "s" : ""}`);
+            setVsImportPreview(null);
+          };
+          const addAttackOutcome = (id, v) => updateActiveVs({ attacks: (activeVs.attacks || []).map(a => a.id === id ? { ...a, outcomes: [...(a.outcomes || []), v] } : a) });
+          const undoAttackOutcome = (id) => updateActiveVs({ attacks: (activeVs.attacks || []).map(a => a.id === id ? { ...a, outcomes: (a.outcomes || []).slice(0, -1) } : a) });
+
           // Valide l'annonce en cours de saisie : retrouve le play existant (même titre pour
           // cette équipe, insensible à la casse) pour lui ajouter les temps forts éventuellement
           // manquants sans le dupliquer, ou en crée un nouveau si aucun ne correspond.
@@ -10810,6 +10896,98 @@ function CoachingProBoost({ session }) {
                     placeholder="Joueurs clés, habitudes, consignes à donner à l'équipe..."
                     className="w-full h-24 border border-[#1B2A4A]/20 rounded-lg p-2 text-sm outline-none focus:border-[#FF6B35] resize-none bg-white/70" />
                 </div>
+
+                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
+                  <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold">Attaques importées (XML Sportscode)</div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-semibold text-white px-3 py-1.5 rounded-md cursor-pointer" style={{ backgroundColor: "#2563EB" }}>
+                        📥 Importer un XML
+                        <input type="file" accept=".xml,text/xml,application/xml" className="hidden"
+                          onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; handleXmlFile(f); }} />
+                      </label>
+                      {(activeVs.attacks || []).length > 0 && (
+                        <button onClick={async () => {
+                          const ok = await cpbAlert?.("Supprimer toutes les attaques importées de cette session (et leurs résultats) ?", { confirm: true });
+                          if (ok) updateActiveVs({ attacks: [] });
+                        }} className="text-xs text-red-500 hover:underline">Supprimer l'import</button>
+                      )}
+                    </div>
+                  </div>
+                  {(activeVs.attacks || []).length === 0 ? (
+                    <p className="text-xs text-[#1B2A4A]/40 italic">Aucune pour l'instant — importe l'export XML de Sportscode : les possessions qui ont les mêmes libellés sont regroupées en une attaque.</p>
+                  ) : (
+                    <div className="flex flex-col gap-2 mt-2">
+                      {[...(activeVs.attacks || [])].sort((a, b) => b.count - a.count).map(a => {
+                        const st = attackStats(a);
+                        return (
+                          <div key={a.id} className="border border-[#1B2A4A]/15 rounded-xl bg-white p-3">
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <div className="flex flex-wrap gap-1">
+                                {a.labels.map((l, i) => <span key={i} className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#FF6B35]/12 text-[#FF6B35]" style={{ backgroundColor: "rgba(255,107,53,0.12)" }}>{l}</span>)}
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <div className="text-xl font-bold" style={{ color: "var(--sport-accent)" }}>{a.count}×</div>
+                                <div className="text-[10px] text-[#1B2A4A]/40">{st.resolved}/{a.count} résultats</div>
+                                {st.ppp !== null && <div className="text-[10px] font-semibold text-[#1B2A4A]/60">{st.points}/{st.possible} pts · {st.ppp.toFixed(2)} pts/poss.</div>}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {[-3, -2].map(v => <button key={v} onClick={() => addAttackOutcome(a.id, v)} className="w-11 h-11 rounded-lg text-base font-bold border-2 border-red-200 text-red-600 hover:bg-red-50">{v}</button>)}
+                              {[1, 2, 3].map(v => <button key={v} onClick={() => addAttackOutcome(a.id, v)} className="w-11 h-11 rounded-lg text-base font-bold border-2 border-green-300 text-green-700 hover:bg-green-50">+{v}</button>)}
+                              <button onClick={() => addAttackOutcome(a.id, 0)} title="Possession sans point (perte, faute offensive...)" className="px-3 h-11 rounded-lg text-xs font-semibold border border-[#1B2A4A]/20 text-[#1B2A4A]/60 hover:bg-[#1B2A4A]/5">0 pt</button>
+                              {st.resolved > 0 && <button onClick={() => undoAttackOutcome(a.id)} title="Annuler le dernier résultat" className="px-2 h-11 text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><Undo2 size={16} /></button>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {vsImportPreview && (() => {
+                  const groups = groupSportscodeInstances(vsImportPreview.instances, vsImportPreview.excluded);
+                  const toggle = (k) => setVsImportPreview(pv => ({ ...pv, excluded: pv.excluded.includes(k) ? pv.excluded.filter(x => x !== k) : [...pv.excluded, k] }));
+                  return (
+                    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setVsImportPreview(null)}>
+                      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="px-5 pt-5 pb-3">
+                          <h3 className="font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>Importer {vsImportPreview.fileName}</h3>
+                          <p className="text-xs text-[#1B2A4A]/50 mt-1"><strong>{vsImportPreview.instances.length}</strong> possessions lues → <strong>{groups.length}</strong> attaque{groups.length > 1 ? "s" : ""} distincte{groups.length > 1 ? "s" : ""}.</p>
+                        </div>
+                        <div className="px-5 overflow-y-auto flex-1 pb-3">
+                          <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold mb-1.5">Libellés trouvés — décoche ceux qui ne définissent pas l'attaque (ex. quart-temps, joueur)</div>
+                          <div className="flex flex-wrap gap-1.5 mb-4">
+                            {vsImportPreview.labels.map(l => {
+                              const off = vsImportPreview.excluded.includes(l.key);
+                              return (
+                                <button key={l.key} onClick={() => toggle(l.key)}
+                                  className={`px-2.5 py-1 rounded-full text-xs font-medium border ${off ? "border-[#1B2A4A]/15 text-[#1B2A4A]/30 line-through" : "border-[#2563EB] bg-[#2563EB] text-white"}`}>
+                                  {l.label} <span className="opacity-60">{l.count}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold mb-1.5">Aperçu des attaques</div>
+                          <div className="space-y-1">
+                            {groups.slice(0, 10).map(g => (
+                              <div key={g.key} className="flex items-center justify-between gap-2 text-sm bg-[#F2EDE4] rounded-lg px-3 py-1.5">
+                                <span className="text-[#1B2A4A] font-medium truncate">{g.labels.join(" / ")}</span>
+                                <span className="font-bold text-[#FF6B35] flex-shrink-0">{g.count}×</span>
+                              </div>
+                            ))}
+                            {groups.length > 10 && <p className="text-[11px] text-[#1B2A4A]/40">+ {groups.length - 10} autre{groups.length - 10 > 1 ? "s" : ""}</p>}
+                            {groups.length === 0 && <p className="text-xs text-red-500">Tous les libellés sont exclus — recoche-en au moins un.</p>}
+                          </div>
+                        </div>
+                        <div className="px-5 py-4 border-t border-[#1B2A4A]/10 flex gap-2">
+                          <button onClick={confirmXmlImport} disabled={groups.length === 0} className="flex-1 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ backgroundColor: "var(--sport-accent)" }}>Importer {groups.length} attaque{groups.length > 1 ? "s" : ""}</button>
+                          <button onClick={() => setVsImportPreview(null)} className="px-4 py-2.5 rounded-lg text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">Annuler</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {vsPendingMiss && (
                   <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={() => setVsPendingMiss(null)}>
