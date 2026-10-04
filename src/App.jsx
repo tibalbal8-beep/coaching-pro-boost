@@ -1110,6 +1110,184 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
 </html>`;
 }
 
+// Statistiques sur ce qui a été tagué dans le Playbook (types, mots-clés, temps forts, combinaisons
+// de mots-clés) — calculées sur les plays passés en paramètre (typiquement filtrés sur une équipe
+// scoutée). Comptage insensible à la casse/aux espaces ("Stagger " = "stagger", "ZONE" = "Zone"),
+// chaque mot-clé compté une seule fois par play.
+function computePlaybookStats(plays, typeOrder = []) {
+  const norm = (s) => String(s ?? "").trim().replace(/\s+/g, " ");
+  const keyOf = (s) => norm(s).toLowerCase();
+  const tfOfPlay = (p) => Array.isArray(p.tempsFort) ? p.tempsFort : (p.tempsFort ? [p.tempsFort] : []);
+  const canonType = (t) => typeOrder.find(x => keyOf(x) === keyOf(t)) || norm(t) || "Sans catégorie";
+  const bump = (map, label) => {
+    const k = keyOf(label); if (!k) return null;
+    const e = map.get(k) || { label: norm(label), count: 0 };
+    e.count++; map.set(k, e); return k;
+  };
+  const sortDesc = (arr) => arr.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "fr"));
+
+  const types = new Map(), tags = new Map(), tfs = new Map(), tagsByType = new Map(), pairs = new Map();
+  let untagged = 0;
+  plays.forEach(p => {
+    const type = canonType(p.type);
+    bump(types, type);
+    const uniqTags = [...new Map((p.tags || []).map(t => [keyOf(t), norm(t)]).filter(([k]) => k)).values()];
+    if (uniqTags.length === 0) untagged++;
+    uniqTags.forEach(t => bump(tags, t));
+    if (!tagsByType.has(keyOf(type))) tagsByType.set(keyOf(type), { type, total: 0, tags: new Map() });
+    const tb = tagsByType.get(keyOf(type)); tb.total++;
+    uniqTags.forEach(t => bump(tb.tags, t));
+    [...new Map(tfOfPlay(p).map(t => [keyOf(t), norm(t)]).filter(([k]) => k)).values()].forEach(t => bump(tfs, t));
+    const sortedTags = uniqTags.map(t => ({ k: keyOf(t), label: t })).sort((a, b) => a.k.localeCompare(b.k));
+    for (let i = 0; i < sortedTags.length; i++) for (let j = i + 1; j < sortedTags.length; j++) {
+      const k = sortedTags[i].k + "||" + sortedTags[j].k;
+      const e = pairs.get(k) || { a: sortedTags[i].label, b: sortedTags[j].label, label: `${sortedTags[i].label} + ${sortedTags[j].label}`, count: 0 };
+      e.count++; pairs.set(k, e);
+    }
+  });
+  const rank = (t) => { const i = typeOrder.findIndex(x => keyOf(x) === keyOf(t)); return i === -1 ? typeOrder.length : i; };
+  return {
+    total: plays.length,
+    untagged,
+    byType: [...types.values()].sort((a, b) => rank(a.label) - rank(b.label) || b.count - a.count),
+    tags: sortDesc([...tags.values()]),
+    tempsForts: sortDesc([...tfs.values()]),
+    tagsByType: [...tagsByType.values()]
+      .sort((a, b) => rank(a.type) - rank(b.type))
+      .map(g => ({ type: g.type, total: g.total, tags: sortDesc([...g.tags.values()]) })),
+    pairs: sortDesc([...pairs.values()]).filter(x => x.count >= 2),
+  };
+}
+
+// Barres horizontales "label — barre — compte (pourcentage)" réutilisées dans la vue et l'export.
+function PlaybookStatBars({ items, total, limit = 12, color = "#FF6B35" }) {
+  const shown = items.slice(0, limit);
+  const max = Math.max(1, ...shown.map(i => i.count));
+  if (shown.length === 0) return <p className="text-xs text-[#1B2A4A]/40 italic">Rien de tagué pour l'instant.</p>;
+  return (
+    <div className="space-y-1.5">
+      {shown.map(i => (
+        <div key={i.label} className="flex items-center gap-2">
+          <div className="w-32 sm:w-40 text-xs font-medium text-[#1B2A4A] truncate flex-shrink-0" title={i.label}>{i.label}</div>
+          <div className="flex-1 bg-[#1B2A4A]/8 rounded h-3.5 overflow-hidden">
+            <div className="h-full rounded" style={{ width: `${Math.round((i.count / max) * 100)}%`, backgroundColor: color }} />
+          </div>
+          <div className="w-16 text-right text-xs font-bold text-[#1B2A4A] flex-shrink-0">{i.count} <span className="font-normal text-[#1B2A4A]/40">· {total ? Math.round((i.count / total) * 100) : 0}%</span></div>
+        </div>
+      ))}
+      {items.length > limit && <p className="text-[10px] text-[#1B2A4A]/40">+ {items.length - limit} autre{items.length - limit > 1 ? "s" : ""}</p>}
+    </div>
+  );
+}
+
+function PlaybookStatsView({ stats, title, onClose, onExport }) {
+  const Section = ({ heading, children }) => (
+    <div className="bg-white rounded-xl border border-[#1B2A4A]/10 p-4">
+      <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-3">{heading}</div>
+      {children}
+    </div>
+  );
+  return (
+    <div className="fixed inset-0 z-[500] bg-[#F2EDE4] flex flex-col no-print">
+      <div className="flex items-center justify-between px-4 py-3 bg-[#1B2A4A] flex-shrink-0 gap-3">
+        <div className="text-white font-bold text-sm truncate" style={{ fontFamily: "Oswald, sans-serif" }}>STATS DU PLAYBOOK — {title}</div>
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <button onClick={onExport} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "#2563EB" }}>📤 Exporter</button>
+          <button onClick={onClose} className="text-white/60 hover:text-white"><X size={22} /></button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="max-w-3xl mx-auto space-y-4">
+          <p className="text-sm text-[#1B2A4A]/60">
+            <strong className="text-[#1B2A4A]">{stats.total}</strong> play{stats.total > 1 ? "s" : ""} analysé{stats.total > 1 ? "s" : ""}
+            {stats.untagged > 0 && <> · {stats.untagged} sans mot-clé</>}
+          </p>
+          <Section heading="Répartition par type"><PlaybookStatBars items={stats.byType} total={stats.total} color="#1B2A4A" /></Section>
+          <Section heading="Mots-clés les plus utilisés"><PlaybookStatBars items={stats.tags} total={stats.total} limit={15} /></Section>
+          {stats.tempsForts.length > 0 && (
+            <Section heading="Temps forts les plus utilisés"><PlaybookStatBars items={stats.tempsForts} total={stats.total} color="#2563EB" /></Section>
+          )}
+          {stats.pairs.length > 0 && (
+            <Section heading="Mots-clés qui reviennent ensemble"><PlaybookStatBars items={stats.pairs} total={stats.total} limit={10} color="#22c55e" /></Section>
+          )}
+          <Section heading="Mots-clés par type">
+            <div className="space-y-4">
+              {stats.tagsByType.map(g => (
+                <div key={g.type}>
+                  <div className="text-sm font-bold text-[#1B2A4A] mb-1.5" style={{ fontFamily: "Oswald, sans-serif" }}>{g.type} <span className="text-xs font-normal text-[#1B2A4A]/40">· {g.total} play{g.total > 1 ? "s" : ""}</span></div>
+                  <PlaybookStatBars items={g.tags} total={g.total} limit={8} />
+                </div>
+              ))}
+            </div>
+          </Section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Export HTML autonome du même rapport de stats (même habillage que les autres récaps).
+function buildPlaybookStatsReportHtml(stats, title, logo = null) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const bars = (items, total, limit = 12, color = "#FF6B35") => {
+    const shown = items.slice(0, limit);
+    if (shown.length === 0) return `<p class="none">Rien de tagué pour l'instant.</p>`;
+    const max = Math.max(1, ...shown.map(i => i.count));
+    return shown.map(i => `
+      <div class="bar-row">
+        <div class="bar-label" title="${esc(i.label)}">${esc(i.label)}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${Math.round((i.count / max) * 100)}%;background:${color}"></div></div>
+        <div class="bar-value">${i.count} <span>· ${total ? Math.round((i.count / total) * 100) : 0}%</span></div>
+      </div>`).join("") + (items.length > limit ? `<p class="more">+ ${items.length - limit} autre${items.length - limit > 1 ? "s" : ""}</p>` : "");
+  };
+  const block = (heading, inner) => `<div class="block"><div class="block-title">${esc(heading)}</div>${inner}</div>`;
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Stats Playbook — ${esc(title)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',sans-serif;background:#F2EDE4;color:#1B2A4A;padding:24px}
+  .card{max-width:760px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+  .header{background:#1B2A4A;color:#fff;padding:24px}
+  .header-logo{width:44px;height:44px;object-fit:contain;border-radius:8px;background:#fff;padding:4px;margin-bottom:10px}
+  .kicker{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#FF6B35;font-weight:700;margin-bottom:4px}
+  .header h1{font-family:'Oswald',sans-serif;font-size:24px}
+  .meta{color:rgba(255,255,255,.65);font-size:13px;margin-top:6px}
+  .block{padding:18px 20px;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
+  .block-title{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:#1B2A4A80;font-weight:600;margin-bottom:12px}
+  .sub{font-family:'Oswald',sans-serif;font-size:14px;font-weight:700;margin:14px 0 6px}
+  .sub span{font-family:'Inter',sans-serif;font-size:11px;font-weight:400;color:#1B2A4A60}
+  .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:7px}
+  .bar-label{width:160px;font-size:12px;font-weight:600;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bar-track{flex:1;background:#1B2A4A0d;border-radius:5px;height:14px;overflow:hidden}
+  .bar-fill{height:100%;border-radius:5px}
+  .bar-value{width:72px;flex-shrink:0;font-size:12px;font-weight:700;text-align:right}
+  .bar-value span{font-weight:400;color:#1B2A4A60}
+  .none,.more{font-size:11px;color:#1B2A4A60;font-style:italic}
+  @media print{body{background:#fff;padding:0}.card{box-shadow:none;border-radius:0}}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      ${logo ? `<img src="${logo}" alt="Logo" class="header-logo" />` : ""}
+      <div class="kicker">Stats du Playbook</div>
+      <h1>${esc(title)}</h1>
+      <div class="meta">${stats.total} play${stats.total > 1 ? "s" : ""} analysé${stats.total > 1 ? "s" : ""}${stats.untagged > 0 ? ` · ${stats.untagged} sans mot-clé` : ""}</div>
+    </div>
+    ${block("Répartition par type", bars(stats.byType, stats.total, 12, "#1B2A4A"))}
+    ${block("Mots-clés les plus utilisés", bars(stats.tags, stats.total, 15))}
+    ${stats.tempsForts.length > 0 ? block("Temps forts les plus utilisés", bars(stats.tempsForts, stats.total, 12, "#2563EB")) : ""}
+    ${stats.pairs.length > 0 ? block("Mots-clés qui reviennent ensemble", bars(stats.pairs, stats.total, 10, "#22c55e")) : ""}
+    ${block("Mots-clés par type", stats.tagsByType.map(g => `<div class="sub">${esc(g.type)} <span>· ${g.total} play${g.total > 1 ? "s" : ""}</span></div>${bars(g.tags, g.total, 8)}`).join(""))}
+  </div>
+</body>
+</html>`;
+}
+
 async function renderPdfPages(file, maxPages = 25) {
   const buf = await file.arrayBuffer();
   const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
@@ -7543,12 +7721,17 @@ function CoachingProBoost({ session }) {
   const exportPlaysHtml = (selectedIds, title) => setLogoExportPrompt({ selectedIds, title, kind: "html" });
   const exportPlaysPrint = (selectedIds, title) => setLogoExportPrompt({ selectedIds, title, kind: "print" });
   const exportVideoScoutReport = (session, rows, typeOrder) => setLogoExportPrompt({ session, rows, typeOrder, kind: "videoscout" });
+  const exportPlaybookStats = (stats, title) => setLogoExportPrompt({ stats, title, kind: "playbookstats" });
   const runLogoExportPrompt = (logo) => {
     const p = logoExportPrompt;
     setLogoExportPrompt(null);
     if (!p) return;
     if (p.kind === "html") doExportPlaysHtml(p.selectedIds, p.title, logo);
     else if (p.kind === "print") doExportPlaysPrint(p.selectedIds, p.title, logo);
+    else if (p.kind === "playbookstats") {
+      const html = buildPlaybookStatsReportHtml(p.stats, p.title, logo);
+      downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `stats-playbook-${slugifyForFile(p.title)}.html`);
+    }
     else if (p.kind === "videoscout") {
       const html = buildVideoScoutReportHtml(p.session, p.rows, p.typeOrder, logo);
       downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `scouting-${slugifyForFile(p.session.opponent)}-${p.session.date || ""}.html`);
@@ -7662,6 +7845,7 @@ function CoachingProBoost({ session }) {
   // pour vérifier d'un coup d'œil quel système correspond à un découpage vidéo.
   const [playsBoard, setPlaysBoard] = useState(null); // array de plays enrichis (_images) ou null si fermée
   const [playsBoardLoading, setPlaysBoardLoading] = useState(false);
+  const [playbookStatsOpen, setPlaybookStatsOpen] = useState(false);
   const openPlaysBoard = async (selectedIds) => {
     setPlaysBoardLoading(true);
     try { setPlaysBoard(await loadPlaysWithImages(selectedIds)); }
@@ -9074,6 +9258,10 @@ function CoachingProBoost({ session }) {
                   <option value="type">Catégorie ({playTypes.join(" → ")})</option>
                   <option value="alpha">Alphabétique (A → Z)</option>
                 </select>
+                <button onClick={() => setPlaybookStatsOpen(true)} disabled={filteredPlays.length === 0}
+                  className="ml-auto text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#2563EB" }}>
+                  📊 Stats des mots-clés
+                </button>
               </div>
               {[...new Set(plays.map(p => p.scoutedTeam).filter(Boolean))].length > 0 && (
                 <div className="flex flex-wrap gap-1.5 items-center">
@@ -11463,6 +11651,12 @@ function CoachingProBoost({ session }) {
             onUpdatePlay={(updatedPlay) => { savePlays(plays.map(p => p.id === updatedPlay.id ? updatedPlay : p)); setViewingPlay(updatedPlay); }}
             showSocialExport={isAdmin} />
         )}
+
+        {playbookStatsOpen && (() => {
+          const title = filterScoutedTeam || "Tous les plays";
+          const stats = computePlaybookStats(filteredPlays, playTypes);
+          return <PlaybookStatsView stats={stats} title={title} onClose={() => setPlaybookStatsOpen(false)} onExport={() => exportPlaybookStats(stats, title)} />;
+        })()}
 
         {playsBoard && (
           <div className="fixed inset-0 z-[500] bg-[#0F1729] flex flex-col">
