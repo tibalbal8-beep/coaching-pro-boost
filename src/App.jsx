@@ -1159,13 +1159,18 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
   const exclL = new Set(excludedKeys), exclC = new Set(excludedCodes.map(c => c.toLowerCase()));
   const groups = new Map();
   let lastGroup = null; // attaque de la possession précédente, pour rattacher les résultats "seuls"
+  let lastHasResult = false; // la possession précédente a-t-elle déjà son résultat ?
   instances.forEach(inst => {
     if (exclC.has(inst.code.toLowerCase())) return;
     // Instance qui ne porte QUE des résultats (+1, +2, -1...) : suite de l'action précédente
-    // (lancer franc, and-one...), pas une nouvelle possession — ses points s'ajoutent à la
-    // rentabilité de l'attaque précédente sans compter une possession de plus.
+    // (lancer franc, and-one...), jamais une possession de plus. Si la possession précédente
+    // n'avait pas de résultat, c'est son résultat ; sinon ce sont des points en plus sur elle.
     if (inst.labels.every(isSportscodeResult)) {
-      if (lastGroup) inst.labels.forEach(l => lastGroup.xmlBonus.push(parseInt(l.text.replace("+", ""), 10)));
+      if (lastGroup) inst.labels.forEach(l => {
+        const v = parseInt(l.text.replace("+", ""), 10);
+        if (!lastHasResult) { lastGroup.xmlOutcomes.push(v); lastHasResult = true; }
+        else lastGroup.xmlBonus.push(v);
+      });
       return;
     }
     const defining = [...new Map(inst.labels.filter(l => !isSportscodeResult(l) && !exclL.has(l.text.toLowerCase())).map(l => [l.text.toLowerCase(), l])).values()];
@@ -1179,6 +1184,7 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
     g.count++;
     lastGroup = g;
     const res = inst.labels.find(isSportscodeResult);
+    lastHasResult = !!res;
     if (res) g.xmlOutcomes.push(parseInt(res.text.replace("+", ""), 10));
     groups.set(key, g);
   });
@@ -1187,11 +1193,15 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
 
 // Résultats d'une attaque : ceux lus dans le XML + ceux ajoutés à la main (+3 +2 +1 0 -2 -3).
 function attackStats(a) {
-  const o = [...(a.xmlOutcomes || []), ...(a.outcomes || [])];
-  const bonus = a.xmlBonus || []; // points ajoutés à une possession déjà comptée (pas de possession en plus)
-  const points = [...o, ...bonus].reduce((s, v) => s + (v > 0 ? v : 0), 0);
-  const possible = [...o, ...bonus].reduce((s, v) => s + Math.abs(v), 0);
-  return { points, possible, resolved: o.length, ppp: o.length ? points / o.length : null };
+  // Un résultat n'est jamais une possession de plus : les premiers résultats (du XML puis saisis
+  // à la main) renseignent les possessions encore sans résultat, dans la limite de `count` ;
+  // tout résultat au-delà (lancers francs, and-one...) s'ajoute en points sur ces possessions.
+  const all = [...(a.xmlOutcomes || []), ...(a.outcomes || [])];
+  const results = all.slice(0, a.count || all.length);
+  const extra = [...all.slice(a.count || all.length), ...(a.xmlBonus || [])];
+  const points = [...results, ...extra].reduce((s, v) => s + (v > 0 ? v : 0), 0);
+  const possible = [...results, ...extra].reduce((s, v) => s + Math.abs(v), 0);
+  return { points, possible, resolved: results.length, ppp: results.length ? points / results.length : null };
 }
 const attackLabelText = (l) => typeof l === "string" ? l : l.text;
 
@@ -10974,7 +10984,7 @@ function CoachingProBoost({ session }) {
                             <div className="flex items-center gap-1.5 flex-wrap">
                               {[-3, -2].map(v => <button key={v} onClick={() => addAttackOutcome(a.id, v)} className="w-11 h-11 rounded-lg text-base font-bold border-2 border-red-200 text-red-600 hover:bg-red-50">{v}</button>)}
                               {[1, 2, 3].map(v => <button key={v} onClick={() => addAttackOutcome(a.id, v)} className="w-11 h-11 rounded-lg text-base font-bold border-2 border-green-300 text-green-700 hover:bg-green-50">+{v}</button>)}
-                              <button onClick={() => addAttackOutcome(a.id, 0)} title="Possession sans point (perte, faute offensive...)" className="px-3 h-11 rounded-lg text-xs font-semibold border border-[#1B2A4A]/20 text-[#1B2A4A]/60 hover:bg-[#1B2A4A]/5">0 pt</button>
+                              <button onClick={() => addAttackOutcome(a.id, 0)} title="Possession sans point (perte, faute offensive...). Un résultat ne crée jamais de possession en plus : il renseigne une possession sans résultat, ou s'ajoute en points une fois toutes renseignées." className="px-3 h-11 rounded-lg text-xs font-semibold border border-[#1B2A4A]/20 text-[#1B2A4A]/60 hover:bg-[#1B2A4A]/5">0 pt</button>
                               {(a.outcomes || []).length > 0 && <button onClick={() => undoAttackOutcome(a.id)} title="Annuler le dernier résultat" className="px-2 h-11 text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><Undo2 size={16} /></button>}
                             </div>
                           </div>
