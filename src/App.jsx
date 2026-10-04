@@ -988,10 +988,102 @@ function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
 function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const dateStr = session.date ? new Date(session.date).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
+  const PALETTE = ["#FF6B35", "#2563EB", "#22c55e", "#a855f7", "#eab308", "#14b8a6", "#ef4444", "#64748b"];
+  const pct = (n, tot) => tot ? Math.round((n / tot) * 100) : 0;
+  // Badge de rentabilité : vert ≥ 1,2 pt/poss., orange ≥ 0,9, rouge en dessous.
+  const pppBadge = (ppp) => ppp === null || ppp === undefined
+    ? `<span class="ppp ppp-na">—</span>`
+    : `<span class="ppp ${ppp >= 1.2 ? "ppp-good" : ppp >= 0.9 ? "ppp-mid" : "ppp-low"}">${ppp.toFixed(2)}<small>pts/poss.</small></span>`;
 
-  // Un classement séparé par type (SLOB, Zone, BLOB...) plutôt qu'un seul mélangé — chaque
-  // groupe garde l'ordre de fréquence déjà appliqué à `rows`, et les groupes eux-mêmes suivent
-  // l'ordre des catégories du Playbook (typeOrder) quand il est fourni.
+  // Camembert (donut) en SVG pur : un arc par part, total au centre.
+  const donut = (items, size = 150, centerLabel = "poss.") => {
+    const total = items.reduce((s, i) => s + i.value, 0);
+    if (total === 0) return "";
+    const r = 52, C = 2 * Math.PI * r;
+    let offset = 0;
+    const arcs = items.map(i => {
+      const len = (i.value / total) * C;
+      const arc = `<circle cx="70" cy="70" r="${r}" fill="none" stroke="${i.color}" stroke-width="22" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-offset}" />`;
+      offset += len; return arc;
+    }).join("");
+    return `<svg viewBox="0 0 140 140" width="${size}" height="${size}" class="donut"><g transform="rotate(-90 70 70)">${arcs}</g>
+      <text x="70" y="68" text-anchor="middle" class="donut-n">${total}</text><text x="70" y="86" text-anchor="middle" class="donut-l">${esc(centerLabel)}</text></svg>`;
+  };
+  const legend = (items, total) => `<div class="legend">${items.map(i => `
+      <div class="legend-row"><i style="background:${i.color}"></i><span class="legend-name">${esc(i.label)}</span>
+      <span class="legend-val">${i.value}<small> · ${pct(i.value, total)}%</small></span>${i.ppp !== undefined ? pppBadge(i.ppp) : ""}</div>`).join("")}</div>`;
+  const chips = (a) => a.labels.map(l => {
+    const grp = typeof l === "string" ? "" : (l.group || "");
+    return `<span class="chip ${/intention/i.test(grp) ? "chip-int" : ""}">${esc(attackLabelText(l))}</span>`;
+  }).join("");
+
+  // ── Attaques importées de Sportscode ───────────────────────────────────────
+  const attacks = [...(session.attacks || [])].sort((a, b) => b.count - a.count);
+  const totalPoss = attacks.reduce((s, a) => s + a.count, 0);
+  const atkStats = attacks.map(a => ({ a, st: attackStats(a) }));
+  const totalPoints = atkStats.reduce((s, x) => s + x.st.points, 0);
+  const totalResolved = atkStats.reduce((s, x) => s + x.st.resolved, 0);
+  const globalPpp = totalResolved ? totalPoints / totalResolved : null;
+
+  // Défenses rencontrées, toutes attaques confondues
+  const defAgg = new Map();
+  attacks.forEach(a => (a.byDefense || []).forEach(d => {
+    const ds = defenseStats(d), e = defAgg.get(d.label.toLowerCase()) || { label: d.label, count: 0, points: 0 };
+    e.count += ds.count; e.points += ds.points; defAgg.set(d.label.toLowerCase(), e);
+  }));
+  const defItems = [...defAgg.values()].sort((x, y) => y.count - x.count)
+    .map((e, i) => ({ label: e.label, value: e.count, color: PALETTE[i % PALETTE.length], ppp: e.count ? e.points / e.count : null }));
+  const defTotal = defItems.reduce((s, i) => s + i.value, 0);
+
+  const kpis = attacks.length === 0 ? "" : `
+    <div class="kpis">
+      <div class="kpi"><b>${totalPoss}</b><span>possessions</span></div>
+      <div class="kpi"><b>${attacks.length}</b><span>attaques distinctes</span></div>
+      <div class="kpi"><b>${globalPpp === null ? "—" : globalPpp.toFixed(2)}</b><span>pts / possession</span></div>
+      ${defItems.length ? `<div class="kpi"><b>${defItems.length}</b><span>défenses rencontrées</span></div>` : ""}
+    </div>`;
+
+  const rankingHtml = attacks.length === 0 ? "" : `
+    <section class="card">
+      <h2><i></i>Classement des attaques les plus jouées</h2>
+      ${atkStats.slice(0, 12).map(({ a, st }, i) => `
+        <div class="rank-row">
+          <div class="rank-n ${i < 3 ? "rank-top" : ""}">${i + 1}</div>
+          <div class="rank-main">
+            <div class="chips">${chips(a)}</div>
+            <div class="bar"><div style="width:${Math.round((a.count / attacks[0].count) * 100)}%"></div></div>
+          </div>
+          <div class="rank-side"><div class="rank-count">${a.count}<small>×</small></div><div class="rank-share">${pct(a.count, totalPoss)}%</div></div>
+          ${pppBadge(st.ppp)}
+        </div>`).join("")}
+      ${attacks.length > 12 ? `<p class="more">+ ${attacks.length - 12} autre${attacks.length - 12 > 1 ? "s" : ""} attaque${attacks.length - 12 > 1 ? "s" : ""}</p>` : ""}
+    </section>`;
+
+  const defOverviewHtml = defItems.length === 0 ? "" : `
+    <section class="card">
+      <h2><i></i>Défenses rencontrées</h2>
+      <div class="donut-wrap">${donut(defItems, 170)}${legend(defItems, defTotal)}</div>
+    </section>`;
+
+  // Fiche par attaque : play pur puis le même play selon la défense (camembert + comparaison)
+  const detailHtml = atkStats.filter(x => (x.a.byDefense || []).length > 0).slice(0, 8).map(({ a, st }) => {
+    const items = [...a.byDefense].sort((x, y) => y.outcomes.length - x.outcomes.length).map((d, i) => {
+      const ds = defenseStats(d);
+      return { label: d.label, value: ds.count, color: PALETTE[i % PALETTE.length], ppp: ds.ppp };
+    });
+    const tot = items.reduce((s, i) => s + i.value, 0);
+    return `
+      <div class="detail">
+        <div class="detail-head">
+          <div class="chips">${chips(a)}</div>
+          <div class="detail-pure"><span>Play pur</span>${pppBadge(st.ppp)}<em>${a.count}×</em></div>
+        </div>
+        <div class="donut-wrap">${donut(items, 130, "poss.")}${legend(items, tot)}</div>
+      </div>`;
+  }).join("");
+  const detailSection = detailHtml ? `<section class="card"><h2><i></i>Le même play selon la défense</h2>${detailHtml}</section>` : "";
+
+  // ── Systèmes du Playbook (tags manuels), un tableau par type ─────────────────
   const groups = [];
   rows.forEach(r => {
     const key = r.type || "Sans catégorie";
@@ -1001,154 +1093,124 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   });
   const rank = (t) => { const i = typeOrder.indexOf(t); return i === -1 ? typeOrder.length : i; };
   groups.sort((a, b) => rank(a.type) - rank(b.type));
+  const systemsHtml = rows.length === 0 ? "" : `
+    <section class="card">
+      <h2><i></i>Systèmes du Playbook</h2>
+      ${groups.map(g => `
+        <div class="sub-title">${esc(g.type)}</div>
+        <table>
+          <thead><tr><th></th><th>Système</th><th class="num">Joué</th><th class="num">Points</th><th class="num">Pts/poss.</th></tr></thead>
+          <tbody>${g.rows.map((r, i) => `
+            <tr><td class="rk">${i + 1}</td>
+            <td class="tt">${esc(r.titre)}${r.tempsFort?.length ? `<div class="tf">${r.tempsFort.map(esc).join(", ")}</div>` : ""}</td>
+            <td class="num">${r.played}</td>
+            <td class="num">${r.points}${r.possible > 0 ? ` / ${r.possible}` : ""}</td>
+            <td class="num">${r.played > 0 ? pppBadge(r.points / r.played) : "—"}</td></tr>`).join("")}</tbody>
+        </table>`).join("")}
+    </section>`;
 
-  const tableHtml = (groupRows) => `
-    <table>
-      <thead><tr><th></th><th>Système</th><th class="num">Joué</th><th class="num">Points</th><th class="num">Pts/possession</th><th class="num">Tirs ouverts</th><th class="num">Tirs contestés</th></tr></thead>
-      <tbody>${groupRows.map((r, i) => `
-    <tr>
-      <td class="rank">${i + 1}</td>
-      <td class="titre">${esc(r.titre)}${r.tempsFort?.length ? `<div class="tf">${r.tempsFort.map(esc).join(", ")}</div>` : ""}</td>
-      <td class="num">${r.played}</td>
-      <td class="num">${r.points}${r.possible > 0 ? ` / ${r.possible}` : ""}</td>
-      <td class="num ppp">${r.played > 0 ? (r.points / r.played).toFixed(2) : "—"}</td>
-      <td class="num miss">${r.openMisses || 0}</td>
-      <td class="num miss">${r.contestedMisses || 0}</td>
-    </tr>`).join("")}</tbody>
-    </table>`;
+  // Défenses observées à la main (compteurs) : camembert aussi
+  const manualDef = Object.entries(session.defenses || {}).sort((a, b) => b[1] - a[1])
+    .map(([label, value], i) => ({ label, value, color: PALETTE[i % PALETTE.length] }));
+  const manualDefTotal = manualDef.reduce((s, i) => s + i.value, 0);
+  const manualDefHtml = manualDef.length === 0 ? "" : `
+    <section class="card">
+      <h2><i></i>Défenses observées (saisie manuelle)</h2>
+      <div class="donut-wrap">${donut(manualDef, 150, "obs.")}${legend(manualDef, manualDefTotal)}</div>
+    </section>`;
 
-  const rowsHtml = groups.map(g => `
-    <div class="group-title">Classement — ${esc(g.type)}</div>
-    ${tableHtml(g.rows)}`).join("");
+  const notesHtml = !session.note && !session.notes ? "" : `
+    <section class="card">
+      ${session.note ? `<h2><i></i>Matchs scoutés</h2><p class="notes-text">${esc(session.note)}</p>` : ""}
+      ${session.notes ? `<h2 style="${session.note ? "margin-top:18px" : ""}"><i></i>Notes</h2><p class="notes-text">${esc(session.notes).replace(/\n/g, "<br>")}</p>` : ""}
+    </section>`;
 
-  // Attaques importées depuis Sportscode : combinaison de libellés, fréquence, et rentabilité
-  // (points / possessions dont le résultat a été renseigné).
-  const attacks = [...(session.attacks || [])].sort((a, b) => b.count - a.count);
-  const attacksHtml = attacks.length === 0 ? "" : `
-    <div class="group-title">Attaques observées (import Sportscode)</div>
-    <table>
-      <thead><tr><th></th><th>Attaque</th><th class="num">Jouée</th><th class="num">Résultats</th><th class="num">Points</th><th class="num">Pts/possession</th></tr></thead>
-      <tbody>${attacks.map((a, i) => { const st = attackStats(a); return `
-        <tr>
-          <td class="rank">${i + 1}</td>
-          <td class="titre">${a.labels.map(l => esc(attackLabelText(l))).join(" / ")}</td>
-          <td class="num">${a.count}×</td>
-          <td class="num miss">${st.resolved}/${a.count}</td>
-          <td class="num">${st.points}${st.possible > 0 ? ` / ${st.possible}` : ""}</td>
-          <td class="num ppp">${st.ppp === null ? "—" : st.ppp.toFixed(2)}</td>
-        </tr>${[...(a.byDefense || [])].sort((x, y) => y.outcomes.length - x.outcomes.length).map(d => { const ds = defenseStats(d); return `
-        <tr class="subrow">
-          <td></td>
-          <td class="subtitle">↳ face à ${esc(d.label)}</td>
-          <td class="num">${ds.count}×</td>
-          <td class="num miss">${ds.count}/${ds.count}</td>
-          <td class="num">${ds.points}${ds.possible > 0 ? ` / ${ds.possible}` : ""}</td>
-          <td class="num ppp">${ds.ppp === null ? "—" : ds.ppp.toFixed(2)}</td>
-        </tr>`; }).join("")}`; }).join("")}</tbody>
-    </table>`;
-
-  // Rentabilité par défense, toutes attaques confondues.
-  const defAgg = new Map();
-  attacks.forEach(a => (a.byDefense || []).forEach(d => {
-    const ds = defenseStats(d), e = defAgg.get(d.label.toLowerCase()) || { label: d.label, count: 0, points: 0 };
-    e.count += ds.count; e.points += ds.points; defAgg.set(d.label.toLowerCase(), e);
-  }));
-  const defAggHtml = defAgg.size === 0 ? "" : `
-    <div class="group-title">Rentabilité selon la défense (toutes attaques)</div>
-    <table>
-      <thead><tr><th>Défense</th><th class="num">Possessions</th><th class="num">Points</th><th class="num">Pts/possession</th></tr></thead>
-      <tbody>${[...defAgg.values()].sort((x, y) => y.count - x.count).map(e => `
-        <tr><td class="titre">${esc(e.label)}</td><td class="num">${e.count}</td><td class="num">${e.points}</td><td class="num ppp">${e.count ? (e.points / e.count).toFixed(2) : "—"}</td></tr>`).join("")}</tbody>
-    </table>`;
-
-  const barRows = rows.filter(r => r.played > 0).slice(0, 8);
-  const maxPoints = Math.max(1, ...barRows.map(r => r.points));
-  const barChartHtml = barRows.length === 0 ? "" : `
-    <div class="chart-block">
-      <div class="chart-title">Points marqués par système</div>
-      ${barRows.map(r => `
-        <div class="bar-row">
-          <div class="bar-label">${esc(r.titre)}</div>
-          <div class="bar-track"><div class="bar-fill" style="width:${Math.round((r.points / maxPoints) * 100)}%"></div></div>
-          <div class="bar-value">${r.points} pt${r.points !== 1 ? "s" : ""}</div>
-        </div>`).join("")}
-    </div>`;
-
-  const defenseEntries = Object.entries(session.defenses || {}).sort((a, b) => b[1] - a[1]);
-  const defensesHtml = defenseEntries.length === 0 ? "" : `
-    <div class="chart-block">
-      <div class="chart-title">Défenses observées</div>
-      <div class="defenses">
-        ${defenseEntries.map(([name, count]) => `<span class="defense-chip">${esc(name)} <b>×${count}</b></span>`).join("")}
-      </div>
-    </div>`;
-
-  // Contexte (matchs scoutés) + Notes : en haut du document, juste après l'équipe/la date —
-  // c'est ce que le coach a besoin de lire en premier, avant le détail des systèmes.
-  const topNotesHtml = !session.note && !session.notes ? "" : `
-    <div class="chart-block">
-      ${session.note ? `<div class="chart-title">Matchs scoutés</div><p class="notes-text">${esc(session.note)}</p>` : ""}
-      ${session.notes ? `<div class="chart-title" style="margin-top:${session.note ? "14px" : "0"}">Notes</div><p class="notes-text">${esc(session.notes).replace(/\n/g, "<br>")}</p>` : ""}
-    </div>`;
+  const empty = attacks.length === 0 && rows.length === 0 ? `<section class="card"><p class="notes-text" style="text-align:center;color:#1B2A4A80">Aucun système noté pour cette session.</p></section>` : "";
 
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
 <title>Scouting vidéo — ${esc(session.opponent)}</title>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Inter',sans-serif;background:#F2EDE4;color:#1B2A4A;padding:24px}
-  .card{max-width:760px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.06)}
-  .header{background:#1B2A4A;color:#fff;padding:24px}
-  .header-logo{width:44px;height:44px;object-fit:contain;border-radius:8px;background:#fff;padding:4px;margin-bottom:10px}
-  .header .kicker{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#FF6B35;font-weight:700;margin-bottom:4px}
-  .header h1{font-family:'Oswald',sans-serif;font-size:24px;letter-spacing:.3px}
-  .header .meta{color:rgba(255,255,255,.65);font-size:13px;margin-top:6px;text-transform:capitalize}
+  body{font-family:'Inter',sans-serif;background:#F2EDE4;color:#1B2A4A;padding:24px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .page{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+  .hero{background:linear-gradient(135deg,#1B2A4A 0%,#243a66 100%);color:#fff;border-radius:18px;padding:28px;position:relative;overflow:hidden}
+  .hero:after{content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:#FF6B35;opacity:.14}
+  .hero-logo{width:48px;height:48px;object-fit:contain;border-radius:10px;background:#fff;padding:5px;margin-bottom:14px;position:relative}
+  .kicker{font-size:11px;text-transform:uppercase;letter-spacing:2px;color:#FF6B35;font-weight:700;margin-bottom:6px;position:relative}
+  .hero h1{font-family:'Oswald',sans-serif;font-size:38px;line-height:1.05;letter-spacing:.5px;text-transform:uppercase;position:relative}
+  .hero .meta{color:rgba(255,255,255,.65);font-size:13px;margin-top:8px;text-transform:capitalize;position:relative}
+  .kpis{display:flex;gap:10px;margin-top:22px;flex-wrap:wrap;position:relative}
+  .kpi{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px 16px;min-width:120px;flex:1}
+  .kpi b{display:block;font-family:'Oswald',sans-serif;font-size:28px;line-height:1}
+  .kpi span{display:block;font-size:11px;color:rgba(255,255,255,.6);margin-top:5px;text-transform:uppercase;letter-spacing:.5px}
+  .card{background:#fff;border-radius:16px;padding:22px 24px;box-shadow:0 2px 12px rgba(27,42,74,.06)}
+  .card h2{font-family:'Oswald',sans-serif;font-size:17px;letter-spacing:.6px;text-transform:uppercase;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+  .card h2 i{display:inline-block;width:5px;height:20px;border-radius:3px;background:#FF6B35}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{font-size:12px;font-weight:600;padding:4px 11px;border-radius:20px;background:#1B2A4A12;color:#1B2A4A}
+  .chip-int{background:#FF6B35;color:#fff}
+  .rank-row{display:grid;grid-template-columns:34px 1fr 62px auto;gap:14px;align-items:center;padding:12px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
+  .rank-row:first-of-type{border-top:none}
+  .rank-n{font-family:'Oswald',sans-serif;font-size:24px;font-weight:700;color:#1B2A4A40;text-align:center}
+  .rank-top{color:#FF6B35}
+  .bar{height:8px;background:#1B2A4A0d;border-radius:5px;margin-top:9px;overflow:hidden}
+  .bar div{height:100%;border-radius:5px;background:linear-gradient(90deg,#FF6B35,#ff9a6b)}
+  .rank-side{text-align:right}
+  .rank-count{font-family:'Oswald',sans-serif;font-size:24px;font-weight:700;line-height:1}
+  .rank-count small{font-size:13px;color:#1B2A4A80;margin-left:1px}
+  .rank-share{font-size:11px;color:#1B2A4A80;margin-top:3px}
+  .ppp{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;min-width:64px;padding:6px 10px;border-radius:10px;font-family:'Oswald',sans-serif;font-size:17px;font-weight:700;line-height:1}
+  .ppp small{font-family:'Inter',sans-serif;font-size:8.5px;font-weight:600;letter-spacing:.3px;margin-top:3px;text-transform:uppercase;opacity:.8}
+  .ppp-good{background:#22c55e22;color:#15803d}.ppp-mid{background:#eab30826;color:#a16207}.ppp-low{background:#ef444422;color:#b91c1c}.ppp-na{background:#1B2A4A0d;color:#1B2A4A80}
+  .donut-wrap{display:flex;align-items:center;gap:26px;flex-wrap:wrap}
+  .donut{flex-shrink:0}
+  .donut-n{font-family:'Oswald',sans-serif;font-size:30px;font-weight:700;fill:#1B2A4A}
+  .donut-l{font-size:10px;fill:#1B2A4A80;text-transform:uppercase;letter-spacing:.6px}
+  .legend{flex:1;min-width:230px;display:flex;flex-direction:column;gap:9px}
+  .legend-row{display:flex;align-items:center;gap:10px;font-size:13px}
+  .legend-row i{width:12px;height:12px;border-radius:4px;flex-shrink:0}
+  .legend-name{flex:1;font-weight:600}
+  .legend-val{font-weight:700;margin-right:6px}
+  .legend-val small{font-weight:400;color:#1B2A4A80}
+  .detail{padding:16px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
+  .detail:first-of-type{border-top:none;padding-top:0}
+  .detail-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+  .detail-pure{display:flex;align-items:center;gap:8px}
+  .detail-pure span{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#1B2A4A80;font-weight:600}
+  .detail-pure em{font-style:normal;font-family:'Oswald',sans-serif;font-weight:700;font-size:16px}
+  .sub-title{font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:.6px;text-transform:uppercase;color:#FF6B35;margin:16px 0 6px}
   table{width:100%;border-collapse:collapse}
-  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#1B2A4A80;padding:10px 16px;border-bottom:2px solid #1B2A4A15}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#1B2A4A80;padding:6px 8px;border-bottom:2px solid #1B2A4A15}
   th.num,td.num{text-align:center}
-  td{padding:10px 16px;border-bottom:1px solid #1B2A4A0f;font-size:14px;vertical-align:top}
-  tr:last-child td{border-bottom:none}
-  .rank{font-family:'Oswald',sans-serif;font-weight:700;color:#FF6B35;width:28px}
-  .titre{font-weight:600}
-  .type-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#FF6B35;background:#FF6B351a;border-radius:20px;padding:2px 8px;margin-left:8px}
-  .subrow td{background:#F2EDE4;font-size:12px;padding-top:6px;padding-bottom:6px}
-  .subtitle{color:#1B2A4A99;padding-left:28px!important}
-  .group-title{font-family:'Oswald',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1B2A4A;background:#F2EDE4;padding:10px 16px}
+  td{padding:9px 8px;border-bottom:1px solid #1B2A4A0f;font-size:13px;vertical-align:middle}
+  .rk{font-family:'Oswald',sans-serif;font-weight:700;color:#FF6B35;width:26px}
+  .tt{font-weight:600}
   .tf{font-size:11px;color:#1B2A4A60;margin-top:2px;font-weight:400}
-  .ppp{font-weight:700}
-  .miss{color:#1B2A4A80;font-size:13px}
-  .empty{padding:24px;text-align:center;color:#1B2A4A60;font-size:13px}
-  .chart-block{padding:18px 20px;border-top:1px solid #1B2A4A0f}
-  .chart-title{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:#1B2A4A80;font-weight:600;margin-bottom:12px}
-  .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
-  .bar-label{width:150px;font-size:12px;font-weight:600;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .bar-track{flex:1;background:#1B2A4A0d;border-radius:5px;height:14px;overflow:hidden}
-  .bar-fill{background:#FF6B35;height:100%;border-radius:5px}
-  .bar-value{width:52px;flex-shrink:0;font-size:12px;font-weight:700;text-align:right}
-  .defenses{display:flex;flex-wrap:wrap;gap:8px}
-  .defense-chip{background:#1B2A4A0d;color:#1B2A4A;font-size:13px;padding:6px 12px;border-radius:20px}
-  .defense-chip b{color:#FF6B35}
-  .notes-text{font-size:13px;line-height:1.6;color:#1B2A4A}
-  @media print{body{background:#fff;padding:0}.card{box-shadow:none;border-radius:0}}
+  .more{font-size:12px;color:#1B2A4A80;margin-top:8px}
+  .notes-text{font-size:13.5px;line-height:1.65}
+  @media print{body{background:#fff;padding:0}.card{box-shadow:none;border:1px solid #1B2A4A14}.hero{border-radius:12px}}
 </style>
 </head>
 <body>
-  <div class="card">
-    <div class="header">
-      ${logo ? `<img src="${logo}" alt="Logo" class="header-logo" />` : ""}
+  <div class="page">
+    <header class="hero">
+      ${logo ? `<img src="${logo}" alt="Logo" class="hero-logo" />` : ""}
       <div class="kicker">Scouting vidéo</div>
       <h1>${esc(session.opponent)}</h1>
-      <div class="meta">${esc(dateStr) || "Date non précisée"} · ${rows.length} système${rows.length > 1 ? "s" : ""} noté${rows.length > 1 ? "s" : ""}</div>
-    </div>
-    ${topNotesHtml}
-    ${attacksHtml}
-    ${defAggHtml}
-    ${rows.length === 0 && attacks.length === 0 ? `<div class="empty">Aucun système noté pour cette session.</div>` : rowsHtml}
-    ${barChartHtml}
-    ${defensesHtml}
+      <div class="meta">${esc(dateStr) || "Date non précisée"}</div>
+      ${kpis}
+    </header>
+    ${notesHtml}
+    ${rankingHtml}
+    ${defOverviewHtml}
+    ${detailSection}
+    ${systemsHtml}
+    ${manualDefHtml}
+    ${empty}
   </div>
 </body>
 </html>`;
