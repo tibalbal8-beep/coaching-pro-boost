@@ -1036,7 +1036,29 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
           <td class="num miss">${st.resolved}/${a.count}</td>
           <td class="num">${st.points}${st.possible > 0 ? ` / ${st.possible}` : ""}</td>
           <td class="num ppp">${st.ppp === null ? "—" : st.ppp.toFixed(2)}</td>
-        </tr>`; }).join("")}</tbody>
+        </tr>${[...(a.byDefense || [])].sort((x, y) => y.outcomes.length - x.outcomes.length).map(d => { const ds = defenseStats(d); return `
+        <tr class="subrow">
+          <td></td>
+          <td class="subtitle">↳ face à ${esc(d.label)}</td>
+          <td class="num">${ds.count}×</td>
+          <td class="num miss">${ds.count}/${ds.count}</td>
+          <td class="num">${ds.points}${ds.possible > 0 ? ` / ${ds.possible}` : ""}</td>
+          <td class="num ppp">${ds.ppp === null ? "—" : ds.ppp.toFixed(2)}</td>
+        </tr>`; }).join("")}`; }).join("")}</tbody>
+    </table>`;
+
+  // Rentabilité par défense, toutes attaques confondues.
+  const defAgg = new Map();
+  attacks.forEach(a => (a.byDefense || []).forEach(d => {
+    const ds = defenseStats(d), e = defAgg.get(d.label.toLowerCase()) || { label: d.label, count: 0, points: 0 };
+    e.count += ds.count; e.points += ds.points; defAgg.set(d.label.toLowerCase(), e);
+  }));
+  const defAggHtml = defAgg.size === 0 ? "" : `
+    <div class="group-title">Rentabilité selon la défense (toutes attaques)</div>
+    <table>
+      <thead><tr><th>Défense</th><th class="num">Possessions</th><th class="num">Points</th><th class="num">Pts/possession</th></tr></thead>
+      <tbody>${[...defAgg.values()].sort((x, y) => y.count - x.count).map(e => `
+        <tr><td class="titre">${esc(e.label)}</td><td class="num">${e.count}</td><td class="num">${e.points}</td><td class="num ppp">${e.count ? (e.points / e.count).toFixed(2) : "—"}</td></tr>`).join("")}</tbody>
     </table>`;
 
   const barRows = rows.filter(r => r.played > 0).slice(0, 8);
@@ -1092,6 +1114,8 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   .rank{font-family:'Oswald',sans-serif;font-weight:700;color:#FF6B35;width:28px}
   .titre{font-weight:600}
   .type-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#FF6B35;background:#FF6B351a;border-radius:20px;padding:2px 8px;margin-left:8px}
+  .subrow td{background:#F2EDE4;font-size:12px;padding-top:6px;padding-bottom:6px}
+  .subtitle{color:#1B2A4A99;padding-left:28px!important}
   .group-title{font-family:'Oswald',sans-serif;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#1B2A4A;background:#F2EDE4;padding:10px 16px}
   .tf{font-size:11px;color:#1B2A4A60;margin-top:2px;font-weight:400}
   .ppp{font-weight:700}
@@ -1121,6 +1145,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
     </div>
     ${topNotesHtml}
     ${attacksHtml}
+    ${defAggHtml}
     ${rows.length === 0 && attacks.length === 0 ? `<div class="empty">Aucun système noté pour cette session.</div>` : rowsHtml}
     ${barChartHtml}
     ${defensesHtml}
@@ -1155,10 +1180,16 @@ function parseSportscodeXml(xmlText) {
 
 const isSportscodeResult = (l) => /^points/i.test(l.group || "") && /^[+-]?\d+$/.test(l.text);
 
-function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = []) {
+function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = [], defenseGroups = []) {
   const exclL = new Set(excludedKeys), exclC = new Set(excludedCodes.map(c => c.toLowerCase()));
+  // Groupes de libellés qui décrivent la DÉFENSE adverse (ex. SWITCH sur pick and roll) : ils ne
+  // définissent pas l'attaque (sinon "Horn" et "Horn contre switch" seraient deux attaques) mais
+  // servent à ventiler la rentabilité d'une même attaque selon la défense rencontrée.
+  const defG = new Set(defenseGroups.map(g => g.toLowerCase()));
+  const groupOf = (l) => (l.group || "Libellés").toLowerCase();
   const groups = new Map();
   let lastGroup = null; // attaque de la possession précédente, pour rattacher les résultats "seuls"
+  let lastDefKeys = []; // défenses de cette possession précédente
   let lastPlaceholder = false; // la possession précédente est-elle comptée à 0 faute de résultat (perte de balle) ?
   instances.forEach(inst => {
     if (exclC.has(inst.code.toLowerCase())) return;
@@ -1168,29 +1199,54 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
     if (inst.labels.every(isSportscodeResult)) {
       if (lastGroup) inst.labels.forEach(l => {
         const v = parseInt(l.text.replace("+", ""), 10);
-        if (lastPlaceholder) { lastGroup.xmlOutcomes[lastGroup.xmlOutcomes.length - 1] = v; lastPlaceholder = false; }
-        else lastGroup.xmlBonus.push(v);
+        if (lastPlaceholder) {
+          lastGroup.xmlOutcomes[lastGroup.xmlOutcomes.length - 1] = v;
+          lastDefKeys.forEach(k => { const e = lastGroup.defMap.get(k); e.outcomes[e.outcomes.length - 1] = v; });
+          lastPlaceholder = false;
+        } else {
+          lastGroup.xmlBonus.push(v);
+          lastDefKeys.forEach(k => lastGroup.defMap.get(k).bonus.push(v));
+        }
       });
       return;
     }
-    const defining = [...new Map(inst.labels.filter(l => !isSportscodeResult(l) && !exclL.has(l.text.toLowerCase())).map(l => [l.text.toLowerCase(), l])).values()];
+    const usable = inst.labels.filter(l => !isSportscodeResult(l) && !exclL.has(l.text.toLowerCase()));
+    const defining = [...new Map(usable.filter(l => !defG.has(groupOf(l))).map(l => [l.text.toLowerCase(), l])).values()];
     if (defining.length === 0) return;
+    const defs = [...new Map(usable.filter(l => defG.has(groupOf(l))).map(l => [l.text.toLowerCase(), l.text])).values()];
     // L'ordre compte à l'intérieur d'un groupe (ex. ENTREE : Iverson puis Diamand ≠ Diamand
     // puis Iverson, c'est le déroulé du système) ; l'ordre ENTRE groupes est normalisé.
     const byGroup = new Map();
     defining.forEach(l => { const g = (l.group || "").toLowerCase(); byGroup.set(g, [...(byGroup.get(g) || []), l.text.toLowerCase()]); });
     const key = [...byGroup.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([g, t]) => g + ":" + t.join(">")).join("|");
-    const g = groups.get(key) || { key, labels: defining, count: 0, xmlOutcomes: [], xmlBonus: [] };
+    const g = groups.get(key) || { key, labels: defining, count: 0, xmlOutcomes: [], xmlBonus: [], defMap: new Map() };
     g.count++;
     lastGroup = g;
-    const res = inst.labels.find(isSportscodeResult);
     // Pas de résultat = perte de balle : possession jouée, 0 point (sauf si un résultat seul suit,
     // typiquement des lancers francs, qui prend alors la place de ce 0).
-    g.xmlOutcomes.push(res ? parseInt(res.text.replace("+", ""), 10) : 0);
+    const res = inst.labels.find(isSportscodeResult);
+    const value = res ? parseInt(res.text.replace("+", ""), 10) : 0;
+    g.xmlOutcomes.push(value);
     lastPlaceholder = !res;
+    lastDefKeys = defs.map(d => d.toLowerCase());
+    defs.forEach(d => {
+      const k = d.toLowerCase(), e = g.defMap.get(k) || { label: d, outcomes: [], bonus: [] };
+      e.outcomes.push(value); g.defMap.set(k, e);
+    });
     groups.set(key, g);
   });
-  return [...groups.values()].sort((a, b) => b.count - a.count || a.labels.map(l => l.text).join().localeCompare(b.labels.map(l => l.text).join(), "fr"));
+  return [...groups.values()]
+    .map(({ defMap, ...g }) => ({ ...g, byDefense: [...defMap.values()].sort((a, b) => b.outcomes.length - a.outcomes.length || a.label.localeCompare(b.label, "fr")) }))
+    .sort((a, b) => b.count - a.count || a.labels.map(l => l.text).join().localeCompare(b.labels.map(l => l.text).join(), "fr"));
+}
+
+// Rentabilité d'une attaque face à UNE défense (entrée de byDefense) : même calcul que attackStats.
+function defenseStats(e) {
+  const all = [...(e.outcomes || []), ...(e.bonus || [])];
+  const points = all.reduce((s, v) => s + (v > 0 ? v : 0), 0);
+  const possible = all.reduce((s, v) => s + Math.abs(v), 0);
+  const n = (e.outcomes || []).length;
+  return { points, possible, count: n, ppp: n ? points / n : null };
 }
 
 // Résultats d'une attaque : ceux lus dans le XML + ceux ajoutés à la main (+3 +2 +1 0 -2 -3).
@@ -10691,14 +10747,16 @@ function CoachingProBoost({ session }) {
               setVsImportPreview({
                 fileName: file.name, instances, ignored, codes,
                 labels: [...labelCounts.values()].sort((a, b) => b.count - a.count),
+                // Groupe dont le nom évoque une défense (DEF, DEFENSE PNR...) : ventilation par défaut.
+                defenseGroups: [...new Set([...labelCounts.values()].map(l => l.group || "Libellés"))].filter(g => /def/i.test(g)),
                 excluded: [], excludedCodes: hasAtt ? codes.filter(c => !/att/i.test(c.code)).map(c => c.code) : [],
               });
             } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
           };
           const confirmXmlImport = () => {
-            const groups = groupSportscodeInstances(vsImportPreview.instances, vsImportPreview.excluded, vsImportPreview.excludedCodes);
+            const groups = groupSportscodeInstances(vsImportPreview.instances, vsImportPreview.excluded, vsImportPreview.excludedCodes, vsImportPreview.defenseGroups);
             const prev = new Map((activeVs.attacks || []).map(a => [a.key, a]));
-            updateActiveVs({ attacks: groups.map(g => ({ id: prev.get(g.key)?.id || uid(), key: g.key, labels: g.labels, count: g.count, xmlOutcomes: g.xmlOutcomes, xmlBonus: g.xmlBonus, outcomes: prev.get(g.key)?.outcomes || [] })) });
+            updateActiveVs({ attacks: groups.map(g => ({ id: prev.get(g.key)?.id || uid(), key: g.key, labels: g.labels, count: g.count, xmlOutcomes: g.xmlOutcomes, xmlBonus: g.xmlBonus, byDefense: g.byDefense, outcomes: prev.get(g.key)?.outcomes || [] })) });
             toast?.(`✓ ${groups.length} attaque${groups.length > 1 ? "s" : ""} importée${groups.length > 1 ? "s" : ""}`);
             setVsImportPreview(null);
           };
@@ -10983,6 +11041,16 @@ function CoachingProBoost({ session }) {
                                 {st.ppp !== null && <div className="text-[10px] font-semibold text-[#1B2A4A]/60">{st.points}/{st.possible} pts · {st.ppp.toFixed(2)} pts/poss.</div>}
                               </div>
                             </div>
+                            {(a.byDefense || []).length > 0 && (
+                              <div className="mb-2 rounded-lg bg-[#F2EDE4] px-3 py-2 space-y-0.5">
+                                <div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold">Selon la défense</div>
+                                {a.byDefense.map(d => { const ds = defenseStats(d); return (
+                                  <div key={d.label} className="flex items-center justify-between text-xs text-[#1B2A4A]">
+                                    <span className="font-medium">🛡 {d.label}</span>
+                                    <span className="text-[#1B2A4A]/60">{ds.count}× · <strong className="text-[#1B2A4A]">{ds.ppp === null ? "—" : ds.ppp.toFixed(2)}</strong> pts/poss.</span>
+                                  </div>); })}
+                              </div>
+                            )}
                             <div className="flex items-center gap-1.5 flex-wrap">
                               {[-3, -2].map(v => <button key={v} onClick={() => addAttackOutcome(a.id, v)} className="w-11 h-11 rounded-lg text-base font-bold border-2 border-red-200 text-red-600 hover:bg-red-50">{v}</button>)}
                               {[1, 2, 3].map(v => <button key={v} onClick={() => addAttackOutcome(a.id, v)} className="w-11 h-11 rounded-lg text-base font-bold border-2 border-green-300 text-green-700 hover:bg-green-50">+{v}</button>)}
@@ -10998,8 +11066,9 @@ function CoachingProBoost({ session }) {
 
                 {vsImportPreview && (() => {
                   const pv = vsImportPreview;
-                  const groups = groupSportscodeInstances(pv.instances, pv.excluded, pv.excludedCodes);
+                  const groups = groupSportscodeInstances(pv.instances, pv.excluded, pv.excludedCodes, pv.defenseGroups);
                   const toggle = (k) => setVsImportPreview(x => ({ ...x, excluded: x.excluded.includes(k) ? x.excluded.filter(y => y !== k) : [...x.excluded, k] }));
+                  const toggleDefGroup = (g) => setVsImportPreview(x => ({ ...x, defenseGroups: x.defenseGroups.includes(g) ? x.defenseGroups.filter(y => y !== g) : [...x.defenseGroups, g] }));
                   const toggleCode = (c) => setVsImportPreview(x => ({ ...x, excludedCodes: x.excludedCodes.includes(c) ? x.excludedCodes.filter(y => y !== c) : [...x.excludedCodes, c] }));
                   const used = pv.instances.filter(i => !pv.excludedCodes.includes(i.code));
                   const bonusOnly = used.filter(i => i.labels.every(isSportscodeResult)).length;
@@ -11032,7 +11101,13 @@ function CoachingProBoost({ session }) {
                           )}
                           {labelGroups.map(gr => (
                             <div key={gr} className="mb-3">
-                              <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold mb-1.5">{gr} — décoche ce qui ne définit pas l'attaque</div>
+                              <div className="flex items-center justify-between gap-2 mb-1.5">
+                                <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold">{gr}</div>
+                                <button onClick={() => toggleDefGroup(gr)}
+                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${pv.defenseGroups.includes(gr) ? "border-[#22c55e] bg-[#22c55e] text-white" : "border-[#1B2A4A]/20 text-[#1B2A4A]/50"}`}>
+                                  {pv.defenseGroups.includes(gr) ? "🛡 Défense adverse (ventilation)" : "Définit l'attaque"}
+                                </button>
+                              </div>
                               <div className="flex flex-wrap gap-1.5">
                                 {pv.labels.filter(l => (l.group || "Libellés") === gr).map(l => {
                                   const off = pv.excluded.includes(l.key);
