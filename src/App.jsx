@@ -1158,8 +1158,16 @@ const isSportscodeResult = (l) => /^points/i.test(l.group || "") && /^[+-]?\d+$/
 function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = []) {
   const exclL = new Set(excludedKeys), exclC = new Set(excludedCodes.map(c => c.toLowerCase()));
   const groups = new Map();
+  let lastGroup = null; // attaque de la possession précédente, pour rattacher les résultats "seuls"
   instances.forEach(inst => {
     if (exclC.has(inst.code.toLowerCase())) return;
+    // Instance qui ne porte QUE des résultats (+1, +2, -1...) : suite de l'action précédente
+    // (lancer franc, and-one...), pas une nouvelle possession — ses points s'ajoutent à la
+    // rentabilité de l'attaque précédente sans compter une possession de plus.
+    if (inst.labels.every(isSportscodeResult)) {
+      if (lastGroup) inst.labels.forEach(l => lastGroup.xmlBonus.push(parseInt(l.text.replace("+", ""), 10)));
+      return;
+    }
     const defining = [...new Map(inst.labels.filter(l => !isSportscodeResult(l) && !exclL.has(l.text.toLowerCase())).map(l => [l.text.toLowerCase(), l])).values()];
     if (defining.length === 0) return;
     // L'ordre compte à l'intérieur d'un groupe (ex. ENTREE : Iverson puis Diamand ≠ Diamand
@@ -1167,8 +1175,9 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
     const byGroup = new Map();
     defining.forEach(l => { const g = (l.group || "").toLowerCase(); byGroup.set(g, [...(byGroup.get(g) || []), l.text.toLowerCase()]); });
     const key = [...byGroup.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([g, t]) => g + ":" + t.join(">")).join("|");
-    const g = groups.get(key) || { key, labels: defining, count: 0, xmlOutcomes: [] };
+    const g = groups.get(key) || { key, labels: defining, count: 0, xmlOutcomes: [], xmlBonus: [] };
     g.count++;
+    lastGroup = g;
     const res = inst.labels.find(isSportscodeResult);
     if (res) g.xmlOutcomes.push(parseInt(res.text.replace("+", ""), 10));
     groups.set(key, g);
@@ -1179,8 +1188,9 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
 // Résultats d'une attaque : ceux lus dans le XML + ceux ajoutés à la main (+3 +2 +1 0 -2 -3).
 function attackStats(a) {
   const o = [...(a.xmlOutcomes || []), ...(a.outcomes || [])];
-  const points = o.reduce((s, v) => s + (v > 0 ? v : 0), 0);
-  const possible = o.reduce((s, v) => s + Math.abs(v), 0);
+  const bonus = a.xmlBonus || []; // points ajoutés à une possession déjà comptée (pas de possession en plus)
+  const points = [...o, ...bonus].reduce((s, v) => s + (v > 0 ? v : 0), 0);
+  const possible = [...o, ...bonus].reduce((s, v) => s + Math.abs(v), 0);
   return { points, possible, resolved: o.length, ppp: o.length ? points / o.length : null };
 }
 const attackLabelText = (l) => typeof l === "string" ? l : l.text;
@@ -10676,7 +10686,7 @@ function CoachingProBoost({ session }) {
           const confirmXmlImport = () => {
             const groups = groupSportscodeInstances(vsImportPreview.instances, vsImportPreview.excluded, vsImportPreview.excludedCodes);
             const prev = new Map((activeVs.attacks || []).map(a => [a.key, a]));
-            updateActiveVs({ attacks: groups.map(g => ({ id: prev.get(g.key)?.id || uid(), key: g.key, labels: g.labels, count: g.count, xmlOutcomes: g.xmlOutcomes, outcomes: prev.get(g.key)?.outcomes || [] })) });
+            updateActiveVs({ attacks: groups.map(g => ({ id: prev.get(g.key)?.id || uid(), key: g.key, labels: g.labels, count: g.count, xmlOutcomes: g.xmlOutcomes, xmlBonus: g.xmlBonus, outcomes: prev.get(g.key)?.outcomes || [] })) });
             toast?.(`✓ ${groups.length} attaque${groups.length > 1 ? "s" : ""} importée${groups.length > 1 ? "s" : ""}`);
             setVsImportPreview(null);
           };
@@ -10980,7 +10990,8 @@ function CoachingProBoost({ session }) {
                   const toggle = (k) => setVsImportPreview(x => ({ ...x, excluded: x.excluded.includes(k) ? x.excluded.filter(y => y !== k) : [...x.excluded, k] }));
                   const toggleCode = (c) => setVsImportPreview(x => ({ ...x, excludedCodes: x.excludedCodes.includes(c) ? x.excludedCodes.filter(y => y !== c) : [...x.excludedCodes, c] }));
                   const used = pv.instances.filter(i => !pv.excludedCodes.includes(i.code));
-                  const withResult = used.filter(i => i.labels.some(isSportscodeResult)).length;
+                  const withResult = used.filter(i => i.labels.some(isSportscodeResult) && !i.labels.every(isSportscodeResult)).length;
+                  const bonusOnly = used.filter(i => i.labels.every(isSportscodeResult)).length;
                   const labelGroups = [...new Set(pv.labels.map(l => l.group || "Libellés"))];
                   return (
                     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setVsImportPreview(null)}>
@@ -10988,8 +10999,9 @@ function CoachingProBoost({ session }) {
                         <div className="px-5 pt-5 pb-3">
                           <h3 className="font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>Importer {pv.fileName}</h3>
                           <p className="text-xs text-[#1B2A4A]/50 mt-1">
-                            <strong>{used.length}</strong> possession{used.length > 1 ? "s" : ""} → <strong>{groups.length}</strong> attaque{groups.length > 1 ? "s" : ""} distincte{groups.length > 1 ? "s" : ""}
-                            {" · "}résultat lu pour <strong>{withResult}</strong>/{used.length}
+                            <strong>{used.length - bonusOnly}</strong> possession{used.length - bonusOnly > 1 ? "s" : ""} → <strong>{groups.length}</strong> attaque{groups.length > 1 ? "s" : ""} distincte{groups.length > 1 ? "s" : ""}
+                            {" · "}résultat lu pour <strong>{withResult}</strong>/{used.length - bonusOnly}
+                            {bonusOnly > 0 && <> · {bonusOnly} point{bonusOnly > 1 ? "s" : ""} seul{bonusOnly > 1 ? "s" : ""} rattaché{bonusOnly > 1 ? "s" : ""} à l'attaque précédente</>}
                             {pv.ignored > 0 && <> · {pv.ignored} instance{pv.ignored > 1 ? "s" : ""} sans libellé ignorée{pv.ignored > 1 ? "s" : ""}</>}
                           </p>
                         </div>
