@@ -994,7 +994,7 @@ function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
 // vues, notes libres, et le classement des systèmes avec leur rentabilité (même mécanique
 // que buildMatchReportHtml, sans le tableau de score qui n'a pas de sens hors match réel).
 // Repère de version affiché en bas de l'export (à faire évoluer à chaque refonte du rapport).
-const VIDEO_SCOUT_REPORT_VERSION = "2026-10-06-e";
+const VIDEO_SCOUT_REPORT_VERSION = "2026-10-06-f";
 // Feuille de style commune aux récaps (scouting vidéo, analyse de mon équipe).
 const SCOUT_REPORT_CSS = `
   *{box-sizing:border-box;margin:0;padding:0}
@@ -1073,6 +1073,14 @@ const SCOUT_REPORT_CSS = `
   .hint{font-size:12px;color:#1B2A4A80;margin:-8px 0 8px}
   .more{font-size:12px;color:#1B2A4A80;margin-top:8px}
   .notes-text{font-size:13.5px;line-height:1.65}
+  .alt-int{font-size:11.5px;color:#1B2A4A99;margin-top:6px;line-height:1.45}
+  .alt-int b{color:#1B2A4A}
+  .pb-row{border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
+  .pb-row:first-of-type{border-top:none}
+  .pb-row .rank-row{border-top:none}
+  .pb-imgs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 0 14px 48px}
+  .pb-imgs img{width:100%;height:150px;object-fit:contain;background:#fff;border:1px solid #1B2A4A14;border-radius:8px}
+  @media (max-width:600px){.pb-imgs{padding-left:0;grid-template-columns:repeat(2,1fr)}}
   .bs-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
   .bs-kpi{background:#1B2A4A08;border-radius:10px;padding:10px 12px}
   .bs-kpi b{display:block;font-family:'Oswald',sans-serif;font-size:21px;line-height:1.1}
@@ -1094,7 +1102,7 @@ const SCOUT_REPORT_CSS = `
   @media (max-width:600px){.bs-kpis{grid-template-columns:repeat(2,1fr)}.bs-act{grid-template-columns:110px 1fr 46px 96px}}
   @media print{body{background:#fff;padding:0}.card{box-shadow:none;border:1px solid #1B2A4A14}.hero{border-radius:12px}}
 `;
-function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
+function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null, teamPlays = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const dateStr = session.date ? new Date(session.date).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
   const PALETTE = ["#FF6B35", "#2563EB", "#22c55e", "#a855f7", "#eab308", "#14b8a6", "#ef4444", "#64748b"];
@@ -1138,6 +1146,20 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   const entryCount = (a) => new Set(a.labels.filter(l => typeof l !== "string" && /entr[ée]e/i.test(l.group || "")).map(l => l.text.toLowerCase())).size;
   const totalPoss = attacks.reduce((s, a) => s + a.count, 0);
   const atkStats = attacks.map(a => ({ a, st: attackStats(a) }));
+  // Plays du Playbook de l'équipe reliés aux attaques : une attaque sans nom prend celui du play.
+  const playRank = teamPlays ? matchPlaysToAttacks(teamPlays, attacks, session.tally || {}) : null;
+  if (playRank) playRank.forEach(r => r.groups.forEach(g => { if (!g.name) g.name = r.play.titre; }));
+  const seenPlays = playRank ? playRank.filter(r => r.count > 0) : [];
+  const unseenPlays = playRank ? playRank.filter(r => r.count === 0) : [];
+  const pbTotal = seenPlays.reduce((n, r) => n + r.count, 0);
+  // Intentions secondaires (la principale est déjà en pastille) et ordres d'entrées différents.
+  const altInts = (a) => {
+    const parts = [];
+    if ((a.otherIntentions || []).length) parts.push("Autres intentions vues : " + a.otherIntentions.map(i => `${esc(i.text)} <b>${i.count}×</b>`).join(", "));
+    if (a.mainIntention && (a.otherIntentions || []).length) parts.unshift(`${esc(a.mainIntention.text)} ${a.mainIntention.count}×`);
+    if ((a.orderVariants || 0) > 1) parts.push(`entrées vues dans ${a.orderVariants} ordres (le plus joué affiché)`);
+    return parts.length ? `<div class="alt-int">${parts.join(" · ")}</div>` : "";
+  };
   const totalPoints = atkStats.reduce((s, x) => s + x.st.points, 0);
   const totalResolved = atkStats.reduce((s, x) => s + x.st.resolved, 0);
   const globalPpp = totalResolved ? totalPoints / totalResolved : null;
@@ -1166,6 +1188,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
       <div class="kpi"><b>${attacks.length}</b><span>attaques distinctes</span></div>
       <div class="kpi"><b>${globalPpp === null ? "—" : globalPpp.toFixed(2)}</b><span>pts / possession</span></div>
       ${defItems.length ? `<div class="kpi"><b>${defItems.length}</b><span>défenses rencontrées</span></div>` : ""}
+      ${seenPlays.length ? `<div class="kpi"><b>${seenPlays.length}</b><span>systèmes du playbook vus</span></div>` : ""}
     </div>`;
 
   // Classement par catégorie : TRANSITION (phase de jeu transi pick / post up / jeu rapide...),
@@ -1193,14 +1216,14 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
             <div class="rank-row">
               <div class="rank-n ${i < 3 ? "rank-top" : ""}">${i + 1}</div>
               <div class="rank-main">
-                ${a.name ? `<div class="atk-name">${esc(a.name)}</div>` : ""}<div class="chips">${chipsCat(a, cat)}</div>
+                ${a.name ? `<div class="atk-name">${esc(a.name)}</div>` : ""}<div class="chips">${chipsCat(a, cat)}</div>${altInts(a)}
                 <div class="bar"><div style="width:${Math.round((a.count / max) * 100)}%"></div></div>
               </div>
               <div class="rank-side"><div class="rank-count">${a.count}<small>×</small></div><div class="rank-share">${pct(a.count, totalPoss)}%</div></div>
               ${pppBadge(st.ppp)}
             </div>`).join("")}
           ${rest.slice(0, 30).map(({ a, st }) => `
-            <div class="mini-row"><div class="chips">${a.name ? `<span class="atk-name-inline">${esc(a.name)}</span>` : ""}${chipsCat(a, cat)}</div><span class="mini-count">${a.count}×</span>${pppBadge(st.ppp)}</div>`).join("")}
+            <div class="mini-row"><div style="flex:1"><div class="chips">${a.name ? `<span class="atk-name-inline">${esc(a.name)}</span>` : ""}${chipsCat(a, cat)}</div>${altInts(a)}</div><span class="mini-count">${a.count}×</span>${pppBadge(st.ppp)}</div>`).join("")}
           ${rest.length > 30 ? `<p class="more">+ ${rest.length - 30} autres</p>` : ""}
         </div>`;
       }).join("")}
@@ -1265,6 +1288,31 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   });
   const rank = (t) => { const i = typeOrder.indexOf(t); return i === -1 ? typeOrder.length : i; };
   groups.sort((a, b) => rank(a.type) - rank(b.type));
+  // Playbook de l'équipe : les plays dessinés, classés par possessions vues (vidéo + comptage
+  // manuel), avec leurs schémas et leur rentabilité — remplace le tableau "Systèmes du Playbook".
+  const playbookHtml = !playRank || playRank.length === 0 ? "" : `
+    <section class="card">
+      <h2><i></i>Playbook de ${esc(session.opponent)} : les plus joués</h2>
+      <p class="hint">Systèmes dessinés dans le Playbook, classés par possessions vues (vidéo + comptage manuel), avec leur rentabilité.</p>
+      ${seenPlays.map((r, i) => {
+        const imgs = (r.play._images || (r.play.schemas || []).map(d => ({ data: d }))).filter(x => x && x.data).slice(0, 3);
+        const ints = r.intentions.length ? `<div class="alt-int">Intentions : ${r.intentions.map((x, k) => k === 0 ? `<b>${esc(x.text)} ${x.count}×</b>` : `${esc(x.text)} ${x.count}×`).join(", ")}</div>` : "";
+        return `
+        <div class="pb-row">
+          <div class="rank-row">
+            <div class="rank-n ${i < 3 ? "rank-top" : ""}">${i + 1}</div>
+            <div class="rank-main"><div class="atk-name">${esc(r.play.titre)}</div>
+              <div class="chips">${r.play.type ? `<span class="chip chip-int">${esc(r.play.type)}</span>` : ""}${(r.play.tags || []).slice(0, 6).map(t => `<span class="chip">${esc(t)}</span>`).join("")}</div>${ints}
+              <div class="bar"><div style="width:${Math.round((r.count / Math.max(1, seenPlays[0].count)) * 100)}%"></div></div></div>
+            <div class="rank-side"><div class="rank-count">${r.count}<small>×</small></div><div class="rank-share">${pct(r.count, pbTotal)}%</div></div>
+            ${pppBadge(r.ppp)}
+          </div>
+          ${imgs.length ? `<div class="pb-imgs">${imgs.map(im => `<img src="${im.data}" alt="" />`).join("")}</div>` : ""}
+        </div>`;
+      }).join("")}
+      ${unseenPlays.length ? `<p class="more">Pas encore vus en vidéo : ${unseenPlays.map(r => esc(r.play.titre)).join(", ")}.</p>` : ""}
+    </section>`;
+
   const systemsHtml = rows.length === 0 ? "" : `
     <section class="card">
       <h2><i></i>Systèmes du Playbook</h2>
@@ -1351,7 +1399,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
       ${session.notes ? `<h2 style="${session.note ? "margin-top:18px" : ""}"><i></i>Notes</h2><p class="notes-text">${esc(session.notes).replace(/\n/g, "<br>")}</p>` : ""}
     </section>`;
 
-  const empty = attacks.length === 0 && rows.length === 0 ? `<section class="card"><p class="notes-text" style="text-align:center;color:#1B2A4A80">Aucun système noté pour cette session.</p></section>` : "";
+  const empty = attacks.length === 0 && rows.length === 0 && !(playRank || []).length ? `<section class="card"><p class="notes-text" style="text-align:center;color:#1B2A4A80">Aucun système noté pour cette session.</p></section>` : "";
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -1372,11 +1420,12 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
     </header>
     ${notesHtml}
     ${boxHtml}
+    ${playbookHtml}
     ${rankingHtml}
     ${entriesHtml}
     ${defOverviewHtml}
     ${detailSection}
-    ${systemsHtml}
+    ${playRank ? "" : systemsHtml}
     ${ownDefHtml}
     ${manualDefHtml}
     ${empty}
@@ -1988,36 +2037,90 @@ function attackCategoryOf(a) {
   return "Attaque placée";
 }
 
-// Prépare les attaques pour l'export : retire des libellés d'attaque ce qui n'en définit pas une
-// (défenses adverses, joueurs, marqueurs de montage, "rebond off"...), puis fusionne celles qui
-// deviennent identiques. Protège aussi les imports faits avant ces réglages (ex. une attaque
-// importée avec SWITCH dans ses libellés n'apparaît plus en double ni avec la défense dedans).
+// Prépare les attaques pour le classement (export / vue globale) : retire des libellés d'attaque ce
+// qui n'en définit pas une (défenses adverses, joueurs, marqueurs de montage, "rebond off"...), puis
+// regroupe. Règles demandées par Thibaud le 06/10 : les mêmes entrées jouées dans un ordre différent
+// = la même attaque, affichée dans l'ordre le plus joué ; l'intention ne sépare plus deux attaques :
+// la plus jouée est gardée (mainIntention), les autres sont listées à titre indicatif.
 const ATTACK_HIDDEN_GROUP_RE = /def|[eé]cran|porteur|post ?up|joueur|player|nom\b|montage|tag ?up/i;
 function mergeAttacksForDisplay(attacks) {
   const hidden = ATTACK_HIDDEN_GROUP_RE;
+  const isEntry = (l) => typeof l !== "string" && /entr[ée]e/i.test(l.group || "");
+  const isInt = (l) => typeof l !== "string" && /intention/i.test(l.group || "");
+  const low = (l) => attackLabelText(l).toLowerCase();
+  const copyDef = (d) => ({ ...d, outcomes: [...(d.outcomes || [])], bonus: [...(d.bonus || [])] });
   const merged = new Map();
   attacks.forEach(a => {
     const labels = (a.labels || []).filter(l => typeof l === "string" || !hidden.test(l.group || ""));
     if (labels.length === 0) return;
+    const entries = labels.filter(isEntry), ints = labels.filter(isInt), others = labels.filter(l => !isEntry(l) && !isInt(l));
     const byGroup = new Map();
-    labels.forEach(l => { const g = typeof l === "string" ? "" : (l.group || "").toLowerCase(); byGroup.set(g, [...(byGroup.get(g) || []), attackLabelText(l).toLowerCase()]); });
-    const key = [...byGroup.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([g, t]) => g + ":" + t.join(">")).join("|");
-    const copyDef = (d) => ({ ...d, outcomes: [...(d.outcomes || [])], bonus: [...(d.bonus || [])] });
-    const m = merged.get(key);
+    [...entries, ...others].forEach(l => { const g = typeof l === "string" ? "" : (l.group || "").toLowerCase(); byGroup.set(g, [...(byGroup.get(g) || []), low(l)]); });
+    // Clé sans ordre (entrées triées) et sans intention ; une attaque décrite seulement par une
+    // intention garde une clé à elle (elle est de toute façon écartée du classement).
+    const key = [...byGroup.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([g, t]) => g + ":" + [...t].sort().join("+")).join("|")
+      || "intention:" + ints.map(low).sort().join("+");
+    let m = merged.get(key);
     if (!m) {
-      merged.set(key, { ...a, labels, key, xmlOutcomes: [...(a.xmlOutcomes || [])], xmlBonus: [...(a.xmlBonus || [])], outcomes: [...(a.outcomes || [])], byDefense: (a.byDefense || []).map(copyDef) });
-    } else {
-      m.count += a.count;
-      if (!m.name && a.name) m.name = a.name;
-      m.xmlOutcomes.push(...(a.xmlOutcomes || [])); m.xmlBonus.push(...(a.xmlBonus || [])); m.outcomes.push(...(a.outcomes || []));
-      (a.byDefense || []).forEach(d => {
-        const k = (d.group || "") + "|" + d.label.toLowerCase();
-        const e = m.byDefense.find(x => (x.group || "") + "|" + x.label.toLowerCase() === k);
-        if (e) { e.outcomes.push(...(d.outcomes || [])); e.bonus.push(...(d.bonus || [])); } else m.byDefense.push(copyDef(d));
-      });
+      m = { ...a, key, memberKeys: [], name: "", count: 0, xmlOutcomes: [], xmlBonus: [], outcomes: [], byDefense: [], _orders: new Map(), _ints: new Map(), _others: others, _nameCount: 0 };
+      merged.set(key, m);
     }
+    m.memberKeys.push(a.key);
+    m.count += a.count;
+    if (a.name && a.count > m._nameCount) { m.name = a.name; m._nameCount = a.count; }
+    const orderKey = entries.map(low).join(">");
+    const o = m._orders.get(orderKey) || { labels: entries, count: 0 };
+    o.count += a.count; m._orders.set(orderKey, o);
+    [...new Map(ints.map(l => [low(l), l])).values()].forEach(l => { const e = m._ints.get(low(l)) || { label: l, count: 0 }; e.count += a.count; m._ints.set(low(l), e); });
+    m.xmlOutcomes.push(...(a.xmlOutcomes || [])); m.xmlBonus.push(...(a.xmlBonus || [])); m.outcomes.push(...(a.outcomes || []));
+    (a.byDefense || []).forEach(d => {
+      const k = (d.group || "") + "|" + d.label.toLowerCase();
+      const e = m.byDefense.find(x => (x.group || "") + "|" + x.label.toLowerCase() === k);
+      if (e) { e.outcomes.push(...(d.outcomes || [])); e.bonus.push(...(d.bonus || [])); } else m.byDefense.push(copyDef(d));
+    });
   });
-  return [...merged.values()];
+  return [...merged.values()].map(m => {
+    const { _orders, _ints, _others, _nameCount, ...rest } = m;
+    const order = [..._orders.values()].sort((x, y) => y.count - x.count)[0];
+    const ints = [..._ints.values()].sort((x, y) => y.count - x.count);
+    return {
+      ...rest,
+      labels: [...(order ? order.labels : []), ...(ints[0] ? [ints[0].label] : []), ..._others],
+      mainIntention: ints[0] ? { text: attackLabelText(ints[0].label), count: ints[0].count } : null,
+      otherIntentions: ints.slice(1).map(e => ({ text: attackLabelText(e.label), count: e.count })),
+      orderVariants: _orders.size,
+    };
+  });
+}
+// Relie les plays du Playbook (équipe scoutée) aux attaques regroupées : par le nom du play (= nom
+// donné à l'attaque), par la clé d'origine (play créé via « ➜ Playbook »), sinon par ses entrées
+// (mots-clés du play = mêmes entrées, quel que soit l'ordre). Chaque attaque ne compte que pour un
+// play. Rentabilité = résultats du XML + comptage manuel de la session (tally).
+function matchPlaysToAttacks(teamPlays, mergedAttacks, tally = {}) {
+  const norm = (s) => String(s ?? "").toLowerCase().replace(/^e_/, "").replace(/\s+/g, " ").trim();
+  const entriesOf = (g) => (g.labels || []).filter(l => typeof l !== "string" && /entr[ée]e/i.test(l.group || "")).map(l => norm(l.text));
+  const vocab = new Set(mergedAttacks.flatMap(entriesOf));
+  const rows = teamPlays.map(p => ({ play: p, groups: [], tagSet: [...new Set((p.tags || []).map(norm).filter(t => vocab.has(t)))].sort().join("+") }));
+  mergedAttacks.forEach(g => {
+    const entSet = [...new Set(entriesOf(g))].sort().join("+");
+    const r = (g.name && rows.find(x => norm(x.play.titre) === norm(g.name)))
+      || rows.find(x => (x.play.sourceAttackKeys || []).some(k => (g.memberKeys || [g.key]).includes(k)))
+      || (entSet && rows.find(x => x.tagSet === entSet));
+    if (r) r.groups.push(g);
+  });
+  return rows.map(r => {
+    const st = r.groups.map(attackStats);
+    const man = tally[r.play.id];
+    const manPlayed = typeof man === "number" ? man : (man?.played || 0), manPts = typeof man === "number" ? 0 : (man?.points || 0);
+    const videoCount = r.groups.reduce((s, g) => s + g.count, 0);
+    const points = st.reduce((s, x) => s + x.points, 0) + manPts, resolved = st.reduce((s, x) => s + x.resolved, 0) + manPlayed;
+    const ints = new Map();
+    r.groups.forEach(g => [g.mainIntention, ...(g.otherIntentions || [])].filter(Boolean).forEach(i => {
+      const e = ints.get(i.text.toLowerCase()) || { text: i.text, count: 0 }; e.count += i.count; ints.set(i.text.toLowerCase(), e);
+    }));
+    return { play: r.play, groups: r.groups, count: videoCount + manPlayed, videoCount, manualCount: manPlayed, points, resolved,
+      ppp: resolved ? points / resolved : null, intentions: [...ints.values()].sort((a, b) => b.count - a.count) };
+  }).sort((a, b) => b.count - a.count || String(a.play.titre || "").localeCompare(String(b.play.titre || ""), "fr"));
 }
 
 // Résultats d'une attaque : ceux lus dans le XML + ceux ajoutés à la main (+3 +2 +1 0 -2 -3).
@@ -7775,7 +7878,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
             const ok = await cpbAlert?.("Un schéma est en cours de dessin et n'a pas été validé (bouton \"Utiliser ce schéma\") — il sera perdu si tu enregistres maintenant. Continuer sans le sauvegarder ?", { confirm: true });
             if (!ok) return;
           }
-          onSave({ id: initial?.id || uid(), titre, type, scoutedTeam: scoutedTeam.trim(), tempsFort, intention: intention.trim(), description, notes, tags: selectedTags, images, schemas, createdAt: initial?.createdAt || new Date().toISOString() });
+          onSave({ ...(initial || {}), id: initial?.id || uid(), titre, type, scoutedTeam: scoutedTeam.trim(), tempsFort, intention: intention.trim(), description, notes, tags: selectedTags, images, schemas, createdAt: initial?.createdAt || new Date().toISOString() });
         }} className="px-5 py-2 text-sm font-medium rounded-md bg-[#FF6B35] text-white hover:bg-[#e85a28]">Enregistrer</button>
       </div>
     </div>
@@ -8644,7 +8747,7 @@ function CoachingProBoost({ session }) {
   const logoExportInputRef = useRef();
   const exportPlaysHtml = (selectedIds, title) => setLogoExportPrompt({ selectedIds, title, kind: "html" });
   const exportPlaysPrint = (selectedIds, title) => setLogoExportPrompt({ selectedIds, title, kind: "print" });
-  const exportVideoScoutReport = (session, rows, typeOrder) => setLogoExportPrompt({ session, rows, typeOrder, kind: "videoscout" });
+  const exportVideoScoutReport = (session, rows, typeOrder, playIds = []) => setLogoExportPrompt({ session, rows, typeOrder, playIds, kind: "videoscout" });
   const exportPlaybookStats = (stats, title) => setLogoExportPrompt({ stats, title, kind: "playbookstats" });
   const runLogoExportPrompt = (logo) => {
     const p = logoExportPrompt;
@@ -8668,14 +8771,18 @@ function CoachingProBoost({ session }) {
     }
     else if (p.kind === "videoscout") {
       // Une erreur ici ne doit jamais rester silencieuse (c'est ce qui rendait le bouton "muet").
-      try {
-        const html = buildVideoScoutReportHtml(p.session, p.rows, p.typeOrder, logo);
-        downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `scouting-${slugifyForFile(p.session.opponent)}-${p.session.date || ""}.html`);
-        toast?.("✓ Récap exporté");
-      } catch (e) {
-        console.error("Export scouting vidéo", e);
-        cpbAlert?.("L'export a échoué : " + (e?.message || e) + " — envoie-moi ce message pour que je corrige.");
-      }
+      // Schémas + photos des plays de l'équipe chargés avant de générer le récap.
+      (async () => {
+        try {
+          const teamPlays = await loadPlaysWithImages(p.playIds || []);
+          const html = buildVideoScoutReportHtml(p.session, p.rows, p.typeOrder, logo, teamPlays);
+          downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `scouting-${slugifyForFile(p.session.opponent)}-${p.session.date || ""}.html`);
+          toast?.("✓ Récap exporté");
+        } catch (e) {
+          console.error("Export scouting vidéo", e);
+          cpbAlert?.("L'export a échoué : " + (e?.message || e) + " — envoie-moi ce message pour que je corrige.");
+        }
+      })();
     }
   };
 
@@ -8898,6 +9005,7 @@ function CoachingProBoost({ session }) {
   const [vsImportPreview, setVsImportPreview] = useState(null);
   // Recherche dans les attaques importées (texte libre + libellés cliqués, ex. TOP52, Stagger)
   const [vsAtkQuery, setVsAtkQuery] = useState("");
+  const [vsGlobalOpen, setVsGlobalOpen] = useState(false); // vue globale (récap affiché dans l'app)
   const [vsAtkFilters, setVsAtkFilters] = useState([]);
   const [vsAnnounceTfInput, setVsAnnounceTfInput] = useState("");
   const [newMatchOpen, setNewMatchOpen] = useState(false);
@@ -11619,6 +11727,7 @@ function CoachingProBoost({ session }) {
               description: entries.length > 1 ? "Déroulé : " + entries.join(" → ") : "",
               notes: `Importé de Sportscode (scouting vidéo ${activeVs.opponent}) — joué ${a.count}×` + (st.ppp !== null ? `, ${st.ppp.toFixed(2)} pts/possession` : "") + (others.length ? ` · ${others.join(", ")}` : ""),
               images: [], schemas: [],
+              sourceAttackKeys: [a.key],
             });
             updateActiveVs({ attacks: (activeVs.attacks || []).map(x => x.id === a.id ? { ...x, sent: true } : x) });
             setPlaybookForm(true);
@@ -11707,7 +11816,7 @@ function CoachingProBoost({ session }) {
             return (
               <div className="max-w-3xl">
                 <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-                  <button onClick={() => { setActiveVideoScoutId(null); setVsTfFilters([]); setVsTypeFilters([]); setVsPendingMiss(null); setVsAnnounceName(""); setVsAnnounceTf([]); setVsHighlightPlayId(null); setVsAtkQuery(""); setVsAtkFilters([]); }}
+                  <button onClick={() => { setActiveVideoScoutId(null); setVsTfFilters([]); setVsTypeFilters([]); setVsPendingMiss(null); setVsAnnounceName(""); setVsAnnounceTf([]); setVsHighlightPlayId(null); setVsAtkQuery(""); setVsAtkFilters([]); setVsGlobalOpen(false); }}
                     className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Retour au scouting vidéo</button>
                   <button onClick={() => {
                     // Tous les systèmes notés pour cette équipe, même sans action comptée : les
@@ -11722,10 +11831,27 @@ function CoachingProBoost({ session }) {
                       openMisses: openMissesOf(activeVs.tally?.[p.id]),
                       contestedMisses: contestedMissesOf(activeVs.tally?.[p.id]),
                     }));
-                    try { exportVideoScoutReport(activeVs, rows, playTypes); }
+                    try { exportVideoScoutReport(activeVs, rows, playTypes, sorted.map(p => p.id)); }
                     catch (e) { console.error("Export scouting vidéo", e); cpbAlert?.("Impossible de préparer l'export : " + (e?.message || e)); }
                   }} className="text-sm font-semibold text-white px-4 py-2 rounded-md" style={{ backgroundColor: "#2563EB" }}>📤 Exporter le récap</button>
                 </div>
+                {vsGlobalOpen && (() => {
+                  // Même document que l'export (schémas du Playbook inclus ; photos chargées seulement à l'export).
+                  let html = "";
+                  try {
+                    const rowsG = sorted.map(p => ({ titre: p.titre, type: p.type, tempsFort: tfOf(p), played: playedOf(activeVs.tally?.[p.id]), points: pointsOf(activeVs.tally?.[p.id]), possible: possibleOf(activeVs.tally?.[p.id]) }));
+                    html = buildVideoScoutReportHtml(activeVs, rowsG, playTypes, clubLogo || null, sorted);
+                  } catch (e) { html = `<p style="font-family:sans-serif;color:#b91c1c;padding:16px">Erreur d'affichage : ${String(e?.message || e).replace(/</g, "&lt;")}</p>`; }
+                  return (
+                    <div className="fixed inset-0 z-50 flex flex-col bg-[#F2EDE4]">
+                      <div className="flex items-center justify-between gap-2 bg-[#1B2A4A] text-white px-4 py-2.5">
+                        <span className="font-semibold" style={{ fontFamily: "Oswald, sans-serif" }}>VUE GLOBALE · {activeVs.opponent}</span>
+                        <button onClick={() => setVsGlobalOpen(false)} className="p-1 hover:text-[#FF6B35]" title="Fermer"><X size={22} /></button>
+                      </div>
+                      <iframe title="Vue globale" srcDoc={html} className="flex-1 w-full border-0" />
+                    </div>
+                  );
+                })()}
                 <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>{activeVs.opponent}</h2>
                 <p className="text-xs text-[#1B2A4A]/40 mb-4">
                   {activeVs.date ? new Date(activeVs.date).toLocaleDateString("fr-FR") : "Date non précisée"}{activeVs.note && ` · ${activeVs.note}`} — <strong className="text-[#1B2A4A]/60">{totalTally}</strong> système{totalTally !== 1 ? "s" : ""} noté{totalTally !== 1 ? "s" : ""}
@@ -11880,6 +12006,45 @@ function CoachingProBoost({ session }) {
                   <textarea value={activeVs.notes || ""} onChange={e => updateActiveVs({ notes: e.target.value })}
                     placeholder="Joueurs clés, habitudes, consignes à donner à l'équipe..."
                     className="w-full h-24 border border-[#1B2A4A]/20 rounded-lg p-2 text-sm outline-none focus:border-[#FF6B35] resize-none bg-white/70" />
+                </div>
+
+                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
+                  <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold">Playbook de {activeVs.opponent} : les plus joués</div>
+                    <button onClick={() => setVsGlobalOpen(true)} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "#1B2A4A" }}>👁 Vue globale</button>
+                  </div>
+                  {teamPlays.length === 0 ? (
+                    <p className="text-xs text-[#1B2A4A]/40 italic">Aucun play dans le Playbook pour {activeVs.opponent} (champ « Équipe scoutée »).</p>
+                  ) : (() => {
+                    const ranked = matchPlaysToAttacks(teamPlays, mergeAttacksForDisplay(activeVs.attacks || []), activeVs.tally || {});
+                    const seenTotal = ranked.reduce((n, r) => n + r.count, 0);
+                    return (
+                      <div className="flex flex-col">
+                        {ranked.map((r, i) => (
+                          <div key={r.play.id} className={`flex items-center gap-3 py-2 ${i > 0 ? "border-t border-[#1B2A4A]/10" : ""} ${r.count === 0 ? "opacity-50" : ""}`}>
+                            <span className="w-6 text-center font-bold text-lg flex-shrink-0" style={{ color: i < 3 && r.count > 0 ? "#FF6B35" : "#1B2A4A55", fontFamily: "Oswald, sans-serif" }}>{i + 1}</span>
+                            {r.play.schemas?.[0]
+                              ? <img src={r.play.schemas[0]} alt="" className="w-20 h-14 object-contain rounded-md bg-white border border-[#1B2A4A]/10 flex-shrink-0" />
+                              : <div className="w-20 h-14 rounded-md bg-[#1B2A4A]/5 flex-shrink-0" />}
+                            <div className="flex-1 min-w-0">
+                              <div className="font-semibold text-sm text-[#1B2A4A] truncate">{r.play.titre}</div>
+                              <div className="text-[11px] text-[#1B2A4A]/50 truncate">
+                                {[r.play.type, r.intentions[0] ? `${r.intentions[0].text} ${r.intentions[0].count}×` : "", r.intentions.length > 1 ? "aussi " + r.intentions.slice(1).map(x => `${x.text} ${x.count}×`).join(", ") : ""].filter(Boolean).join(" · ")}
+                              </div>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <div className="font-bold" style={{ color: "var(--sport-accent)" }}>{r.count}×</div>
+                              <div className="text-[10px] text-[#1B2A4A]/50">{seenTotal ? Math.round((r.count / seenTotal) * 100) : 0} %</div>
+                            </div>
+                            <span className={`text-xs font-bold px-2 py-1 rounded-md flex-shrink-0 w-12 text-center ${r.ppp === null ? "bg-[#1B2A4A]/5 text-[#1B2A4A]/40" : r.ppp >= 1.2 ? "bg-green-100 text-green-700" : r.ppp >= 0.9 ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"}`}>
+                              {r.ppp === null ? "—" : r.ppp.toFixed(2)}
+                            </span>
+                          </div>
+                        ))}
+                        <p className="text-[11px] text-[#1B2A4A]/40 mt-2">Relié aux attaques importées par le nom du play ou par ses entrées (mots-clés), plus le comptage manuel. Pts/possession : vert ≥ 1,2, rouge sous 0,9.</p>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
