@@ -1058,31 +1058,48 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
       ${defItems.length ? `<div class="kpi"><b>${defItems.length}</b><span>défenses rencontrées</span></div>` : ""}
     </div>`;
 
-  // Classement : les attaques jouées plusieurs fois (ou, à défaut, les plus jouées) avec barres ;
-  // toutes les autres sont listées en dessous pour qu'aucune attaque taguée ne disparaisse.
-  // Priorité aux attaques à plusieurs entrées (les vrais enchaînements de système).
-  const multi = atkStats.filter(x => entryCount(x.a) >= 2).sort((x, y) => y.a.count - x.a.count || entryCount(y.a) - entryCount(x.a));
-  const shownMain = (multi.length ? multi : atkStats).slice(0, 15);
-  const restRows = atkStats.filter(x => !shownMain.includes(x));
+  // Classement par catégorie : TRANSITION (phase de jeu transi pick / post up / jeu rapide...),
+  // SLOB, BLOB, et ATTAQUE PLACÉE par défaut quand rien n'est précisé. Dans chaque catégorie,
+  // les attaques à plusieurs entrées passent en priorité (les vrais enchaînements de système).
+  const catOf = (a) => {
+    const L = a.labels.filter(l => typeof l !== "string");
+    if (L.some(l => /phase/i.test(l.group || "") || /transi|jeu rapide/i.test(l.text))) return "Transition";
+    if (L.some(l => /^blob$/i.test(l.text) || /fond/i.test(l.group || ""))) return "BLOB";
+    if (L.some(l => /^slob$/i.test(l.text) || /side/i.test(l.group || ""))) return "SLOB";
+    return "Attaque placée";
+  };
+  // Le nom de la catégorie (SLOB / BLOB) est déjà dans le titre : inutile de le répéter en pastille.
+  const chipsCat = (a, cat) => chips({ ...a, labels: cat === "SLOB" || cat === "BLOB" ? a.labels.filter(l => typeof l === "string" || !(/touche/i.test(l.group || "") || /^(slob|blob)$/i.test(l.text))) : a.labels });
+  const CAT_ORDER = ["Transition", "Attaque placée", "SLOB", "BLOB"];
+  const catBlocks = CAT_ORDER.map(cat => {
+    const list = atkStats.filter(x => catOf(x.a) === cat)
+      .sort((x, y) => (entryCount(y.a) >= 2 ? 1 : 0) - (entryCount(x.a) >= 2 ? 1 : 0) || y.a.count - x.a.count || entryCount(y.a) - entryCount(x.a));
+    return { cat, list, poss: list.reduce((n, x) => n + x.a.count, 0) };
+  }).filter(c => c.list.length > 0);
   const rankingHtml = attacks.length === 0 ? "" : `
     <section class="card">
       <h2><i></i>Classement des attaques les plus jouées</h2>
-      ${multi.length ? `<p class="hint">Attaques à plusieurs entrées en priorité</p>` : ""}
-      ${shownMain.map(({ a, st }, i) => `
-        <div class="rank-row">
-          <div class="rank-n ${i < 3 ? "rank-top" : ""}">${i + 1}</div>
-          <div class="rank-main">
-            <div class="chips">${chips(a)}</div>
-            <div class="bar"><div style="width:${Math.round((a.count / attacks[0].count) * 100)}%"></div></div>
-          </div>
-          <div class="rank-side"><div class="rank-count">${a.count}<small>×</small></div><div class="rank-share">${pct(a.count, totalPoss)}%</div></div>
-          ${pppBadge(st.ppp)}
-        </div>`).join("")}
-      ${restRows.length ? `
-        <div class="sub-title" style="margin-top:20px">Autres attaques (${restRows.length})</div>
-        ${restRows.slice(0, 60).map(({ a, st }) => `
-          <div class="mini-row"><div class="chips">${chips(a)}</div><span class="mini-count">${a.count}×</span>${pppBadge(st.ppp)}</div>`).join("")}
-        ${restRows.length > 60 ? `<p class="more">+ ${restRows.length - 60} autres</p>` : ""}` : ""}
+      ${catBlocks.map(({ cat, list, poss }) => {
+        const main = list.slice(0, 10), rest = list.slice(10);
+        const max = Math.max(1, ...main.map(x => x.a.count));
+        return `
+        <div class="cat-block">
+          <div class="cat-title">${esc(cat)} <span>${poss} possession${poss > 1 ? "s" : ""} · ${list.length} attaque${list.length > 1 ? "s" : ""}</span></div>
+          ${main.map(({ a, st }, i) => `
+            <div class="rank-row">
+              <div class="rank-n ${i < 3 ? "rank-top" : ""}">${i + 1}</div>
+              <div class="rank-main">
+                <div class="chips">${chipsCat(a, cat)}</div>
+                <div class="bar"><div style="width:${Math.round((a.count / max) * 100)}%"></div></div>
+              </div>
+              <div class="rank-side"><div class="rank-count">${a.count}<small>×</small></div><div class="rank-share">${pct(a.count, totalPoss)}%</div></div>
+              ${pppBadge(st.ppp)}
+            </div>`).join("")}
+          ${rest.slice(0, 30).map(({ a, st }) => `
+            <div class="mini-row"><div class="chips">${chipsCat(a, cat)}</div><span class="mini-count">${a.count}×</span>${pppBadge(st.ppp)}</div>`).join("")}
+          ${rest.length > 30 ? `<p class="more">+ ${rest.length - 30} autres</p>` : ""}
+        </div>`;
+      }).join("")}
       ${skippedIntentionOnly > 0 ? `<p class="more">${skippedIntentionOnly} possession${skippedIntentionOnly > 1 ? "s" : ""} décrite${skippedIntentionOnly > 1 ? "s" : ""} seulement par une intention ou une remise en jeu (SIDE41, SLOB, BLOB), non listée${skippedIntentionOnly > 1 ? "s" : ""}.</p>` : ""}
     </section>`;
 
@@ -1247,6 +1264,10 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   .chip-int{background:#FF6B35;color:#fff}
   .rank-row{display:grid;grid-template-columns:34px 1fr 62px auto;gap:14px;align-items:center;padding:12px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
   .rank-row:first-of-type{border-top:none}
+  .cat-block{margin-top:6px}
+  .cat-block + .cat-block{margin-top:22px}
+  .cat-title{font-family:'Oswald',sans-serif;font-size:14px;letter-spacing:.8px;text-transform:uppercase;color:#fff;background:#1B2A4A;border-radius:8px;padding:8px 14px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:baseline}
+  .cat-title span{font-family:'Inter',sans-serif;font-size:11px;letter-spacing:0;text-transform:none;color:rgba(255,255,255,.65)}
   .mini-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
   .mini-row .chips{flex:1}
   .mini-count{font-family:'Oswald',sans-serif;font-weight:700;font-size:15px;min-width:34px;text-align:right}
