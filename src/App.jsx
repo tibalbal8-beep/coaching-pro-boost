@@ -414,6 +414,9 @@ function useStore(sport = DEFAULT_SPORT) {
   // rentabilité, mais dans une liste de sessions séparée.
   const [videoScoutSessions, setVideoScoutSessions] = useState([]);
   const videoScoutSessionsKey = `videoScoutSessions:${sport}`;
+  // Analyse de mon équipe (admin) : imports Excel (cinq alignés, box score par match).
+  const [teamAnalyses, setTeamAnalyses] = useState([]);
+  const teamAnalysesKey = `teamAnalyses:${sport}`;
   // Copie locale (localStorage, synchrone) du Mode match — seule donnée de l'app à en avoir
   // une : c'est la seule pensée pour être utilisée en direct, sans connexion, pendant un match.
   const matchSessionsLocalKey = `cpb_local_matchSessions:${sport}`;
@@ -508,6 +511,10 @@ function useStore(sport = DEFAULT_SPORT) {
       try {
         const vs = await storage.get(videoScoutSessionsKey);
         setVideoScoutSessions(vs ? JSON.parse(vs.value) : []);
+      } catch { hadError = true; }
+      try {
+        const ta = await storage.get(teamAnalysesKey);
+        setTeamAnalyses(ta ? JSON.parse(ta.value) : []);
       } catch { hadError = true; }
       if (hadError) setLoadError(true);
       setLoaded(true);
@@ -620,6 +627,7 @@ function useStore(sport = DEFAULT_SPORT) {
     trySyncMatchSessions(next);
   };
   const saveVideoScoutSessions = (next) => { setVideoScoutSessions(next); persist(videoScoutSessionsKey, JSON.stringify(next)); };
+  const saveTeamAnalyses = (next) => { setTeamAnalyses(next); persist(teamAnalysesKey, JSON.stringify(next)); };
   const savePlays = async (next) => {
     for (const play of next) {
       for (const img of play.images || []) {
@@ -652,7 +660,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
+  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, teamAnalyses, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
 }
 
 function usePdfJs() {
@@ -987,6 +995,105 @@ function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
 // que buildMatchReportHtml, sans le tableau de score qui n'a pas de sens hors match réel).
 // Repère de version affiché en bas de l'export (à faire évoluer à chaque refonte du rapport).
 const VIDEO_SCOUT_REPORT_VERSION = "2026-10-06-e";
+// Feuille de style commune aux récaps (scouting vidéo, analyse de mon équipe).
+const SCOUT_REPORT_CSS = `
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',sans-serif;background:#F2EDE4;color:#1B2A4A;padding:24px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .page{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+  .hero{background:linear-gradient(135deg,#1B2A4A 0%,#243a66 100%);color:#fff;border-radius:18px;padding:28px;position:relative;overflow:hidden}
+  .hero:after{content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:#FF6B35;opacity:.14}
+  .hero-logo{width:48px;height:48px;object-fit:contain;border-radius:10px;background:#fff;padding:5px;margin-bottom:14px;position:relative}
+  .kicker{font-size:11px;text-transform:uppercase;letter-spacing:2px;color:#FF6B35;font-weight:700;margin-bottom:6px;position:relative}
+  .hero h1{font-family:'Oswald',sans-serif;font-size:38px;line-height:1.05;letter-spacing:.5px;text-transform:uppercase;position:relative}
+  .hero .meta{color:rgba(255,255,255,.65);font-size:13px;margin-top:8px;text-transform:capitalize;position:relative}
+  .kpis{display:flex;gap:10px;margin-top:22px;flex-wrap:wrap;position:relative}
+  .kpi{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px 16px;min-width:120px;flex:1}
+  .kpi b{display:block;font-family:'Oswald',sans-serif;font-size:28px;line-height:1}
+  .kpi span{display:block;font-size:11px;color:rgba(255,255,255,.6);margin-top:5px;text-transform:uppercase;letter-spacing:.5px}
+  .card{background:#fff;border-radius:16px;padding:22px 24px;box-shadow:0 2px 12px rgba(27,42,74,.06)}
+  .card h2{font-family:'Oswald',sans-serif;font-size:17px;letter-spacing:.6px;text-transform:uppercase;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+  .card h2 i{display:inline-block;width:5px;height:20px;border-radius:3px;background:#FF6B35}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{font-size:12px;font-weight:600;padding:4px 11px;border-radius:20px;background:#1B2A4A12;color:#1B2A4A}
+  .chip-int{background:#FF6B35;color:#fff}
+  .rank-row{display:grid;grid-template-columns:34px 1fr 62px auto;gap:14px;align-items:center;padding:12px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
+  .rank-row:first-of-type{border-top:none}
+  .atk-name{font-family:'Oswald',sans-serif;font-size:15px;font-weight:700;letter-spacing:.3px;margin-bottom:6px}
+  .atk-name-inline{font-family:'Oswald',sans-serif;font-weight:700;font-size:13px;margin-right:4px}
+  .cat-block{margin-top:6px}
+  .cat-block + .cat-block{margin-top:22px}
+  .cat-title{font-family:'Oswald',sans-serif;font-size:14px;letter-spacing:.8px;text-transform:uppercase;color:#fff;background:#1B2A4A;border-radius:8px;padding:8px 14px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:baseline}
+  .cat-title span{font-family:'Inter',sans-serif;font-size:11px;letter-spacing:0;text-transform:none;color:rgba(255,255,255,.65)}
+  .mini-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
+  .mini-row .chips{flex:1}
+  .mini-count{font-family:'Oswald',sans-serif;font-weight:700;font-size:15px;min-width:34px;text-align:right}
+  .rank-n{font-family:'Oswald',sans-serif;font-size:24px;font-weight:700;color:#1B2A4A40;text-align:center}
+  .rank-top{color:#FF6B35}
+  .bar{height:8px;background:#1B2A4A0d;border-radius:5px;margin-top:9px;overflow:hidden}
+  .bar div{height:100%;border-radius:5px;background:linear-gradient(90deg,#FF6B35,#ff9a6b)}
+  .rank-side{text-align:right}
+  .rank-count{font-family:'Oswald',sans-serif;font-size:24px;font-weight:700;line-height:1}
+  .rank-count small{font-size:13px;color:#1B2A4A80;margin-left:1px}
+  .rank-share{font-size:11px;color:#1B2A4A80;margin-top:3px}
+  .ppp{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;min-width:64px;padding:6px 10px;border-radius:10px;font-family:'Oswald',sans-serif;font-size:17px;font-weight:700;line-height:1}
+  .ppp small{font-family:'Inter',sans-serif;font-size:8.5px;font-weight:600;letter-spacing:.3px;margin-top:3px;text-transform:uppercase;opacity:.8}
+  .ppp-good{background:#22c55e22;color:#15803d}.ppp-mid{background:#eab30826;color:#a16207}.ppp-low{background:#ef444422;color:#b91c1c}.ppp-na{background:#1B2A4A0d;color:#1B2A4A80}
+  .donut-wrap{display:flex;align-items:center;gap:26px;flex-wrap:wrap}
+  .donut{flex-shrink:0}
+  .donut-n{font-family:'Oswald',sans-serif;font-size:30px;font-weight:700;fill:#1B2A4A}
+  .donut-l{font-size:10px;fill:#1B2A4A80;text-transform:uppercase;letter-spacing:.6px}
+  .legend{flex:1;min-width:230px;display:flex;flex-direction:column;gap:9px}
+  .legend-row{display:flex;align-items:center;gap:10px;font-size:13px}
+  .legend-row i{width:12px;height:12px;border-radius:4px;flex-shrink:0}
+  .legend-name{flex:1;font-weight:600}
+  .legend-val{font-weight:700;margin-right:6px}
+  .legend-val small{font-weight:400;color:#1B2A4A80}
+  .detail{padding:16px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
+  .detail:first-of-type{border-top:none;padding-top:0}
+  .detail-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+  .detail-pure{display:flex;align-items:center;gap:8px}
+  .detail-pure span{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#1B2A4A80;font-weight:600}
+  .detail-pure em{font-style:normal;font-family:'Oswald',sans-serif;font-weight:700;font-size:16px}
+  .def-block{padding:14px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
+  .def-block:first-of-type{border-top:none}
+  .def-block .sub-title{margin-top:0}
+  .int-row{display:flex;align-items:center;gap:12px;margin-top:8px}
+  .stack{flex:1;display:flex;height:12px;border-radius:6px;overflow:hidden;background:#1B2A4A0d}
+  .int-top{font-size:12px;font-weight:700;min-width:170px;text-align:right}
+  .int-top small{font-weight:400;color:#1B2A4A80}
+  .sub-title{font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:.6px;text-transform:uppercase;color:#FF6B35;margin:16px 0 6px}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#1B2A4A80;padding:6px 8px;border-bottom:2px solid #1B2A4A15}
+  th.num,td.num{text-align:center}
+  td{padding:9px 8px;border-bottom:1px solid #1B2A4A0f;font-size:13px;vertical-align:middle}
+  .rk{font-family:'Oswald',sans-serif;font-weight:700;color:#FF6B35;width:26px}
+  .tt{font-weight:600}
+  .tf{font-size:11px;color:#1B2A4A60;margin-top:2px;font-weight:400}
+  .stamp{text-align:center;font-size:10px;color:#1B2A4A55;padding:4px 0 12px}
+  .hint{font-size:12px;color:#1B2A4A80;margin:-8px 0 8px}
+  .more{font-size:12px;color:#1B2A4A80;margin-top:8px}
+  .notes-text{font-size:13.5px;line-height:1.65}
+  .bs-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+  .bs-kpi{background:#1B2A4A08;border-radius:10px;padding:10px 12px}
+  .bs-kpi b{display:block;font-family:'Oswald',sans-serif;font-size:21px;line-height:1.1}
+  .bs-kpi span{display:block;font-size:10px;color:#1B2A4A80;text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
+  .bs-ins{list-style:none;display:flex;flex-direction:column;gap:7px;margin:4px 0 14px}
+  .bs-ins li{font-size:13px;line-height:1.5;padding-left:16px;position:relative}
+  .bs-ins li:before{content:"";position:absolute;left:0;top:7px;width:7px;height:7px;border-radius:50%;background:#FF6B35}
+  .bs-table{overflow-x:auto}
+  .bs-res{display:inline-block;width:18px;height:18px;line-height:18px;border-radius:5px;font-size:10px;font-weight:700;color:#fff;background:#64748b;text-align:center}
+  .bs-w{background:#22c55e}.bs-l{background:#ef4444}
+  .bs-act{display:grid;grid-template-columns:170px 1fr 56px 120px;gap:10px;align-items:center;padding:5px 0;font-size:12.5px}
+  .bs-act .bar{margin-top:0}
+  .bs-act-l{font-weight:600}
+  .bs-act-n{font-family:'Oswald',sans-serif;font-weight:700;font-size:15px;text-align:right}
+  .bs-act-n small{font-family:'Inter',sans-serif;font-size:10px;font-weight:400;color:#1B2A4A80}
+  .bs-act-p{font-size:12px;font-weight:600;text-align:right;padding:3px 8px;border-radius:7px;background:#1B2A4A0a}
+  .bs-good{background:#22c55e22;color:#15803d}.bs-low{background:#ef444422;color:#b91c1c}
+  .bs-ff td,.bs-ff th{padding:7px 8px}
+  @media (max-width:600px){.bs-kpis{grid-template-columns:repeat(2,1fr)}.bs-act{grid-template-columns:110px 1fr 46px 96px}}
+  @media print{body{background:#fff;padding:0}.card{box-shadow:none;border:1px solid #1B2A4A14}.hero{border-radius:12px}}
+`;
 function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const dateStr = session.date ? new Date(session.date).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
@@ -1252,104 +1359,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
 <meta charset="utf-8">
 <title>Scouting vidéo — ${esc(session.opponent)}</title>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Inter',sans-serif;background:#F2EDE4;color:#1B2A4A;padding:24px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .page{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
-  .hero{background:linear-gradient(135deg,#1B2A4A 0%,#243a66 100%);color:#fff;border-radius:18px;padding:28px;position:relative;overflow:hidden}
-  .hero:after{content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:#FF6B35;opacity:.14}
-  .hero-logo{width:48px;height:48px;object-fit:contain;border-radius:10px;background:#fff;padding:5px;margin-bottom:14px;position:relative}
-  .kicker{font-size:11px;text-transform:uppercase;letter-spacing:2px;color:#FF6B35;font-weight:700;margin-bottom:6px;position:relative}
-  .hero h1{font-family:'Oswald',sans-serif;font-size:38px;line-height:1.05;letter-spacing:.5px;text-transform:uppercase;position:relative}
-  .hero .meta{color:rgba(255,255,255,.65);font-size:13px;margin-top:8px;text-transform:capitalize;position:relative}
-  .kpis{display:flex;gap:10px;margin-top:22px;flex-wrap:wrap;position:relative}
-  .kpi{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px 16px;min-width:120px;flex:1}
-  .kpi b{display:block;font-family:'Oswald',sans-serif;font-size:28px;line-height:1}
-  .kpi span{display:block;font-size:11px;color:rgba(255,255,255,.6);margin-top:5px;text-transform:uppercase;letter-spacing:.5px}
-  .card{background:#fff;border-radius:16px;padding:22px 24px;box-shadow:0 2px 12px rgba(27,42,74,.06)}
-  .card h2{font-family:'Oswald',sans-serif;font-size:17px;letter-spacing:.6px;text-transform:uppercase;margin-bottom:16px;display:flex;align-items:center;gap:10px}
-  .card h2 i{display:inline-block;width:5px;height:20px;border-radius:3px;background:#FF6B35}
-  .chips{display:flex;flex-wrap:wrap;gap:5px}
-  .chip{font-size:12px;font-weight:600;padding:4px 11px;border-radius:20px;background:#1B2A4A12;color:#1B2A4A}
-  .chip-int{background:#FF6B35;color:#fff}
-  .rank-row{display:grid;grid-template-columns:34px 1fr 62px auto;gap:14px;align-items:center;padding:12px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
-  .rank-row:first-of-type{border-top:none}
-  .atk-name{font-family:'Oswald',sans-serif;font-size:15px;font-weight:700;letter-spacing:.3px;margin-bottom:6px}
-  .atk-name-inline{font-family:'Oswald',sans-serif;font-weight:700;font-size:13px;margin-right:4px}
-  .cat-block{margin-top:6px}
-  .cat-block + .cat-block{margin-top:22px}
-  .cat-title{font-family:'Oswald',sans-serif;font-size:14px;letter-spacing:.8px;text-transform:uppercase;color:#fff;background:#1B2A4A;border-radius:8px;padding:8px 14px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:baseline}
-  .cat-title span{font-family:'Inter',sans-serif;font-size:11px;letter-spacing:0;text-transform:none;color:rgba(255,255,255,.65)}
-  .mini-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
-  .mini-row .chips{flex:1}
-  .mini-count{font-family:'Oswald',sans-serif;font-weight:700;font-size:15px;min-width:34px;text-align:right}
-  .rank-n{font-family:'Oswald',sans-serif;font-size:24px;font-weight:700;color:#1B2A4A40;text-align:center}
-  .rank-top{color:#FF6B35}
-  .bar{height:8px;background:#1B2A4A0d;border-radius:5px;margin-top:9px;overflow:hidden}
-  .bar div{height:100%;border-radius:5px;background:linear-gradient(90deg,#FF6B35,#ff9a6b)}
-  .rank-side{text-align:right}
-  .rank-count{font-family:'Oswald',sans-serif;font-size:24px;font-weight:700;line-height:1}
-  .rank-count small{font-size:13px;color:#1B2A4A80;margin-left:1px}
-  .rank-share{font-size:11px;color:#1B2A4A80;margin-top:3px}
-  .ppp{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;min-width:64px;padding:6px 10px;border-radius:10px;font-family:'Oswald',sans-serif;font-size:17px;font-weight:700;line-height:1}
-  .ppp small{font-family:'Inter',sans-serif;font-size:8.5px;font-weight:600;letter-spacing:.3px;margin-top:3px;text-transform:uppercase;opacity:.8}
-  .ppp-good{background:#22c55e22;color:#15803d}.ppp-mid{background:#eab30826;color:#a16207}.ppp-low{background:#ef444422;color:#b91c1c}.ppp-na{background:#1B2A4A0d;color:#1B2A4A80}
-  .donut-wrap{display:flex;align-items:center;gap:26px;flex-wrap:wrap}
-  .donut{flex-shrink:0}
-  .donut-n{font-family:'Oswald',sans-serif;font-size:30px;font-weight:700;fill:#1B2A4A}
-  .donut-l{font-size:10px;fill:#1B2A4A80;text-transform:uppercase;letter-spacing:.6px}
-  .legend{flex:1;min-width:230px;display:flex;flex-direction:column;gap:9px}
-  .legend-row{display:flex;align-items:center;gap:10px;font-size:13px}
-  .legend-row i{width:12px;height:12px;border-radius:4px;flex-shrink:0}
-  .legend-name{flex:1;font-weight:600}
-  .legend-val{font-weight:700;margin-right:6px}
-  .legend-val small{font-weight:400;color:#1B2A4A80}
-  .detail{padding:16px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
-  .detail:first-of-type{border-top:none;padding-top:0}
-  .detail-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
-  .detail-pure{display:flex;align-items:center;gap:8px}
-  .detail-pure span{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#1B2A4A80;font-weight:600}
-  .detail-pure em{font-style:normal;font-family:'Oswald',sans-serif;font-weight:700;font-size:16px}
-  .def-block{padding:14px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
-  .def-block:first-of-type{border-top:none}
-  .def-block .sub-title{margin-top:0}
-  .int-row{display:flex;align-items:center;gap:12px;margin-top:8px}
-  .stack{flex:1;display:flex;height:12px;border-radius:6px;overflow:hidden;background:#1B2A4A0d}
-  .int-top{font-size:12px;font-weight:700;min-width:170px;text-align:right}
-  .int-top small{font-weight:400;color:#1B2A4A80}
-  .sub-title{font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:.6px;text-transform:uppercase;color:#FF6B35;margin:16px 0 6px}
-  table{width:100%;border-collapse:collapse}
-  th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#1B2A4A80;padding:6px 8px;border-bottom:2px solid #1B2A4A15}
-  th.num,td.num{text-align:center}
-  td{padding:9px 8px;border-bottom:1px solid #1B2A4A0f;font-size:13px;vertical-align:middle}
-  .rk{font-family:'Oswald',sans-serif;font-weight:700;color:#FF6B35;width:26px}
-  .tt{font-weight:600}
-  .tf{font-size:11px;color:#1B2A4A60;margin-top:2px;font-weight:400}
-  .stamp{text-align:center;font-size:10px;color:#1B2A4A55;padding:4px 0 12px}
-  .hint{font-size:12px;color:#1B2A4A80;margin:-8px 0 8px}
-  .more{font-size:12px;color:#1B2A4A80;margin-top:8px}
-  .notes-text{font-size:13.5px;line-height:1.65}
-  .bs-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
-  .bs-kpi{background:#1B2A4A08;border-radius:10px;padding:10px 12px}
-  .bs-kpi b{display:block;font-family:'Oswald',sans-serif;font-size:21px;line-height:1.1}
-  .bs-kpi span{display:block;font-size:10px;color:#1B2A4A80;text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
-  .bs-ins{list-style:none;display:flex;flex-direction:column;gap:7px;margin:4px 0 14px}
-  .bs-ins li{font-size:13px;line-height:1.5;padding-left:16px;position:relative}
-  .bs-ins li:before{content:"";position:absolute;left:0;top:7px;width:7px;height:7px;border-radius:50%;background:#FF6B35}
-  .bs-table{overflow-x:auto}
-  .bs-res{display:inline-block;width:18px;height:18px;line-height:18px;border-radius:5px;font-size:10px;font-weight:700;color:#fff;background:#64748b;text-align:center}
-  .bs-w{background:#22c55e}.bs-l{background:#ef4444}
-  .bs-act{display:grid;grid-template-columns:170px 1fr 56px 120px;gap:10px;align-items:center;padding:5px 0;font-size:12.5px}
-  .bs-act .bar{margin-top:0}
-  .bs-act-l{font-weight:600}
-  .bs-act-n{font-family:'Oswald',sans-serif;font-weight:700;font-size:15px;text-align:right}
-  .bs-act-n small{font-family:'Inter',sans-serif;font-size:10px;font-weight:400;color:#1B2A4A80}
-  .bs-act-p{font-size:12px;font-weight:600;text-align:right;padding:3px 8px;border-radius:7px;background:#1B2A4A0a}
-  .bs-good{background:#22c55e22;color:#15803d}.bs-low{background:#ef444422;color:#b91c1c}
-  .bs-ff td,.bs-ff th{padding:7px 8px}
-  @media (max-width:600px){.bs-kpis{grid-template-columns:repeat(2,1fr)}.bs-act{grid-template-columns:110px 1fr 46px 96px}}
-  @media print{body{background:#fff;padding:0}.card{box-shadow:none;border:1px solid #1B2A4A14}.hero{border-radius:12px}}
-</style>
+<style>${SCOUT_REPORT_CSS}</style>
 </head>
 <body>
   <div class="page">
@@ -1522,7 +1532,7 @@ function boxScoreSummary(games) {
 }
 // Bloc "Profil statistique" de l'export : indicateurs, constats, tableau par match, types d'action,
 // ce que subit leur défense (lignes adverses), et le contrôle avec les attaques taguées en vidéo.
-function boxScoreReportHtml(box, opponent, video = null) {
+function boxScoreReportHtml(box, opponent, video = null, own = false) {
   if (!box || !(box.games || []).length) return "";
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const S = boxScoreSummary(box.games), O = S.om, OT = S.oppTot;
@@ -1536,7 +1546,7 @@ function boxScoreReportHtml(box, opponent, video = null) {
   if (S.astRate !== null && S.astRate >= 0.65) insights.push(`<b>Jeu collectif</b> : ${p(S.astRate)} de leurs paniers suivent une passe décisive (${f(S.astPerGame, 1)} passes déc. / match).`);
   if (S.orebPerGame <= 8) insights.push(`<b>Peu de rebond offensif</b> (${f(S.orebPerGame, 1)} / match${S.orebPct !== null ? `, ${p(S.orebPct)} des rebonds offensifs possibles` : ""}) : peu de secondes chances.`);
   if (S.wins && S.losses && S.tovWins !== null && S.tovLosses !== null && S.tovLosses - S.tovWins >= 3)
-    insights.push(`<b>Les balles perdues décident</b> : ${f(S.tovWins, 1)} par match quand ils gagnent, ${f(S.tovLosses, 1)} quand ils perdent → mettre la pression sur le porteur.`);
+    insights.push(`<b>Les balles perdues décident</b> : ${f(S.tovWins, 1)} par match quand ils gagnent, ${f(S.tovLosses, 1)} quand ils perdent → ${own ? "priorité : protéger le ballon" : "mettre la pression sur le porteur"}.`);
   if (S.wins && S.losses && S.efgWins !== null && S.efgLosses !== null && S.efgWins - S.efgLosses >= 0.05)
     insights.push(`<b>Dépendants de leur adresse</b> : ${p(S.efgWins)} d'eFG% dans les victoires, ${p(S.efgLosses)} dans les défaites.`);
   if (S.contestedShare !== null && S.contestedShare >= 0.75) insights.push(`<b>Tirs surtout contestés</b> : ${p(S.contestedShare)} de leurs tirs (${p(S.contestedPct)} de réussite) — ils créent peu de tirs ouverts${S.uncontestedPct !== null ? `, mais ${p(S.uncontestedPct)} quand ils sont seuls` : ""}.`);
@@ -1611,6 +1621,220 @@ function boxScoreReportHtml(box, opponent, video = null) {
       ${cmp.length ? `<div class="sub-title">Contrôle avec la vidéo</div><ul class="bs-ins">${cmp.map(t => `<li>${t}</li>`).join("")}</ul>` : ""}
       <p class="more">Possessions estimées (tirs tentés − rebonds off. + 0,44 × lancers tentés + balles perdues). eFG% : un panier à 3 pts compte pour 1,5.</p>
     </section>`;
+}
+
+// ── Analyse de mon équipe (admin) ─────────────────────────────────────────────
+// Fichier "Lineups" (.xlsx exporté par le site de stats) : une ligne par cinq aligné (joueurs
+// séparés par des virgules, éventuellement précédés du numéro), suivie d'une ligne OPP = ce que
+// l'adversaire a fait contre ce cinq. Les valeurs peuvent être des moyennes par match (décimales) :
+// on ne travaille donc qu'en ratios (points pour 100 possessions), jamais en totaux absolus.
+const TEAM_REPORT_VERSION = "2026-10-06-a";
+const LINEUP_KEYS = ["min", "pm", "possFile", "pts", "fga", "fgm", "fg3a", "fg3m", "fta", "ftm", "oreb", "dreb", "ast", "stl", "tov", "pf"];
+function parseLineupRows(rows) {
+  const hIdx = rows.findIndex(r => r.some(c => /^(lineups?|cinq|composition)$/i.test(String(c ?? "").trim())));
+  if (hIdx === -1) throw new Error("colonne « Lineup » introuvable");
+  const head = rows[hIdx].map(c => String(c ?? "").trim().toLowerCase());
+  const col = (re) => head.findIndex(h => re.test(h));
+  const C = {
+    lineup: col(/^(lineups?|cinq|composition)$/), min: col(/^minutes?$/), pm: col(/^plus.?minus$|^\+\/-$/), possFile: col(/^possessions?$/), pts: col(/^points?$/),
+    fga: col(/^field goals attempted$/), fgm: col(/^field goals made$/), fg3a: col(/^3-?pt.*attempted$/), fg3m: col(/^3-?pt.*made$/),
+    fta: col(/^free throws attempted$/), ftm: col(/^free throws made$/), oreb: col(/^offensive rebounds$/), dreb: col(/^defensive rebounds$/),
+    ast: col(/^assists$/), stl: col(/^steals$/), tov: col(/^turnovers$/), pf: col(/^fouls$/),
+  };
+  const teamCol = head.findIndex((h, i) => !h && i > C.lineup);
+  const minutesOf = (v) => {
+    if (typeof v === "number") return v < 1 ? v * 24 * 60 : v; // une durée Excel est une fraction de jour
+    const parts = String(v ?? "").trim().split(":").map(Number);
+    if (parts.some(isNaN) || !parts.length) return 0;
+    return parts.length === 3 ? parts[0] * 60 + parts[1] + parts[2] / 60 : parts.length === 2 ? parts[0] + parts[1] / 60 : parts[0];
+  };
+  const statsOf = (r) => {
+    const s = {};
+    LINEUP_KEYS.forEach(k => {
+      if (k === "min") { s.min = C.min === -1 ? 0 : minutesOf(r[C.min]); return; }
+      const v = C[k] === -1 ? null : r[C[k]];
+      const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", "."));
+      s[k] = isNaN(n) ? 0 : n;
+    });
+    return s;
+  };
+  const cleanName = (n) => n.replace(/^\s*\d+\s*/, "").replace(/\s+/g, " ").trim();
+  const lineups = [];
+  rows.slice(hIdx + 1).forEach(r => {
+    const name = String(r[C.lineup] ?? "").trim().replace(/^[-–—]+$/, "");
+    const tag = teamCol === -1 ? "" : String(r[teamCol] ?? "").trim();
+    if (name && !/^opp/i.test(tag)) {
+      const players = name.split(",").map(cleanName).filter(Boolean);
+      if (players.length) lineups.push({ players, team: tag, ...statsOf(r), opp: null });
+    } else if (lineups.length && !lineups[lineups.length - 1].opp) {
+      lineups[lineups.length - 1].opp = statsOf(r);
+    }
+  });
+  if (!lineups.length) throw new Error("aucun cinq trouvé sous la ligne d'en-tête");
+  return lineups;
+}
+// Possessions estimées (même formule que le box score) ; repli sur la colonne du fichier.
+const lineupPoss = (s) => { const e = s.fga - s.oreb + 0.44 * s.fta + s.tov; return e > 0 ? e : (s.possFile || 0); };
+function lineupMetrics(s, o) {
+  const pT = lineupPoss(s), pO = o ? lineupPoss(o) : 0;
+  const off = pT > 0 ? (s.pts / pT) * 100 : null, def = o && pO > 0 ? (o.pts / pO) * 100 : null;
+  return {
+    poss: (pT + pO) / (o ? 2 : 1), min: s.min, off, def, net: off !== null && def !== null ? off - def : null,
+    diff: s.pts - (o ? o.pts : 0),
+    efg: s.fga ? (s.fgm + 0.5 * s.fg3m) / s.fga : null, oppEfg: o && o.fga ? (o.fgm + 0.5 * o.fg3m) / o.fga : null,
+    tovPct: pT > 0 ? s.tov / pT : null, forcedTov: o && pO > 0 ? o.tov / pO : null,
+    orebPct: o && (s.oreb + o.dreb) ? s.oreb / (s.oreb + o.dreb) : null, dorebPct: o && (s.dreb + o.oreb) ? s.dreb / (s.dreb + o.oreb) : null,
+  };
+}
+function sumLineups(list) {
+  const z = () => Object.fromEntries(LINEUP_KEYS.map(k => [k, 0]));
+  const t = z(), o = z();
+  list.forEach(l => LINEUP_KEYS.forEach(k => { t[k] += l[k] || 0; if (l.opp) o[k] += l.opp[k] || 0; }));
+  return { t, o };
+}
+function lineupAnalysis(lineups) {
+  const all = sumLineups(lineups);
+  const totalMetrics = lineupMetrics(all.t, all.o);
+  const rows = lineups.map(l => ({ l, m: lineupMetrics(l, l.opp) }));
+  // Seuil de fiabilité : un cinq vu sur trop peu de possessions ne dit rien (bruit).
+  const minPoss = Math.max(8, totalMetrics.poss * 0.03);
+  const reliable = rows.filter(x => x.m.poss >= minPoss && x.m.net !== null);
+  const names = [...new Set(lineups.flatMap(l => l.players))];
+  const keyOf = (n) => n.toLowerCase();
+  const players = names.map(name => {
+    const on = lineups.filter(l => l.players.some(p => keyOf(p) === keyOf(name)));
+    const off = lineups.filter(l => !on.includes(l));
+    const sOn = sumLineups(on), sOff = sumLineups(off);
+    const mOn = lineupMetrics(sOn.t, sOn.o), mOff = off.length ? lineupMetrics(sOff.t, sOff.o) : null;
+    return { name, on: mOn, off: mOff, impact: mOn.net !== null && mOff && mOff.net !== null ? mOn.net - mOff.net : null, share: totalMetrics.min ? mOn.min / totalMetrics.min : 0 };
+  }).sort((a, b) => (b.impact ?? -999) - (a.impact ?? -999));
+  const duoMap = new Map();
+  lineups.forEach(l => {
+    const ps = [...l.players].sort((a, b) => a.localeCompare(b, "fr"));
+    for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
+      const k = keyOf(ps[i]) + "|" + keyOf(ps[j]);
+      const e = duoMap.get(k) || { players: [ps[i], ps[j]], list: [] };
+      e.list.push(l); duoMap.set(k, e);
+    }
+  });
+  const minDuoPoss = Math.max(15, totalMetrics.poss * 0.06);
+  const duos = [...duoMap.values()].map(d => { const s = sumLineups(d.list); return { players: d.players, m: lineupMetrics(s.t, s.o) }; })
+    .filter(d => d.m.poss >= minDuoPoss && d.m.net !== null).sort((a, b) => b.m.net - a.m.net);
+  return { total: totalMetrics, rows, reliable, minPoss, players, duos, minDuoPoss };
+}
+function buildTeamReportHtml(a, logo = null) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const f = (x, d = 1) => x === null || x === undefined ? "—" : x.toFixed(d).replace(".", ",");
+  const sg = (x, d = 1) => x === null || x === undefined ? "—" : (x > 0 ? "+" : "") + f(x, d);
+  const p = (x) => x === null || x === undefined ? "—" : Math.round(x * 100) + " %";
+  const mmss = (m) => { const t = Math.round(m * 60); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+  const netBadge = (n) => n === null || n === undefined ? `<span class="ppp ppp-na">—</span>`
+    : `<span class="ppp ${n >= 5 ? "ppp-good" : n <= -5 ? "ppp-low" : "ppp-mid"}">${sg(n)}<small>net / 100 poss.</small></span>`;
+  const chipsOf = (ps) => `<div class="chips">${ps.map(n => `<span class="chip">${esc(n)}</span>`).join("")}</div>`;
+  const LA = (a.lineups || []).length ? lineupAnalysis(a.lineups) : null;
+  const box = a.boxScore && (a.boxScore.games || []).length ? a.boxScore : null;
+  const B = box ? boxScoreSummary(box.games) : null;
+
+  const kpis = [];
+  if (B) { kpis.push([`${B.wins}-${B.losses}`, "bilan"], [f(B.ppp, 2), "pts / poss. (attaque)"]); if (B.om) kpis.push([f(B.om.ppp, 2), "pts / poss. encaissés"]); }
+  if (LA) { kpis.push([String(LA.rows.length), "cinq utilisés"]); if (LA.total.net !== null) kpis.push([sg(LA.total.net), "net / 100 poss."]); }
+
+  const lineupRow = ({ l, m }, i, showRank = true) => `
+    <div class="rank-row">
+      <div class="rank-n ${showRank && i < 3 ? "rank-top" : ""}">${showRank ? i + 1 : ""}</div>
+      <div class="rank-main">${chipsOf(l.players)}
+        <div class="tl-sub">${mmss(m.min)} min · ${f(m.poss, 0)} poss. · att. ${f(m.off, 0)} / déf. ${f(m.def, 0)} · écart ${sg(m.diff, 1)} pts</div></div>
+      <div class="rank-side"><div class="rank-count">${sg(l.pm || m.diff, 0)}</div><div class="rank-share">+/-</div></div>
+      ${netBadge(m.net)}
+    </div>`;
+  let lineupsHtml = "";
+  if (LA) {
+    const used = [...LA.rows].sort((x, y) => y.m.min - x.m.min).slice(0, 8);
+    const best = LA.reliable.slice().sort((x, y) => y.m.net - x.m.net).slice(0, 5);
+    const worst = LA.reliable.slice().sort((x, y) => x.m.net - y.m.net).filter(x => x.m.net < 0).slice(0, 5);
+    const ins = [];
+    if (best[0]) ins.push(`<b>Cinq le plus efficace</b> : ${best[0].l.players.map(esc).join(", ")} (${sg(best[0].m.net)} pour 100 possessions sur ${f(best[0].m.poss, 0)} poss.).`);
+    if (used[0] && used[0].m.net !== null && used[0].m.net < 0) ins.push(`<b>Attention</b> : le cinq le plus utilisé est négatif (${sg(used[0].m.net)} pour 100 poss.).`);
+    const topImpact = LA.players.filter(x => x.impact !== null && x.share >= 0.15);
+    if (topImpact[0] && topImpact[0].impact >= 5) ins.push(`<b>${esc(topImpact[0].name)}</b> : l'équipe fait ${sg(topImpact[0].impact)} pts / 100 poss. de mieux quand ce joueur est sur le terrain que quand il est sur le banc.`);
+    const lowImpact = topImpact[topImpact.length - 1];
+    if (lowImpact && lowImpact !== topImpact[0] && lowImpact.impact <= -5) ins.push(`<b>${esc(lowImpact.name)}</b> : ${sg(lowImpact.impact)} pts / 100 poss. sur le terrain par rapport au banc — à creuser à la vidéo (associations, rôle).`);
+    if (LA.duos[0]) ins.push(`<b>Meilleur duo</b> : ${LA.duos[0].players.map(esc).join(" + ")} (${sg(LA.duos[0].m.net)}).`);
+    const lastDuo = LA.duos[LA.duos.length - 1];
+    if (lastDuo && lastDuo !== LA.duos[0] && lastDuo.m.net < 0) ins.push(`<b>Duo qui souffre</b> : ${lastDuo.players.map(esc).join(" + ")} (${sg(lastDuo.m.net)}).`);
+    const t = LA.total;
+    lineupsHtml = `
+    <section class="card">
+      <h2><i></i>Les cinq</h2>
+      <p class="hint">${LA.rows.length} cinq différents · efficacité nette = points marqués − points encaissés pour 100 possessions (vert ≥ +5, rouge ≤ −5). Fiable à partir de ${f(LA.minPoss, 0)} possessions.</p>
+      ${ins.length ? `<ul class="bs-ins">${ins.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
+      <div class="sub-title">Les plus utilisés</div>
+      ${used.map((x, i) => lineupRow(x, i)).join("")}
+      ${best.length ? `<div class="sub-title">Ceux qui fonctionnent</div>${best.map((x, i) => lineupRow(x, i)).join("")}` : ""}
+      ${worst.length ? `<div class="sub-title">Ceux qui ne fonctionnent pas</div>${worst.map((x, i) => lineupRow(x, i, false)).join("")}` : ""}
+    </section>
+    <section class="card">
+      <h2><i></i>Impact des joueurs (sur le terrain / sur le banc)</h2>
+      <p class="hint">Efficacité nette de l'équipe quand le joueur est sur le terrain, puis quand il n'y est pas. L'écart mesure son impact (à relativiser avec peu de minutes).</p>
+      <div class="bs-table"><table>
+        <thead><tr><th>Joueur</th><th class="num">Temps</th><th class="num">Net sur le terrain</th><th class="num">Net sur le banc</th><th class="num">Impact</th><th class="num">eFG% / adv.</th></tr></thead>
+        <tbody>${LA.players.map(x => `
+          <tr><td class="tt">${esc(x.name)}</td><td class="num">${p(x.share)}</td>
+          <td class="num">${sg(x.on.net)}</td><td class="num">${x.off ? sg(x.off.net) : "—"}</td>
+          <td class="num"><span class="bs-act-p ${x.impact === null ? "" : x.impact >= 5 ? "bs-good" : x.impact <= -5 ? "bs-low" : ""}">${sg(x.impact)}</span></td>
+          <td class="num">${p(x.on.efg)} / ${p(x.on.oppEfg)}</td></tr>`).join("")}</tbody>
+      </table></div>
+      <p class="more">Temps = part des minutes jouées par les cinq du fichier.</p>
+    </section>
+    ${LA.duos.length ? `<section class="card">
+      <h2><i></i>Les duos</h2>
+      <p class="hint">Associations de deux joueurs vues sur au moins ${f(LA.minDuoPoss, 0)} possessions.</p>
+      <div class="sub-title">Meilleurs duos</div>
+      ${LA.duos.slice(0, 6).map(d => `<div class="mini-row">${chipsOf(d.players)}<span class="mini-count">${f(d.m.poss, 0)}<small style="font-size:10px"> poss.</small></span>${netBadge(d.m.net)}</div>`).join("")}
+      ${LA.duos.length > 6 ? `<div class="sub-title">Duos les moins efficaces</div>
+      ${LA.duos.slice(-Math.min(6, LA.duos.length - 6)).reverse().map(d => `<div class="mini-row">${chipsOf(d.players)}<span class="mini-count">${f(d.m.poss, 0)}<small style="font-size:10px"> poss.</small></span>${netBadge(d.m.net)}</div>`).join("")}` : ""}
+    </section>` : ""}
+    <section class="card">
+      <h2><i></i>Toutes les associations confondues</h2>
+      <div class="bs-kpis">
+        <div class="bs-kpi"><b>${f(t.off, 0)}</b><span>pts marqués / 100 poss.</span></div>
+        <div class="bs-kpi"><b>${f(t.def, 0)}</b><span>pts encaissés / 100 poss.</span></div>
+        <div class="bs-kpi"><b>${p(t.efg)}</b><span>eFG% / ${p(t.oppEfg)} adv.</span></div>
+        <div class="bs-kpi"><b>${p(t.tovPct)}</b><span>pertes / ${p(t.forcedTov)} forcées</span></div>
+      </div>
+    </section>`;
+  }
+  const boxHtml = box ? boxScoreReportHtml(box, a.name, null, true) : "";
+  const empty = !LA && !box ? `<section class="card"><p class="notes-text" style="text-align:center;color:#1B2A4A80">Importe un fichier Excel (matchs ou cinq) pour voir l'analyse.</p></section>` : "";
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Analyse — ${esc(a.name)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>${SCOUT_REPORT_CSS}
+  .tl-sub{font-size:11.5px;color:#1B2A4A80;margin-top:6px}
+  .rank-row .bar{display:none}
+</style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      ${logo ? `<img src="${logo}" alt="Logo" class="hero-logo" />` : ""}
+      <div class="kicker">Analyse de mon équipe</div>
+      <h1>${esc(a.name)}</h1>
+      <div class="meta">${[box?.fileName, a.lineupsFile].filter(Boolean).map(esc).join(" · ") || "Aucun fichier importé"}</div>
+      ${kpis.length ? `<div class="kpis">${kpis.map(([v, l]) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join("")}</div>` : ""}
+    </header>
+    ${a.notes ? `<section class="card"><h2><i></i>Notes</h2><p class="notes-text">${esc(a.notes).replace(/\n/g, "<br>")}</p></section>` : ""}
+    ${lineupsHtml}
+    ${boxHtml}
+    ${empty}
+    <p class="stamp">Coaching Pro Boost · analyse générée le ${new Date().toLocaleDateString("fr-FR")} · version ${TEAM_REPORT_VERSION}</p>
+  </div>
+</body>
+</html>`;
 }
 
 // Import d'un export XML de Sportscode. Structure lue (confirmée sur un export réel) :
@@ -7997,7 +8221,7 @@ function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAl
 function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
   const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, canUseMatchmode, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
-  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
+  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, teamAnalyses, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
   const SPORT_FORMATS = formats;
@@ -8073,7 +8297,7 @@ function CoachingProBoost({ session }) {
   const pdfReady = usePdfJs();
   const [view, setView] = useState(() => {
     const saved = localStorage.getItem("cpb_view");
-    return ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","wellness"].includes(saved) ? saved : "library";
+    return ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","myteam","wellness"].includes(saved) ? saved : "library";
   });
   // Toujours à jour, contrairement à `view` capturé dans la closure de l'effet ci-dessous
   // (qui ne tourne qu'une fois au montage) — évite qu'un retour arrière égaré (ex: swipe
@@ -8093,7 +8317,7 @@ function CoachingProBoost({ session }) {
       const v = e.state?.view;
       if (v === "session" && activeSessionRef.current) {
         setView("session");
-      } else if (v && ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","wellness"].includes(v)) {
+      } else if (v && ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","myteam","wellness"].includes(v)) {
         setView(v);
         localStorage.setItem("cpb_view", v);
       } else if (activeSessionRef.current) {
@@ -8432,6 +8656,16 @@ function CoachingProBoost({ session }) {
       const html = buildPlaybookStatsReportHtml(p.stats, p.title, logo);
       downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `stats-playbook-${slugifyForFile(p.title)}.html`);
     }
+    else if (p.kind === "myteam") {
+      try {
+        const html = buildTeamReportHtml(p.analysis, logo);
+        downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `analyse-${slugifyForFile(p.analysis.name)}.html`);
+        toast?.("✓ Analyse exportée");
+      } catch (e) {
+        console.error("Export analyse équipe", e);
+        cpbAlert?.("L'export a échoué : " + (e?.message || e) + " — envoie-moi ce message pour que je corrige.");
+      }
+    }
     else if (p.kind === "videoscout") {
       // Une erreur ici ne doit jamais rester silencieuse (c'est ce qui rendait le bouton "muet").
       try {
@@ -8639,6 +8873,9 @@ function CoachingProBoost({ session }) {
   const [activeMatchId, setActiveMatchId] = useState(null);
   // Scouting vidéo (voir view === "videoscout" plus bas)
   const [activeVideoScoutId, setActiveVideoScoutId] = useState(null);
+  // Analyse de mon équipe (voir view === "myteam" plus bas)
+  const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
+  const [taNewName, setTaNewName] = useState("");
   const [vsTfFilters, setVsTfFilters] = useState([]);
   const [vsTypeFilters, setVsTypeFilters] = useState([]);
   const [vsNewTfInput, setVsNewTfInput] = useState("");
@@ -9620,6 +9857,7 @@ function CoachingProBoost({ session }) {
               ...(isAdmin ? [{ key: "suivi", label: "Suivi individuel (admin)", icon: UserCheck }] : []),
               ...(isAdmin || canUseMatchmode ? [{ key: "matchmode", label: isAdmin ? "Mode match (admin)" : "Mode match", icon: Zap }] : []),
               ...(isAdmin ? [{ key: "videoscout", label: "Scouting vidéo (admin)", icon: Video }] : []),
+              ...(isAdmin ? [{ key: "myteam", label: "Mon équipe (admin)", icon: BarChart3 }] : []),
               ...(isAdmin || canManageWellness ? [{ key: "wellness", label: "Bien-être joueurs", icon: UserCheck }] : []),
               { key: "account", label: "Mon compte", icon: Users },
             ].map(item => {
@@ -12099,6 +12337,112 @@ function CoachingProBoost({ session }) {
                   );
                 })}
                 {videoScoutSessions.length === 0 && !vsNewSessionOpen && <p className="text-sm text-[#1B2A4A]/40">Aucune session de scouting vidéo pour l'instant.</p>}
+              </div>
+            </div>
+          );
+        })()}
+
+        {view === "myteam" && isAdmin && (() => {
+          const activeTa = teamAnalyses.find(a => a.id === activeTeamAnalysisId) || null;
+          const updateActiveTa = (patch) => saveTeamAnalyses(teamAnalyses.map(a => a.id === activeTeamAnalysisId ? { ...a, ...patch } : a));
+          // Un seul bouton d'import : le type de fichier (cinq alignés ou box score) est reconnu
+          // à ses colonnes ; un nouveau fichier remplace le précédent du même type.
+          const handleTeamFile = async (file) => {
+            if (!file) return;
+            try {
+              if (/\.xls$/i.test(file.name)) throw new Error("ancien format .xls : ouvre-le dans Excel / Numbers et enregistre-le en .xlsx");
+              const rows = await readXlsxFirstSheet(await file.arrayBuffer());
+              if (rows.some(r => r.some(c => /^(lineups?|cinq|composition)$/i.test(String(c ?? "").trim())))) {
+                const lineups = parseLineupRows(rows);
+                updateActiveTa({ lineups, lineupsFile: file.name });
+                toast?.(`✓ ${lineups.length} cinq importés`);
+              } else {
+                const games = parseBoxScoreRows(rows);
+                updateActiveTa({ boxScore: { fileName: file.name, games, importedAt: new Date().toISOString() } });
+                toast?.(`✓ ${games.length} match${games.length > 1 ? "s" : ""} importé${games.length > 1 ? "s" : ""}`);
+              }
+            } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
+          };
+
+          if (activeTa) {
+            // Aperçu = le même document que l'export (notes exclues pour ne pas recharger à chaque frappe).
+            let html = "";
+            try { html = buildTeamReportHtml({ ...activeTa, notes: "" }, null); }
+            catch (e) { html = `<p style="font-family:sans-serif;color:#b91c1c;padding:16px">Erreur d'affichage : ${String(e?.message || e).replace(/</g, "&lt;")}</p>`; }
+            const fitFrame = (el) => { try { el.style.height = (el.contentDocument.documentElement.scrollHeight + 16) + "px"; } catch {} };
+            return (
+              <div className="max-w-4xl">
+                <button onClick={() => setActiveTeamAnalysisId(null)} className="text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A] mb-3">← Mes analyses</button>
+                <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+                  <input value={activeTa.name} onChange={e => updateActiveTa({ name: e.target.value })}
+                    className="text-2xl font-bold text-[#1B2A4A] bg-transparent outline-none border-b border-transparent focus:border-[#FF6B35] min-w-0 flex-1"
+                    style={{ fontFamily: "Oswald, sans-serif" }} />
+                  <div className="flex gap-2 flex-wrap">
+                    <label className="text-sm font-semibold text-white px-3 py-2 rounded-md cursor-pointer" style={{ backgroundColor: "#16a34a" }}>
+                      📊 Importer un Excel
+                      <input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" className="hidden"
+                        onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; handleTeamFile(f); }} />
+                    </label>
+                    <button onClick={() => setLogoExportPrompt({ analysis: activeTa, kind: "myteam" })}
+                      className="text-sm font-semibold text-white px-3 py-2 rounded-md" style={{ backgroundColor: "#2563EB" }}>📤 Exporter l'analyse</button>
+                  </div>
+                </div>
+                <p className="text-xs text-[#1B2A4A]/50 mb-2">Fichiers acceptés : <b>Lineups</b> (les cinq alignés, avec la ligne OPP) et <b>Games</b> (box score match par match). Un nouveau fichier remplace le précédent du même type.</p>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {activeTa.lineupsFile && (
+                    <span className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-medium bg-[#1B2A4A]/8 text-[#1B2A4A]">
+                      👥 {activeTa.lineupsFile}
+                      <button onClick={() => updateActiveTa({ lineups: [], lineupsFile: "" })} title="Retirer" className="w-5 h-5 rounded-full text-[#1B2A4A]/40 hover:text-red-600 flex items-center justify-center"><X size={11} /></button>
+                    </span>
+                  )}
+                  {activeTa.boxScore && (
+                    <span className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-medium bg-[#1B2A4A]/8 text-[#1B2A4A]">
+                      📋 {activeTa.boxScore.fileName}
+                      <button onClick={() => updateActiveTa({ boxScore: null })} title="Retirer" className="w-5 h-5 rounded-full text-[#1B2A4A]/40 hover:text-red-600 flex items-center justify-center"><X size={11} /></button>
+                    </span>
+                  )}
+                </div>
+                <textarea value={activeTa.notes || ""} onChange={e => updateActiveTa({ notes: e.target.value })}
+                  placeholder="Notes (reprises dans l'export) : constats, axes de travail, rotations à tester..."
+                  className="w-full h-20 border border-[#1B2A4A]/20 rounded-lg p-2 text-sm outline-none focus:border-[#FF6B35] resize-none bg-white/70 mb-3" />
+                <iframe title="Analyse de mon équipe" srcDoc={html} className="w-full rounded-xl border border-[#1B2A4A]/10"
+                  style={{ height: 600, background: "#F2EDE4" }}
+                  onLoad={e => { const el = e.currentTarget; fitFrame(el); setTimeout(() => fitFrame(el), 800); }} />
+              </div>
+            );
+          }
+
+          return (
+            <div className="max-w-3xl">
+              <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>MON ÉQUIPE</h2>
+              <p className="text-xs text-[#1B2A4A]/40 mb-5">Évalue ton équipe à partir des exports Excel de ton site de stats : les cinq qui fonctionnent ou pas, l'impact de chaque joueur, les meilleurs duos, le profil d'attaque et de défense.</p>
+              <div className="flex gap-2 mb-5 flex-wrap">
+                <input value={taNewName} onChange={e => setTaNewName(e.target.value)} placeholder="Ex: SABI II — saison 2026-27"
+                  className="flex-1 min-w-0 border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm bg-white/70 outline-none focus:border-[#FF6B35]" />
+                <button onClick={() => {
+                  const name = taNewName.trim() || "Mon équipe";
+                  const a = { id: uid(), name, lineups: [], lineupsFile: "", boxScore: null, notes: "", createdAt: new Date().toISOString() };
+                  saveTeamAnalyses([...teamAnalyses, a]); setTaNewName(""); setActiveTeamAnalysisId(a.id);
+                }} className="px-4 py-2 rounded-md text-sm font-semibold text-white flex items-center gap-1.5" style={{ backgroundColor: "var(--sport-accent)" }}>
+                  <Plus size={15} /> Nouvelle analyse
+                </button>
+              </div>
+              <div className="flex flex-col gap-2">
+                {[...teamAnalyses].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).map(a => (
+                  <div key={a.id} onClick={() => setActiveTeamAnalysisId(a.id)}
+                    className="flex items-center justify-between border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 cursor-pointer hover:border-[#FF6B35] hover:shadow-md transition-all">
+                    <div>
+                      <div className="font-semibold text-[#1B2A4A]">{a.name}</div>
+                      <div className="text-xs text-[#1B2A4A]/50">{[(a.lineups || []).length ? `${a.lineups.length} cinq` : "", a.boxScore ? `${(a.boxScore.games || []).length} matchs` : ""].filter(Boolean).join(" · ") || "Aucun fichier importé"}</div>
+                    </div>
+                    <button onClick={async (e) => {
+                      e.stopPropagation();
+                      const ok = await cpbAlert?.(`Supprimer l'analyse « ${a.name} » ?`, { confirm: true });
+                      if (ok) saveTeamAnalyses(teamAnalyses.filter(x => x.id !== a.id));
+                    }} className="text-[#1B2A4A]/30 hover:text-red-600 flex-shrink-0 ml-3"><Trash2 size={16} /></button>
+                  </div>
+                ))}
+                {teamAnalyses.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucune analyse pour l'instant.</p>}
               </div>
             </div>
           );
