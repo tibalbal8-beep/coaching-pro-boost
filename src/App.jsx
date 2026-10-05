@@ -1061,7 +1061,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
 
   const defOverviewHtml = defItems.length === 0 ? "" : `
     <section class="card">
-      <h2><i></i>Défenses rencontrées</h2>
+      <h2><i></i>Attaque de ${esc(session.opponent)} sur défenses adverses</h2>
       <div class="donut-wrap">${donut(defItems, 170)}${legend(defItems, defTotal)}</div>
     </section>`;
 
@@ -1107,6 +1107,47 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
             <td class="num">${r.points}${r.possible > 0 ? ` / ${r.possible}` : ""}</td>
             <td class="num">${r.played > 0 ? pppBadge(r.points / r.played) : "—"}</td></tr>`).join("")}</tbody>
         </table>`).join("")}
+    </section>`;
+
+  // Défense de l'équipe scoutée (séquences DEFENSE) : un camembert par groupe de libellés
+  // (écrans de pick and roll, écrans non porteur, post up...), et pour les écrans, la défense
+  // choisie selon l'intention adverse (ex. sur SIDE 50 : step out).
+  const defInst = session.defenseInstances || [];
+  const defGroupMap = new Map();
+  defInst.forEach(ls => ls.forEach(l => {
+    if (/intention/i.test(l.group)) return;
+    const gm = defGroupMap.get(l.group) || new Map();
+    gm.set(l.text, (gm.get(l.text) || 0) + 1); defGroupMap.set(l.group, gm);
+  }));
+  const prettyGroup = (g) => g.charAt(0).toUpperCase() + g.slice(1).toLowerCase();
+  const ownDefHtml = defGroupMap.size === 0 ? "" : `
+    <section class="card">
+      <h2><i></i>Défense de ${esc(session.opponent)}</h2>
+      ${[...defGroupMap.entries()].map(([group, gm]) => {
+        const items = [...gm.entries()].sort((a, b) => b[1] - a[1]).map(([label, value], i) => ({ label, value, color: PALETTE[i % PALETTE.length] }));
+        const tot = items.reduce((s, i) => s + i.value, 0);
+        const colorOf = new Map(items.map(i => [i.label, i.color]));
+        let perIntention = "";
+        if (/[eé]cran/i.test(group)) {
+          const byInt = new Map();
+          defInst.forEach(ls => {
+            const ints = ls.filter(l => /intention/i.test(l.group)).map(l => l.text);
+            const cov = ls.filter(l => l.group === group).map(l => l.text);
+            ints.forEach(it => cov.forEach(c => { const m = byInt.get(it) || new Map(); m.set(c, (m.get(c) || 0) + 1); byInt.set(it, m); }));
+          });
+          const rowsInt = [...byInt.entries()].map(([it, m]) => ({ it, m, total: [...m.values()].reduce((a, b) => a + b, 0) })).sort((a, b) => b.total - a.total).slice(0, 8);
+          if (rowsInt.length) perIntention = `
+            <div class="sub-title" style="margin-top:18px">Défense choisie selon l'intention adverse</div>
+            ${rowsInt.map(r => {
+              const parts = [...r.m.entries()].sort((a, b) => b[1] - a[1]);
+              return `<div class="int-row"><span class="chip chip-int">${esc(r.it)}</span>
+                <div class="stack">${parts.map(([lab, n]) => `<div style="width:${pct(n, r.total)}%;background:${colorOf.get(lab) || "#64748b"}" title="${esc(lab)} ${n}"></div>`).join("")}</div>
+                <span class="int-top">${esc(parts[0][0])} <small>${pct(parts[0][1], r.total)}% · ${r.total}×</small></span></div>`;
+            }).join("")}`;
+        }
+        return `<div class="def-block"><div class="sub-title">${esc(prettyGroup(group))}</div>
+          <div class="donut-wrap">${donut(items, 140, "séq.")}${legend(items, tot)}</div>${perIntention}</div>`;
+      }).join("")}
     </section>`;
 
   // Défenses observées à la main (compteurs) : camembert aussi
@@ -1182,6 +1223,13 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   .detail-pure{display:flex;align-items:center;gap:8px}
   .detail-pure span{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#1B2A4A80;font-weight:600}
   .detail-pure em{font-style:normal;font-family:'Oswald',sans-serif;font-weight:700;font-size:16px}
+  .def-block{padding:14px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
+  .def-block:first-of-type{border-top:none}
+  .def-block .sub-title{margin-top:0}
+  .int-row{display:flex;align-items:center;gap:12px;margin-top:8px}
+  .stack{flex:1;display:flex;height:12px;border-radius:6px;overflow:hidden;background:#1B2A4A0d}
+  .int-top{font-size:12px;font-weight:700;min-width:170px;text-align:right}
+  .int-top small{font-weight:400;color:#1B2A4A80}
   .sub-title{font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:.6px;text-transform:uppercase;color:#FF6B35;margin:16px 0 6px}
   table{width:100%;border-collapse:collapse}
   th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#1B2A4A80;padding:6px 8px;border-bottom:2px solid #1B2A4A15}
@@ -1209,6 +1257,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
     ${defOverviewHtml}
     ${detailSection}
     ${systemsHtml}
+    ${ownDefHtml}
     ${manualDefHtml}
     ${empty}
   </div>
@@ -1301,6 +1350,17 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
   return [...groups.values()]
     .map(({ defMap, ...g }) => ({ ...g, byDefense: [...defMap.values()].sort((a, b) => b.outcomes.length - a.outcomes.length || a.label.localeCompare(b.label, "fr")) }))
     .sort((a, b) => b.count - a.count || a.labels.map(l => l.text).join().localeCompare(b.labels.map(l => l.text).join(), "fr"));
+}
+
+// Séquences de DÉFENSE de l'équipe scoutée (code DEFENSE) : leurs libellés (écrans, écrans non
+// porteur, post up, intention adverse...) alimentent les camemberts "Défense de l'équipe".
+function collectSportscodeDefense(instances, ignoredGroups = [], excludedKeys = []) {
+  const ign = new Set(ignoredGroups.map(g => g.toLowerCase())), exl = new Set(excludedKeys);
+  return instances.filter(i => /^def/i.test(i.code))
+    .map(i => i.labels
+      .filter(l => !isSportscodeResult(l) && !ign.has((l.group || "Libellés").toLowerCase()) && !exl.has(l.text.toLowerCase()))
+      .map(l => ({ group: l.group || "Libellés", text: l.text })))
+    .filter(ls => ls.length > 0);
 }
 
 // Rentabilité d'une attaque face à UNE défense (entrée de byDefense) : même calcul que attackStats.
@@ -10811,9 +10871,15 @@ function CoachingProBoost({ session }) {
                 fileName: file.name, instances, ignored, codes,
                 labels: [...labelCounts.values()].sort((a, b) => b.count - a.count),
                 // Groupe dont le nom évoque une défense (DEF, DEFENSE PNR...) : ventilation par défaut.
-                defenseGroups: [...new Set([...labelCounts.values()].map(l => l.group || "Libellés"))].filter(g => /def/i.test(g)),
-                // Groupes de noms de joueurs : sans intérêt pour les stats d'attaque, ignorés par défaut.
-                ignoredGroups: [...new Set([...labelCounts.values()].map(l => l.group || "Libellés"))].filter(g => /joueur|player|nom\b/i.test(g)),
+                // Rôle de chaque groupe : celui choisi lors d'un import précédent (mémorisé), sinon
+                // déduit du nom (DEF → défense adverse, joueur/player → ignoré).
+                ...(() => {
+                  let saved = {};
+                  try { saved = JSON.parse(localStorage.getItem("cpb_vs_group_roles") || "{}"); } catch {}
+                  const names = [...new Set([...labelCounts.values()].map(l => l.group || "Libellés"))];
+                  const roleOf = (g) => saved[g.toLowerCase()] || (/joueur|player|nom\b/i.test(g) ? "ignored" : /def/i.test(g) ? "defense" : "attack");
+                  return { defenseGroups: names.filter(g => roleOf(g) === "defense"), ignoredGroups: names.filter(g => roleOf(g) === "ignored") };
+                })(),
                 excluded: [], excludedCodes: hasAtt ? codes.filter(c => !/att/i.test(c.code)).map(c => c.code) : [],
               });
             } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
@@ -10821,7 +10887,16 @@ function CoachingProBoost({ session }) {
           const confirmXmlImport = () => {
             const groups = groupSportscodeInstances(vsImportPreview.instances, vsImportPreview.excluded, vsImportPreview.excludedCodes, vsImportPreview.defenseGroups, vsImportPreview.ignoredGroups);
             const prev = new Map((activeVs.attacks || []).map(a => [a.key, a]));
-            updateActiveVs({ attacks: groups.map(g => ({ id: prev.get(g.key)?.id || uid(), key: g.key, labels: g.labels, count: g.count, xmlOutcomes: g.xmlOutcomes, xmlBonus: g.xmlBonus, byDefense: g.byDefense, outcomes: prev.get(g.key)?.outcomes || [] })) });
+            // Mémorise le rôle choisi pour chaque groupe (joueurs ignorés, défense adverse...) : les
+            // imports suivants repartent de ces choix sans avoir à tout recocher.
+            try {
+              const roles = {};
+              [...new Set(vsImportPreview.labels.map(l => l.group || "Libellés"))].forEach(g => {
+                roles[g.toLowerCase()] = vsImportPreview.ignoredGroups.includes(g) ? "ignored" : vsImportPreview.defenseGroups.includes(g) ? "defense" : "attack";
+              });
+              localStorage.setItem("cpb_vs_group_roles", JSON.stringify({ ...JSON.parse(localStorage.getItem("cpb_vs_group_roles") || "{}"), ...roles }));
+            } catch {}
+            updateActiveVs({ defenseInstances: collectSportscodeDefense(vsImportPreview.instances, vsImportPreview.ignoredGroups, vsImportPreview.excluded), attacks: groups.map(g => ({ id: prev.get(g.key)?.id || uid(), key: g.key, labels: g.labels, count: g.count, xmlOutcomes: g.xmlOutcomes, xmlBonus: g.xmlBonus, byDefense: g.byDefense, outcomes: prev.get(g.key)?.outcomes || [] })) });
             toast?.(`✓ ${groups.length} attaque${groups.length > 1 ? "s" : ""} importée${groups.length > 1 ? "s" : ""}`);
             setVsImportPreview(null);
           };
@@ -11144,7 +11219,17 @@ function CoachingProBoost({ session }) {
                   const used = pv.instances.filter(i => !pv.excludedCodes.includes(i.code));
                   const bonusOnly = used.filter(i => i.labels.every(isSportscodeResult)).length;
                   const lostBalls = groups.reduce((n, g) => n + g.xmlOutcomes.filter(v => v === 0).length, 0);
-                  const labelGroups = [...new Set(pv.labels.map(l => l.group || "Libellés"))];
+                  const liveLabels = (() => {
+                    const m = new Map();
+                    used.forEach(inst => inst.labels.filter(l => !isSportscodeResult(l)).forEach(l => {
+                      const k = l.text.toLowerCase(), e = m.get(k) || { key: k, label: l.text, group: l.group, count: 0 };
+                      e.count++; m.set(k, e);
+                    }));
+                    return [...m.values()].sort((a, b) => b.count - a.count);
+                  })();
+                  const labelGroups = [...new Set(liveLabels.map(l => l.group || "Libellés"))];
+                  const defInst = collectSportscodeDefense(pv.instances, pv.ignoredGroups, pv.excluded);
+                  const defGroupNames = [...new Set(defInst.flatMap(ls => ls.map(l => l.group)))].filter(g => !/intention/i.test(g));
                   return (
                     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setVsImportPreview(null)}>
                       <div className="bg-white rounded-2xl w-full max-w-lg max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
@@ -11153,6 +11238,7 @@ function CoachingProBoost({ session }) {
                           <p className="text-xs text-[#1B2A4A]/50 mt-1">
                             <strong>{used.length - bonusOnly}</strong> possession{used.length - bonusOnly > 1 ? "s" : ""} → <strong>{groups.length}</strong> attaque{groups.length > 1 ? "s" : ""} distincte{groups.length > 1 ? "s" : ""}
                             {lostBalls > 0 && <> · <strong>{lostBalls}</strong> sans point (perte de balle)</>}
+                            {defInst.length > 0 && <> · <strong>{defInst.length}</strong> séquence{defInst.length > 1 ? "s" : ""} de défense lue{defInst.length > 1 ? "s" : ""} ({defGroupNames.join(", ") || "libellés"})</>}
                             {bonusOnly > 0 && <> · {bonusOnly} point{bonusOnly > 1 ? "s" : ""} seul{bonusOnly > 1 ? "s" : ""} rattaché{bonusOnly > 1 ? "s" : ""} à l'attaque précédente</>}
                             {pv.ignored > 0 && <> · {pv.ignored} instance{pv.ignored > 1 ? "s" : ""} sans libellé ignorée{pv.ignored > 1 ? "s" : ""}</>}
                           </p>
@@ -11180,7 +11266,7 @@ function CoachingProBoost({ session }) {
                                 </button>
                               </div>
                               <div className="flex flex-wrap gap-1.5">
-                                {pv.labels.filter(l => (l.group || "Libellés") === gr).map(l => {
+                                {liveLabels.filter(l => (l.group || "Libellés") === gr).map(l => {
                                   const off = pv.excluded.includes(l.key);
                                   return <button key={l.key} onClick={() => toggle(l.key)}
                                     className={`px-2.5 py-1 rounded-full text-xs font-medium border ${off ? "border-[#1B2A4A]/15 text-[#1B2A4A]/30 line-through" : "border-[#2563EB] bg-[#2563EB] text-white"}`}>{l.label} <span className="opacity-60">{l.count}</span></button>;
