@@ -1476,14 +1476,14 @@ async function readXlsxFirstSheet(arrayBuffer) {
 // catch and shoot, pick and roll...) donnent les types d'action utilisés.
 const BOX_ACTION_LABELS = [
   [/^transition/, "Transition"], [/^catch and shoot/, "Catch & shoot"], [/^catch and drive/, "Catch & drive"],
-  [/^screens? off/, "Sortie d'écran"], [/^posts? up/, "Post up"], [/^isolation/, "Isolation"], [/^hand ?off/, "Hand off"],
+  [/^screens? off/, "Sortie d'écran"], [/^posts? ?up/, "Post up"], [/^isolation/, "Isolation"], [/^hand ?off/, "Hand off"],
   [/^cuts?/, "Coupe"], [/^pnr handler/, "Pick & roll — porteur"], [/^pnr roller/, "Pick & roll — roller"],
   [/^pnp|^pick.?n.?pop/, "Pick & pop"], [/^drives?/, "Pénétration"],
 ];
 function parseBoxScoreRows(rows) {
   const hIdx = rows.findIndex(r => r.some(c => /^(opponent|adversaire)$/i.test(String(c ?? "").trim())) && r.some(c => /point/i.test(String(c ?? ""))));
   if (hIdx === -1) throw new Error("colonnes « Opponent » / « Points » introuvables");
-  const head = rows[hIdx].map(c => String(c ?? "").trim().toLowerCase());
+  const head = rows[hIdx].map(c => String(c ?? "").trim().toLowerCase().replace(/\s+/g, " "));
   const col = (...res) => head.findIndex(h => res.some(re => re.test(h)));
   const C = {
     date: col(/^date$/), opp: col(/^(opponent|adversaire)$/), score: col(/^score$/), poss: col(/^possessions?$/), pts: col(/^points?$/),
@@ -1492,17 +1492,20 @@ function parseBoxScoreRows(rows) {
     ftm: col(/^free throws made$/, /^lf r[ée]ussis$/, /^lancers? francs? (marqu|r[ée]ussi)/), fta: col(/^free throws attempted$/, /^lf tent[ée]s$/, /^lancers? francs? tent/),
     oreb: col(/^offensive rebounds$/, /^rebonds? offensifs?$/), dreb: col(/^defensive rebounds$/, /^rebonds? d[ée]fensifs?$/),
     ast: col(/^assists$/, /^passes? d[ée]cisives?$/), stl: col(/^steals?$/, /^interceptions?$/), tov: col(/^turnovers?$/, /^balles? perdues?$/, /^pertes? de balle/),
-    ucm: col(/^uncontested field goals made$/), uca: col(/^uncontested field goals$/),
-    ctm: col(/^contested field goals made$/), cta: col(/^contested field goals$/), pto: col(/^points off turnovers/),
+    ucm: col(/^uncontested field goals made$/, /^tirs? non contest[ée]s? r[ée]ussis?$/), uca: col(/^uncontested field goals$/, /^tirs? non contest[ée]s?$/),
+    ctm: col(/^contested field goals made$/, /^tirs? contest[ée]s? r[ée]ussis?$/), cta: col(/^contested field goals$/, /^tirs? contest[ée]s?$/),
+    pto: col(/^points off turnovers/, /^points apr[èe]s (les )?pertes/),
   };
   // Colonne sans titre entre le score et les possessions : code de l'équipe de la ligne.
   const teamCol = head.findIndex((h, i) => !h && i > C.opp && rows.slice(hIdx + 1).some(r => /^[A-Z]{2,5}$/.test(String(r[i] ?? "").trim())));
   const actions = [];
   head.forEach((h, i) => {
-    const m = h.match(/^(.+?) made$/);
+    // Anglais : "<action> made" + "<action> attempted|with shot" ; français : "<action>-Tirs de champ
+    // marqués" (ou "- tirs effectués") + "<action>-Tirs".
+    const m = h.match(/^(.+?) made$/) || h.match(/^(.+?)\s*-\s*(?:tirs? de champ marqu[ée]s?|tirs? effectu[ée]s?)$/);
     if (!m || /field goals|free throws|^\d|-pt/.test(h)) return;
     const next = head[i + 1] || "";
-    if (!/attempted|with shot/.test(next)) return;
+    if (!/attempted|with shot|-\s*tirs?$/.test(next)) return;
     const lab = BOX_ACTION_LABELS.find(([re]) => re.test(m[1]));
     actions.push({ key: m[1], label: lab ? lab[1] : m[1].charAt(0).toUpperCase() + m[1].slice(1), made: i, att: i + 1 });
   });
@@ -1617,10 +1620,10 @@ function boxScoreReportHtml(box, opponent, video = null, own = false) {
   if (OT && O) {
     const dIns = [];
     if (O.twoPct !== null && O.twoPct >= 0.55) dIns.push(`<b>Défense intérieure fragile</b> : les adversaires réussissent ${p(O.twoPct)} à 2 pts.`);
-    if (O.orebPct !== null && O.orebPct >= 0.27) dIns.push(`<b>Rebond défensif à attaquer</b> : les adversaires prennent ${p(O.orebPct)} des rebonds offensifs possibles (${f(OT.oreb / S.n, 1)} / match).`);
+    if (O.orebPct !== null && O.orebPct >= 0.27) dIns.push(`<b>Rebond défensif ${own ? "à travailler" : "à attaquer"}</b> : les adversaires prennent ${p(O.orebPct)} des rebonds offensifs possibles (${f(OT.oreb / S.n, 1)} / match).`);
     if (O.threePct !== null && O.threePct <= 0.32) dIns.push(`Le tir à 3 pts adverse leur réussit peu (${p(O.threePct)}) : ils défendent bien la ligne.`);
     if (O.tovPct !== null && O.tovPct <= 0.15) dIns.push(`Ils forcent peu de pertes (${p(O.tovPct)} des possessions adverses).`);
-    if (O.ftr !== null && O.ftr >= 0.33) dIns.push(`<b>Ils font beaucoup de fautes</b> : ${f(OT.fta / S.n, 1)} lancers francs adverses par match.`);
+    if (O.ftr !== null && O.ftr >= 0.33) dIns.push(`<b>${own ? "Trop de fautes" : "Ils font beaucoup de fautes"}</b> : ${f(OT.fta / S.n, 1)} lancers francs adverses par match.`);
     const fr = (l, a, b) => `<tr><td class="tt">${l}</td><td class="num">${a}</td><td class="num">${b}</td></tr>`;
     defHtml = `
       <div class="sub-title">Ce que subit la défense de ${esc(opponent)}</div>
