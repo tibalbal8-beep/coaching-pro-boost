@@ -1508,8 +1508,9 @@ function attackCategoryOf(a) {
 // (défenses adverses, joueurs, marqueurs de montage, "rebond off"...), puis fusionne celles qui
 // deviennent identiques. Protège aussi les imports faits avant ces réglages (ex. une attaque
 // importée avec SWITCH dans ses libellés n'apparaît plus en double ni avec la défense dedans).
+const ATTACK_HIDDEN_GROUP_RE = /def|[eé]cran|porteur|post ?up|joueur|player|nom\b|montage|tag ?up/i;
 function mergeAttacksForDisplay(attacks) {
-  const hidden = /def|[eé]cran|porteur|post ?up|joueur|player|nom\b|montage|tag ?up/i;
+  const hidden = ATTACK_HIDDEN_GROUP_RE;
   const merged = new Map();
   attacks.forEach(a => {
     const labels = (a.labels || []).filter(l => typeof l === "string" || !hidden.test(l.group || ""));
@@ -8398,6 +8399,9 @@ function CoachingProBoost({ session }) {
   const [vsHighlightPlayId, setVsHighlightPlayId] = useState(null);
   // Import XML Sportscode : aperçu avant d'importer { fileName, instances, labels, excluded }
   const [vsImportPreview, setVsImportPreview] = useState(null);
+  // Recherche dans les attaques importées (texte libre + libellés cliqués, ex. TOP52, Stagger)
+  const [vsAtkQuery, setVsAtkQuery] = useState("");
+  const [vsAtkFilters, setVsAtkFilters] = useState([]);
   const [vsAnnounceTfInput, setVsAnnounceTfInput] = useState("");
   const [newMatchOpen, setNewMatchOpen] = useState(false);
   const [newMatchDate, setNewMatchDate] = useState(new Date().toISOString().slice(0, 10));
@@ -11175,10 +11179,26 @@ function CoachingProBoost({ session }) {
             const sorted = [...teamPlays].sort((a, b) => playedOf(activeVs.tally?.[b.id]) - playedOf(activeVs.tally?.[a.id]));
             const totalTally = teamPlays.reduce((sum, p) => sum + playedOf(activeVs.tally?.[p.id]), 0);
 
+            // Recherche dans les attaques importées : libellés cliqués (ET) + texte libre sur le nom
+            // du play et les libellés (entrées, intentions...), défenses/joueurs/montage exclus.
+            const atkLabels = (a) => a.labels.filter(l => typeof l === "string" || !ATTACK_HIDDEN_GROUP_RE.test(l.group || "")).map(attackLabelText);
+            const atkQ = vsAtkQuery.trim().toLowerCase();
+            const allAtks = [...(activeVs.attacks || [])].sort((a, b) => b.count - a.count);
+            const visibleAttacks = allAtks.filter(a =>
+              vsAtkFilters.every(f => atkLabels(a).some(t => t.toLowerCase() === f.toLowerCase())) &&
+              (!atkQ || (a.name || "").toLowerCase().includes(atkQ) || atkLabels(a).some(t => t.toLowerCase().includes(atkQ))));
+            const labelFreq = new Map();
+            allAtks.forEach(a => atkLabels(a).forEach(t => { const k = t.toLowerCase(), e = labelFreq.get(k) || { label: t, count: 0 }; e.count += a.count; labelFreq.set(k, e); }));
+            const atkChipPool = [...labelFreq.values()].sort((x, y) => y.count - x.count || x.label.localeCompare(y.label, "fr"));
+            const atkChipsShown = [
+              ...vsAtkFilters.map(f => ({ label: f })),
+              ...(atkQ ? atkChipPool.filter(c => c.label.toLowerCase().includes(atkQ)) : atkChipPool).filter(c => !vsAtkFilters.some(f => f.toLowerCase() === c.label.toLowerCase())).slice(0, 18),
+            ];
+
             return (
               <div className="max-w-3xl">
                 <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-                  <button onClick={() => { setActiveVideoScoutId(null); setVsTfFilters([]); setVsTypeFilters([]); setVsPendingMiss(null); setVsAnnounceName(""); setVsAnnounceTf([]); setVsHighlightPlayId(null); }}
+                  <button onClick={() => { setActiveVideoScoutId(null); setVsTfFilters([]); setVsTypeFilters([]); setVsPendingMiss(null); setVsAnnounceName(""); setVsAnnounceTf([]); setVsHighlightPlayId(null); setVsAtkQuery(""); setVsAtkFilters([]); }}
                     className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Retour au scouting vidéo</button>
                   <button onClick={() => {
                     // Tous les systèmes notés pour cette équipe, même sans action comptée : les
@@ -11373,8 +11393,27 @@ function CoachingProBoost({ session }) {
                   {(activeVs.attacks || []).length === 0 ? (
                     <p className="text-xs text-[#1B2A4A]/40 italic">Aucune pour l'instant — importe l'export XML de Sportscode : les possessions qui ont les mêmes libellés sont regroupées en une attaque.</p>
                   ) : (
+                    <>
+                    <div className="mt-2 mb-1">
+                      <input value={vsAtkQuery} onChange={e => setVsAtkQuery(e.target.value)}
+                        placeholder="🔍 Chercher un temps fort, une entrée, un nom de play…"
+                        className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm outline-none focus:border-[#FF6B35] bg-white" />
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {atkChipsShown.map(c => {
+                          const on = vsAtkFilters.some(f => f.toLowerCase() === c.label.toLowerCase());
+                          return <button key={c.label} onClick={() => setVsAtkFilters(f => on ? f.filter(x => x.toLowerCase() !== c.label.toLowerCase()) : [...f, c.label])}
+                            className={`px-2.5 py-1 rounded-full text-xs font-medium border ${on ? "" : "border-[#1B2A4A]/25 text-[#1B2A4A] hover:border-[#1B2A4A]"}`}
+                            style={on ? { backgroundColor: "#2563EB", color: "#fff", borderColor: "#2563EB" } : undefined}>{c.label}</button>;
+                        })}
+                        {(vsAtkFilters.length > 0 || vsAtkQuery) && (
+                          <button onClick={() => { setVsAtkFilters([]); setVsAtkQuery(""); }} className="px-2.5 py-1 rounded-full text-xs text-[#1B2A4A]/40 hover:text-[#1B2A4A]">✕ Effacer</button>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-[#1B2A4A]/40 mt-1.5">{visibleAttacks.length}/{allAtks.length} attaque{allAtks.length > 1 ? "s" : ""}</p>
+                    </div>
                     <div className="flex flex-col gap-2 mt-2">
-                      {[...(activeVs.attacks || [])].sort((a, b) => b.count - a.count).map(a => {
+                      {visibleAttacks.length === 0 && <p className="text-xs text-[#1B2A4A]/40 italic">Aucune attaque ne correspond.</p>}
+                      {visibleAttacks.map(a => {
                         const st = attackStats(a);
                         return (
                           <div key={a.id} className="border border-[#1B2A4A]/15 rounded-xl bg-white p-3">
@@ -11421,6 +11460,7 @@ function CoachingProBoost({ session }) {
                         );
                       })}
                     </div>
+                    </>
                   )}
                 </div>
 
