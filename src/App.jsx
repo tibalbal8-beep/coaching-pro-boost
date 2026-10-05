@@ -1061,13 +1061,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   // Classement par catégorie : TRANSITION (phase de jeu transi pick / post up / jeu rapide...),
   // SLOB, BLOB, et ATTAQUE PLACÉE par défaut quand rien n'est précisé. Dans chaque catégorie,
   // les attaques à plusieurs entrées passent en priorité (les vrais enchaînements de système).
-  const catOf = (a) => {
-    const L = a.labels.filter(l => typeof l !== "string");
-    if (L.some(l => /phase/i.test(l.group || "") || /transi|jeu rapide/i.test(l.text))) return "Transition";
-    if (L.some(l => /^blob$/i.test(l.text) || /fond/i.test(l.group || ""))) return "BLOB";
-    if (L.some(l => /^slob$/i.test(l.text) || /side/i.test(l.group || ""))) return "SLOB";
-    return "Attaque placée";
-  };
+  const catOf = attackCategoryOf;
   // Le nom de la catégorie (SLOB / BLOB) est déjà dans le titre : inutile de le répéter en pastille.
   const chipsCat = (a, cat) => chips({ ...a, labels: cat === "SLOB" || cat === "BLOB" ? a.labels.filter(l => typeof l === "string" || !(/touche/i.test(l.group || "") || /^(slob|blob)$/i.test(l.text))) : a.labels });
   const CAT_ORDER = ["Transition", "Attaque placée", "SLOB", "BLOB"];
@@ -1089,14 +1083,14 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
             <div class="rank-row">
               <div class="rank-n ${i < 3 ? "rank-top" : ""}">${i + 1}</div>
               <div class="rank-main">
-                <div class="chips">${chipsCat(a, cat)}</div>
+                ${a.name ? `<div class="atk-name">${esc(a.name)}</div>` : ""}<div class="chips">${chipsCat(a, cat)}</div>
                 <div class="bar"><div style="width:${Math.round((a.count / max) * 100)}%"></div></div>
               </div>
               <div class="rank-side"><div class="rank-count">${a.count}<small>×</small></div><div class="rank-share">${pct(a.count, totalPoss)}%</div></div>
               ${pppBadge(st.ppp)}
             </div>`).join("")}
           ${rest.slice(0, 30).map(({ a, st }) => `
-            <div class="mini-row"><div class="chips">${chipsCat(a, cat)}</div><span class="mini-count">${a.count}×</span>${pppBadge(st.ppp)}</div>`).join("")}
+            <div class="mini-row"><div class="chips">${a.name ? `<span class="atk-name-inline">${esc(a.name)}</span>` : ""}${chipsCat(a, cat)}</div><span class="mini-count">${a.count}×</span>${pppBadge(st.ppp)}</div>`).join("")}
           ${rest.length > 30 ? `<p class="more">+ ${rest.length - 30} autres</p>` : ""}
         </div>`;
       }).join("")}
@@ -1143,7 +1137,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
     return `
       <div class="detail">
         <div class="detail-head">
-          <div class="chips">${chips(a)}</div>
+          <div>${a.name ? `<div class="atk-name">${esc(a.name)}</div>` : ""}<div class="chips">${chips(a)}</div></div>
           <div class="detail-pure"><span>Play pur</span>${pppBadge(st.ppp)}<em>${a.count}×</em></div>
         </div>
         <div class="donut-wrap">${donut(items, 130, "poss.")}${legend(items, tot)}</div>
@@ -1277,6 +1271,8 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   .chip-int{background:#FF6B35;color:#fff}
   .rank-row{display:grid;grid-template-columns:34px 1fr 62px auto;gap:14px;align-items:center;padding:12px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
   .rank-row:first-of-type{border-top:none}
+  .atk-name{font-family:'Oswald',sans-serif;font-size:15px;font-weight:700;letter-spacing:.3px;margin-bottom:6px}
+  .atk-name-inline{font-family:'Oswald',sans-serif;font-weight:700;font-size:13px;margin-right:4px}
   .cat-block{margin-top:6px}
   .cat-block + .cat-block{margin-top:22px}
   .cat-title{font-family:'Oswald',sans-serif;font-size:14px;letter-spacing:.8px;text-transform:uppercase;color:#fff;background:#1B2A4A;border-radius:8px;padding:8px 14px;margin-bottom:4px;display:flex;justify-content:space-between;align-items:baseline}
@@ -1498,6 +1494,16 @@ function defenseStats(e) {
   return { points, possible, count: n, ppp: n ? points / n : null };
 }
 
+// Catégorie d'une attaque : Transition (phase de jeu transi / jeu rapide), BLOB, SLOB, sinon
+// "Attaque placée" par défaut. Partagée par l'export et l'envoi vers le Playbook.
+function attackCategoryOf(a) {
+  const L = (a.labels || []).filter(l => typeof l !== "string");
+  if (L.some(l => /phase/i.test(l.group || "") || /transi|jeu rapide/i.test(l.text))) return "Transition";
+  if (L.some(l => /^blob$/i.test(l.text) || /fond/i.test(l.group || ""))) return "BLOB";
+  if (L.some(l => /^slob$/i.test(l.text) || /side/i.test(l.group || ""))) return "SLOB";
+  return "Attaque placée";
+}
+
 // Prépare les attaques pour l'export : retire des libellés d'attaque ce qui n'en définit pas une
 // (défenses adverses, joueurs, marqueurs de montage, "rebond off"...), puis fusionne celles qui
 // deviennent identiques. Protège aussi les imports faits avant ces réglages (ex. une attaque
@@ -1517,6 +1523,7 @@ function mergeAttacksForDisplay(attacks) {
       merged.set(key, { ...a, labels, key, xmlOutcomes: [...(a.xmlOutcomes || [])], xmlBonus: [...(a.xmlBonus || [])], outcomes: [...(a.outcomes || [])], byDefense: (a.byDefense || []).map(copyDef) });
     } else {
       m.count += a.count;
+      if (!m.name && a.name) m.name = a.name;
       m.xmlOutcomes.push(...(a.xmlOutcomes || [])); m.xmlBonus.push(...(a.xmlBonus || [])); m.outcomes.push(...(a.outcomes || []));
       (a.byDefense || []).forEach(d => {
         const k = (d.group || "") + "|" + d.label.toLowerCase();
@@ -9804,10 +9811,12 @@ function CoachingProBoost({ session }) {
 
         {view === "playbook" && playbookForm && (
           <div className="max-w-xl">
-            <h2 className="text-xl font-bold text-[#1B2A4A] mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>{editingPlay ? "MODIFIER LE PLAY" : "NOUVEAU PLAY"}</h2>
+            <h2 className="text-xl font-bold text-[#1B2A4A] mb-4" style={{ fontFamily: "Oswald, sans-serif" }}>{editingPlay?.id ? "MODIFIER LE PLAY" : "NOUVEAU PLAY"}</h2>
             <PlayForm initial={editingPlay} playTags={playTags} savePlayTags={savePlayTags} playTypes={playTypes} savePlayTypes={savePlayTypes} courtType={SPORT_COURT} cpbAlert={cpbAlert} autoOpenDraw={autoOpenDrawForNew} allTempsForts={usedTempsForts}
               onSave={(play) => {
-                const next = editingPlay ? plays.map(p => p.id === play.id ? play : p) : [...plays, play];
+                // Un brouillon (photo rapide, envoi depuis le scouting vidéo) n'a pas encore d'id enregistré :
+                // on l'ajoute au lieu de chercher à le remplacer.
+                const next = plays.some(p => p.id === play.id) ? plays.map(p => p.id === play.id ? play : p) : [...plays, play];
                 savePlays(next);
                 setPlaybookForm(false);
                 setEditingPlay(null);
@@ -11071,9 +11080,36 @@ function CoachingProBoost({ session }) {
               [...new Set(vsImportPreview.labels.map(l => (l.group || "Libellés").toLowerCase()))].forEach(k => delete prevRoles[k]);
               localStorage.setItem("cpb_vs_group_roles_v2", JSON.stringify({ ...prevRoles, ...roles }));
             } catch {}
-            updateActiveVs({ defenseInstances: collectSportscodeDefense(vsImportPreview.instances, vsImportPreview.ignoredGroups, vsImportPreview.excluded, vsImportPreview.defensePie), attacks: groups.map(g => ({ id: prev.get(g.key)?.id || uid(), key: g.key, labels: g.labels, count: g.count, xmlOutcomes: g.xmlOutcomes, xmlBonus: g.xmlBonus, byDefense: g.byDefense, outcomes: prev.get(g.key)?.outcomes || [] })) });
+            updateActiveVs({ defenseInstances: collectSportscodeDefense(vsImportPreview.instances, vsImportPreview.ignoredGroups, vsImportPreview.excluded, vsImportPreview.defensePie), attacks: groups.map(g => ({ id: prev.get(g.key)?.id || uid(), key: g.key, labels: g.labels, count: g.count, xmlOutcomes: g.xmlOutcomes, xmlBonus: g.xmlBonus, byDefense: g.byDefense, outcomes: prev.get(g.key)?.outcomes || [], name: prev.get(g.key)?.name || "", sent: prev.get(g.key)?.sent || false })) });
             toast?.(`✓ ${groups.length} attaque${groups.length > 1 ? "s" : ""} importée${groups.length > 1 ? "s" : ""}`);
             setVsImportPreview(null);
+          };
+          const renameAttack = (id, name) => updateActiveVs({ attacks: (activeVs.attacks || []).map(a => a.id === id ? { ...a, name } : a) });
+          // Envoie l'attaque dans le Playbook SANS l'y créer toute seule : ouvre le formulaire de play
+          // pré-rempli pour que tu dessines le système puis l'enregistres (ou annules).
+          const sendAttackToPlaybook = (a) => {
+            const txt = (l) => typeof l === "string" ? l : l.text;
+            const grp = (l) => typeof l === "string" ? "" : (l.group || "");
+            const entries = a.labels.filter(l => /entr[ée]e/i.test(grp(l))).map(l => txt(l).replace(/^E_/i, ""));
+            const intentions = a.labels.filter(l => /intention/i.test(grp(l))).map(txt);
+            const others = a.labels.filter(l => !/entr[ée]e|intention/i.test(grp(l))).map(txt);
+            const cat = attackCategoryOf(a);
+            const wanted = cat === "Attaque placée" ? /syst[eè]me|offens|plac/i : new RegExp("^" + cat + "$", "i");
+            const type = playTypes.find(t => wanted.test(t)) || playTypes[0];
+            const st = attackStats(a);
+            setEditingPlay({
+              titre: a.name || [...entries, ...intentions].join(" / ") || "Attaque importée",
+              type,
+              scoutedTeam: activeVs.opponent,
+              tags: [...new Set([...entries, ...intentions])],
+              intention: intentions.join(" / "),
+              description: entries.length > 1 ? "Déroulé : " + entries.join(" → ") : "",
+              notes: `Importé de Sportscode (scouting vidéo ${activeVs.opponent}) — joué ${a.count}×` + (st.ppp !== null ? `, ${st.ppp.toFixed(2)} pts/possession` : "") + (others.length ? ` · ${others.join(", ")}` : ""),
+              images: [], schemas: [],
+            });
+            updateActiveVs({ attacks: (activeVs.attacks || []).map(x => x.id === a.id ? { ...x, sent: true } : x) });
+            setPlaybookForm(true);
+            setViewPersist("playbook");
           };
           const addAttackOutcome = (id, v) => updateActiveVs({ attacks: (activeVs.attacks || []).map(a => a.id === id ? { ...a, outcomes: [...(a.outcomes || []), v] } : a) });
           const undoAttackOutcome = (id) => updateActiveVs({ attacks: (activeVs.attacks || []).map(a => a.id === id ? { ...a, outcomes: (a.outcomes || []).slice(0, -1) } : a) });
@@ -11342,6 +11378,14 @@ function CoachingProBoost({ session }) {
                         const st = attackStats(a);
                         return (
                           <div key={a.id} className="border border-[#1B2A4A]/15 rounded-xl bg-white p-3">
+                            <div className="flex items-center gap-2 mb-2">
+                              <input value={a.name || ""} onChange={e => renameAttack(a.id, e.target.value)}
+                                placeholder="Nom du play (si identifié)…" className="flex-1 min-w-0 text-sm font-semibold text-[#1B2A4A] border-b border-dashed border-[#1B2A4A]/25 focus:border-[#FF6B35] outline-none py-1 bg-transparent" />
+                              <button onClick={() => sendAttackToPlaybook(a)} title="Ouvre le formulaire de play pré-rempli pour dessiner le système"
+                                className="flex-shrink-0 text-xs font-semibold text-white px-2.5 py-1.5 rounded-md" style={{ backgroundColor: a.sent ? "#64748b" : "#2563EB" }}>
+                                {a.sent ? "✓ Envoyé · renvoyer" : "➜ Playbook"}
+                              </button>
+                            </div>
                             <div className="flex items-start justify-between gap-2 mb-2">
                               <div className="flex flex-wrap gap-1">
                                 {a.labels.map((l, i) => {
