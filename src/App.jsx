@@ -1018,7 +1018,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   }).join("");
 
   // ── Attaques importées de Sportscode ───────────────────────────────────────
-  const attacks = [...(session.attacks || [])].sort((a, b) => b.count - a.count);
+  const attacks = mergeAttacksForDisplay(session.attacks || []).sort((a, b) => b.count - a.count);
   const totalPoss = attacks.reduce((s, a) => s + a.count, 0);
   const atkStats = attacks.map(a => ({ a, st: attackStats(a) }));
   const totalPoints = atkStats.reduce((s, x) => s + x.st.points, 0);
@@ -1048,10 +1048,15 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
       ${defItems.length ? `<div class="kpi"><b>${defItems.length}</b><span>défenses rencontrées</span></div>` : ""}
     </div>`;
 
+  // Classement : les attaques jouées plusieurs fois (ou, à défaut, les plus jouées) avec barres ;
+  // toutes les autres sont listées en dessous pour qu'aucune attaque taguée ne disparaisse.
+  const multi = atkStats.filter(x => x.a.count >= 2);
+  const shownMain = (multi.length ? multi : atkStats).slice(0, 15);
+  const restRows = atkStats.filter(x => !shownMain.includes(x));
   const rankingHtml = attacks.length === 0 ? "" : `
     <section class="card">
       <h2><i></i>Classement des attaques les plus jouées</h2>
-      ${atkStats.slice(0, 12).map(({ a, st }, i) => `
+      ${shownMain.map(({ a, st }, i) => `
         <div class="rank-row">
           <div class="rank-n ${i < 3 ? "rank-top" : ""}">${i + 1}</div>
           <div class="rank-main">
@@ -1061,15 +1066,33 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
           <div class="rank-side"><div class="rank-count">${a.count}<small>×</small></div><div class="rank-share">${pct(a.count, totalPoss)}%</div></div>
           ${pppBadge(st.ppp)}
         </div>`).join("")}
-      ${attacks.length > 12 ? `<p class="more">+ ${attacks.length - 12} autre${attacks.length - 12 > 1 ? "s" : ""} attaque${attacks.length - 12 > 1 ? "s" : ""}</p>` : ""}
+      ${restRows.length ? `
+        <div class="sub-title" style="margin-top:20px">Autres attaques (${restRows.length})</div>
+        ${restRows.slice(0, 60).map(({ a, st }) => `
+          <div class="mini-row"><div class="chips">${chips(a)}</div><span class="mini-count">${a.count}×</span>${pppBadge(st.ppp)}</div>`).join("")}
+        ${restRows.length > 60 ? `<p class="more">+ ${restRows.length - 60} autres</p>` : ""}` : ""}
     </section>`;
 
-  const defOverviewHtml = defItems.length === 0 ? "" : `
+  // Entrées prises une à une : chaque entrée taguée apparaît, quelle que soit la combinaison dans
+  // laquelle elle a été jouée.
+  const entryMap = new Map();
+  atkStats.forEach(({ a, st }) => {
+    [...new Set(a.labels.filter(l => typeof l !== "string" && /entr[ée]e/i.test(l.group || "")).map(l => l.text))].forEach(t => {
+      const k = t.toLowerCase(), e = entryMap.get(k) || { label: t, count: 0, points: 0, resolved: 0 };
+      e.count += a.count; e.points += st.points; e.resolved += st.resolved; entryMap.set(k, e);
+    });
+  });
+  const entryRows = [...entryMap.values()].sort((x, y) => y.count - x.count || x.label.localeCompare(y.label, "fr"));
+  const entriesHtml = entryRows.length === 0 ? "" : `
     <section class="card">
-      <h2><i></i>Attaque de ${esc(session.opponent)} sur défenses adverses</h2>
-      ${familyItems.map(f => { const tot = f.items.reduce((s, i) => s + i.value, 0); return `
-        <div class="def-block"><div class="sub-title">${esc(f.fam.charAt(0).toUpperCase() + f.fam.slice(1).toLowerCase())}</div>
-        <div class="donut-wrap">${donut(f.items, 150)}${legend(f.items, tot)}</div></div>`; }).join("")}
+      <h2><i></i>Entrées les plus utilisées</h2>
+      ${entryRows.map((e, i) => `
+        <div class="rank-row">
+          <div class="rank-n ${i < 3 ? "rank-top" : ""}">${i + 1}</div>
+          <div class="rank-main"><div class="chips"><span class="chip">${esc(e.label)}</span></div><div class="bar"><div style="width:${Math.round((e.count / entryRows[0].count) * 100)}%"></div></div></div>
+          <div class="rank-side"><div class="rank-count">${e.count}<small>×</small></div><div class="rank-share">${pct(e.count, totalPoss)}%</div></div>
+          ${pppBadge(e.resolved ? e.points / e.resolved : null)}
+        </div>`).join("")}
     </section>`;
 
   // Fiche par attaque : play pur puis le même play selon la défense (camembert + comparaison)
@@ -1203,6 +1226,9 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   .chip-int{background:#FF6B35;color:#fff}
   .rank-row{display:grid;grid-template-columns:34px 1fr 62px auto;gap:14px;align-items:center;padding:12px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
   .rank-row:first-of-type{border-top:none}
+  .mini-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid #1B2A4A0f;page-break-inside:avoid}
+  .mini-row .chips{flex:1}
+  .mini-count{font-family:'Oswald',sans-serif;font-weight:700;font-size:15px;min-width:34px;text-align:right}
   .rank-n{font-family:'Oswald',sans-serif;font-size:24px;font-weight:700;color:#1B2A4A40;text-align:center}
   .rank-top{color:#FF6B35}
   .bar{height:8px;background:#1B2A4A0d;border-radius:5px;margin-top:9px;overflow:hidden}
@@ -1261,6 +1287,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
     </header>
     ${notesHtml}
     ${rankingHtml}
+    ${entriesHtml}
     ${defOverviewHtml}
     ${detailSection}
     ${systemsHtml}
@@ -1393,6 +1420,36 @@ function defenseStats(e) {
   const possible = all.reduce((s, v) => s + Math.abs(v), 0);
   const n = (e.outcomes || []).length;
   return { points, possible, count: n, ppp: n ? points / n : null };
+}
+
+// Prépare les attaques pour l'export : retire des libellés d'attaque ce qui n'en définit pas une
+// (défenses adverses, joueurs, marqueurs de montage, "rebond off"...), puis fusionne celles qui
+// deviennent identiques. Protège aussi les imports faits avant ces réglages (ex. une attaque
+// importée avec SWITCH dans ses libellés n'apparaît plus en double ni avec la défense dedans).
+function mergeAttacksForDisplay(attacks) {
+  const hidden = /def|[eé]cran|porteur|post ?up|joueur|player|nom\b|montage|tag ?up/i;
+  const merged = new Map();
+  attacks.forEach(a => {
+    const labels = (a.labels || []).filter(l => typeof l === "string" || !hidden.test(l.group || ""));
+    if (labels.length === 0) return;
+    const byGroup = new Map();
+    labels.forEach(l => { const g = typeof l === "string" ? "" : (l.group || "").toLowerCase(); byGroup.set(g, [...(byGroup.get(g) || []), attackLabelText(l).toLowerCase()]); });
+    const key = [...byGroup.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([g, t]) => g + ":" + t.join(">")).join("|");
+    const copyDef = (d) => ({ ...d, outcomes: [...(d.outcomes || [])], bonus: [...(d.bonus || [])] });
+    const m = merged.get(key);
+    if (!m) {
+      merged.set(key, { ...a, labels, key, xmlOutcomes: [...(a.xmlOutcomes || [])], xmlBonus: [...(a.xmlBonus || [])], outcomes: [...(a.outcomes || [])], byDefense: (a.byDefense || []).map(copyDef) });
+    } else {
+      m.count += a.count;
+      m.xmlOutcomes.push(...(a.xmlOutcomes || [])); m.xmlBonus.push(...(a.xmlBonus || [])); m.outcomes.push(...(a.outcomes || []));
+      (a.byDefense || []).forEach(d => {
+        const k = (d.group || "") + "|" + d.label.toLowerCase();
+        const e = m.byDefense.find(x => (x.group || "") + "|" + x.label.toLowerCase() === k);
+        if (e) { e.outcomes.push(...(d.outcomes || [])); e.bonus.push(...(d.bonus || [])); } else m.byDefense.push(copyDef(d));
+      });
+    }
+  });
+  return [...merged.values()];
 }
 
 // Résultats d'une attaque : ceux lus dans le XML + ceux ajoutés à la main (+3 +2 +1 0 -2 -3).
@@ -10902,7 +10959,7 @@ function CoachingProBoost({ session }) {
                   const names = [...new Set([...labelCounts.values()].map(l => l.group || "Libellés"))];
                   // Dans une ATTAQUE, les écrans / écrans non porteur / défense collective sont la défense
                   // ADVERSE rencontrée ; joueurs et marqueurs de montage ne définissent pas une attaque.
-                  const autoRole = (g) => /joueur|player|nom\b|montage/i.test(g) ? "ignored" : /def|[eé]cran|porteur|post ?up/i.test(g) ? "defense" : "attack";
+                  const autoRole = (g) => /joueur|player|nom\b|montage|tag ?up/i.test(g) ? "ignored" : /def|[eé]cran|porteur|post ?up/i.test(g) ? "defense" : "attack";
                   const roleOf = (g) => saved[g.toLowerCase()] || autoRole(g);
                   return { defenseGroups: names.filter(g => roleOf(g) === "defense"), ignoredGroups: names.filter(g => roleOf(g) === "ignored"), autoRoles: Object.fromEntries(names.map(g => [g.toLowerCase(), autoRole(g)])) };
                 })(),
