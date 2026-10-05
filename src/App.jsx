@@ -985,6 +985,8 @@ function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
 // Export "Scouting vidéo" : récap présentable pour le staff — équipe observée, défenses
 // vues, notes libres, et le classement des systèmes avec leur rentabilité (même mécanique
 // que buildMatchReportHtml, sans le tableau de score qui n'a pas de sens hors match réel).
+// Repère de version affiché en bas de l'export (à faire évoluer à chaque refonte du rapport).
+const VIDEO_SCOUT_REPORT_VERSION = "2026-10-06-c";
 function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const dateStr = session.date ? new Date(session.date).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
@@ -1020,7 +1022,10 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   // ── Attaques importées de Sportscode ───────────────────────────────────────
   const allMerged = mergeAttacksForDisplay(session.attacks || []);
   // Une attaque décrite uniquement par une intention (ex. SIDE41) n'est pas un système : écartée.
-  const isIntentionOnly = (a) => a.labels.every(l => typeof l !== "string" && /intention/i.test(l.group || ""));
+  // Idem pour une simple remise en jeu (SLOB / BLOB seul, éventuellement avec une intention) :
+  // sans entrée taguée, ce n'est pas un système à classer.
+  const isIntentionOnly = (a) => a.labels.every(l => typeof l !== "string"
+    && (/intention|touche/i.test(l.group || "") || /^(slob|blob)$/i.test(l.text)));
   const attacks = allMerged.filter(a => !isIntentionOnly(a)).sort((a, b) => b.count - a.count);
   const skippedIntentionOnly = allMerged.filter(isIntentionOnly).reduce((n, a) => n + a.count, 0);
   const entryCount = (a) => new Set(a.labels.filter(l => typeof l !== "string" && /entr[ée]e/i.test(l.group || "")).map(l => l.text.toLowerCase())).size;
@@ -1078,7 +1083,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
         ${restRows.slice(0, 60).map(({ a, st }) => `
           <div class="mini-row"><div class="chips">${chips(a)}</div><span class="mini-count">${a.count}×</span>${pppBadge(st.ppp)}</div>`).join("")}
         ${restRows.length > 60 ? `<p class="more">+ ${restRows.length - 60} autres</p>` : ""}` : ""}
-      ${skippedIntentionOnly > 0 ? `<p class="more">${skippedIntentionOnly} possession${skippedIntentionOnly > 1 ? "s" : ""} décrite${skippedIntentionOnly > 1 ? "s" : ""} seulement par une intention (ex. SIDE41), non listée${skippedIntentionOnly > 1 ? "s" : ""}.</p>` : ""}
+      ${skippedIntentionOnly > 0 ? `<p class="more">${skippedIntentionOnly} possession${skippedIntentionOnly > 1 ? "s" : ""} décrite${skippedIntentionOnly > 1 ? "s" : ""} seulement par une intention ou une remise en jeu (SIDE41, SLOB, BLOB), non listée${skippedIntentionOnly > 1 ? "s" : ""}.</p>` : ""}
     </section>`;
 
   // Entrées prises une à une : chaque entrée taguée apparaît, quelle que soit la combinaison dans
@@ -1279,6 +1284,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   .rk{font-family:'Oswald',sans-serif;font-weight:700;color:#FF6B35;width:26px}
   .tt{font-weight:600}
   .tf{font-size:11px;color:#1B2A4A60;margin-top:2px;font-weight:400}
+  .stamp{text-align:center;font-size:10px;color:#1B2A4A55;padding:4px 0 12px}
   .hint{font-size:12px;color:#1B2A4A80;margin:-8px 0 8px}
   .more{font-size:12px;color:#1B2A4A80;margin-top:8px}
   .notes-text{font-size:13.5px;line-height:1.65}
@@ -1303,6 +1309,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
     ${ownDefHtml}
     ${manualDefHtml}
     ${empty}
+    <p class="stamp">Coaching Pro Boost · récap généré le ${new Date().toLocaleDateString("fr-FR")} · version ${VIDEO_SCOUT_REPORT_VERSION}</p>
   </div>
 </body>
 </html>`;
