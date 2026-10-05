@@ -994,7 +994,7 @@ function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
 // vues, notes libres, et le classement des systèmes avec leur rentabilité (même mécanique
 // que buildMatchReportHtml, sans le tableau de score qui n'a pas de sens hors match réel).
 // Repère de version affiché en bas de l'export (à faire évoluer à chaque refonte du rapport).
-const VIDEO_SCOUT_REPORT_VERSION = "2026-10-06-f";
+const VIDEO_SCOUT_REPORT_VERSION = "2026-10-06-g";
 // Feuille de style commune aux récaps (scouting vidéo, analyse de mon équipe).
 const SCOUT_REPORT_CSS = `
   *{box-sizing:border-box;margin:0;padding:0}
@@ -1099,6 +1099,10 @@ const SCOUT_REPORT_CSS = `
   .bs-act-p{font-size:12px;font-weight:600;text-align:right;padding:3px 8px;border-radius:7px;background:#1B2A4A0a}
   .bs-good{background:#22c55e22;color:#15803d}.bs-low{background:#ef444422;color:#b91c1c}
   .bs-ff td,.bs-ff th{padding:7px 8px}
+  .cmp td,.cmp th{padding:7px 10px}
+  .cmp td.num{width:28%;font-weight:600}
+  .cmp-win{background:#22c55e1f;color:#15803d;font-weight:700!important}
+  .cmp-them{background:#ef44441a;color:#b91c1c}
   @media (max-width:600px){.bs-kpis{grid-template-columns:repeat(2,1fr)}.bs-act{grid-template-columns:110px 1fr 46px 96px}}
   @media print{body{background:#fff;padding:0}.card{box-shadow:none;border:1px solid #1B2A4A14}.hero{border-radius:12px}}
 `;
@@ -1419,6 +1423,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null, t
       ${kpis}
     </header>
     ${notesHtml}
+    ${comparisonReportHtml(session.comparison, session.opponent)}
     ${boxHtml}
     ${playbookHtml}
     ${rankingHtml}
@@ -1672,6 +1677,101 @@ function boxScoreReportHtml(box, opponent, video = null, own = false) {
       ${defHtml}
       ${cmp.length ? `<div class="sub-title">Contrôle avec la vidéo</div><ul class="bs-ins">${cmp.map(t => `<li>${t}</li>`).join("")}</ul>` : ""}
       <p class="more">Possessions estimées (tirs tentés − rebonds off. + 0,44 × lancers tentés + balles perdues). eFG% : un panier à 3 pts compte pour 1,5.</p>
+    </section>`;
+}
+
+// Fichier « Team comparison » (.xlsx) : une statistique par ligne (moyennes par match), une colonne
+// par équipe (en-tête = nom de l'équipe sur la 1re ligne de la cellule). Sert au « face à face »
+// entre mon équipe et l'équipe scoutée.
+function parseTeamComparisonRows(rows) {
+  const hIdx = rows.findIndex(r => !String(r[0] ?? "").trim() && String(r[1] ?? "").trim() && String(r[2] ?? "").trim() && typeof r[1] === "string");
+  if (hIdx === -1) throw new Error("en-têtes des deux équipes introuvables");
+  const teamName = (c) => String(c ?? "").split(/\n/)[0].trim();
+  const MAP = [
+    ["games", /^(matche?s jou[ée]s|games played|matchs?)$/], ["poss", /^possessions?$/], ["pts", /^points?$/],
+    ["fgm", /^(tirs? de champ marqu[ée]s?|field goals made)$/], ["fga", /^(tirs? de champ tent[ée]s?|field goals attempted)$/],
+    ["fg3m", /^(tirs? [àa] 3 ?pts? marqu[ée]s?|3-?pt field goals made)$/], ["fg3a", /^(tirs? [àa] 3 ?pts? tent[ée]s?|3-?pt field goals attempted)$/],
+    ["ftm", /^(lancers? francs? marqu[ée]s?|free throws made)$/], ["fta", /^(lancers? francs? tent[ée]s?|free throws attempted)$/],
+    ["reb", /^(rebonds?|rebounds)$/], ["oreb", /^(rebonds? offensifs?|offensive rebounds)$/], ["dreb", /^(rebonds? d[ée]fensifs?|defensive rebounds)$/],
+    ["ast", /^(passes? d[ée]cisives?|assists)$/], ["stl", /^(steals?|interceptions?)$/], ["tov", /^(turnovers?|balles? perdues?)$/],
+    ["blk", /^(contres?|blocks?)$/], ["pf", /^(fautes?|fouls)$/], ["pfd", /^(fautes? contre|fautes? subies|fouls drawn)$/],
+  ];
+  const teams = [1, 2].map(ci => ({ name: teamName(rows[hIdx][ci]), stats: {} }));
+  rows.slice(hIdx + 1).forEach(r => {
+    const lab = String(r[0] ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+    const k = (MAP.find(([, re]) => re.test(lab)) || [])[0];
+    if (!k) return;
+    [1, 2].forEach((ci, t) => { const v = r[ci]; const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", ".")); teams[t].stats[k] = isNaN(n) ? 0 : n; });
+  });
+  if (!teams.every(t => t.name && t.stats.pts !== undefined && t.stats.fga !== undefined)) throw new Error("statistiques des deux équipes introuvables");
+  return teams;
+}
+// Index (0/1) de l'équipe scoutée dans la comparaison : celle dont le nom contient le nom de session.
+function comparisonOpponentIndex(teams, opponent) {
+  const n = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const o = n(opponent).split(" ").filter(w => w.length > 2);
+  const score = (t) => o.filter(w => n(t.name).includes(w)).length;
+  return score(teams[0]) > score(teams[1]) ? 0 : 1;
+}
+function comparisonReportHtml(cmp, opponent) {
+  if (!cmp || !(cmp.teams || []).length) return "";
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const oi = comparisonOpponentIndex(cmp.teams, opponent);
+  const T = cmp.teams[oi], U = cmp.teams[1 - oi];
+  const short = (s) => s.length > 22 ? s.split(/[\s-]+/).slice(0, 2).join(" ") : s;
+  const uN = short(U.name), tN = short(T.name);
+  const met = (a, b) => {
+    const poss = a.fga - a.oreb + 0.44 * a.fta + a.tov;
+    return {
+      ppp: poss > 0 ? a.pts / poss : null, efg: a.fga ? (a.fgm + 0.5 * a.fg3m) / a.fga : null,
+      two: a.fga - a.fg3a > 0 ? (a.fgm - a.fg3m) / (a.fga - a.fg3a) : null, three: a.fg3a ? a.fg3m / a.fg3a : null,
+      threeRate: a.fga ? a.fg3a / a.fga : null, ft: a.fta ? a.ftm / a.fta : null, ftr: a.fga ? a.fta / a.fga : null,
+      tovPct: poss > 0 ? a.tov / poss : null, orbPct: a.oreb + b.dreb ? a.oreb / (a.oreb + b.dreb) : null,
+    };
+  };
+  const mU = met(U.stats, T.stats), mT = met(T.stats, U.stats);
+  const p = (x) => x === null || x === undefined ? "—" : Math.round(x * 100) + " %";
+  const f = (x, d = 1) => x === null || x === undefined ? "—" : x.toFixed(d).replace(".", ",");
+  // [libellé, valeur nous, valeur eux, format, plus haut = mieux ?]
+  const lines = [
+    ["Points / match", U.stats.pts, T.stats.pts, (x) => f(x), true],
+    ["Points / possession", mU.ppp, mT.ppp, (x) => f(x, 2), true],
+    ["eFG% (adresse)", mU.efg, mT.efg, p, true],
+    ["Réussite à 2 pts", mU.two, mT.two, p, true],
+    ["Réussite à 3 pts", mU.three, mT.three, p, true],
+    ["Part des tirs à 3 pts", mU.threeRate, mT.threeRate, p, null],
+    ["Lancers francs tentés / match", U.stats.fta, T.stats.fta, (x) => f(x), true],
+    ["Réussite aux lancers", mU.ft, mT.ft, p, true],
+    ["Balles perdues / possession", mU.tovPct, mT.tovPct, p, false],
+    ["Rebonds offensifs pris", mU.orbPct, mT.orbPct, p, true],
+    ["Rebonds / match", U.stats.reb, T.stats.reb, (x) => f(x), true],
+    ["Passes décisives / match", U.stats.ast, T.stats.ast, (x) => f(x), true],
+    ["Interceptions / match", U.stats.stl, T.stats.stl, (x) => f(x), true],
+    ["Contres / match", U.stats.blk, T.stats.blk, (x) => f(x), true],
+    ["Fautes / match", U.stats.pf, T.stats.pf, (x) => f(x), false],
+  ].filter(l => l[1] !== undefined && l[2] !== undefined);
+  const edge = (a, b, hi) => hi === null || a === null || b === null || a === b ? 0 : (a > b) === hi ? 1 : -1;
+  const keys = [];
+  if (mT.three !== null && mT.three >= 0.37 && mT.threeRate >= 0.4) keys.push(`<b>Leur arme : le tir à 3 pts</b> — ${f(T.stats.fg3a)} tentatives par match à ${p(mT.three)}. Fermer les shooteurs, défendre les sorties d'écran.`);
+  if (T.stats.fta - U.stats.fta >= 3 || (mT.ft !== null && mT.ft >= 0.75 && U.stats.pf >= 21)) keys.push(`<b>Discipline</b> — ils vont ${f(T.stats.fta)} fois sur la ligne par match (${p(mT.ft)}) et nous faisons ${f(U.stats.pf)} fautes : éviter les fautes inutiles.`);
+  if (mU.ft !== null && mT.ft !== null && mT.ft - mU.ft >= 0.08) keys.push(`<b>Lancers francs</b> — ${p(mU.ft)} pour nous contre ${p(mT.ft)} pour eux : les fins de match serrées leur profitent.`);
+  if (U.stats.reb - T.stats.reb >= 2) keys.push(`<b>Avantage au rebond</b> — ${f(U.stats.reb)} rebonds par match contre ${f(T.stats.reb)} : à exploiter (rebond défensif pour courir).`);
+  else if (T.stats.reb - U.stats.reb >= 2) keys.push(`<b>Rebond</b> — ils prennent ${f(T.stats.reb)} rebonds par match contre ${f(U.stats.reb)} : box-out obligatoire.`);
+  if (U.stats.stl - T.stats.stl >= 2 && T.stats.tov >= 13) keys.push(`<b>Notre pression peut payer</b> — ${f(U.stats.stl)} interceptions par match pour nous, ${f(T.stats.tov)} balles perdues pour eux.`);
+  if (mU.two !== null && mT.two !== null && mU.two - mT.two >= 0.03) keys.push(`<b>Attaquer l'intérieur</b> — ${p(mU.two)} à 2 pts pour nous contre ${p(mT.two)} pour eux.`);
+  if (U.stats.ast - T.stats.ast >= 3) keys.push(`<b>Partage du ballon</b> — ${f(U.stats.ast)} passes décisives par match contre ${f(T.stats.ast)}.`);
+  const wins = lines.filter(l => edge(l[1], l[2], l[4]) === 1).length, losses = lines.filter(l => edge(l[1], l[2], l[4]) === -1).length;
+  return `
+    <section class="card">
+      <h2><i></i>Face à face : ${esc(uN)} / ${esc(tN)}</h2>
+      <p class="hint">Moyennes par match${U.stats.games ? ` (${esc(uN)} : ${U.stats.games} matchs, ${esc(tN)} : ${T.stats.games} matchs)` : ""}. Avantage sur ${wins} indicateurs pour ${esc(uN)}, ${losses} pour ${esc(tN)}.</p>
+      ${keys.length ? `<div class="sub-title">Clés du match</div><ul class="bs-ins">${keys.map(k => `<li>${k}</li>`).join("")}</ul>` : ""}
+      <div class="bs-table"><table class="cmp">
+        <thead><tr><th></th><th class="num">${esc(uN)}</th><th class="num">${esc(tN)}</th></tr></thead>
+        <tbody>${lines.map(([l, a, b, fmt, hi]) => { const e = edge(a, b, hi); return `
+          <tr><td class="tt">${l}</td><td class="num ${e === 1 ? "cmp-win" : ""}">${fmt(a)}</td><td class="num ${e === -1 ? "cmp-win cmp-them" : ""}">${fmt(b)}</td></tr>`; }).join("")}</tbody>
+      </table></div>
+      <p class="more">Surligné = meilleure valeur (moins de balles perdues et de fautes = mieux). Points/possession et rebonds offensifs pris : estimations à partir des moyennes.</p>
     </section>`;
 }
 
@@ -11644,7 +11744,16 @@ function CoachingProBoost({ session }) {
             if (!file) return;
             try {
               if (/\.xls$/i.test(file.name)) throw new Error("ancien format .xls : ouvre-le dans Excel / Numbers et enregistre-le en .xlsx");
-              const games = parseBoxScoreRows(await readXlsxFirstSheet(await file.arrayBuffer()));
+              const rows = await readXlsxFirstSheet(await file.arrayBuffer());
+              // Fiche "Team comparison" (une stat par ligne, une colonne par équipe) ou box score match par match.
+              const isBox = rows.some(r => r.some(c => /^(opponent|adversaire)$/i.test(String(c ?? "").trim())));
+              if (!isBox) {
+                const teams = parseTeamComparisonRows(rows);
+                updateActiveVs({ comparison: { fileName: file.name, teams, importedAt: new Date().toISOString() } });
+                cpbAlert?.(`Comparaison ${teams[0].name} / ${teams[1].name} importée — section « Face à face » ajoutée au récap.`);
+                return;
+              }
+              const games = parseBoxScoreRows(rows);
               updateActiveVs({ boxScore: { fileName: file.name, games, importedAt: new Date().toISOString() } });
               cpbAlert?.(`${games.length} match${games.length > 1 ? "s" : ""} importé${games.length > 1 ? "s" : ""} — le profil statistique apparaît dans le récap.`);
             } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
@@ -12070,8 +12179,16 @@ function CoachingProBoost({ session }) {
                       )}
                     </div>
                   </div>
+                  {activeVs.comparison && (
+                    <div className="flex items-center gap-2 flex-wrap mt-1 mb-2">
+                      <span className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-medium bg-[#2563EB]/10 text-[#1B2A4A]">
+                        ⚖️ Face à face : {activeVs.comparison.teams.map(t => t.name).join(" / ")}
+                        <button onClick={() => updateActiveVs({ comparison: null })} title="Retirer la comparaison" className="w-5 h-5 rounded-full text-[#1B2A4A]/40 hover:text-red-600 flex items-center justify-center"><X size={11} /></button>
+                      </span>
+                    </div>
+                  )}
                   {!activeVs.boxScore ? (
-                    <p className="text-xs text-[#1B2A4A]/40 italic">Box score de l'équipe (un match par ligne : score, tirs, balles perdues…) — ajoute un profil statistique au récap et le compare à la vidéo.</p>
+                    <p className="text-xs text-[#1B2A4A]/40 italic">Box score de l'équipe (un match par ligne) ou fiche de comparaison avec ton équipe (Team comparison) — profil statistique et face à face dans le récap.</p>
                   ) : (() => {
                     const S = boxScoreSummary(activeVs.boxScore.games || []);
                     const pc = (x) => x === null ? "—" : Math.round(x * 100) + " %";
