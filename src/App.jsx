@@ -1187,11 +1187,24 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
     const gm = defGroupMap.get(l.group) || new Map();
     gm.set(l.text, (gm.get(l.text) || 0) + 1); defGroupMap.set(l.group, gm);
   }));
-  const prettyGroup = (g) => g.charAt(0).toUpperCase() + g.slice(1).toLowerCase();
+  const prettyGroup = (g) => {
+    const k = g.toLowerCase();
+    if (/porteur/.test(k)) return "Écrans non porteur";
+    if (/[eé]cran/.test(k)) return "Écrans (pick and roll)";
+    if (/post ?up/.test(k)) return "Gestion du post up";
+    if (/def.*collect/.test(k)) return "Défense collective";
+    if (/^entr/.test(k)) return "Entrées adverses défendues";
+    if (/phase/.test(k)) return "Phase de jeu adverse";
+    if (/touche/.test(k)) return "Remises en jeu";
+    return g.charAt(0).toUpperCase() + g.slice(1).toLowerCase();
+  };
   const ownDefHtml = defGroupMap.size === 0 ? "" : `
     <section class="card">
       <h2><i></i>Défense de ${esc(session.opponent)}</h2>
-      ${[...defGroupMap.entries()].map(([group, gm]) => {
+      ${[...defGroupMap.entries()].sort((x, y) => {
+        const pr = (g) => { const i = [/[eé]cran/i, /porteur/i, /post ?up/i, /def/i].findIndex(r => r.test(g)); return i === -1 ? 9 : i; };
+        return pr(x[0]) - pr(y[0]);
+      }).map(([group, gm]) => {
         const items = [...gm.entries()].sort((a, b) => b[1] - a[1]).map(([label, value], i) => ({ label, value, color: PALETTE[i % PALETTE.length] }));
         const tot = items.reduce((s, i) => s + i.value, 0);
         const colorOf = new Map(items.map(i => [i.label, i.color]));
@@ -1397,7 +1410,9 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
     list.push(cur);
   }
   list.forEach(inst => {
-    if (exclC.has(inst.code.toLowerCase())) return;
+    // Une séquence DEFENSE (ce que fait l'équipe scoutée en défense) n'est jamais une attaque : elle
+    // alimente uniquement la section "Défense de l'équipe", quel que soit le réglage des codes.
+    if (exclC.has(inst.code.toLowerCase()) || /^def/i.test(inst.code)) return;
     // Instance qui ne porte QUE des résultats (+1, +2, -1...) : suite de l'action précédente
     // (lancer franc, and-one...), jamais une possession de plus. Si la possession précédente
     // était comptée à 0 faute de résultat, c'est son résultat ; sinon ce sont des points en plus.
@@ -11031,7 +11046,10 @@ function CoachingProBoost({ session }) {
                   const roleOf = (g) => saved[g.toLowerCase()] || autoRole(g);
                   return { defenseGroups: names.filter(g => roleOf(g) === "defense"), ignoredGroups: names.filter(g => roleOf(g) === "ignored"), autoRoles: Object.fromEntries(names.map(g => [g.toLowerCase(), autoRole(g)])) };
                 })(),
-                defensePie: [...new Set(instances.filter(i => /^def/i.test(i.code)).flatMap(i => i.labels.map(l => l.group || "Libellés")))].filter(g => /[eé]cran|porteur|post ?up/i.test(g)),
+                // Tout ce que fait l'équipe en défense (écrans, écrans non porteur, post up, défense
+                // collective, remises en jeu...) ; on écarte seulement l'intention (clé de lecture), les
+                // joueurs, les marqueurs de montage et "tag up".
+                defensePie: [...new Set(instances.filter(i => /^def/i.test(i.code)).flatMap(i => i.labels.filter(l => !isSportscodeResult(l)).map(l => l.group || "Libellés")))].filter(g => !/intention|joueur|player|nom\b|montage|tag ?up/i.test(g)),
                 excluded: [], excludedCodes: hasAtt ? codes.filter(c => !/att/i.test(c.code)).map(c => c.code) : [],
               });
             } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
@@ -11374,7 +11392,7 @@ function CoachingProBoost({ session }) {
                     return { ...x, defenseGroups: [...x.defenseGroups, g] };
                   });
                   const toggleCode = (c) => setVsImportPreview(x => ({ ...x, excludedCodes: x.excludedCodes.includes(c) ? x.excludedCodes.filter(y => y !== c) : [...x.excludedCodes, c] }));
-                  const used = pv.instances.filter(i => !pv.excludedCodes.includes(i.code));
+                  const used = pv.instances.filter(i => !pv.excludedCodes.includes(i.code) && !/^def/i.test(i.code));
                   const bonusOnly = used.filter(i => i.labels.every(isSportscodeResult)).length;
                   const lostBalls = groups.reduce((n, g) => n + g.xmlOutcomes.filter(v => v === 0).length, 0);
                   const liveLabels = (() => {
@@ -11408,9 +11426,13 @@ function CoachingProBoost({ session }) {
                         <div className="px-5 overflow-y-auto flex-1 pb-3">
                           {pv.codes.length > 1 && (
                             <>
-                              <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold mb-1.5">Séquences à importer</div>
+                              <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold mb-1.5">Séquences d'attaque à importer</div>
                               <div className="flex flex-wrap gap-1.5 mb-4">
                                 {pv.codes.map(c => {
+                                  if (/^def/i.test(c.code)) return (
+                                    <span key={c.code} title="Toujours analysée : tout ce que fait l'équipe en défense alimente la section « Défense de l'équipe »."
+                                      className="px-2.5 py-1 rounded-full text-xs font-medium border border-[#22c55e] bg-[#22c55e]/10 text-[#15803d]">🛡 {c.code} <span className="opacity-70">{c.count}</span> → défense de l'équipe</span>
+                                  );
                                   const off = pv.excludedCodes.includes(c.code);
                                   return <button key={c.code} onClick={() => toggleCode(c.code)}
                                     className={`px-2.5 py-1 rounded-full text-xs font-medium border ${off ? "border-[#1B2A4A]/15 text-[#1B2A4A]/30 line-through" : "border-[#FF6B35] bg-[#FF6B35] text-white"}`}>{c.code} <span className="opacity-70">{c.count}</span></button>;
@@ -11438,7 +11460,7 @@ function CoachingProBoost({ session }) {
                           ))}
                           {defAvail.length > 0 && (
                             <div className="mt-4">
-                              <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold mb-1.5">Défense de l'équipe — groupes à montrer en camembert</div>
+                              <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold mb-1.5">Défense de l'équipe — groupes à montrer en camembert (tout est analysé par défaut)</div>
                               <div className="flex flex-wrap gap-1.5">
                                 {defAvail.map(g => {
                                   const on = pv.defensePie.includes(g);
