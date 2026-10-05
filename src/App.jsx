@@ -1026,14 +1026,19 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   const globalPpp = totalResolved ? totalPoints / totalResolved : null;
 
   // Défenses rencontrées, toutes attaques confondues
-  const defAgg = new Map();
+  // Défenses adverses rencontrées, par famille (ÉCRANS, DÉFENSE COLLECTIVE, ÉCRANS NON PORTEUR...)
+  const defFamilies = new Map();
   attacks.forEach(a => (a.byDefense || []).forEach(d => {
-    const ds = defenseStats(d), e = defAgg.get(d.label.toLowerCase()) || { label: d.label, count: 0, points: 0 };
-    e.count += ds.count; e.points += ds.points; defAgg.set(d.label.toLowerCase(), e);
+    const fam = d.group || "Défense", ds = defenseStats(d);
+    const m = defFamilies.get(fam) || new Map();
+    const e = m.get(d.label.toLowerCase()) || { label: d.label, count: 0, points: 0 };
+    e.count += ds.count; e.points += ds.points; m.set(d.label.toLowerCase(), e); defFamilies.set(fam, m);
   }));
-  const defItems = [...defAgg.values()].sort((x, y) => y.count - x.count)
-    .map((e, i) => ({ label: e.label, value: e.count, color: PALETTE[i % PALETTE.length], ppp: e.count ? e.points / e.count : null }));
-  const defTotal = defItems.reduce((s, i) => s + i.value, 0);
+  const familyItems = [...defFamilies.entries()].map(([fam, m]) => ({
+    fam,
+    items: [...m.values()].sort((x, y) => y.count - x.count).map((e, i) => ({ label: e.label, value: e.count, color: PALETTE[i % PALETTE.length], ppp: e.count ? e.points / e.count : null })),
+  }));
+  const defItems = familyItems.flatMap(f => f.items);
 
   const kpis = attacks.length === 0 ? "" : `
     <div class="kpis">
@@ -1062,7 +1067,9 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   const defOverviewHtml = defItems.length === 0 ? "" : `
     <section class="card">
       <h2><i></i>Attaque de ${esc(session.opponent)} sur défenses adverses</h2>
-      <div class="donut-wrap">${donut(defItems, 170)}${legend(defItems, defTotal)}</div>
+      ${familyItems.map(f => { const tot = f.items.reduce((s, i) => s + i.value, 0); return `
+        <div class="def-block"><div class="sub-title">${esc(f.fam.charAt(0).toUpperCase() + f.fam.slice(1).toLowerCase())}</div>
+        <div class="donut-wrap">${donut(f.items, 150)}${legend(f.items, tot)}</div></div>`; }).join("")}
     </section>`;
 
   // Fiche par attaque : play pur puis le même play selon la défense (camembert + comparaison)
@@ -1324,8 +1331,14 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
     }
     const usable = inst.labels.filter(l => !isSportscodeResult(l) && !exclL.has(l.text.toLowerCase()) && !ignG.has(groupOf(l)));
     const defining = [...new Map(usable.filter(l => !defG.has(groupOf(l))).map(l => [l.text.toLowerCase(), l])).values()];
-    if (defining.length === 0) return;
-    const defs = [...new Map(usable.filter(l => defG.has(groupOf(l))).map(l => [l.text.toLowerCase(), l.text])).values()];
+    if (defining.length === 0) {
+      // Possession qu'aucun libellé de système ne décrit (ex. seulement une défense adverse) : pas
+      // d'attaque à créer, et les résultats seuls qui suivent ne doivent pas se rattacher à une
+      // autre attaque plus ancienne.
+      lastGroup = null; lastDefKeys = []; lastPlaceholder = false;
+      return;
+    }
+    const defs = [...new Map(usable.filter(l => defG.has(groupOf(l))).map(l => [groupOf(l) + "|" + l.text.toLowerCase(), { text: l.text, group: l.group || "Libellés" }])).values()];
     // L'ordre compte à l'intérieur d'un groupe (ex. ENTREE : Iverson puis Diamand ≠ Diamand
     // puis Iverson, c'est le déroulé du système) ; l'ordre ENTRE groupes est normalisé.
     const byGroup = new Map();
@@ -1336,14 +1349,17 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
     lastGroup = g;
     // Pas de résultat = perte de balle : possession jouée, 0 point (sauf si un résultat seul suit,
     // typiquement des lancers francs, qui prend alors la place de ce 0).
-    const res = inst.labels.find(isSportscodeResult);
-    const value = res ? parseInt(res.text.replace("+", ""), 10) : 0;
+    // Premier résultat = résultat de la possession ; résultats suivants dans la même instance
+    // (ex. -2 puis rebond offensif et +3) = points en plus sur cette même possession.
+    const results = inst.labels.filter(isSportscodeResult).map(l => parseInt(l.text.replace("+", ""), 10));
+    const value = results.length ? results[0] : 0;
     g.xmlOutcomes.push(value);
-    lastPlaceholder = !res;
-    lastDefKeys = defs.map(d => d.toLowerCase());
+    results.slice(1).forEach(v => g.xmlBonus.push(v));
+    lastPlaceholder = results.length === 0;
+    lastDefKeys = defs.map(d => d.group.toLowerCase() + "|" + d.text.toLowerCase());
     defs.forEach(d => {
-      const k = d.toLowerCase(), e = g.defMap.get(k) || { label: d, outcomes: [], bonus: [] };
-      e.outcomes.push(value); g.defMap.set(k, e);
+      const k = d.group.toLowerCase() + "|" + d.text.toLowerCase(), e = g.defMap.get(k) || { label: d.text, group: d.group, outcomes: [], bonus: [] };
+      e.outcomes.push(value); results.slice(1).forEach(v => e.bonus.push(v)); g.defMap.set(k, e);
     });
     groups.set(key, g);
   });
@@ -1354,13 +1370,20 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
 
 // Séquences de DÉFENSE de l'équipe scoutée (code DEFENSE) : leurs libellés (écrans, écrans non
 // porteur, post up, intention adverse...) alimentent les camemberts "Défense de l'équipe".
-function collectSportscodeDefense(instances, ignoredGroups = [], excludedKeys = []) {
+function collectSportscodeDefense(instances, ignoredGroups = [], excludedKeys = [], keepGroups = null) {
   const ign = new Set(ignoredGroups.map(g => g.toLowerCase())), exl = new Set(excludedKeys);
+  const keep = keepGroups ? new Set(keepGroups.map(g => g.toLowerCase())) : null;
   return instances.filter(i => /^def/i.test(i.code))
     .map(i => i.labels
-      .filter(l => !isSportscodeResult(l) && !ign.has((l.group || "Libellés").toLowerCase()) && !exl.has(l.text.toLowerCase()))
+      .filter(l => {
+        const g = (l.group || "Libellés").toLowerCase();
+        if (isSportscodeResult(l) || ign.has(g) || exl.has(l.text.toLowerCase())) return false;
+        // L'intention adverse est toujours gardée (elle sert de clé de lecture) ; le reste est limité
+        // aux groupes choisis pour les camemberts (écrans, écrans non porteur, post up...).
+        return !keep || keep.has(g) || /intention/i.test(g);
+      })
       .map(l => ({ group: l.group || "Libellés", text: l.text })))
-    .filter(ls => ls.length > 0);
+    .filter(ls => ls.some(l => !/intention/i.test(l.group)));
 }
 
 // Rentabilité d'une attaque face à UNE défense (entrée de byDefense) : même calcul que attackStats.
@@ -10875,11 +10898,15 @@ function CoachingProBoost({ session }) {
                 // déduit du nom (DEF → défense adverse, joueur/player → ignoré).
                 ...(() => {
                   let saved = {};
-                  try { saved = JSON.parse(localStorage.getItem("cpb_vs_group_roles") || "{}"); } catch {}
+                  try { saved = JSON.parse(localStorage.getItem("cpb_vs_group_roles_v2") || "{}"); } catch {}
                   const names = [...new Set([...labelCounts.values()].map(l => l.group || "Libellés"))];
-                  const roleOf = (g) => saved[g.toLowerCase()] || (/joueur|player|nom\b/i.test(g) ? "ignored" : /def/i.test(g) ? "defense" : "attack");
-                  return { defenseGroups: names.filter(g => roleOf(g) === "defense"), ignoredGroups: names.filter(g => roleOf(g) === "ignored") };
+                  // Dans une ATTAQUE, les écrans / écrans non porteur / défense collective sont la défense
+                  // ADVERSE rencontrée ; joueurs et marqueurs de montage ne définissent pas une attaque.
+                  const autoRole = (g) => /joueur|player|nom\b|montage/i.test(g) ? "ignored" : /def|[eé]cran|porteur|post ?up/i.test(g) ? "defense" : "attack";
+                  const roleOf = (g) => saved[g.toLowerCase()] || autoRole(g);
+                  return { defenseGroups: names.filter(g => roleOf(g) === "defense"), ignoredGroups: names.filter(g => roleOf(g) === "ignored"), autoRoles: Object.fromEntries(names.map(g => [g.toLowerCase(), autoRole(g)])) };
                 })(),
+                defensePie: [...new Set(instances.filter(i => /^def/i.test(i.code)).flatMap(i => i.labels.map(l => l.group || "Libellés")))].filter(g => /[eé]cran|porteur|post ?up/i.test(g)),
                 excluded: [], excludedCodes: hasAtt ? codes.filter(c => !/att/i.test(c.code)).map(c => c.code) : [],
               });
             } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
@@ -10890,13 +10917,18 @@ function CoachingProBoost({ session }) {
             // Mémorise le rôle choisi pour chaque groupe (joueurs ignorés, défense adverse...) : les
             // imports suivants repartent de ces choix sans avoir à tout recocher.
             try {
-              const roles = {};
+              // On ne retient que les choix qui s'écartent du réglage automatique : un défaut qui évolue
+              // continue ainsi de s'appliquer aux groupes que tu n'as jamais touchés.
+              const roles = {}, auto = vsImportPreview.autoRoles || {};
               [...new Set(vsImportPreview.labels.map(l => l.group || "Libellés"))].forEach(g => {
-                roles[g.toLowerCase()] = vsImportPreview.ignoredGroups.includes(g) ? "ignored" : vsImportPreview.defenseGroups.includes(g) ? "defense" : "attack";
+                const role = vsImportPreview.ignoredGroups.includes(g) ? "ignored" : vsImportPreview.defenseGroups.includes(g) ? "defense" : "attack";
+                if (role !== auto[g.toLowerCase()]) roles[g.toLowerCase()] = role;
               });
-              localStorage.setItem("cpb_vs_group_roles", JSON.stringify({ ...JSON.parse(localStorage.getItem("cpb_vs_group_roles") || "{}"), ...roles }));
+              const prevRoles = JSON.parse(localStorage.getItem("cpb_vs_group_roles_v2") || "{}");
+              [...new Set(vsImportPreview.labels.map(l => (l.group || "Libellés").toLowerCase()))].forEach(k => delete prevRoles[k]);
+              localStorage.setItem("cpb_vs_group_roles_v2", JSON.stringify({ ...prevRoles, ...roles }));
             } catch {}
-            updateActiveVs({ defenseInstances: collectSportscodeDefense(vsImportPreview.instances, vsImportPreview.ignoredGroups, vsImportPreview.excluded), attacks: groups.map(g => ({ id: prev.get(g.key)?.id || uid(), key: g.key, labels: g.labels, count: g.count, xmlOutcomes: g.xmlOutcomes, xmlBonus: g.xmlBonus, byDefense: g.byDefense, outcomes: prev.get(g.key)?.outcomes || [] })) });
+            updateActiveVs({ defenseInstances: collectSportscodeDefense(vsImportPreview.instances, vsImportPreview.ignoredGroups, vsImportPreview.excluded, vsImportPreview.defensePie), attacks: groups.map(g => ({ id: prev.get(g.key)?.id || uid(), key: g.key, labels: g.labels, count: g.count, xmlOutcomes: g.xmlOutcomes, xmlBonus: g.xmlBonus, byDefense: g.byDefense, outcomes: prev.get(g.key)?.outcomes || [] })) });
             toast?.(`✓ ${groups.length} attaque${groups.length > 1 ? "s" : ""} importée${groups.length > 1 ? "s" : ""}`);
             setVsImportPreview(null);
           };
@@ -11228,8 +11260,12 @@ function CoachingProBoost({ session }) {
                     return [...m.values()].sort((a, b) => b.count - a.count);
                   })();
                   const labelGroups = [...new Set(liveLabels.map(l => l.group || "Libellés"))];
-                  const defInst = collectSportscodeDefense(pv.instances, pv.ignoredGroups, pv.excluded);
+                  const defInst = collectSportscodeDefense(pv.instances, pv.ignoredGroups, pv.excluded, pv.defensePie);
                   const defGroupNames = [...new Set(defInst.flatMap(ls => ls.map(l => l.group)))].filter(g => !/intention/i.test(g));
+                  // Tous les groupes disponibles dans les séquences DEFENSE (candidats aux camemberts)
+                  const defAvail = [...new Set(pv.instances.filter(i => /^def/i.test(i.code)).flatMap(i => i.labels.filter(l => !isSportscodeResult(l)).map(l => l.group || "Libellés")))]
+                    .filter(g => !/intention/i.test(g) && !pv.ignoredGroups.includes(g));
+                  const toggleDefPie = (g) => setVsImportPreview(x => ({ ...x, defensePie: x.defensePie.includes(g) ? x.defensePie.filter(y => y !== g) : [...x.defensePie, g] }));
                   return (
                     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setVsImportPreview(null)}>
                       <div className="bg-white rounded-2xl w-full max-w-lg max-h-[88vh] flex flex-col" onClick={e => e.stopPropagation()}>
@@ -11274,6 +11310,18 @@ function CoachingProBoost({ session }) {
                               </div>
                             </div>
                           ))}
+                          {defAvail.length > 0 && (
+                            <div className="mt-4">
+                              <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold mb-1.5">Défense de l'équipe — groupes à montrer en camembert</div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {defAvail.map(g => {
+                                  const on = pv.defensePie.includes(g);
+                                  return <button key={g} onClick={() => toggleDefPie(g)}
+                                    className={`px-2.5 py-1 rounded-full text-xs font-medium border ${on ? "border-[#22c55e] bg-[#22c55e] text-white" : "border-[#1B2A4A]/15 text-[#1B2A4A]/40"}`}>{g}</button>;
+                                })}
+                              </div>
+                            </div>
+                          )}
                           <div className="text-[11px] uppercase tracking-wide text-[#1B2A4A]/40 font-semibold mt-4 mb-1.5">Aperçu des attaques</div>
                           <div className="space-y-1">
                             {groups.slice(0, 10).map(g => (
