@@ -986,7 +986,7 @@ function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
 // vues, notes libres, et le classement des systèmes avec leur rentabilité (même mécanique
 // que buildMatchReportHtml, sans le tableau de score qui n'a pas de sens hors match réel).
 // Repère de version affiché en bas de l'export (à faire évoluer à chaque refonte du rapport).
-const VIDEO_SCOUT_REPORT_VERSION = "2026-10-06-c";
+const VIDEO_SCOUT_REPORT_VERSION = "2026-10-06-d";
 function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const dateStr = session.date ? new Date(session.date).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
@@ -1034,6 +1034,9 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   const totalPoints = atkStats.reduce((s, x) => s + x.st.points, 0);
   const totalResolved = atkStats.reduce((s, x) => s + x.st.resolved, 0);
   const globalPpp = totalResolved ? totalPoints / totalResolved : null;
+  // Part des possessions taguées sans résultat (= pertes de balle), pour le contrôle avec le box score.
+  const totalZero = attacks.reduce((s, a) => s + [...(a.xmlOutcomes || []), ...(a.outcomes || [])].slice(0, a.count).filter(v => v === 0).length, 0);
+  const boxHtml = boxScoreReportHtml(session.boxScore, session.opponent, { ppp: globalPpp, tovRate: totalResolved ? totalZero / totalResolved : null });
 
   // Défenses rencontrées, toutes attaques confondues
   // Défenses adverses rencontrées, par famille (ÉCRANS, DÉFENSE COLLECTIVE, ÉCRANS NON PORTEUR...)
@@ -1326,6 +1329,17 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   .hint{font-size:12px;color:#1B2A4A80;margin:-8px 0 8px}
   .more{font-size:12px;color:#1B2A4A80;margin-top:8px}
   .notes-text{font-size:13.5px;line-height:1.65}
+  .bs-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+  .bs-kpi{background:#1B2A4A08;border-radius:10px;padding:10px 12px}
+  .bs-kpi b{display:block;font-family:'Oswald',sans-serif;font-size:21px;line-height:1.1}
+  .bs-kpi span{display:block;font-size:10px;color:#1B2A4A80;text-transform:uppercase;letter-spacing:.4px;margin-top:3px}
+  .bs-ins{list-style:none;display:flex;flex-direction:column;gap:7px;margin:4px 0 14px}
+  .bs-ins li{font-size:13px;line-height:1.5;padding-left:16px;position:relative}
+  .bs-ins li:before{content:"";position:absolute;left:0;top:7px;width:7px;height:7px;border-radius:50%;background:#FF6B35}
+  .bs-table{overflow-x:auto}
+  .bs-res{display:inline-block;width:18px;height:18px;line-height:18px;border-radius:5px;font-size:10px;font-weight:700;color:#fff;background:#64748b;text-align:center}
+  .bs-w{background:#22c55e}.bs-l{background:#ef4444}
+  @media (max-width:600px){.bs-kpis{grid-template-columns:repeat(2,1fr)}}
   @media print{body{background:#fff;padding:0}.card{box-shadow:none;border:1px solid #1B2A4A14}.hero{border-radius:12px}}
 </style>
 </head>
@@ -1339,6 +1353,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
       ${kpis}
     </header>
     ${notesHtml}
+    ${boxHtml}
     ${rankingHtml}
     ${entriesHtml}
     ${defOverviewHtml}
@@ -1351,6 +1366,155 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   </div>
 </body>
 </html>`;
+}
+
+// Box score d'équipe (fichier Excel .xlsx exporté par un site de stats : une ligne par match,
+// colonnes Date / Opponent / Score / Possessions / Points / Field goals... ). Un .xlsx est un ZIP
+// de fichiers XML : lu avec JSZip (déjà utilisé pour l'export Canva), sans librairie en plus.
+function xlsxSheetRows(sheetXml, sharedStrings = []) {
+  const dec = (s) => String(s).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n)).replace(/&amp;/g, "&");
+  const colIdx = (ref) => { const letters = (ref.match(/^[A-Z]+/) || ["A"])[0]; let n = 0; for (const ch of letters) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
+  const rows = [];
+  (sheetXml.match(/<row\b[^>]*>[\s\S]*?<\/row>/g) || []).forEach(rowXml => {
+    const row = [];
+    (rowXml.match(/<c\b[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g) || []).forEach(cell => {
+      const attrs = cell.match(/^<c\b([^>]*?)\/?>/)[1];
+      const ref = (attrs.match(/\br="([A-Z]+\d+)"/) || [])[1];
+      const type = (attrs.match(/\bt="([^"]+)"/) || [])[1];
+      const v = (cell.match(/<v>([\s\S]*?)<\/v>/) || [])[1];
+      let val = null;
+      if (type === "s") val = v !== undefined ? (sharedStrings[+v] ?? "") : null;
+      else if (type === "inlineStr") val = (cell.match(/<t\b[^>]*>([\s\S]*?)<\/t>/g) || []).map(t => dec(t.replace(/<[^>]+>/g, ""))).join("");
+      else if (v !== undefined) val = type === "str" || type === "e" ? dec(v) : type === "b" ? v === "1" : (isNaN(+v) ? dec(v) : +v);
+      row[ref ? colIdx(ref) : row.length] = val;
+    });
+    rows.push(Array.from(row, x => x ?? null));
+  });
+  return rows;
+}
+async function readXlsxFirstSheet(arrayBuffer) {
+  const zip = await JSZip.loadAsync(arrayBuffer);
+  const sheetName = Object.keys(zip.files).filter(n => /^xl\/worksheets\/sheet\d+\.xml$/.test(n)).sort((a, b) => parseInt(a.match(/\d+/)[0]) - parseInt(b.match(/\d+/)[0]))[0];
+  if (!sheetName) throw new Error("aucune feuille trouvée dans ce fichier (il faut un .xlsx)");
+  const ssFile = zip.file("xl/sharedStrings.xml");
+  const shared = ssFile ? ((await ssFile.async("string")).match(/<si\b[^>]*>[\s\S]*?<\/si>/g) || [])
+    .map(si => (si.match(/<t\b[^>]*>([\s\S]*?)<\/t>/g) || []).map(t => t.replace(/<[^>]+>/g, "")).join("")
+      .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&")) : [];
+  return xlsxSheetRows(await zip.file(sheetName).async("string"), shared);
+}
+// Lignes du tableur → matchs. Colonnes reconnues par leur intitulé (anglais ou français) ; les
+// lignes de moyenne/total sont écartées (on recalcule tout nous-mêmes).
+function parseBoxScoreRows(rows) {
+  const hIdx = rows.findIndex(r => r.some(c => /^(opponent|adversaire)$/i.test(String(c ?? "").trim())) && r.some(c => /point/i.test(String(c ?? ""))));
+  if (hIdx === -1) throw new Error("colonnes « Opponent » / « Points » introuvables");
+  const head = rows[hIdx].map(c => String(c ?? "").trim().toLowerCase());
+  const col = (...res) => head.findIndex(h => res.some(re => re.test(h)));
+  const C = {
+    date: col(/^date$/), opp: col(/^(opponent|adversaire)$/), score: col(/^score$/), poss: col(/^possessions?$/), pts: col(/^points?$/),
+    fgm: col(/^field goals made$/, /^tirs r[ée]ussis$/), fga: col(/^field goals attempted$/, /^tirs tent[ée]s$/),
+    fg3m: col(/^3-?pt.*made$/, /^3.*r[ée]ussis$/), fg3a: col(/^3-?pt.*attempted$/, /^3.*tent[ée]s$/),
+    ftm: col(/^free throws made$/, /^lf r[ée]ussis$/), fta: col(/^free throws attempted$/, /^lf tent[ée]s$/),
+    oreb: col(/^offensive rebounds$/, /^rebonds offensifs$/), dreb: col(/^defensive rebounds$/, /^rebonds d[ée]fensifs$/),
+    ast: col(/^assists$/, /^passes d[ée]cisives$/), stl: col(/^steals$/, /^interceptions$/), tov: col(/^turnovers$/, /^balles perdues$/),
+  };
+  const num = (r, k) => { if (C[k] === -1) return 0; const v = r[C[k]]; const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", ".")); return isNaN(n) ? 0 : n; };
+  const games = [];
+  rows.slice(hIdx + 1).forEach(r => {
+    const opp = String(r[C.opp] ?? "").trim();
+    if (!opp || /average|moyenne|total/i.test(opp)) return;
+    const g = { date: C.date === -1 ? "" : String(r[C.date] ?? ""), opponent: opp, score: C.score === -1 ? "" : String(r[C.score] ?? "") };
+    ["poss", "pts", "fgm", "fga", "fg3m", "fg3a", "ftm", "fta", "oreb", "dreb", "ast", "stl", "tov"].forEach(k => { g[k] = num(r, k); });
+    // Score "87:79" : le côté qui vaut "Points" est celui de l'équipe, l'autre celui de l'adversaire.
+    const sc = g.score.match(/(\d+)\s*[:\-–]\s*(\d+)/);
+    if (sc) { const a = +sc[1], b = +sc[2]; g.oppPts = a === g.pts ? b : b === g.pts ? a : b; }
+    games.push(g);
+  });
+  if (!games.length) throw new Error("aucun match trouvé sous la ligne d'en-tête");
+  return games;
+}
+// Indicateurs (Four Factors offensifs) : possessions estimées = tirs tentés − rebonds offensifs
+// + 0,44 × lancers francs tentés + balles perdues (formule standard, plus fiable que la colonne
+// « Possessions » des fichiers exportés, qui ne compte pas toujours de la même façon).
+function boxScoreMetrics(g) {
+  const poss = g.fga - g.oreb + 0.44 * g.fta + g.tov;
+  return {
+    poss, ppp: poss > 0 ? g.pts / poss : null,
+    efg: g.fga ? (g.fgm + 0.5 * g.fg3m) / g.fga : null,
+    tovPct: poss > 0 ? g.tov / poss : null,
+    ftr: g.fga ? g.fta / g.fga : null,
+    threeRate: g.fga ? g.fg3a / g.fga : null,
+    threePct: g.fg3a ? g.fg3m / g.fg3a : null,
+    astRate: g.fgm ? g.ast / g.fgm : null,
+    oppPpp: poss > 0 && g.oppPts !== undefined ? g.oppPts / poss : null,
+    win: g.oppPts !== undefined ? g.pts > g.oppPts : null,
+  };
+}
+function boxScoreSummary(games) {
+  const sum = (k) => games.reduce((s, g) => s + (g[k] || 0), 0);
+  const tot = { pts: sum("pts"), fgm: sum("fgm"), fga: sum("fga"), fg3m: sum("fg3m"), fg3a: sum("fg3a"), ftm: sum("ftm"), fta: sum("fta"), oreb: sum("oreb"), dreb: sum("dreb"), ast: sum("ast"), stl: sum("stl"), tov: sum("tov") };
+  const withOpp = games.filter(g => g.oppPts !== undefined);
+  if (withOpp.length === games.length) tot.oppPts = sum("oppPts");
+  const m = boxScoreMetrics(tot), n = games.length;
+  const perGame = games.map(g => ({ g, m: boxScoreMetrics(g) }));
+  const wins = perGame.filter(x => x.m.win === true), losses = perGame.filter(x => x.m.win === false);
+  const avg = (list, f) => list.length ? list.reduce((s, x) => s + f(x), 0) / list.length : null;
+  return {
+    n, perGame, wins: wins.length, losses: losses.length, ...m,
+    pace: m.poss / n, ptsPerGame: tot.pts / n, oppPtsPerGame: tot.oppPts !== undefined ? tot.oppPts / n : null,
+    orebPerGame: tot.oreb / n, tovPerGame: tot.tov / n, astPerGame: tot.ast / n,
+    tovWins: avg(wins, x => x.g.tov), tovLosses: avg(losses, x => x.g.tov),
+    efgWins: avg(wins, x => x.m.efg), efgLosses: avg(losses, x => x.m.efg),
+  };
+}
+// Bloc "Profil statistique" de l'export : indicateurs, tableau par match, ce qui fait gagner/perdre
+// l'équipe, et le contrôle avec ce qui a été tagué en vidéo (rentabilité, part de pertes de balle).
+function boxScoreReportHtml(box, opponent, video = null) {
+  if (!box || !(box.games || []).length) return "";
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const S = boxScoreSummary(box.games);
+  const p = (x, d = 0) => x === null || x === undefined ? "—" : (x * 100).toFixed(d).replace(".", ",") + " %";
+  const f = (x, d = 2) => x === null || x === undefined ? "—" : x.toFixed(d).replace(".", ",");
+  const kpi = (v, l) => `<div class="bs-kpi"><b>${v}</b><span>${l}</span></div>`;
+  const insights = [];
+  if (S.threeRate !== null) insights.push(S.threeRate >= 0.42
+    ? `<b>Équipe de shooteurs</b> : ${p(S.threeRate)} de leurs tirs sont des 3 pts (${p(S.threePct, 1)} de réussite).`
+    : `${p(S.threeRate)} de leurs tirs sont des 3 pts (${p(S.threePct, 1)} de réussite).`);
+  if (S.astRate !== null && S.astRate >= 0.65) insights.push(`<b>Jeu collectif</b> : ${p(S.astRate)} de leurs paniers suivent une passe décisive (${f(S.astPerGame, 1)} passes déc. / match).`);
+  if (S.orebPerGame <= 8) insights.push(`<b>Peu de rebond offensif</b> (${f(S.orebPerGame, 1)} / match) : peu de secondes chances.`);
+  if (S.wins && S.losses && S.tovWins !== null && S.tovLosses !== null && S.tovLosses - S.tovWins >= 3)
+    insights.push(`<b>Les balles perdues décident</b> : ${f(S.tovWins, 1)} par match quand ils gagnent, ${f(S.tovLosses, 1)} quand ils perdent → mettre la pression sur le porteur.`);
+  if (S.wins && S.losses && S.efgWins !== null && S.efgLosses !== null && S.efgWins - S.efgLosses >= 0.05)
+    insights.push(`<b>Dépendants de leur adresse</b> : ${p(S.efgWins)} d'eFG% dans les victoires, ${p(S.efgLosses)} dans les défaites.`);
+  if (S.oppPtsPerGame !== null && S.oppPtsPerGame >= 85) insights.push(`<b>Défense perméable</b> : ${f(S.oppPtsPerGame, 1)} points encaissés par match.`);
+  const cmp = [];
+  if (video && video.ppp !== null && S.ppp !== null) cmp.push(`Rentabilité des attaques taguées en vidéo : <b>${f(video.ppp)}</b> pt/poss. contre <b>${f(S.ppp)}</b> sur les matchs du fichier${Math.abs(video.ppp - S.ppp) > 0.15 ? " — écart important : vérifier que toutes les possessions (lancers francs, contre-attaques) sont bien taguées." : "."}`);
+  if (video && video.tovRate !== null && S.tovPct !== null) cmp.push(`Possessions sans résultat (comptées comme pertes de balle) en vidéo : <b>${p(video.tovRate)}</b>, contre <b>${p(S.tovPct)}</b> de balles perdues dans les stats${Math.abs(video.tovRate - S.tovPct) > 0.06 ? " — écart important : des résultats manquent peut-être au tagging." : "."}`);
+  return `
+    <section class="card">
+      <h2><i></i>Profil statistique de ${esc(opponent)}</h2>
+      <p class="hint">${S.n} match${S.n > 1 ? "s" : ""}${S.wins + S.losses ? ` · ${S.wins} victoire${S.wins > 1 ? "s" : ""}, ${S.losses} défaite${S.losses > 1 ? "s" : ""}` : ""}${box.fileName ? ` · ${esc(box.fileName)}` : ""}</p>
+      <div class="bs-kpis">
+        ${kpi(f(S.ptsPerGame, 1), "pts marqués / match")}
+        ${S.oppPtsPerGame !== null ? kpi(f(S.oppPtsPerGame, 1), "pts encaissés / match") : ""}
+        ${kpi(f(S.pace, 1), "possessions / match")}
+        ${kpi(f(S.ppp), "pts / possession")}
+        ${kpi(p(S.efg), "eFG% (adresse)")}
+        ${kpi(p(S.tovPct), "balles perdues / poss.")}
+        ${kpi(p(S.ftr), "lancers / tirs")}
+        ${kpi(p(S.threeRate), "tirs à 3 pts")}
+      </div>
+      ${insights.length ? `<ul class="bs-ins">${insights.map(t => `<li>${t}</li>`).join("")}</ul>` : ""}
+      <div class="bs-table"><table>
+        <thead><tr><th>Match</th><th class="num">Score</th><th class="num">Pts/poss.</th><th class="num">eFG%</th><th class="num">3 pts</th><th class="num">Bal. perdues</th><th class="num">Reb. off.</th><th class="num">Passes déc.</th></tr></thead>
+        <tbody>${S.perGame.map(({ g, m }) => `
+          <tr><td class="tt">${esc(g.opponent)}${g.date ? `<div class="tf">${esc(g.date)}</div>` : ""}</td>
+          <td class="num"><span class="bs-res ${m.win === true ? "bs-w" : m.win === false ? "bs-l" : ""}">${m.win === true ? "V" : m.win === false ? "D" : ""}</span> ${esc(g.score)}</td>
+          <td class="num">${f(m.ppp)}</td><td class="num">${p(m.efg)}</td><td class="num">${g.fg3m}/${g.fg3a}</td>
+          <td class="num"><b>${g.tov}</b></td><td class="num">${g.oreb}</td><td class="num">${g.ast}</td></tr>`).join("")}</tbody>
+      </table></div>
+      ${cmp.length ? `<div class="sub-title">Contrôle avec la vidéo</div><ul class="bs-ins">${cmp.map(t => `<li>${t}</li>`).join("")}</ul>` : ""}
+      <p class="more">Possessions estimées (tirs tentés − rebonds off. + 0,44 × lancers tentés + balles perdues). eFG% : un panier à 3 pts compte pour 1,5.</p>
+    </section>`;
 }
 
 // Import d'un export XML de Sportscode. Structure lue (confirmée sur un export réel) :
@@ -11027,6 +11191,17 @@ function CoachingProBoost({ session }) {
             updateActiveVs({ defenses: next });
           };
 
+          // ── Box score d'équipe (Excel .xlsx) ────────────────────────────────────────
+          const handleBoxScoreFile = async (file) => {
+            if (!file) return;
+            try {
+              if (/\.xls$/i.test(file.name)) throw new Error("ancien format .xls : ouvre-le dans Excel / Numbers et enregistre-le en .xlsx");
+              const games = parseBoxScoreRows(await readXlsxFirstSheet(await file.arrayBuffer()));
+              updateActiveVs({ boxScore: { fileName: file.name, games, importedAt: new Date().toISOString() } });
+              cpbAlert?.(`${games.length} match${games.length > 1 ? "s" : ""} importé${games.length > 1 ? "s" : ""} — le profil statistique apparaît dans le récap.`);
+            } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
+          };
+
           // ── Attaques importées depuis un XML Sportscode ────────────────────────────
           const handleXmlFile = async (file) => {
             if (!file) return;
@@ -11371,6 +11546,49 @@ function CoachingProBoost({ session }) {
                   <textarea value={activeVs.notes || ""} onChange={e => updateActiveVs({ notes: e.target.value })}
                     placeholder="Joueurs clés, habitudes, consignes à donner à l'équipe..."
                     className="w-full h-24 border border-[#1B2A4A]/20 rounded-lg p-2 text-sm outline-none focus:border-[#FF6B35] resize-none bg-white/70" />
+                </div>
+
+                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
+                  <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold">Stats d'équipe (Excel)</div>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-semibold text-white px-3 py-1.5 rounded-md cursor-pointer" style={{ backgroundColor: "#16a34a" }}>
+                        📊 Importer un Excel
+                        <input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" className="hidden"
+                          onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; handleBoxScoreFile(f); }} />
+                      </label>
+                      {activeVs.boxScore && (
+                        <button onClick={async () => {
+                          const ok = await cpbAlert?.("Retirer les stats d'équipe de cette session ?", { confirm: true });
+                          if (ok) updateActiveVs({ boxScore: null });
+                        }} className="text-xs text-red-500 hover:underline">Retirer</button>
+                      )}
+                    </div>
+                  </div>
+                  {!activeVs.boxScore ? (
+                    <p className="text-xs text-[#1B2A4A]/40 italic">Box score de l'équipe (un match par ligne : score, tirs, balles perdues…) — ajoute un profil statistique au récap et le compare à la vidéo.</p>
+                  ) : (() => {
+                    const S = boxScoreSummary(activeVs.boxScore.games || []);
+                    const pc = (x) => x === null ? "—" : Math.round(x * 100) + " %";
+                    const nb = (x, d = 1) => x === null ? "—" : x.toFixed(d).replace(".", ",");
+                    return (
+                      <div className="mt-1">
+                        <p className="text-xs text-[#1B2A4A]/50 mb-2">{activeVs.boxScore.fileName} · {S.n} match{S.n > 1 ? "s" : ""}{S.wins + S.losses ? ` · ${S.wins}V ${S.losses}D` : ""}</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                          {[[nb(S.ptsPerGame), "pts / match"], [nb(S.ppp, 2), "pts / poss."], [pc(S.efg), "eFG%"], [pc(S.tovPct), "pertes / poss."]].map(([v, l]) => (
+                            <div key={l} className="rounded-lg bg-[#1B2A4A]/5 px-3 py-2"><div className="font-bold text-[#1B2A4A]">{v}</div><div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/50">{l}</div></div>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {S.perGame.map(({ g, m }, i) => (
+                            <span key={i} className={`text-xs px-2 py-1 rounded-full ${m.win === true ? "bg-green-100 text-green-800" : m.win === false ? "bg-red-100 text-red-700" : "bg-[#1B2A4A]/8 text-[#1B2A4A]"}`}>
+                              {g.opponent} {g.score} · {g.tov} pertes
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
