@@ -1108,6 +1108,14 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
         </div>`).join("")}
     </section>`;
 
+  const defOverviewHtml = defItems.length === 0 ? "" : `
+    <section class="card">
+      <h2><i></i>Attaque de ${esc(session.opponent)} sur défenses adverses</h2>
+      ${familyItems.map(f => { const tot = f.items.reduce((s, i) => s + i.value, 0); return `
+        <div class="def-block"><div class="sub-title">${esc(f.fam.charAt(0).toUpperCase() + f.fam.slice(1).toLowerCase())}</div>
+        <div class="donut-wrap">${donut(f.items, 150)}${legend(f.items, tot)}</div></div>`; }).join("")}
+    </section>`;
+
   // Fiche par attaque : play pur puis le même play selon la défense (camembert + comparaison)
   const detailHtml = atkStats.filter(x => (x.a.byDefense || []).length > 0).slice(0, 8).map(({ a, st }) => {
     const items = [...a.byDefense].sort((x, y) => y.outcomes.length - x.outcomes.length).map((d, i) => {
