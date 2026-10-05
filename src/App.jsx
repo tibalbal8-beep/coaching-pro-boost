@@ -1018,7 +1018,12 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   }).join("");
 
   // ── Attaques importées de Sportscode ───────────────────────────────────────
-  const attacks = mergeAttacksForDisplay(session.attacks || []).sort((a, b) => b.count - a.count);
+  const allMerged = mergeAttacksForDisplay(session.attacks || []);
+  // Une attaque décrite uniquement par une intention (ex. SIDE41) n'est pas un système : écartée.
+  const isIntentionOnly = (a) => a.labels.every(l => typeof l !== "string" && /intention/i.test(l.group || ""));
+  const attacks = allMerged.filter(a => !isIntentionOnly(a)).sort((a, b) => b.count - a.count);
+  const skippedIntentionOnly = allMerged.filter(isIntentionOnly).reduce((n, a) => n + a.count, 0);
+  const entryCount = (a) => new Set(a.labels.filter(l => typeof l !== "string" && /entr[ée]e/i.test(l.group || "")).map(l => l.text.toLowerCase())).size;
   const totalPoss = attacks.reduce((s, a) => s + a.count, 0);
   const atkStats = attacks.map(a => ({ a, st: attackStats(a) }));
   const totalPoints = atkStats.reduce((s, x) => s + x.st.points, 0);
@@ -1050,12 +1055,14 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
 
   // Classement : les attaques jouées plusieurs fois (ou, à défaut, les plus jouées) avec barres ;
   // toutes les autres sont listées en dessous pour qu'aucune attaque taguée ne disparaisse.
-  const multi = atkStats.filter(x => x.a.count >= 2);
+  // Priorité aux attaques à plusieurs entrées (les vrais enchaînements de système).
+  const multi = atkStats.filter(x => entryCount(x.a) >= 2).sort((x, y) => y.a.count - x.a.count || entryCount(y.a) - entryCount(x.a));
   const shownMain = (multi.length ? multi : atkStats).slice(0, 15);
   const restRows = atkStats.filter(x => !shownMain.includes(x));
   const rankingHtml = attacks.length === 0 ? "" : `
     <section class="card">
       <h2><i></i>Classement des attaques les plus jouées</h2>
+      ${multi.length ? `<p class="hint">Attaques à plusieurs entrées en priorité</p>` : ""}
       ${shownMain.map(({ a, st }, i) => `
         <div class="rank-row">
           <div class="rank-n ${i < 3 ? "rank-top" : ""}">${i + 1}</div>
@@ -1071,6 +1078,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
         ${restRows.slice(0, 60).map(({ a, st }) => `
           <div class="mini-row"><div class="chips">${chips(a)}</div><span class="mini-count">${a.count}×</span>${pppBadge(st.ppp)}</div>`).join("")}
         ${restRows.length > 60 ? `<p class="more">+ ${restRows.length - 60} autres</p>` : ""}` : ""}
+      ${skippedIntentionOnly > 0 ? `<p class="more">${skippedIntentionOnly} possession${skippedIntentionOnly > 1 ? "s" : ""} décrite${skippedIntentionOnly > 1 ? "s" : ""} seulement par une intention (ex. SIDE41), non listée${skippedIntentionOnly > 1 ? "s" : ""}.</p>` : ""}
     </section>`;
 
   // Entrées prises une à une : chaque entrée taguée apparaît, quelle que soit la combinaison dans
@@ -1271,6 +1279,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null) {
   .rk{font-family:'Oswald',sans-serif;font-weight:700;color:#FF6B35;width:26px}
   .tt{font-weight:600}
   .tf{font-size:11px;color:#1B2A4A60;margin-top:2px;font-weight:400}
+  .hint{font-size:12px;color:#1B2A4A80;margin:-8px 0 8px}
   .more{font-size:12px;color:#1B2A4A80;margin-top:8px}
   .notes-text{font-size:13.5px;line-height:1.65}
   @media print{body{background:#fff;padding:0}.card{box-shadow:none;border:1px solid #1B2A4A14}.hero{border-radius:12px}}
@@ -1312,7 +1321,8 @@ function parseSportscodeXml(xmlText) {
   const nodes = [...doc.getElementsByTagName("instance")];
   if (nodes.length === 0) throw new Error("Aucune instance trouvée dans ce XML (balise <instance> absente).");
   const txt = (el) => (el?.textContent || "").trim().replace(/\s+/g, " ");
-  const all = nodes.map(n => ({
+  const all = nodes.map((n, pos) => ({
+    pos, // position dans le fichier : permet de savoir si deux instances se suivent vraiment
     code: txt(n.getElementsByTagName("code")[0]),
     labels: [...n.getElementsByTagName("label")]
       .map(l => ({ group: txt(l.getElementsByTagName("group")[0]), text: txt(l.getElementsByTagName("text")[0]) || txt(l) }))
@@ -1337,13 +1347,28 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
   let lastGroup = null; // attaque de la possession précédente, pour rattacher les résultats "seuls"
   let lastDefKeys = []; // défenses de cette possession précédente
   let lastPlaceholder = false; // la possession précédente est-elle comptée à 0 faute de résultat (perte de balle) ?
-  instances.forEach(inst => {
+  let lastPos = -10; // position (dans le fichier) de la dernière instance prise en compte
+  // Une attaque "touche" (SLOB / BLOB) sans résultat suivie IMMÉDIATEMENT d'une autre attaque est
+  // la même action : la remise en jeu et l'attaque qui en découle ne comptent qu'une possession.
+  const isTouch = (x) => x.labels.some(l => /touche/i.test(l.group || "") || /^(slob|blob)$/i.test(l.text));
+  const list = [];
+  for (let i = 0; i < instances.length; i++) {
+    const cur = instances[i], nxt = instances[i + 1];
+    if (nxt && !exclC.has(cur.code.toLowerCase()) && cur.code === nxt.code && nxt.pos === cur.pos + 1
+        && isTouch(cur) && !isTouch(nxt) && !cur.labels.some(isSportscodeResult) && !nxt.labels.every(isSportscodeResult)) {
+      list.push({ ...nxt, labels: [...cur.labels, ...nxt.labels] }); i++; continue;
+    }
+    list.push(cur);
+  }
+  list.forEach(inst => {
     if (exclC.has(inst.code.toLowerCase())) return;
     // Instance qui ne porte QUE des résultats (+1, +2, -1...) : suite de l'action précédente
     // (lancer franc, and-one...), jamais une possession de plus. Si la possession précédente
     // était comptée à 0 faute de résultat, c'est son résultat ; sinon ce sont des points en plus.
     if (inst.labels.every(isSportscodeResult)) {
-      if (lastGroup) inst.labels.forEach(l => {
+      // Rattaché seulement s'il suit réellement la possession précédente dans le fichier (une
+      // défense ou une instance non taguée entre les deux casse le lien).
+      if (lastGroup && inst.pos === lastPos + 1) { lastPos = inst.pos; inst.labels.forEach(l => {
         const v = parseInt(l.text.replace("+", ""), 10);
         if (lastPlaceholder) {
           lastGroup.xmlOutcomes[lastGroup.xmlOutcomes.length - 1] = v;
@@ -1353,7 +1378,7 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
           lastGroup.xmlBonus.push(v);
           lastDefKeys.forEach(k => lastGroup.defMap.get(k).bonus.push(v));
         }
-      });
+      }); }
       return;
     }
     const usable = inst.labels.filter(l => !isSportscodeResult(l) && !exclL.has(l.text.toLowerCase()) && !ignG.has(groupOf(l)));
@@ -1362,7 +1387,7 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
       // Possession qu'aucun libellé de système ne décrit (ex. seulement une défense adverse) : pas
       // d'attaque à créer, et les résultats seuls qui suivent ne doivent pas se rattacher à une
       // autre attaque plus ancienne.
-      lastGroup = null; lastDefKeys = []; lastPlaceholder = false;
+      lastGroup = null; lastDefKeys = []; lastPlaceholder = false; lastPos = inst.pos;
       return;
     }
     const defs = [...new Map(usable.filter(l => defG.has(groupOf(l))).map(l => [groupOf(l) + "|" + l.text.toLowerCase(), { text: l.text, group: l.group || "Libellés" }])).values()];
@@ -1373,7 +1398,7 @@ function groupSportscodeInstances(instances, excludedKeys = [], excludedCodes = 
     const key = [...byGroup.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([g, t]) => g + ":" + t.join(">")).join("|");
     const g = groups.get(key) || { key, labels: defining, count: 0, xmlOutcomes: [], xmlBonus: [], defMap: new Map() };
     g.count++;
-    lastGroup = g;
+    lastGroup = g; lastPos = inst.pos;
     // Pas de résultat = perte de balle : possession jouée, 0 point (sauf si un résultat seul suit,
     // typiquement des lancers francs, qui prend alors la place de ce 0).
     // Premier résultat = résultat de la possession ; résultats suivants dans la même instance
