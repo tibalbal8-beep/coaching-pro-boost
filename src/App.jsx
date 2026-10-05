@@ -8129,8 +8129,15 @@ function CoachingProBoost({ session }) {
       downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `stats-playbook-${slugifyForFile(p.title)}.html`);
     }
     else if (p.kind === "videoscout") {
-      const html = buildVideoScoutReportHtml(p.session, p.rows, p.typeOrder, logo);
-      downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `scouting-${slugifyForFile(p.session.opponent)}-${p.session.date || ""}.html`);
+      // Une erreur ici ne doit jamais rester silencieuse (c'est ce qui rendait le bouton "muet").
+      try {
+        const html = buildVideoScoutReportHtml(p.session, p.rows, p.typeOrder, logo);
+        downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `scouting-${slugifyForFile(p.session.opponent)}-${p.session.date || ""}.html`);
+        toast?.("✓ Récap exporté");
+      } catch (e) {
+        console.error("Export scouting vidéo", e);
+        cpbAlert?.("L'export a échoué : " + (e?.message || e) + " — envoie-moi ce message pour que je corrige.");
+      }
     }
   };
 
@@ -11111,7 +11118,8 @@ function CoachingProBoost({ session }) {
                       openMisses: openMissesOf(activeVs.tally?.[p.id]),
                       contestedMisses: contestedMissesOf(activeVs.tally?.[p.id]),
                     }));
-                    exportVideoScoutReport(activeVs, rows, playTypes);
+                    try { exportVideoScoutReport(activeVs, rows, playTypes); }
+                    catch (e) { console.error("Export scouting vidéo", e); cpbAlert?.("Impossible de préparer l'export : " + (e?.message || e)); }
                   }} className="text-sm font-semibold text-white px-4 py-2 rounded-md" style={{ backgroundColor: "#2563EB" }}>📤 Exporter le récap</button>
                 </div>
                 <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>{activeVs.opponent}</h2>
