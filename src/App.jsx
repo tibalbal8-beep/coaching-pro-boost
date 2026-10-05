@@ -1487,11 +1487,11 @@ function parseBoxScoreRows(rows) {
   const col = (...res) => head.findIndex(h => res.some(re => re.test(h)));
   const C = {
     date: col(/^date$/), opp: col(/^(opponent|adversaire)$/), score: col(/^score$/), poss: col(/^possessions?$/), pts: col(/^points?$/),
-    fgm: col(/^field goals made$/, /^tirs r[ée]ussis$/), fga: col(/^field goals attempted$/, /^tirs tent[ée]s$/),
-    fg3m: col(/^3-?pt.*made$/, /^3.*r[ée]ussis$/), fg3a: col(/^3-?pt.*attempted$/, /^3.*tent[ée]s$/),
-    ftm: col(/^free throws made$/, /^lf r[ée]ussis$/), fta: col(/^free throws attempted$/, /^lf tent[ée]s$/),
-    oreb: col(/^offensive rebounds$/, /^rebonds offensifs$/), dreb: col(/^defensive rebounds$/, /^rebonds d[ée]fensifs$/),
-    ast: col(/^assists$/, /^passes d[ée]cisives$/), stl: col(/^steals$/, /^interceptions$/), tov: col(/^turnovers$/, /^balles perdues$/),
+    fgm: col(/^field goals made$/, /^tirs r[ée]ussis$/, /^tirs? de champ (marqu|r[ée]ussi)/), fga: col(/^field goals attempted$/, /^tirs tent[ée]s$/, /^tirs? de champ tent/),
+    fg3m: col(/^3-?pt.*made$/, /^3.*r[ée]ussis$/, /^tirs? [àa] 3 ?pts? (marqu|r[ée]ussi)/), fg3a: col(/^3-?pt.*attempted$/, /^3.*tent[ée]s$/, /^tirs? [àa] 3 ?pts? tent/),
+    ftm: col(/^free throws made$/, /^lf r[ée]ussis$/, /^lancers? francs? (marqu|r[ée]ussi)/), fta: col(/^free throws attempted$/, /^lf tent[ée]s$/, /^lancers? francs? tent/),
+    oreb: col(/^offensive rebounds$/, /^rebonds? offensifs?$/), dreb: col(/^defensive rebounds$/, /^rebonds? d[ée]fensifs?$/),
+    ast: col(/^assists$/, /^passes? d[ée]cisives?$/), stl: col(/^steals?$/, /^interceptions?$/), tov: col(/^turnovers?$/, /^balles? perdues?$/, /^pertes? de balle/),
     ucm: col(/^uncontested field goals made$/), uca: col(/^uncontested field goals$/),
     ctm: col(/^contested field goals made$/), cta: col(/^contested field goals$/), pto: col(/^points off turnovers/),
   };
@@ -1683,12 +1683,15 @@ function parseLineupRows(rows) {
   const hIdx = rows.findIndex(r => r.some(c => /^(lineups?|cinq|composition)$/i.test(String(c ?? "").trim())));
   if (hIdx === -1) throw new Error("colonne « Lineup » introuvable");
   const head = rows[hIdx].map(c => String(c ?? "").trim().toLowerCase());
-  const col = (re) => head.findIndex(h => re.test(h));
+  const col = (...res) => head.findIndex(h => res.some(re => re.test(h)));
+  // Intitulés anglais ou français (export « Les cinq majeurs » du site de stats).
   const C = {
     lineup: col(/^(lineups?|cinq|composition)$/), min: col(/^minutes?$/), pm: col(/^plus.?minus$|^\+\/-$/), possFile: col(/^possessions?$/), pts: col(/^points?$/),
-    fga: col(/^field goals attempted$/), fgm: col(/^field goals made$/), fg3a: col(/^3-?pt.*attempted$/), fg3m: col(/^3-?pt.*made$/),
-    fta: col(/^free throws attempted$/), ftm: col(/^free throws made$/), oreb: col(/^offensive rebounds$/), dreb: col(/^defensive rebounds$/),
-    ast: col(/^assists$/), stl: col(/^steals$/), tov: col(/^turnovers$/), pf: col(/^fouls$/),
+    fga: col(/^field goals attempted$/, /^tirs? de champ tent[ée]s?$/), fgm: col(/^field goals made$/, /^tirs? de champ (marqu|r[ée]ussi)/),
+    fg3a: col(/^3-?pt.*attempted$/, /^tirs? [àa] 3 ?pts? tent/), fg3m: col(/^3-?pt.*made$/, /^tirs? [àa] 3 ?pts? (marqu|r[ée]ussi)/),
+    fta: col(/^free throws attempted$/, /^lancers? francs? tent/), ftm: col(/^free throws made$/, /^lancers? francs? (marqu|r[ée]ussi)/),
+    oreb: col(/^offensive rebounds$/, /^rebonds? offensifs?$/), dreb: col(/^defensive rebounds$/, /^rebonds? d[ée]fensifs?$/),
+    ast: col(/^assists$/, /^passes? d[ée]cisives?$/), stl: col(/^steals?$/, /^interceptions?$/), tov: col(/^turnovers?$/, /^balles? perdues?$/, /^pertes? de balle/), pf: col(/^fouls$/, /^fautes?$/),
   };
   const teamCol = head.findIndex((h, i) => !h && i > C.lineup);
   const minutesOf = (v) => {
