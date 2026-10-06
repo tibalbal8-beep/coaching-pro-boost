@@ -1112,6 +1112,12 @@ const SCOUT_REPORT_CSS = `
   .pl-k{background:#1B2A4A0d;border-radius:8px;padding:5px 2px;text-align:center}.pl-k b{display:block;font-size:14px;color:#1B2A4A}.pl-k span{font-size:9.5px;text-transform:uppercase;color:#1B2A4A80}
   .pl-shots{font-size:12px;color:#1B2A4Acc;margin-bottom:6px}
   .pl-ins{margin:4px 0;padding-left:16px;font-size:12.5px;line-height:1.4}.pl-good li::marker{color:#16a34a}.pl-watch li::marker{color:#dc2626}
+  .pl-co{display:flex;flex-direction:column;gap:1px;border-left:5px solid;border-radius:8px;padding:6px 9px;margin:6px 0;font-size:12.5px;line-height:1.35}
+  .pl-co b{font-size:12.5px}.pl-co span{color:#1B2A4Acc}
+  .pl-co-red{background:#ef444418;border-color:#dc2626}.pl-co-red b{color:#b91c1c}
+  .pl-co-blue{background:#2563EB14;border-color:#2563EB}.pl-co-blue b{color:#1d4ed8}
+  .pl-co-green{background:#22c55e18;border-color:#16a34a}.pl-co-green b{color:#15803d}
+  .pl-cosum{margin:12px 0 4px}.pl-cot{font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:.6px;text-transform:uppercase;color:#1B2A4A99}
   .pl-how{font-size:12.5px;background:#2563EB14;border-radius:8px;padding:6px 8px;margin-top:6px}.pl-low{margin-top:12px}
   .ff-hint{font-size:10.5px;font-weight:400;color:#1B2A4A80;margin-top:2px;line-height:1.35;max-width:46ch}
   .cmp-win{background:#22c55e1f;color:#15803d;font-weight:700!important}
@@ -1593,6 +1599,18 @@ function playerInsights(p) {
   }
   return { good, watch, how: [...new Set(how)] };
 }
+// Intensité du close-out selon la menace extérieure (3 pts + catch & shoot) : rouge / bleu / vert.
+function playerCloseout(p) {
+  const pc = (x) => Math.round(x * 100) + " %", f1 = (x) => x.toFixed(1).replace(".", ",");
+  const tpa = p.tpa || 0, tpm = p.tpm || 0, tot = tpa * (p.gp || 1), r = tpa ? tpm / tpa : null;
+  const cs = (p.plays || []).find(x => x.label === "Catch & shoot");
+  const csR = cs && cs.att ? cs.made / cs.att : null;
+  const vol = `${f1(tpm)}/${f1(tpa)} à 3 pts par match`;
+  if (tot >= 8 && tpa >= 3 && r >= 0.36) return { lvl: "red", label: "Très agressif", why: `${vol} (${pc(r)}) : sortir fort, aucun tir ouvert.` };
+  if (cs && cs.att * (p.gp || 1) >= 8 && csR >= 0.45) return { lvl: "red", label: "Très agressif", why: `${pc(csR)} en catch & shoot (${f1(cs.att)} / match) : sortir fort sur ses tirs sur passe.` };
+  if (tpa < 1.5 || (tot >= 8 && r < 0.25 && tpa < 3)) return { lvl: "green", label: "Faible", why: tpa ? `${vol} (${pc(r)}) : peu menaçant, close-out contrôlé, protéger la raquette.` : "ne tire pas à 3 pts : close-out contrôlé, protéger la raquette." };
+  return { lvl: "blue", label: "Moyen", why: `${vol}${r !== null ? ` (${pc(r)})` : ""} : sortir en contrôle, main haute, sans se faire passer.` };
+}
 function playersReportHtml(pl, opponent) {
   const list = (pl && pl.list) || [];
   if (!list.length) return "";
@@ -1604,7 +1622,7 @@ function playersReportHtml(pl, opponent) {
   const main = sorted.filter(p => !playerLowSample(p)), low = sorted.filter(playerLowSample);
   const mmss = (m) => m === null || m === undefined ? "—" : `${Math.floor(m)}:${String(Math.round((m % 1) * 60)).padStart(2, "0")}`;
   const card = (p) => {
-    const ins = playerInsights(p), ph = photos[playerKey(p)];
+    const ins = playerInsights(p), co = playerCloseout(p), ph = photos[playerKey(p)];
     const avatar = ph ? `<img class="pl-photo" src="${ph}" alt="${esc(p.name)}" />` : `<div class="pl-photo pl-ph0">${esc(p.name.split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase())}</div>`;
     const kp = (v, l) => `<div class="pl-k"><b>${v}</b><span>${l}</span></div>`;
     const shot = (m, a) => a ? `${f1(m)}/${f1(a)} (${pc(m / a)})` : "—";
@@ -1613,6 +1631,7 @@ function playersReportHtml(pl, opponent) {
       <div class="pl-sub">${p.gp} match${p.gp > 1 ? "s" : ""} · ${mmss(p.min)} min / match</div></div></div>
       <div class="pl-kpis">${kp(f1(p.pts), "pts")}${kp(f1(p.reb), "reb")}${kp(f1(p.ast), "passes")}${kp(pc(p.ts), "TS %")}${kp(pc(p.usg), "usage")}</div>
       <div class="pl-shots">Tirs <b>${shot(p.fgm, p.fga)}</b> · 3 pts <b>${shot(p.tpm, p.tpa)}</b> · LF <b>${shot(p.ftm, p.fta)}</b></div>
+      <div class="pl-co pl-co-${co.lvl}"><b>Close-out : ${co.label}</b><span>${esc(co.why)}</span></div>
       ${ins.good.length ? `<ul class="pl-ins pl-good">${ins.good.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
       ${ins.watch.length ? `<ul class="pl-ins pl-watch">${ins.watch.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
       ${ins.how.length ? `<div class="pl-how"><b>À retenir :</b> ${esc(ins.how.join(" ; "))}.</div>` : ""}
@@ -1620,6 +1639,7 @@ function playersReportHtml(pl, opponent) {
   };
   return `<section class="card"><h2><i></i>Les joueurs${opponent ? " de " + esc(opponent) : ""}</h2>
     <p class="muted">Moyennes par match (arrondies) issues du fichier Excel. Les constats ne sont donnés qu'à partir de 3 matchs et 8 minutes de moyenne, et sur un volume de tirs suffisant.</p>
+    ${(() => { const g = { red: [], blue: [], green: [] }; main.forEach(p => g[playerCloseout(p).lvl].push(`${p.num !== null && p.num !== undefined ? "#" + esc(p.num) + " " : ""}${esc(p.name)}`)); const row = (k, t) => g[k].length ? `<div class="pl-co pl-co-${k}"><b>${t}</b><span>${g[k].join(" · ")}</span></div>` : ""; return `<div class="pl-cosum"><div class="pl-cot">Intensité du close-out</div>${row("red", "Très agressif")}${row("blue", "Moyen")}${row("green", "Faible")}</div>`; })()}
     <div class="pl-grid">${main.map(card).join("")}</div>
     ${low.length ? `<p class="muted pl-low"><b>Échantillon trop faible pour conclure :</b> ${low.map(p => `${p.num !== null && p.num !== undefined ? "#" + esc(p.num) + " " : ""}${esc(p.name)} (${p.gp} match${p.gp > 1 ? "s" : ""}, ${mmss(p.min)} min)`).join(" · ")}.</p>` : ""}
   </section>`;
