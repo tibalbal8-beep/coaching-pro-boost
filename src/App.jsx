@@ -1101,6 +1101,7 @@ const SCOUT_REPORT_CSS = `
   .bs-ff td,.bs-ff th{padding:7px 8px}
   .cmp td,.cmp th{padding:7px 10px}
   .cmp td.num{width:28%;font-weight:600}
+  .ff-hint{font-size:10.5px;font-weight:400;color:#1B2A4A80;margin-top:2px;line-height:1.35;max-width:46ch}
   .cmp-win{background:#22c55e1f;color:#15803d;font-weight:700!important}
   .cmp-them{background:#ef44441a;color:#b91c1c}
   @media (max-width:600px){.bs-kpis{grid-template-columns:repeat(2,1fr)}.bs-act{grid-template-columns:110px 1fr 46px 96px}}
@@ -1539,6 +1540,12 @@ function parseBoxScoreRows(rows) {
   if (!games.length) throw new Error("aucun match trouvé sous la ligne d'en-tête");
   return games;
 }
+// Libellés + définitions affichés sous les indicateurs de ratio (pour savoir de quoi on parle).
+const TOV_LABEL = "Balles perdues (% des possessions)";
+const TOV_HINT = "Pertes de balle ÷ possessions estimées (tirs tentés − rebonds off. + 0,44 × lancers francs tentés + pertes). Plus c'est bas, mieux c'est.";
+const ORB_LABEL = "Rebonds offensifs pris (% des possibles)";
+const ORB_HINT = "Rebonds off. pris ÷ (rebonds off. pris + rebonds déf. de l'adversaire) : la part des tirs manqués qu'elle récupère en attaque.";
+const withFfHint = (label, hint) => `${label}<div class="ff-hint">${hint}</div>`;
 // Indicateurs (Four Factors) : possessions estimées = tirs tentés − rebonds offensifs + 0,44 ×
 // lancers francs tentés + balles perdues (formule standard, plus fiable que la colonne
 // « Possessions » des fichiers exportés, qui ne compte pas toujours de la même façon).
@@ -1638,8 +1645,8 @@ function boxScoreReportHtml(box, opponent, video = null, own = false) {
         ${fr("eFG% (adresse)", p(S.efg), p(O.efg))}
         ${fr("Réussite à 2 pts", p(S.twoPct), p(O.twoPct))}
         ${fr("Réussite à 3 pts", p(S.threePct), p(O.threePct))}
-        ${fr("Balles perdues / possession", p(S.tovPct), p(O.tovPct))}
-        ${S.orebPct !== null ? fr("Rebonds offensifs pris", p(S.orebPct), p(O.orebPct)) : ""}
+        ${fr(withFfHint(TOV_LABEL, TOV_HINT), p(S.tovPct), p(O.tovPct))}
+        ${S.orebPct !== null ? fr(withFfHint(ORB_LABEL, ORB_HINT), p(S.orebPct), p(O.orebPct)) : ""}
         ${fr("Lancers / tirs", p(S.ftr), p(O.ftr))}
         ${S.tot.pto + OT.pto ? fr("Points sur balles perdues / match", f(S.tot.pto / S.n, 1), f(OT.pto / S.n, 1)) : ""}
       </tbody></table>
@@ -1660,7 +1667,7 @@ function boxScoreReportHtml(box, opponent, video = null, own = false) {
         ${kpi(f(S.pace, 1), "possessions / match")}
         ${kpi(f(S.ppp), "pts / possession")}
         ${kpi(p(S.efg), "eFG% (adresse)")}
-        ${kpi(p(S.tovPct), "balles perdues / poss.")}
+        ${kpi(p(S.tovPct), "balles perdues (% des poss.)")}
         ${kpi(p(S.ftr), "lancers / tirs")}
         ${kpi(p(S.threeRate), "tirs à 3 pts")}
       </div>
@@ -1735,15 +1742,15 @@ function comparisonReportHtml(cmp, opponent) {
   // [libellé, valeur nous, valeur eux, format, plus haut = mieux ?]
   const lines = [
     ["Points / match", U.stats.pts, T.stats.pts, (x) => f(x), true],
-    ["Points / possession", mU.ppp, mT.ppp, (x) => f(x, 2), true],
-    ["eFG% (adresse)", mU.efg, mT.efg, p, true],
+    ["Points / possession", mU.ppp, mT.ppp, (x) => f(x, 2), true, "Points marqués ÷ possessions estimées."],
+    ["eFG% (adresse)", mU.efg, mT.efg, p, true, "Tirs réussis (les 3 pts comptés 1,5 fois) ÷ tirs tentés."],
     ["Réussite à 2 pts", mU.two, mT.two, p, true],
     ["Réussite à 3 pts", mU.three, mT.three, p, true],
     ["Part des tirs à 3 pts", mU.threeRate, mT.threeRate, p, null],
     ["Lancers francs tentés / match", U.stats.fta, T.stats.fta, (x) => f(x), true],
     ["Réussite aux lancers", mU.ft, mT.ft, p, true],
-    ["Balles perdues / possession", mU.tovPct, mT.tovPct, p, false],
-    ["Rebonds offensifs pris", mU.orbPct, mT.orbPct, p, true],
+    [TOV_LABEL, mU.tovPct, mT.tovPct, p, false, TOV_HINT],
+    [ORB_LABEL, mU.orbPct, mT.orbPct, p, true, ORB_HINT],
     ["Rebonds / match", U.stats.reb, T.stats.reb, (x) => f(x), true],
     ["Passes décisives / match", U.stats.ast, T.stats.ast, (x) => f(x), true],
     ["Interceptions / match", U.stats.stl, T.stats.stl, (x) => f(x), true],
@@ -1768,8 +1775,8 @@ function comparisonReportHtml(cmp, opponent) {
       ${keys.length ? `<div class="sub-title">Clés du match</div><ul class="bs-ins">${keys.map(k => `<li>${k}</li>`).join("")}</ul>` : ""}
       <div class="bs-table"><table class="cmp">
         <thead><tr><th></th><th class="num">${esc(uN)}</th><th class="num">${esc(tN)}</th></tr></thead>
-        <tbody>${lines.map(([l, a, b, fmt, hi]) => { const e = edge(a, b, hi); return `
-          <tr><td class="tt">${l}</td><td class="num ${e === 1 ? "cmp-win" : ""}">${fmt(a)}</td><td class="num ${e === -1 ? "cmp-win cmp-them" : ""}">${fmt(b)}</td></tr>`; }).join("")}</tbody>
+        <tbody>${lines.map(([l, a, b, fmt, hi, hint]) => { const e = edge(a, b, hi); return `
+          <tr><td class="tt">${l}${hint ? `<div class="ff-hint">${hint}</div>` : ""}</td><td class="num ${e === 1 ? "cmp-win" : ""}">${fmt(a)}</td><td class="num ${e === -1 ? "cmp-win cmp-them" : ""}">${fmt(b)}</td></tr>`; }).join("")}</tbody>
       </table></div>
       <p class="more">Surligné = meilleure valeur (moins de balles perdues et de fautes = mieux). Points/possession et rebonds offensifs pris : estimations à partir des moyennes.</p>
     </section>`;
