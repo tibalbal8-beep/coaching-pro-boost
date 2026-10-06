@@ -1776,7 +1776,9 @@ function comparisonReportHtml(cmp, opponent) {
   if (U.stats.stl - T.stats.stl >= 2 && T.stats.tov >= 13) keys.push(`<b>Notre pression peut payer</b> — ${f(U.stats.stl)} interceptions par match pour nous, ${f(T.stats.tov)} balles perdues pour eux.`);
   if (mU.two !== null && mT.two !== null && mU.two - mT.two >= 0.03) keys.push(`<b>Attaquer l'intérieur</b> — ${p(mU.two)} à 2 pts pour nous contre ${p(mT.two)} pour eux.`);
   if (U.stats.ast - T.stats.ast >= 3) keys.push(`<b>Partage du ballon</b> — ${f(U.stats.ast)} passes décisives par match contre ${f(T.stats.ast)}.`);
-  const wins = lines.filter(l => edge(l[1], l[2], l[4]) === 1).length, losses = lines.filter(l => edge(l[1], l[2], l[4]) === -1).length;
+  // Égalité à l'affichage (ex. 57 % et 57 %) = pas d'avantage, même si les valeurs brutes diffèrent de 0,04 pt.
+  const edgeShown = (l) => (l[3](l[1]) === l[3](l[2]) ? 0 : edge(l[1], l[2], l[4]));
+  const wins = lines.filter(l => edgeShown(l) === 1).length, losses = lines.filter(l => edgeShown(l) === -1).length;
   return `
     <section class="card">
       <h2><i></i>Face à face : ${esc(uN)} / ${esc(tN)}</h2>
@@ -1784,7 +1786,7 @@ function comparisonReportHtml(cmp, opponent) {
       ${keys.length ? `<div class="sub-title">Clés du match</div><ul class="bs-ins">${keys.map(k => `<li>${k}</li>`).join("")}</ul>` : ""}
       <div class="bs-table"><table class="cmp">
         <thead><tr><th></th><th class="num">${esc(uN)}</th><th class="num">${esc(tN)}</th></tr></thead>
-        <tbody>${lines.map(([l, a, b, fmt, hi, hint]) => { const e = edge(a, b, hi); return `
+        <tbody>${lines.map(([l, a, b, fmt, hi, hint]) => { const e = edgeShown([l, a, b, fmt, hi]); return `
           <tr><td class="tt">${l}${hint ? `<div class="ff-hint">${hint}</div>` : ""}</td><td class="num ${e === 1 ? "cmp-win" : ""}">${fmt(a)}</td><td class="num ${e === -1 ? "cmp-win cmp-them" : ""}">${fmt(b)}</td></tr>`; }).join("")}</tbody>
       </table></div>
       <p class="more">Surligné = meilleure valeur (moins de balles perdues et de fautes = mieux). Points/possession et rebonds offensifs pris : estimations à partir des moyennes.</p>
