@@ -994,7 +994,7 @@ function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
 // vues, notes libres, et le classement des systèmes avec leur rentabilité (même mécanique
 // que buildMatchReportHtml, sans le tableau de score qui n'a pas de sens hors match réel).
 // Repère de version affiché en bas de l'export (à faire évoluer à chaque refonte du rapport).
-const VIDEO_SCOUT_REPORT_VERSION = "2026-10-06-g";
+const VIDEO_SCOUT_REPORT_VERSION = "2026-10-06-h";
 // Feuille de style commune aux récaps (scouting vidéo, analyse de mon équipe).
 const SCOUT_REPORT_CSS = `
   *{box-sizing:border-box;margin:0;padding:0}
@@ -1187,11 +1187,20 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null, t
   }));
   const defItems = familyItems.flatMap(f => f.items);
 
-  const kpis = attacks.length === 0 ? "" : `
+  // Chiffres clés : possessions et pts/possession viennent du BOX SCORE (formule : tirs − rebonds off.
+  // + 0,44 × lancers francs + pertes) dès qu'il est importé ; les possessions taguées en vidéo
+  // restent affichées à part. Sans box score, on retombe sur les chiffres du tag vidéo.
+  const boxSum = session.boxScore && (session.boxScore.games || []).length ? boxScoreSummary(session.boxScore.games) : null;
+  const kfr = (x, d) => x === null || x === undefined ? "—" : x.toFixed(d).replace(".", ",");
+  const kpis = attacks.length === 0 && !boxSum ? "" : `
     <div class="kpis">
-      <div class="kpi"><b>${totalPoss}</b><span>possessions</span></div>
-      <div class="kpi"><b>${attacks.length}</b><span>attaques distinctes</span></div>
-      <div class="kpi"><b>${globalPpp === null ? "—" : globalPpp.toFixed(2)}</b><span>pts / possession</span></div>
+      ${boxSum ? `
+      <div class="kpi"><b>${kfr(boxSum.pace, 1)}</b><span>possessions / match · box score (${boxSum.n} match${boxSum.n > 1 ? "s" : ""})</span></div>
+      <div class="kpi"><b>${kfr(boxSum.ppp, 2)}</b><span>pts / possession · box score</span></div>
+      ${attacks.length ? `<div class="kpi"><b>${totalPoss}</b><span>possessions taguées en vidéo</span></div>` : ""}` : `
+      <div class="kpi"><b>${totalPoss}</b><span>possessions</span></div>`}
+      ${attacks.length ? `<div class="kpi"><b>${attacks.length}</b><span>attaques distinctes</span></div>` : ""}
+      ${!boxSum ? `<div class="kpi"><b>${globalPpp === null ? "—" : globalPpp.toFixed(2)}</b><span>pts / possession</span></div>` : ""}
       ${defItems.length ? `<div class="kpi"><b>${defItems.length}</b><span>défenses rencontrées</span></div>` : ""}
       ${seenPlays.length ? `<div class="kpi"><b>${seenPlays.length}</b><span>systèmes du playbook vus</span></div>` : ""}
     </div>`;
