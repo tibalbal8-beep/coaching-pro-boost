@@ -1606,6 +1606,7 @@ function playerCloseout(p) {
   const cs = (p.plays || []).find(x => x.label === "Catch & shoot");
   const csR = cs && cs.att ? cs.made / cs.att : null;
   const vol = `${f1(tpm)}/${f1(tpa)} à 3 pts par match`;
+  if (tot >= 8 && tpa >= 5 && r < 0.36) return { lvl: "red", label: "Très agressif", why: `${vol} (${pc(r)}) : pourcentage moyen mais il prend beaucoup de tirs, c'est un shooteur dans l'âme : ne pas lui offrir de tir ouvert.` };
   if (tot >= 8 && tpa >= 3 && r >= 0.36) return { lvl: "red", label: "Très agressif", why: `${vol} (${pc(r)}) : sortir fort, aucun tir ouvert.` };
   if (cs && cs.att * (p.gp || 1) >= 8 && csR >= 0.45) return { lvl: "red", label: "Très agressif", why: `${pc(csR)} en catch & shoot (${f1(cs.att)} / match) : sortir fort sur ses tirs sur passe.` };
   if (tpa < 1.5 || (tot >= 8 && r < 0.25 && tpa < 3)) return { lvl: "green", label: "Faible", why: tpa ? `${vol} (${pc(r)}) : peu menaçant, close-out contrôlé, protéger la raquette.` : "ne tire pas à 3 pts : close-out contrôlé, protéger la raquette." };
