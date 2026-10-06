@@ -994,7 +994,7 @@ function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
 // vues, notes libres, et le classement des systèmes avec leur rentabilité (même mécanique
 // que buildMatchReportHtml, sans le tableau de score qui n'a pas de sens hors match réel).
 // Repère de version affiché en bas de l'export (à faire évoluer à chaque refonte du rapport).
-const VIDEO_SCOUT_REPORT_VERSION = "2026-10-06-h";
+const VIDEO_SCOUT_REPORT_VERSION = "2026-10-06-i";
 // Feuille de style commune aux récaps (scouting vidéo, analyse de mon équipe).
 const SCOUT_REPORT_CSS = `
   *{box-sizing:border-box;margin:0;padding:0}
@@ -1101,6 +1101,18 @@ const SCOUT_REPORT_CSS = `
   .bs-ff td,.bs-ff th{padding:7px 8px}
   .cmp td,.cmp th{padding:7px 10px}
   .cmp td.num{width:28%;font-weight:600}
+  .muted{font-size:12.5px;color:#1B2A4A99;margin:4px 0}
+  .pl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-top:12px}
+  .pl-card{border:1px solid #1B2A4A1f;border-radius:12px;padding:12px;background:#fff;break-inside:avoid}
+  .pl-head{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+  .pl-photo{width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;background:#1B2A4A12}
+  .pl-ph0{display:flex;align-items:center;justify-content:center;font-weight:700;color:#1B2A4A99}
+  .pl-name{font-weight:700;color:#1B2A4A}.pl-num{color:#1B2A4A80;font-weight:600}.pl-sub{font-size:12px;color:#1B2A4A80}
+  .pl-kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:8px}
+  .pl-k{background:#1B2A4A0d;border-radius:8px;padding:5px 2px;text-align:center}.pl-k b{display:block;font-size:14px;color:#1B2A4A}.pl-k span{font-size:9.5px;text-transform:uppercase;color:#1B2A4A80}
+  .pl-shots{font-size:12px;color:#1B2A4Acc;margin-bottom:6px}
+  .pl-ins{margin:4px 0;padding-left:16px;font-size:12.5px;line-height:1.4}.pl-good li::marker{color:#16a34a}.pl-watch li::marker{color:#dc2626}
+  .pl-how{font-size:12.5px;background:#2563EB14;border-radius:8px;padding:6px 8px;margin-top:6px}.pl-low{margin-top:12px}
   .ff-hint{font-size:10.5px;font-weight:400;color:#1B2A4A80;margin-top:2px;line-height:1.35;max-width:46ch}
   .cmp-win{background:#22c55e1f;color:#15803d;font-weight:700!important}
   .cmp-them{background:#ef44441a;color:#b91c1c}
@@ -1435,6 +1447,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null, t
     ${notesHtml}
     ${comparisonReportHtml(session.comparison, session.opponent)}
     ${boxHtml}
+    ${playersReportHtml(session.players, session.opponent)}
     ${playbookHtml}
     ${rankingHtml}
     ${entriesHtml}
@@ -1483,6 +1496,133 @@ async function readXlsxFirstSheet(arrayBuffer) {
     .map(si => (si.match(/<t\b[^>]*>([\s\S]*?)<\/t>/g) || []).map(t => t.replace(/<[^>]+>/g, "")).join("")
       .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&")) : [];
   return xlsxSheetRows(await zip.file(sheetName).async("string"), shared);
+}
+// ── Fiche joueurs (Excel "Joueurs - …") : une ligne par joueur, moyennes PAR MATCH (arrondies). ──
+// Colonnes repérées par leur intitulé ; "-" = aucune donnée ; "35%" → 0,35 ; "16:23" → minutes décimales.
+const playerKey = (p) => `${p.num ?? ""}|${String(p.name || "").trim().toLowerCase()}`;
+function parsePlayersRows(rows) {
+  const norm = (c) => String(c ?? "").replace(/&apos;/g, "'").trim().toLowerCase();
+  const hIdx = rows.findIndex(r => r.some(c => /^(joueur|player)$/.test(norm(c))) && r.some(c => /^(matches? jou|games? played)/.test(norm(c))));
+  if (hIdx === -1) throw new Error("colonnes « Joueur » / « Matches joués » introuvables");
+  const head = rows[hIdx].map(norm);
+  const find = (...res) => { for (const re of res) { const i = head.findIndex(h => re.test(h)); if (i !== -1) return i; } return -1; };
+  const num = (v) => {
+    if (v === null || v === undefined) return null;
+    if (typeof v === "number") return v;
+    const s = String(v).trim();
+    if (!s || s === "-" || s === "—") return null;
+    if (/^\d+:\d{2}$/.test(s)) { const [m, sec] = s.split(":").map(Number); return m + sec / 60; }
+    const n = parseFloat(s.replace(",", ".").replace("%", ""));
+    if (isNaN(n)) return null;
+    return /%$/.test(s) ? n / 100 : n;
+  };
+  const cols = {
+    num: find(/^shirt number|^numéro|^n°/), name: find(/^(joueur|player)$/), gp: find(/^(matches? jou|games? played)/), min: find(/^minutes?$/),
+    pts: find(/^points$/), ppp: find(/^points par possession/),
+    fgm: find(/^tirs de champ marqués$/), fga: find(/^tirs de champ tentés$/), tpm: find(/^tirs à 3 pts marqués/), tpa: find(/^tirs? à 3 pts tentés?/),
+    ftm: find(/^lancers francs marqués/), fta: find(/^lancers francs tentés/), reb: find(/^rebonds$/), oreb: find(/^rebonds offensifs/), dreb: find(/^rebonds défensifs/),
+    ast: find(/^passes décisives/), stl: find(/^steals$/), tov: find(/^turnover/), blk: find(/^contres/), pf: find(/^fautes$/), fd: find(/^fautes contre/), pm: find(/^\+\/-$/),
+    ortg: find(/^rating offensif/), drtg: find(/^rating défensif/), net: find(/^net rating/), astTo: find(/^assists to turnovers/), draw: find(/^draw foul rate/),
+    ts: find(/^true shooting/), efg: find(/^effective field goal/), usg: find(/^usage percentage/),
+    ucm: find(/^tir non contesté réussi/), uca: find(/^tirs non contestés$/), cm: find(/^tir contesté réussi/), ca: find(/^tirs? contestés$/),
+    defm: find(/^tirs de champ marqués adv/), defa: find(/^tirs de champ tentés par l'adversaire/),
+    defl: find(/^deflections/), poa: find(/^points off assists/),
+  };
+  const PLAYS = [
+    ["Transition", /^transition-tirs de champ marqués/, /^transition-tirs$/], ["Catch & shoot", /^catch and shoot made/, /^catch and shoot attempted/],
+    ["Catch & drive", /^catch and drive made/, /^catch and drive attempted/], ["Sortie d'écran", /^screens off-tir de champ marqués/, /^screens off-tirs$/],
+    ["Post up", /^postsup-tirs de champ marqués/, /^postsup-tirs$/], ["Isolation", /^isolation-tirs de champ marqués/, /^isolation-tirs$/],
+    ["Main à la main", /^hand off -tirs de champ marqués/, /^hand off -tirs$/], ["Coupe", /^cuts-tirs de champ marqués/, /^cuts-tirs$/],
+    ["Pick & roll — porteur", /^pnr\s+handlers-tirs de champ marqués/, /^pnr\s+handlers-tirs$/], ["Pick & roll — roller", /^pnr rollers - tirs de champ marqués/, /^pnr\s+rollers-tirs$/],
+    ["Pick & pop", /^pnp - tirs effectués/, /^pnp - tirs$/],
+  ].map(([label, rm, ra]) => ({ label, m: find(rm), a: find(ra) })).filter(x => x.m !== -1 && x.a !== -1);
+  const out = [];
+  for (const r of rows.slice(hIdx + 1)) {
+    const name = String(r[cols.name] ?? "").trim();
+    if (!name || /^(moyenne|average|total)/i.test(name)) continue;
+    const p = { name };
+    Object.keys(cols).forEach(k => { if (k === "name" || cols[k] === -1) return; p[k] = num(r[cols[k]]); });
+    p.plays = PLAYS.map(x => ({ label: x.label, made: num(r[x.m]), att: num(r[x.a]) })).filter(x => x.att);
+    if (p.gp === null || p.gp === undefined) continue;
+    out.push(p);
+  }
+  if (!out.length) throw new Error("aucun joueur lu dans ce fichier");
+  return out;
+}
+// Peu de matchs ou de minutes → les moyennes ne veulent rien dire : pas de constat, juste une mention.
+const playerLowSample = (p) => (p.gp || 0) < 3 || (p.min || 0) < 8 || p.pts === null || p.pts === undefined;
+function playerInsights(p) {
+  const pc = (x) => Math.round(x * 100) + " %", f1 = (x) => x.toFixed(1).replace(".", ",");
+  const gp = p.gp || 1, tot = (x) => (x || 0) * gp;
+  const good = [], watch = [], how = [];
+  if (p.usg !== null && p.usg !== undefined && p.usg >= 0.22) good.push(`<b>Option offensive majeure</b> : ${pc(p.usg)} d'usage (il termine ${pc(p.usg)} des possessions où il est sur le terrain).`);
+  else if (p.usg !== null && p.usg !== undefined && p.usg <= 0.14 && (p.min || 0) >= 15) watch.push(`<b>Peu sollicité</b> en attaque (${pc(p.usg)} d'usage).`);
+  if (tot(p.tpa) >= 8) {
+    const r = p.tpm / p.tpa;
+    if (p.tpa >= 3 && r >= 0.36) { good.push(`<b>Tireur à 3 pts</b> : ${f1(p.tpm)}/${f1(p.tpa)} par match (${pc(r)}).`); how.push("ne jamais lui laisser de tir ouvert à 3 pts"); }
+    else if (p.tpa >= 3) { watch.push(`<b>Tire beaucoup à 3 pts</b> (${f1(p.tpa)} / match) mais seulement ${pc(r)}.`); how.push("accepter son tir extérieur"); }
+    else if (r < 0.25) { watch.push(`<b>Tir à 3 pts peu dangereux</b> : ${pc(r)} sur ${f1(p.tpa)} tentatives / match.`); how.push("peut être laissé libre à 3 pts"); }
+  }
+  if (tot(p.fta) >= 8) {
+    const r = p.ftm / p.fta;
+    if (p.fta >= 3 && r >= 0.78) good.push(`<b>Va chercher les lancers francs</b> : ${f1(p.fta)} / match à ${pc(r)}.`), how.push("éviter la faute sur lui");
+    else if (r <= 0.6) { watch.push(`<b>Lancers francs fragiles</b> : ${pc(r)} sur ${f1(p.fta)} tentés / match.`); how.push("peut être envoyé sur la ligne"); }
+  }
+  if (p.uca && p.ca && tot(p.uca) >= 5 && tot(p.ca) >= 8) {
+    const u = p.ucm / p.uca, c = p.cm / p.ca;
+    if (u - c >= 0.2) watch.push(`<b>Dépend des tirs ouverts</b> : ${pc(u)} non contesté contre ${pc(c)} contesté.`);
+    else if (c >= u && c >= 0.45) good.push(`<b>Efficace sous contestation</b> : ${pc(c)} sur tirs contestés (${f1(p.ca)} / match).`);
+  }
+  const bestPlays = (p.plays || []).filter(x => tot(x.att) >= 6).sort((a, b) => b.att - a.att).slice(0, 2);
+  if (bestPlays.length) good.push(`<b>Tire surtout sur</b> : ${bestPlays.map(x => `${x.label} (${f1(x.att)} tirs / match, ${pc(x.made / x.att)})`).join(" · ")}.`);
+  const effPlay = (p.plays || []).filter(x => tot(x.att) >= 6 && x.made / x.att >= 0.55).sort((a, b) => b.made / b.att - a.made / a.att)[0];
+  if (effPlay && !bestPlays.includes(effPlay)) good.push(`<b>Très efficace sur ${effPlay.label}</b> : ${pc(effPlay.made / effPlay.att)} (${f1(effPlay.att)} tirs / match).`);
+  if (p.astTo !== null && p.astTo !== undefined && p.ast >= 2) {
+    if (p.astTo >= 2) good.push(`<b>Soigne le ballon</b> : ${f1(p.ast)} passes décisives pour ${f1(p.tov || 0)} pertes (A/TO ${f1(p.astTo)}).`);
+    else if (p.astTo < 1) watch.push(`<b>Perd autant de ballons qu'il en donne</b> : ${f1(p.ast)} passes déc. / ${f1(p.tov || 0)} pertes (A/TO ${f1(p.astTo)}).`), how.push("le presser, il perd des ballons");
+  } else if ((p.tov || 0) >= 2.5) { watch.push(`<b>Perd des ballons</b> : ${f1(p.tov)} / match.`); how.push("le presser, il perd des ballons"); }
+  if ((p.oreb || 0) >= 1.5) { good.push(`<b>Rebondeur offensif</b> : ${f1(p.oreb)} / match.`); how.push("boxer ce joueur au rebond"); }
+  if ((p.stl || 0) >= 1.5 || (p.defl || 0) >= 2.5) good.push(`<b>Actif sur les ballons</b> : ${f1(p.stl || 0)} interceptions et ${p.defl !== null && p.defl !== undefined ? f1(p.defl) : "—"} déviations / match.`);
+  if ((p.blk || 0) >= 1) good.push(`<b>Protège le cercle</b> : ${f1(p.blk)} contre${p.blk >= 2 ? "s" : ""} / match.`);
+  if ((p.fd || 0) >= 4) watch.push(`<b>Subit beaucoup de fautes</b> : ${f1(p.fd)} fautes contre lui / match.`);
+  if (p.ts !== null && p.ts !== undefined && p.ts < 0.45 && p.fga >= 3) watch.push(`<b>Efficacité faible</b> : ${pc(p.ts)} de True Shooting${p.efg !== null && p.efg !== undefined ? ` (eFG ${pc(p.efg)})` : ""}.`);
+  else if (p.ts !== null && p.ts !== undefined && p.ts >= 0.58 && p.fga >= 3) good.push(`<b>Très efficace</b> : ${pc(p.ts)} de True Shooting.`);
+  if (p.net !== null && p.net !== undefined && (p.min || 0) >= 12) {
+    if (p.net <= -10) watch.push(`<b>Équipe en difficulté avec lui</b> : rating net ${f1(p.net)} sur le terrain.`);
+    else if (p.net >= 10) good.push(`<b>Équipe performante avec lui</b> : rating net +${f1(p.net)} sur le terrain.`);
+  }
+  return { good, watch, how: [...new Set(how)] };
+}
+function playersReportHtml(pl, opponent) {
+  const list = (pl && pl.list) || [];
+  if (!list.length) return "";
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const f1 = (x) => x === null || x === undefined ? "—" : x.toFixed(1).replace(".", ",");
+  const pc = (x) => x === null || x === undefined ? "—" : Math.round(x * 100) + " %";
+  const photos = pl.photos || {};
+  const sorted = [...list].sort((a, b) => (b.min || 0) * (b.gp || 0) - (a.min || 0) * (a.gp || 0));
+  const main = sorted.filter(p => !playerLowSample(p)), low = sorted.filter(playerLowSample);
+  const mmss = (m) => m === null || m === undefined ? "—" : `${Math.floor(m)}:${String(Math.round((m % 1) * 60)).padStart(2, "0")}`;
+  const card = (p) => {
+    const ins = playerInsights(p), ph = photos[playerKey(p)];
+    const avatar = ph ? `<img class="pl-photo" src="${ph}" alt="${esc(p.name)}" />` : `<div class="pl-photo pl-ph0">${esc(p.name.split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase())}</div>`;
+    const kp = (v, l) => `<div class="pl-k"><b>${v}</b><span>${l}</span></div>`;
+    const shot = (m, a) => a ? `${f1(m)}/${f1(a)} (${pc(m / a)})` : "—";
+    return `<div class="pl-card">
+      <div class="pl-head">${avatar}<div><div class="pl-name">${p.num !== null && p.num !== undefined ? `<span class="pl-num">#${esc(p.num)}</span> ` : ""}${esc(p.name)}</div>
+      <div class="pl-sub">${p.gp} match${p.gp > 1 ? "s" : ""} · ${mmss(p.min)} min / match</div></div></div>
+      <div class="pl-kpis">${kp(f1(p.pts), "pts")}${kp(f1(p.reb), "reb")}${kp(f1(p.ast), "passes")}${kp(pc(p.ts), "TS %")}${kp(pc(p.usg), "usage")}</div>
+      <div class="pl-shots">Tirs <b>${shot(p.fgm, p.fga)}</b> · 3 pts <b>${shot(p.tpm, p.tpa)}</b> · LF <b>${shot(p.ftm, p.fta)}</b></div>
+      ${ins.good.length ? `<ul class="pl-ins pl-good">${ins.good.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
+      ${ins.watch.length ? `<ul class="pl-ins pl-watch">${ins.watch.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
+      ${ins.how.length ? `<div class="pl-how"><b>À retenir :</b> ${esc(ins.how.join(" ; "))}.</div>` : ""}
+    </div>`;
+  };
+  return `<section class="card"><h2><i></i>Les joueurs${opponent ? " de " + esc(opponent) : ""}</h2>
+    <p class="muted">Moyennes par match (arrondies) issues du fichier Excel. Les constats ne sont donnés qu'à partir de 3 matchs et 8 minutes de moyenne, et sur un volume de tirs suffisant.</p>
+    <div class="pl-grid">${main.map(card).join("")}</div>
+    ${low.length ? `<p class="muted pl-low"><b>Échantillon trop faible pour conclure :</b> ${low.map(p => `${p.num !== null && p.num !== undefined ? "#" + esc(p.num) + " " : ""}${esc(p.name)} (${p.gp} match${p.gp > 1 ? "s" : ""}, ${mmss(p.min)} min)`).join(" · ")}.</p>` : ""}
+  </section>`;
 }
 // Lignes du tableur → matchs. Colonnes reconnues par leur intitulé (anglais ou français). Format
 // détaillé accepté : sous chaque match, une ligne sans adversaire = les stats de l'ADVERSAIRE de ce
@@ -11765,6 +11905,13 @@ function CoachingProBoost({ session }) {
               if (/\.xls$/i.test(file.name)) throw new Error("ancien format .xls : ouvre-le dans Excel / Numbers et enregistre-le en .xlsx");
               const rows = await readXlsxFirstSheet(await file.arrayBuffer());
               // Fiche "Team comparison" (une stat par ligne, une colonne par équipe) ou box score match par match.
+              // Fiche "Joueurs" (une ligne par joueur) : section "Les joueurs" du récap.
+              if (rows.some(r => r.some(c => /^joueur$/i.test(String(c ?? "").trim())) && r.some(c => /^matchs? jou/i.test(String(c ?? "").trim())))) {
+                const list = parsePlayersRows(rows);
+                updateActiveVs({ players: { fileName: file.name, list, photos: activeVs.players?.photos || {}, importedAt: new Date().toISOString() } });
+                cpbAlert?.(`${list.length} joueurs importés — ajoute leurs photos dans « Joueurs (Excel) », la section « Les joueurs » est dans le récap.`);
+                return;
+              }
               const isBox = rows.some(r => r.some(c => /^(opponent|adversaire)$/i.test(String(c ?? "").trim())));
               if (!isBox) {
                 const teams = parseTeamComparisonRows(rows);
@@ -12180,6 +12327,39 @@ function CoachingProBoost({ session }) {
                     );
                   })()}
                 </div>
+
+                {activeVs.players && (
+                  <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
+                    <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                      <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold">Joueurs (Excel) · {activeVs.players.list.length} joueurs</div>
+                      <button onClick={async () => {
+                        const ok = await cpbAlert?.("Retirer les joueurs (et leurs photos) de cette session ?", { confirm: true });
+                        if (ok) updateActiveVs({ players: null });
+                      }} className="text-xs text-red-500 hover:underline">Retirer</button>
+                    </div>
+                    <p className="text-xs text-[#1B2A4A]/40 italic mb-2">{activeVs.players.fileName} — clique sur un cercle pour ajouter la photo du joueur. Ré-importer l'Excel garde les photos.</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {activeVs.players.list.map(p => {
+                        const k = playerKey(p), ph = activeVs.players.photos?.[k];
+                        return (
+                          <label key={k} className="flex items-center gap-2 rounded-lg bg-[#1B2A4A]/5 px-2 py-1.5 cursor-pointer">
+                            {ph ? <img src={ph} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
+                              : <span className="w-9 h-9 rounded-full bg-[#1B2A4A]/10 text-[#1B2A4A]/50 flex items-center justify-center shrink-0 text-base">📷</span>}
+                            <span className="text-xs text-[#1B2A4A] leading-tight min-w-0 truncate">{p.num !== null && p.num !== undefined ? `#${p.num} ` : ""}{p.name}</span>
+                            <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                              const f = e.target.files?.[0]; e.target.value = "";
+                              if (!f) return;
+                              try {
+                                const url = await readImageAsJpeg(f, 320, 0.75);
+                                updateActiveVs({ players: { ...activeVs.players, photos: { ...(activeVs.players.photos || {}), [k]: url } } });
+                              } catch { cpbAlert?.("Photo illisible."); }
+                            }} />
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
                   <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
