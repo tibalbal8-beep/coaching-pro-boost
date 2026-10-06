@@ -11906,7 +11906,7 @@ function CoachingProBoost({ session }) {
               const rows = await readXlsxFirstSheet(await file.arrayBuffer());
               // Fiche "Team comparison" (une stat par ligne, une colonne par équipe) ou box score match par match.
               // Fiche "Joueurs" (une ligne par joueur) : section "Les joueurs" du récap.
-              if (rows.some(r => r.some(c => /^joueur$/i.test(String(c ?? "").trim())) && r.some(c => /^matchs? jou/i.test(String(c ?? "").trim())))) {
+              if (rows.some(r => r.some(c => /^joueur$/i.test(String(c ?? "").trim())) && r.some(c => /^(matches|matchs?|games?) (jou|played)/i.test(String(c ?? "").trim())))) {
                 const list = parsePlayersRows(rows);
                 updateActiveVs({ players: { fileName: file.name, list, photos: activeVs.players?.photos || {}, importedAt: new Date().toISOString() } });
                 cpbAlert?.(`${list.length} joueurs importés — ajoute leurs photos dans « Joueurs (Excel) », la section « Les joueurs » est dans le récap.`);
