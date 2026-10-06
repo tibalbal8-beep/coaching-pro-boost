@@ -1835,8 +1835,9 @@ function parseLineupRows(rows) {
   if (!lineups.length) throw new Error("aucun cinq trouvé sous la ligne d'en-tête");
   return lineups;
 }
-// Possessions estimées (même formule que le box score) ; repli sur la colonne du fichier.
-const lineupPoss = (s) => { const e = s.fga - s.oreb + 0.44 * s.fta + s.tov; return e > 0 ? e : (s.possFile || 0); };
+// Possessions estimées : uniquement la formule (tirs − rebonds off. + 0,44 × lancers francs + pertes),
+// jamais la colonne « Possessions » des fichiers exportés (non cohérente avec cette formule).
+const lineupPoss = (s) => Math.max(0, s.fga - s.oreb + 0.44 * s.fta + s.tov);
 function lineupMetrics(s, o) {
   const pT = lineupPoss(s), pO = o ? lineupPoss(o) : 0;
   const off = pT > 0 ? (s.pts / pT) * 100 : null, def = o && pO > 0 ? (o.pts / pO) * 100 : null;
