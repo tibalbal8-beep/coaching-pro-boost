@@ -1109,7 +1109,7 @@ const SCOUT_REPORT_CSS = `
   .cmp td,.cmp th{padding:7px 10px}
   .cmp td.num{width:28%;font-weight:600}
   .muted{font-size:12.5px;color:#1B2A4A99;margin:4px 0}
-  .pl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-top:12px}
+  .pl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin-top:12px}
   .pl-card{border:1px solid #1B2A4A1f;border-radius:12px;padding:12px;background:#fff;break-inside:avoid}
   .pl-head{display:flex;gap:10px;align-items:center;margin-bottom:8px}
   .pl-photo{width:56px;height:56px;border-radius:50%;object-fit:cover;flex:none;background:#1B2A4A12}
@@ -1127,6 +1127,7 @@ const SCOUT_REPORT_CSS = `
   .pl-cosum{margin:12px 0 4px}.pl-cot{font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:.6px;text-transform:uppercase;color:#1B2A4A99}
   .pl-sp{margin:6px 0}.pl-spbar{display:flex;height:9px;border-radius:5px;overflow:hidden;background:#1B2A4A12}.pl-spbar i{display:block;height:100%}
   .pl-splab{font-size:11.5px;color:#1B2A4Acc;margin-top:3px;line-height:1.35}.pl-splab em{color:#1B2A4A80}
+  .shot-chart{width:100%;height:auto;display:block;border-radius:8px}.pl-chart{margin:8px 0}.pl-chartcap{font-size:10.5px;color:#1B2A4A80;margin-top:3px}
   .pl-role{font-size:10.5px;font-weight:600;background:#1B2A4A12;border-radius:10px;padding:1px 8px;margin-left:4px;white-space:nowrap}
   .pl-man{display:flex;flex-direction:column;gap:1px;border-left:4px solid;border-radius:8px;padding:5px 9px;margin:5px 0;font-size:12.5px;line-height:1.4}
   .pl-man b{font-size:11.5px;text-transform:uppercase;letter-spacing:.4px}.pl-man span{color:#1B2A4Acc}
@@ -1643,6 +1644,120 @@ function playerShotProfile(p) {
   const mid = Math.max(0, two - rim);
   return { rim: rim / fga, mid: mid / fga, out: out / fga };
 }
+// ── Schéma de tirs par zones (positions pos_x / pos_y des XML Sportscode) ──
+// Repère : panier en (0,0), u = axe latéral (m), v = distance vers le milieu de terrain (m). Ligne de fond à v = -1,575.
+const SHOT_ZONES = {
+  cercle: "Près du cercle", raquette: "Raquette", midL: "Mi-distance gauche", midC: "Mi-distance centre", midR: "Mi-distance droite",
+  cornerL: "Corner gauche", wingL: "Aile gauche", top: "Haut de la raquette (3 pts)", wingR: "Aile droite", cornerR: "Corner droit",
+};
+const SHOT_3PT_ZONES = ["cornerL", "wingL", "top", "wingR", "cornerR"];
+function classifyShot(u, v, is3) {
+  const r = Math.hypot(u, v), th = Math.atan2(u, v) * 180 / Math.PI, side = u < 0 ? "L" : "R";
+  const threeZone = (corner) => corner ? "corner" + side : Math.abs(th) <= 22 ? "top" : "wing" + side;
+  const midZone = () => Math.abs(th) <= 35 ? "midC" : "mid" + side;
+  if (Math.abs(u) >= 6.6 && v <= 3.0) return threeZone(true);
+  if (r > 6.75 || is3) {
+    if (is3) return threeZone(Math.abs(u) >= 5.5 && v <= 3.5);
+    return midZone();
+  }
+  if (r <= 1.8) return "cercle";
+  if (Math.abs(u) <= 2.45 && v <= 5.8) return "raquette";
+  return midZone();
+}
+// Fichier XML de tirs : une instance par tir (code "11 Minfir Tyron (575941)", libellés Team / Action "3 pt Made - …", pos_x, pos_y).
+function parseShotChartXml(text) {
+  const dec = (s) => String(s).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+  const raw = [];
+  (String(text).match(/<instance>[\s\S]*?<\/instance>/g) || []).forEach(b => {
+    const px = (b.match(/<pos_x>([\s\S]*?)<\/pos_x>/) || [])[1], py = (b.match(/<pos_y>([\s\S]*?)<\/pos_y>/) || [])[1];
+    const act = dec((b.match(/<group>Action<\/group>\s*<text>([\s\S]*?)<\/text>/) || [])[1] || "");
+    const team = dec((b.match(/<group>Team<\/group>\s*<text>([\s\S]*?)<\/text>/) || [])[1] || "");
+    const code = dec((b.match(/<code>([\s\S]*?)<\/code>/) || [])[1] || "");
+    const am = /^([23]) pt (Made|Missed)/i.exec(act);
+    if (!am || px === undefined || py === undefined || !team) return;
+    const cm = /^(\d+)\s+(.*?)\s*(?:\(\d+\))?$/.exec(code.trim());
+    raw.push({ t: team, n: cm ? cm[2] : code.trim(), num: cm ? cm[1] : null, m: /made/i.test(am[2]) ? 1 : 0, th: am[1] === "3" ? 1 : 0, x: +px, y: +py, c: /uncontested/i.test(act) ? 0 : /contested/i.test(act) ? 1 : null });
+  });
+  if (!raw.length) throw new Error("aucun tir avec position trouvé dans ce XML (il faut des libellés « 2 pt / 3 pt Made / Missed » et des positions)");
+  const xs = raw.map(s => s.x).sort((a, b) => a - b), med = xs[Math.floor(xs.length / 2)];
+  const flip = med < 14; // tirs ramenés sur un demi-terrain : panier à x ≈ 26,4 (ou 1,6 si l'export est inversé)
+  const shots = raw.map(s => ({ t: s.t, n: s.n, num: s.num, m: s.m, th: s.th, c: s.c, u: Math.round((s.y - 7.5) * 100) / 100, v: Math.round((flip ? s.x - 1.575 : 26.425 - s.x) * 100) / 100 }));
+  const teams = {}; shots.forEach(s => { teams[s.t] = (teams[s.t] || 0) + 1; });
+  return { shots, teams };
+}
+const nameTokens = (n) => String(n || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().split(/[\s\-]+/).filter(Boolean);
+function sameScoutName(a, b) {
+  const A = nameTokens(a), B = nameTokens(b);
+  if (!A.length || !B.length) return false;
+  const sub = (X, Y) => X.every(t => Y.includes(t));
+  return sub(A, B) || sub(B, A);
+}
+function shotZoneStats(shots) {
+  const zones = {}; Object.keys(SHOT_ZONES).forEach(z => { zones[z] = { m: 0, a: 0 }; });
+  shots.forEach(s => { const z = zones[classifyShot(s.u, s.v, !!s.th)]; z.a++; z.m += s.m; });
+  return { zones, n: shots.length };
+}
+function shotProfileReal(shots) {
+  if (!shots || shots.length < 5) return null;
+  const { zones, n } = shotZoneStats(shots);
+  const sum = (ks) => ks.reduce((a, k) => a + zones[k].a, 0) / n;
+  return { rim: sum(["cercle", "raquette"]), mid: sum(["midL", "midC", "midR"]), out: sum(SHOT_3PT_ZONES), n };
+}
+function shotInsights(shots) {
+  const good = [], watch = [];
+  if (!shots || shots.length < 8) return { good, watch };
+  const { zones, n } = shotZoneStats(shots), pc = (x) => Math.round(x * 100) + " %";
+  const sh = (ks) => ks.reduce((a, k) => a + zones[k].a, 0) / n;
+  const mid = sh(["midL", "midC", "midR"]), rim = sh(["cercle", "raquette"]), corner = sh(["cornerL", "cornerR"]);
+  if (mid === 0) watch.push(`<b>Aucun tir en mi-distance</b> sur ${n} tirs observés : il tire au cercle ou à 3 pts.`);
+  if (rim === 0) watch.push(`<b>Aucun tir dans la raquette</b> sur ${n} tirs observés.`);
+  if (corner >= 0.3) good.push(`<b>Shooteur de corner</b> : ${pc(corner)} de ses tirs partent des corners.`);
+  const top = Object.entries(zones).sort((a, b) => b[1].a - a[1].a)[0];
+  if (top && top[1].a / n >= 0.4) good.push(`<b>Zone favorite</b> : ${SHOT_ZONES[top[0]].toLowerCase()} (${pc(top[1].a / n)} de ses tirs, ${top[1].m}/${top[1].a}).`);
+  return { good, watch };
+}
+function shotChartSvg(shots, opts = {}) {
+  const S = 34, W = 15 * S, H = 10.2 * S, cx = W / 2, cy = 1.575 * S;
+  const X = (u) => (cx + u * S).toFixed(1), Y = (v) => (cy + v * S).toFixed(1);
+  const P = (r, th) => `${X(r * Math.sin(th * Math.PI / 180))},${Y(r * Math.cos(th * Math.PI / 180))}`;
+  const sector = (r1, r2, a1, a2) => {
+    const pts = []; for (let a = a1; a <= a2; a += 5) pts.push(P(r2, a)); for (let a = a2; a >= a1; a -= 5) pts.push(P(r1, a));
+    return pts.join(" ");
+  };
+  const { zones } = shotZoneStats(shots);
+  const col = (z) => { const q = zones[z]; if (!q.a) return "#f5e6d0"; const p = q.m / q.a; return p >= 0.5 ? "#fb923c" : p >= 0.35 ? "#fdba74" : "#bfdbfe"; };
+  const poly = (z, pts) => `<polygon points="${pts}" fill="${col(z)}" stroke="#8a6a45" stroke-width="1"/>`;
+  const rect = (z, u1, u2, v1, v2) => `<rect x="${X(u1)}" y="${Y(v1)}" width="${((u2 - u1) * S).toFixed(1)}" height="${((v2 - v1) * S).toFixed(1)}" fill="${col(z)}" stroke="#8a6a45" stroke-width="1"/>`;
+  let g = `<clipPath id="cc${opts.id || 0}"><rect x="0" y="0" width="${W}" height="${H}"/></clipPath><g clip-path="url(#cc${opts.id || 0})">`;
+  g += `<rect width="${W}" height="${H}" fill="#f5e6d0"/>`;
+  g += poly("top", sector(6.75, 30, -22, 22)) + poly("wingR", sector(6.75, 30, 22, 120)) + poly("wingL", sector(6.75, 30, -120, -22));
+  g += poly("midL", sector(1.8, 6.75, -120, -35)) + poly("midC", sector(1.8, 6.75, -35, 35)) + poly("midR", sector(1.8, 6.75, 35, 120));
+  g += rect("cornerL", -7.5, -6.6, -1.575, 3.0) + rect("cornerR", 6.6, 7.5, -1.575, 3.0);
+  g += rect("raquette", -2.45, 2.45, -1.575, 5.8);
+  g += `<circle cx="${cx}" cy="${cy}" r="${1.8 * S}" fill="${col("cercle")}" stroke="#8a6a45" stroke-width="1"/>`;
+  // lignes du terrain
+  const ln = `fill="none" stroke="#fff" stroke-width="1.6"`;
+  g += `<path d="M ${X(-6.6)} ${Y(-1.575)} L ${X(-6.6)} ${Y(1.42)} A ${6.75 * S} ${6.75 * S} 0 0 0 ${X(6.6)} ${Y(1.42)} L ${X(6.6)} ${Y(-1.575)}" ${ln}/>`;
+  g += `<path d="M ${X(-1.8)} ${Y(5.8)} A ${1.8 * S} ${1.8 * S} 0 0 0 ${X(1.8)} ${Y(5.8)}" ${ln}/><path d="M ${X(-1.25)} ${Y(0)} A ${1.25 * S} ${1.25 * S} 0 0 0 ${X(1.25)} ${Y(0)}" ${ln}/>`;
+  g += `<line x1="${X(-0.9)}" y1="${Y(-0.15)}" x2="${X(0.9)}" y2="${Y(-0.15)}" stroke="#fff" stroke-width="2"/><circle cx="${cx}" cy="${Y(0.3)}" r="${0.225 * S}" ${ln}/>`;
+  [-35, 35].forEach(a => { g += `<line x1="${P(1.8, a).split(",")[0]}" y1="${P(1.8, a).split(",")[1]}" x2="${P(6.75, a).split(",")[0]}" y2="${P(6.75, a).split(",")[1]}" stroke="#8a6a45" stroke-width="1"/>`; });
+  // tirs
+  shots.forEach(s => {
+    const x = X(s.u), y = Y(s.v);
+    g += s.m ? `<circle cx="${x}" cy="${y}" r="3.2" fill="#15803d" fill-opacity=".85" stroke="#fff" stroke-width=".8"/>`
+      : `<path d="M ${(+x - 3).toFixed(1)} ${(+y - 3).toFixed(1)} l 6 6 M ${(+x + 3).toFixed(1)} ${(+y - 3).toFixed(1)} l -6 6" stroke="#b91c1c" stroke-width="1.6" stroke-opacity=".85"/>`;
+  });
+  // libellés : % et réussis-tentés
+  const anchors = { cercle: [0, 0.75], raquette: [0, 3.7], midL: [-4.4, 3.4], midC: [0, 6.3], midR: [4.4, 3.4], cornerL: [-7.05, 0.9], cornerR: [7.05, 0.9], wingL: [-5.6, 5.4], wingR: [5.6, 5.4], top: [0, 8.1] };
+  Object.entries(anchors).forEach(([z, [u, v]]) => {
+    const q = zones[z]; if (!q.a) return;
+    const small = z.startsWith("corner");
+    g += `<text x="${X(u)}" y="${(+Y(v) - 1).toFixed(1)}" text-anchor="middle" font-family="Oswald,Inter,sans-serif" font-size="${small ? 11 : 16}" font-weight="600" fill="#1B2A4A" stroke="#fff" stroke-width="3" paint-order="stroke">${Math.round(q.m / q.a * 100)}%</text>`;
+    g += `<text x="${X(u)}" y="${(+Y(v) + (small ? 10 : 13)).toFixed(1)}" text-anchor="middle" font-family="Inter,sans-serif" font-size="${small ? 8.5 : 11}" fill="#1B2A4A" stroke="#fff" stroke-width="2.5" paint-order="stroke">${q.m}-${q.a}</text>`;
+  });
+  g += `</g><rect width="${W}" height="${H}" fill="none" stroke="#8a6a45" stroke-width="1.5"/>`;
+  return `<svg class="shot-chart" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${g}</svg>`;
+}
 function playersReportHtml(pl, opponent) {
   const list = (pl && pl.list) || [];
   if (!list.length) return "";
@@ -1654,7 +1769,8 @@ function playersReportHtml(pl, opponent) {
   const hasMan = (m) => !!(m && (m.role || m.strengths || m.weaknesses || m.instruction || m.closeout));
   const shown = list.filter(p => !(manual[playerKey(p)] || {}).hidden);
   const sorted = [...shown].sort((a, b) => (b.min || 0) * (b.gp || 0) - (a.min || 0) * (a.gp || 0));
-  const isMain = (p) => !playerLowSample(p) || hasMan(manual[playerKey(p)]);
+  const isMain = (p) => !playerLowSample(p) || hasMan(manual[playerKey(p)]) || (p.shotList || []).length >= 5;
+  let chartId = 0;
   const main = sorted.filter(isMain), low = sorted.filter(p => !isMain(p));
   const mmss = (m) => m === null || m === undefined ? "—" : `${Math.floor(m)}:${String(Math.round((m % 1) * 60)).padStart(2, "0")}`;
   const lines = (t) => esc(t).replace(/\n/g, "<br>");
@@ -1662,8 +1778,10 @@ function playersReportHtml(pl, opponent) {
   const card = (p) => {
     const m = manual[playerKey(p)] || {}, lowS = playerLowSample(p);
     const ins = lowS ? { good: [], watch: [], how: [] } : playerInsights(p);
+    const shots = p.shotList || [], si = shotInsights(shots);
+    ins.good.push(...si.good); ins.watch.push(...si.watch);
     const co = m.closeout ? { lvl: m.closeout, label: CO[m.closeout], why: "choix du coach." } : (lowS ? null : playerCloseout(p));
-    const sp = lowS ? null : playerShotProfile(p), ph = photos[playerKey(p)];
+    const spr = shotProfileReal(shots), sp = spr || (lowS ? null : playerShotProfile(p)), ph = photos[playerKey(p)];
     const avatar = ph ? `<img class="pl-photo" src="${ph}" alt="${esc(p.name)}" />` : `<div class="pl-photo pl-ph0">${esc(p.name.split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase())}</div>`;
     const kp = (v, l) => `<div class="pl-k"><b>${v}</b><span>${l}</span></div>`;
     const shot = (a, b) => b ? `${f1(a)}/${f1(b)} (${pc(a / b)})` : "—";
@@ -1674,7 +1792,8 @@ function playersReportHtml(pl, opponent) {
       ${sub ? `<div class="pl-sub">${sub}</div>` : ""}</div></div>
       ${hasStats && !lowS ? `<div class="pl-kpis">${kp(f1(p.pts), "pts")}${kp(f1(p.reb), "reb")}${kp(f1(p.ast), "passes")}${kp(pc(p.ts), "TS %")}${kp(pc(p.usg), "usage")}</div>
       <div class="pl-shots">Tirs <b>${shot(p.fgm, p.fga)}</b> · 3 pts <b>${shot(p.tpm, p.tpa)}</b> · LF <b>${shot(p.ftm, p.fta)}</b></div>` : ""}
-      ${sp ? (() => { const w = (x) => Math.round(x * 100); const line = sp.rim < 0.15 ? "Ne va presque jamais finir près du cercle." : sp.out >= 0.55 ? "Joueur surtout extérieur." : sp.rim >= 0.4 ? "Finit surtout près du cercle." : ""; return `<div class="pl-sp"><div class="pl-spbar"><i style="width:${w(sp.rim)}%;background:#ea580c"></i><i style="width:${w(sp.mid)}%;background:#a3a3a3"></i><i style="width:${w(sp.out)}%;background:#2563EB"></i></div><div class="pl-splab">Profil de tir <em>(estimé)</em> : <b style="color:#ea580c">${w(sp.rim)} % près du cercle</b> · <b style="color:#737373">${w(sp.mid)} % mi-distance/autres</b> · <b style="color:#2563EB">${w(sp.out)} % à 3 pts</b>${line ? ` — ${line}` : ""}</div></div>`; })() : ""}
+      ${sp ? (() => { const w = (x) => Math.round(x * 100); const line = sp.rim < 0.15 ? "Ne va presque jamais finir près du cercle." : sp.out >= 0.55 ? "Joueur surtout extérieur." : sp.rim >= 0.4 ? "Finit surtout près du cercle." : ""; return `<div class="pl-sp"><div class="pl-spbar"><i style="width:${w(sp.rim)}%;background:#ea580c"></i><i style="width:${w(sp.mid)}%;background:#a3a3a3"></i><i style="width:${w(sp.out)}%;background:#2563EB"></i></div><div class="pl-splab">Profil de tir <em>(${spr ? `mesuré sur ${spr.n} tirs` : "estimé"})</em> : <b style="color:#ea580c">${w(sp.rim)} % près du cercle</b> · <b style="color:#737373">${w(sp.mid)} % mi-distance/autres</b> · <b style="color:#2563EB">${w(sp.out)} % à 3 pts</b>${line ? ` — ${line}` : ""}</div></div>`; })() : ""}
+      ${shots.length >= 3 ? `<div class="pl-chart">${shotChartSvg(shots, { id: ++chartId })}<div class="pl-chartcap">${shots.length} tirs observés · ● réussi · ✕ raté · % et réussis-tentés par zone</div></div>` : ""}
       ${co ? coBlock(co) : ""}
       ${m.strengths ? `<div class="pl-man pl-man-g"><b>Points forts</b><span>${lines(m.strengths)}</span></div>` : ""}
       ${m.weaknesses ? `<div class="pl-man pl-man-w"><b>Points faibles</b><span>${lines(m.weaknesses)}</span></div>` : ""}
@@ -1689,7 +1808,7 @@ function playersReportHtml(pl, opponent) {
   const row = (k) => grp[k].length ? `<div class="pl-co pl-co-${k}"><b>${CO[k]}</b><span>${grp[k].join(" · ")}</span></div>` : "";
   const sum = (grp.red.length + grp.blue.length + grp.green.length) ? `<div class="pl-cosum"><div class="pl-cot">Intensité du close-out</div>${row("red")}${row("blue")}${row("green")}</div>` : "";
   return `<section class="card"><h2><i></i>Les joueurs${opponent ? " de " + esc(opponent) : ""}</h2>
-    <p class="muted">Moyennes par match issues des fichiers importés. Le profil de tir est une estimation (le fichier n'a pas de zones). Les constats ne sont donnés qu'à partir de 3 matchs et 8 minutes de moyenne, et sur un volume de tirs suffisant.</p>
+    <p class="muted">Moyennes par match issues des fichiers importés. Le profil de tir est mesuré quand un XML de tirs est importé, sinon estimé d'après les types d'action. Les constats ne sont donnés qu'à partir de 3 matchs et 8 minutes de moyenne, et sur un volume de tirs suffisant.</p>
     ${sum}
     <div class="pl-grid">${main.map(card).join("")}</div>
     ${low.length ? `<p class="muted pl-low"><b>Échantillon trop faible pour conclure :</b> ${low.map(p => `${p.num !== null && p.num !== undefined ? "#" + esc(p.num) + " " : ""}${esc(p.name)}${p.gp ? ` (${p.gp} match${p.gp > 1 ? "s" : ""}, ${mmss(p.min)} min)` : ""}`).join(" · ")}.</p>` : ""}
@@ -1772,7 +1891,9 @@ function buildScoutReportHtml(r, logo = null) {
     ${[["Équipe", r.teamTotals], ["Adversaires", r.oppTotals]].filter(x => x[1]).map(([l, t]) => `<tr style="border-top:1px solid #1B2A4A14"><td style="text-align:left;font-weight:700;padding:6px 8px">${l}</td><td style="text-align:right;padding:6px 8px">${f1(t.pts)}</td><td style="text-align:right;padding:6px 8px">${f1(t.reb)}</td><td style="text-align:right;padding:6px 8px">${f1(t.ast)}</td><td style="text-align:right;padding:6px 8px">${shot(t.tpm, t.tpa)}</td><td style="text-align:right;padding:6px 8px">${pc(t.fgPct)}</td><td style="text-align:right;padding:6px 8px">${pc(t.ftPct)}</td><td style="text-align:right;padding:6px 8px">${f1(t.tov)}</td></tr>`).join("")}
     </tbody></table></section>` : "";
   const notes = (r.notes || "").trim() ? `<section class="card"><h2><i></i>Notes du coach</h2><p style="white-space:pre-wrap;font-size:14px;line-height:1.5">${esc(r.notes)}</p></section>` : "";
-  const players = playersReportHtml({ list: merged, photos, manual }, r.opponent);
+  const shotsAll = r.shots || [];
+  const withShots = merged.map(p => ({ ...p, shotList: shotsAll.filter(s => sameScoutName(s.n, p.name)) }));
+  const players = playersReportHtml({ list: withShots, photos, manual }, r.opponent);
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -9434,6 +9555,7 @@ function CoachingProBoost({ session }) {
   // Scouting report joueurs (voir view === "scoutreport")
   const [activeScoutReportId, setActiveScoutReportId] = useState(null);
   const [srNewOpen, setSrNewOpen] = useState(false), [srNewOpponent, setSrNewOpponent] = useState(""), [srNewDate, setSrNewDate] = useState("");
+  const [srXmlPending, setSrXmlPending] = useState(null);
   const [srPasteOpen, setSrPasteOpen] = useState(false), [srPaste, setSrPaste] = useState(""), [srAddName, setSrAddName] = useState("");
   const [taNewName, setTaNewName] = useState("");
   const [vsTfFilters, setVsTfFilters] = useState([]);
@@ -13095,6 +13217,13 @@ function CoachingProBoost({ session }) {
               cpbAlert?.(`${list.length} joueurs importés depuis l'Excel.`);
             } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
           };
+          const importShots = (fileName, parsed, team) => {
+            const id = uid(), mine = parsed.shots.filter(x => x.t === team).map(x => ({ f: id, n: x.n, m: x.m, th: x.th, c: x.c, u: x.u, v: x.v }));
+            const known = mergeScoutPlayers(activeSr), add = [];
+            parsed.shots.filter(x => x.t === team).forEach(x => { if (!known.some(k => sameScoutName(k.name, x.n)) && !add.some(a => sameScoutName(a.name, x.n))) add.push({ name: x.n, ...(x.num ? { num: +x.num } : {}) }); });
+            updateActiveSr({ shots: [...(activeSr.shots || []), ...mine], shotFiles: [...(activeSr.shotFiles || []), { id, name: fileName, team, count: mine.length }], extraPlayers: [...(activeSr.extraPlayers || []), ...add] });
+            cpbAlert?.(`${mine.length} tirs de ${team} importés${add.length ? ` — ${add.length} joueur(s) ajouté(s) à la liste` : ""}.`);
+          };
           const importPaste = () => {
             try {
               const r = parseBoxTableText(srPaste);
@@ -13121,9 +13250,40 @@ function CoachingProBoost({ session }) {
                     <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; handleExcel(f); }} />
                   </label>
                   <button onClick={() => setSrPasteOpen(!srPasteOpen)} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md bg-[#2563EB]">📋 Coller un box score</button>
+                  <label className="text-xs font-semibold text-white px-3 py-1.5 rounded-md cursor-pointer bg-[#ea580c]">
+                    🎯 XML des tirs (Sportscode)
+                    <input type="file" accept=".xml,text/xml" className="hidden" onChange={async e => {
+                      const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+                      try {
+                        const r = parseShotChartXml(await f.text());
+                        const names = Object.keys(r.teams);
+                        if (names.length === 1) importShots(f.name, r, names[0]); else setSrXmlPending({ fileName: f.name, ...r });
+                      } catch (err) { cpbAlert?.("Import impossible : " + err.message); }
+                    }} />
+                  </label>
                   {activeSr.excelPlayers && <span className="text-xs text-[#1B2A4A]/60">Excel : {activeSr.excelFileName} ({activeSr.excelPlayers.length}) <button onClick={() => updateActiveSr({ excelPlayers: null, excelFileName: null })} className="text-red-500 ml-1 hover:underline">retirer</button></span>}
                   {activeSr.boxPlayers && <span className="text-xs text-[#1B2A4A]/60">Box score collé ({activeSr.boxPlayers.length}) <button onClick={() => updateActiveSr({ boxPlayers: null, teamTotals: null, oppTotals: null })} className="text-red-500 ml-1 hover:underline">retirer</button></span>}
                 </div>
+                {srXmlPending && (
+                  <div className="mt-2 p-3 rounded-lg bg-[#ea580c]/10">
+                    <p className="text-xs text-[#1B2A4A] mb-2">Ce fichier contient les tirs de deux équipes. Quelle équipe veux-tu scouter ?</p>
+                    <div className="flex gap-2 flex-wrap">
+                      {Object.entries(srXmlPending.teams).map(([t, n]) => (
+                        <button key={t} onClick={() => { importShots(srXmlPending.fileName, srXmlPending, t); setSrXmlPending(null); }} className="text-xs font-semibold px-3 py-1.5 rounded-md bg-white border border-[#1B2A4A]/20 text-[#1B2A4A]">{t} ({n} tirs)</button>
+                      ))}
+                      <button onClick={() => setSrXmlPending(null)} className="text-xs text-[#1B2A4A]/50 px-2">Annuler</button>
+                    </div>
+                  </div>
+                )}
+                {(activeSr.shotFiles || []).length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {activeSr.shotFiles.map(sf => (
+                      <span key={sf.id} className="text-xs bg-[#ea580c]/10 text-[#1B2A4A] rounded-full pl-3 pr-1.5 py-1 inline-flex items-center gap-1.5">🎯 {sf.team} · {sf.count} tirs · {sf.name}
+                        <button onClick={() => updateActiveSr({ shotFiles: activeSr.shotFiles.filter(x => x.id !== sf.id), shots: (activeSr.shots || []).filter(x => x.f !== sf.id) })} className="w-5 h-5 rounded-full text-[#1B2A4A]/40 hover:text-red-600 flex items-center justify-center"><X size={11} /></button>
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {srPasteOpen && (
                   <div className="mt-2">
                     <p className="text-xs text-[#1B2A4A]/50 mb-1">Sélectionne le tableau sur le site de stats (en-tête MJ, Min, Pts, Reb, Pds, 2R-2T… jusqu'à la ligne « Adversaires »), copie-le et colle-le ici.</p>
