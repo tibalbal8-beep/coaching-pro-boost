@@ -417,6 +417,8 @@ function useStore(sport = DEFAULT_SPORT) {
   // Analyse de mon équipe (admin) : imports Excel (cinq alignés, box score par match).
   const [teamAnalyses, setTeamAnalyses] = useState([]);
   const teamAnalysesKey = `teamAnalyses:${sport}`;
+  const [scoutReports, setScoutReports] = useState([]);
+  const scoutReportsKey = `scoutReports:${sport}`;
   // Copie locale (localStorage, synchrone) du Mode match — seule donnée de l'app à en avoir
   // une : c'est la seule pensée pour être utilisée en direct, sans connexion, pendant un match.
   const matchSessionsLocalKey = `cpb_local_matchSessions:${sport}`;
@@ -511,6 +513,10 @@ function useStore(sport = DEFAULT_SPORT) {
       try {
         const vs = await storage.get(videoScoutSessionsKey);
         setVideoScoutSessions(vs ? JSON.parse(vs.value) : []);
+      } catch { hadError = true; }
+      try {
+        const sr = await storage.get(scoutReportsKey);
+        setScoutReports(sr ? JSON.parse(sr.value) : []);
       } catch { hadError = true; }
       try {
         const ta = await storage.get(teamAnalysesKey);
@@ -627,6 +633,7 @@ function useStore(sport = DEFAULT_SPORT) {
     trySyncMatchSessions(next);
   };
   const saveVideoScoutSessions = (next) => { setVideoScoutSessions(next); persist(videoScoutSessionsKey, JSON.stringify(next)); };
+  const saveScoutReports = (next) => { setScoutReports(next); persist(scoutReportsKey, JSON.stringify(next)); };
   const saveTeamAnalyses = (next) => { setTeamAnalyses(next); persist(teamAnalysesKey, JSON.stringify(next)); };
   const savePlays = async (next) => {
     for (const play of next) {
@@ -660,7 +667,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, teamAnalyses, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
+  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, teamAnalyses, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
 }
 
 function usePdfJs() {
@@ -994,7 +1001,7 @@ function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
 // vues, notes libres, et le classement des systèmes avec leur rentabilité (même mécanique
 // que buildMatchReportHtml, sans le tableau de score qui n'a pas de sens hors match réel).
 // Repère de version affiché en bas de l'export (à faire évoluer à chaque refonte du rapport).
-const VIDEO_SCOUT_REPORT_VERSION = "2026-10-06-i";
+const VIDEO_SCOUT_REPORT_VERSION = "2026-10-07-a";
 // Feuille de style commune aux récaps (scouting vidéo, analyse de mon équipe).
 const SCOUT_REPORT_CSS = `
   *{box-sizing:border-box;margin:0;padding:0}
@@ -1120,6 +1127,12 @@ const SCOUT_REPORT_CSS = `
   .pl-cosum{margin:12px 0 4px}.pl-cot{font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:.6px;text-transform:uppercase;color:#1B2A4A99}
   .pl-sp{margin:6px 0}.pl-spbar{display:flex;height:9px;border-radius:5px;overflow:hidden;background:#1B2A4A12}.pl-spbar i{display:block;height:100%}
   .pl-splab{font-size:11.5px;color:#1B2A4Acc;margin-top:3px;line-height:1.35}.pl-splab em{color:#1B2A4A80}
+  .pl-role{font-size:10.5px;font-weight:600;background:#1B2A4A12;border-radius:10px;padding:1px 8px;margin-left:4px;white-space:nowrap}
+  .pl-man{display:flex;flex-direction:column;gap:1px;border-left:4px solid;border-radius:8px;padding:5px 9px;margin:5px 0;font-size:12.5px;line-height:1.4}
+  .pl-man b{font-size:11.5px;text-transform:uppercase;letter-spacing:.4px}.pl-man span{color:#1B2A4Acc}
+  .pl-man-g{background:#22c55e12;border-color:#16a34a}.pl-man-g b{color:#15803d}
+  .pl-man-w{background:#ef444412;border-color:#dc2626}.pl-man-w b{color:#b91c1c}
+  .pl-man-i{background:#1B2A4A0d;border-color:#1B2A4A}
   .pl-how{font-size:12.5px;background:#2563EB14;border-radius:8px;padding:6px 8px;margin-top:6px}.pl-low{margin-top:12px}
   .ff-hint{font-size:10.5px;font-weight:400;color:#1B2A4A80;margin-top:2px;line-height:1.35;max-width:46ch}
   .cmp-win{background:#22c55e1f;color:#15803d;font-weight:700!important}
@@ -1618,7 +1631,7 @@ function playerCloseout(p) {
 // roller et catch & drive (plafonné aux tirs à 2 pts) ; le reste des 2 pts = mi-distance / autres.
 function playerShotProfile(p) {
   const fga = p.fga || 0;
-  if (fga * (p.gp || 1) < 15) return null;
+  if (fga * (p.gp || 1) < 15 || !(p.plays || []).length) return null;
   const out = Math.min(p.tpa || 0, fga), two = fga - out;
   const rimLabels = ["Coupe", "Post up", "Pick & roll — roller", "Catch & drive"];
   const rim = Math.min(two, (p.plays || []).filter(x => rimLabels.includes(x.label)).reduce((a, x) => a + (x.att || 0), 0));
@@ -1631,33 +1644,152 @@ function playersReportHtml(pl, opponent) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const f1 = (x) => x === null || x === undefined ? "—" : x.toFixed(1).replace(".", ",");
   const pc = (x) => x === null || x === undefined ? "—" : Math.round(x * 100) + " %";
-  const photos = pl.photos || {};
-  const sorted = [...list].sort((a, b) => (b.min || 0) * (b.gp || 0) - (a.min || 0) * (a.gp || 0));
-  const main = sorted.filter(p => !playerLowSample(p)), low = sorted.filter(playerLowSample);
+  const photos = pl.photos || {}, manual = pl.manual || {};
+  const CO = { red: "Très agressif", blue: "Moyen", green: "Faible" };
+  const hasMan = (m) => !!(m && (m.role || m.strengths || m.weaknesses || m.instruction || m.closeout));
+  const shown = list.filter(p => !(manual[playerKey(p)] || {}).hidden);
+  const sorted = [...shown].sort((a, b) => (b.min || 0) * (b.gp || 0) - (a.min || 0) * (a.gp || 0));
+  const isMain = (p) => !playerLowSample(p) || hasMan(manual[playerKey(p)]);
+  const main = sorted.filter(isMain), low = sorted.filter(p => !isMain(p));
   const mmss = (m) => m === null || m === undefined ? "—" : `${Math.floor(m)}:${String(Math.round((m % 1) * 60)).padStart(2, "0")}`;
+  const lines = (t) => esc(t).replace(/\n/g, "<br>");
+  const coBlock = (co) => `<div class="pl-co pl-co-${co.lvl}"><b>Close-out : ${co.label}</b><span>${esc(co.why)}</span></div>`;
   const card = (p) => {
-    const ins = playerInsights(p), co = playerCloseout(p), sp = playerShotProfile(p), ph = photos[playerKey(p)];
+    const m = manual[playerKey(p)] || {}, lowS = playerLowSample(p);
+    const ins = lowS ? { good: [], watch: [], how: [] } : playerInsights(p);
+    const co = m.closeout ? { lvl: m.closeout, label: CO[m.closeout], why: "choix du coach." } : (lowS ? null : playerCloseout(p));
+    const sp = lowS ? null : playerShotProfile(p), ph = photos[playerKey(p)];
     const avatar = ph ? `<img class="pl-photo" src="${ph}" alt="${esc(p.name)}" />` : `<div class="pl-photo pl-ph0">${esc(p.name.split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase())}</div>`;
     const kp = (v, l) => `<div class="pl-k"><b>${v}</b><span>${l}</span></div>`;
-    const shot = (m, a) => a ? `${f1(m)}/${f1(a)} (${pc(m / a)})` : "—";
+    const shot = (a, b) => b ? `${f1(a)}/${f1(b)} (${pc(a / b)})` : "—";
+    const hasStats = p.gp !== null && p.gp !== undefined && p.pts !== null && p.pts !== undefined;
+    const sub = hasStats ? `${p.gp} match${p.gp > 1 ? "s" : ""} · ${mmss(p.min)} min / match${lowS ? " · échantillon faible" : ""}` : "";
     return `<div class="pl-card">
-      <div class="pl-head">${avatar}<div><div class="pl-name">${p.num !== null && p.num !== undefined ? `<span class="pl-num">#${esc(p.num)}</span> ` : ""}${esc(p.name)}</div>
-      <div class="pl-sub">${p.gp} match${p.gp > 1 ? "s" : ""} · ${mmss(p.min)} min / match</div></div></div>
-      <div class="pl-kpis">${kp(f1(p.pts), "pts")}${kp(f1(p.reb), "reb")}${kp(f1(p.ast), "passes")}${kp(pc(p.ts), "TS %")}${kp(pc(p.usg), "usage")}</div>
-      <div class="pl-shots">Tirs <b>${shot(p.fgm, p.fga)}</b> · 3 pts <b>${shot(p.tpm, p.tpa)}</b> · LF <b>${shot(p.ftm, p.fta)}</b></div>
+      <div class="pl-head">${avatar}<div><div class="pl-name">${p.num !== null && p.num !== undefined ? `<span class="pl-num">#${esc(p.num)}</span> ` : ""}${esc(p.name)}${m.role ? ` <span class="pl-role">${esc(m.role)}</span>` : ""}</div>
+      ${sub ? `<div class="pl-sub">${sub}</div>` : ""}</div></div>
+      ${hasStats && !lowS ? `<div class="pl-kpis">${kp(f1(p.pts), "pts")}${kp(f1(p.reb), "reb")}${kp(f1(p.ast), "passes")}${kp(pc(p.ts), "TS %")}${kp(pc(p.usg), "usage")}</div>
+      <div class="pl-shots">Tirs <b>${shot(p.fgm, p.fga)}</b> · 3 pts <b>${shot(p.tpm, p.tpa)}</b> · LF <b>${shot(p.ftm, p.fta)}</b></div>` : ""}
       ${sp ? (() => { const w = (x) => Math.round(x * 100); const line = sp.rim < 0.15 ? "Ne va presque jamais finir près du cercle." : sp.out >= 0.55 ? "Joueur surtout extérieur." : sp.rim >= 0.4 ? "Finit surtout près du cercle." : ""; return `<div class="pl-sp"><div class="pl-spbar"><i style="width:${w(sp.rim)}%;background:#ea580c"></i><i style="width:${w(sp.mid)}%;background:#a3a3a3"></i><i style="width:${w(sp.out)}%;background:#2563EB"></i></div><div class="pl-splab">Profil de tir <em>(estimé)</em> : <b style="color:#ea580c">${w(sp.rim)} % près du cercle</b> · <b style="color:#737373">${w(sp.mid)} % mi-distance/autres</b> · <b style="color:#2563EB">${w(sp.out)} % à 3 pts</b>${line ? ` — ${line}` : ""}</div></div>`; })() : ""}
-      <div class="pl-co pl-co-${co.lvl}"><b>Close-out : ${co.label}</b><span>${esc(co.why)}</span></div>
+      ${co ? coBlock(co) : ""}
+      ${m.strengths ? `<div class="pl-man pl-man-g"><b>Points forts</b><span>${lines(m.strengths)}</span></div>` : ""}
+      ${m.weaknesses ? `<div class="pl-man pl-man-w"><b>Points faibles</b><span>${lines(m.weaknesses)}</span></div>` : ""}
+      ${m.instruction ? `<div class="pl-man pl-man-i"><b>Consigne</b><span>${lines(m.instruction)}</span></div>` : ""}
       ${ins.good.length ? `<ul class="pl-ins pl-good">${ins.good.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
       ${ins.watch.length ? `<ul class="pl-ins pl-watch">${ins.watch.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
       ${ins.how.length ? `<div class="pl-how"><b>À retenir :</b> ${esc(ins.how.join(" ; "))}.</div>` : ""}
     </div>`;
   };
+  const grp = { red: [], blue: [], green: [] };
+  main.forEach(p => { const m = manual[playerKey(p)] || {}; const lvl = m.closeout || (playerLowSample(p) ? null : playerCloseout(p).lvl); if (lvl) grp[lvl].push(`${p.num !== null && p.num !== undefined ? "#" + esc(p.num) + " " : ""}${esc(p.name)}`); });
+  const row = (k) => grp[k].length ? `<div class="pl-co pl-co-${k}"><b>${CO[k]}</b><span>${grp[k].join(" · ")}</span></div>` : "";
+  const sum = (grp.red.length + grp.blue.length + grp.green.length) ? `<div class="pl-cosum"><div class="pl-cot">Intensité du close-out</div>${row("red")}${row("blue")}${row("green")}</div>` : "";
   return `<section class="card"><h2><i></i>Les joueurs${opponent ? " de " + esc(opponent) : ""}</h2>
-    <p class="muted">Moyennes par match (arrondies) issues du fichier Excel. Le profil de tir est une estimation (le fichier n'a pas de zones). Les constats ne sont donnés qu'à partir de 3 matchs et 8 minutes de moyenne, et sur un volume de tirs suffisant.</p>
-    ${(() => { const g = { red: [], blue: [], green: [] }; main.forEach(p => g[playerCloseout(p).lvl].push(`${p.num !== null && p.num !== undefined ? "#" + esc(p.num) + " " : ""}${esc(p.name)}`)); const row = (k, t) => g[k].length ? `<div class="pl-co pl-co-${k}"><b>${t}</b><span>${g[k].join(" · ")}</span></div>` : ""; return `<div class="pl-cosum"><div class="pl-cot">Intensité du close-out</div>${row("red", "Très agressif")}${row("blue", "Moyen")}${row("green", "Faible")}</div>`; })()}
+    <p class="muted">Moyennes par match issues des fichiers importés. Le profil de tir est une estimation (le fichier n'a pas de zones). Les constats ne sont donnés qu'à partir de 3 matchs et 8 minutes de moyenne, et sur un volume de tirs suffisant.</p>
+    ${sum}
     <div class="pl-grid">${main.map(card).join("")}</div>
-    ${low.length ? `<p class="muted pl-low"><b>Échantillon trop faible pour conclure :</b> ${low.map(p => `${p.num !== null && p.num !== undefined ? "#" + esc(p.num) + " " : ""}${esc(p.name)} (${p.gp} match${p.gp > 1 ? "s" : ""}, ${mmss(p.min)} min)`).join(" · ")}.</p>` : ""}
+    ${low.length ? `<p class="muted pl-low"><b>Échantillon trop faible pour conclure :</b> ${low.map(p => `${p.num !== null && p.num !== undefined ? "#" + esc(p.num) + " " : ""}${esc(p.name)}${p.gp ? ` (${p.gp} match${p.gp > 1 ? "s" : ""}, ${mmss(p.min)} min)` : ""}`).join(" · ")}.</p>` : ""}
   </section>`;
+}
+// ── Onglet "Scouting report" : fiches joueurs adverses (Excel détaillé et/ou tableau de box score collé) + infos du coach ──
+const scoutKey = (p) => String(p.name || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+// Tableau de box score collé depuis un site (colonnes MJ, Min, Pts, Reb, Pds, 2R-2T, 3R-3T, T%, LFR-LFT, LF%, RO, RD, IN, BP, CT, +/-, EVAL).
+// Lignes « Total Équipe » / « Adversaires » = totaux de l'équipe et de ses adversaires.
+function parseBoxTableText(text) {
+  const DEFAULT = ["MJ", "MIN", "PTS", "REB", "PDS", "2R-2T", "3R-3T", "T%", "LFR-LFT", "LF%", "RO", "RD", "IN", "BP", "CT", "+/-", "EVAL"];
+  const lines = String(text || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const cut = (l) => l.includes("\t") ? l.split("\t").map(x => x.trim()) : l.split(/\s+/);
+  const isVal = (t) => /^[-–—]$/.test(t) || /^[-+]?\d/.test(t);
+  const rng = (t) => { const m = /^(\d+(?:[.,]\d+)?)\s*[-–]\s*(\d+(?:[.,]\d+)?)$/.exec(t || ""); return m ? [parseFloat(m[1].replace(",", ".")), parseFloat(m[2].replace(",", "."))] : null; };
+  const nm = (t) => {
+    if (t === undefined || t === null || /^[-–—]?$/.test(String(t).trim())) return null;
+    if (/^:\d|:/.test(t) && /^\d+:\d{2}$/.test(t)) { const [m, s] = t.split(":").map(Number); return m + s / 60; }
+    const x = parseFloat(String(t).replace(",", ".").replace("%", ""));
+    return isNaN(x) ? null : /%$/.test(t) ? x / 100 : x;
+  };
+  let labels = DEFAULT;
+  const hi = lines.findIndex(l => /\bMJ\b/i.test(l) && /\bPts\b/i.test(l));
+  if (hi !== -1) { const h = cut(lines[hi]).map(x => x.toUpperCase()); const i = h.indexOf("MJ"); if (i !== -1) labels = h.slice(i); }
+  const toStats = (vals) => {
+    const g = (lab) => { const i = labels.indexOf(lab); return i === -1 ? undefined : vals[i]; };
+    const two = rng(g("2R-2T")) || [null, null], three = rng(g("3R-3T")) || [null, null], ft = rng(g("LFR-LFT")) || [null, null];
+    const add = (a, b) => (a === null && b === null) ? null : (a || 0) + (b || 0);
+    const s = {
+      gp: nm(g("MJ")), min: nm(g("MIN")), pts: nm(g("PTS")), reb: nm(g("REB")), ast: nm(g("PDS")),
+      fgm: add(two[0], three[0]), fga: add(two[1], three[1]), tpm: three[0], tpa: three[1], ftm: ft[0], fta: ft[1],
+      oreb: nm(g("RO")), dreb: nm(g("RD")), stl: nm(g("IN")), tov: nm(g("BP")), blk: nm(g("CT")), pm: nm(g("+/-")), eval: nm(g("EVAL")),
+      fgPct: nm(g("T%")), ftPct: nm(g("LF%")),
+    };
+    if (s.pts !== null && s.fga !== null) { const d = 2 * (s.fga + 0.44 * (s.fta || 0)); if (d > 0) s.ts = s.pts / d; }
+    if (s.ast !== null && s.tov) s.astTo = s.ast / s.tov;
+    return s;
+  };
+  const players = []; let team = null, opp = null;
+  lines.forEach((l, idx) => {
+    if (idx === hi) return;
+    let cells = cut(l), name;
+    if (l.includes("\t")) { name = cells[0]; cells = cells.slice(1); }
+    else { let i = 0; while (i < cells.length && !isVal(cells[i])) i++; name = cells.slice(0, i).join(" "); cells = cells.slice(i); }
+    if (!name || cells.length < 5) return;
+    const st = toStats(cells);
+    if (/^total/i.test(name)) team = st;
+    else if (/^advers/i.test(name)) opp = st;
+    else if (st.gp !== null || st.pts !== null) players.push({ name, ...st });
+  });
+  if (!players.length) throw new Error("aucune ligne de joueur reconnue (colle le tableau tel quel, avec les noms et les chiffres)");
+  return { players, team, opp };
+}
+// Joueurs d'un scouting report : box score collé, complété/écrasé par l'Excel détaillé, plus les joueurs ajoutés à la main.
+function mergeScoutPlayers(r) {
+  const map = new Map(), order = [];
+  const put = (p, over) => {
+    const k = scoutKey(p), cur = map.get(k);
+    if (!cur) { map.set(k, { ...p }); order.push(k); return; }
+    const o = { ...cur };
+    Object.keys(p).forEach(f => { if (p[f] !== null && p[f] !== undefined && (over || o[f] === null || o[f] === undefined)) o[f] = p[f]; });
+    map.set(k, o);
+  };
+  (r.boxPlayers || []).forEach(p => put(p, false));
+  (r.excelPlayers || []).forEach(p => put(p, true));
+  (r.extraPlayers || []).forEach(p => put(p, false));
+  return order.map(k => map.get(k));
+}
+function buildScoutReportHtml(r, logo = null) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const merged = mergeScoutPlayers(r);
+  const photos = {}, manual = {};
+  merged.forEach(p => { const k = scoutKey(p); if ((r.photos || {})[k]) photos[playerKey(p)] = r.photos[k]; if ((r.manual || {})[k]) manual[playerKey(p)] = r.manual[k]; });
+  const dateStr = r.date ? new Date(r.date + "T12:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : "";
+  const f1 = (x) => x === null || x === undefined ? "—" : x.toFixed(1).replace(".", ",");
+  const pc = (x) => x === null || x === undefined ? "—" : Math.round(x * 100) + " %";
+  const shot = (m, a) => m === null || m === undefined || a === null || a === undefined ? "—" : `${f1(m)}-${f1(a)}`;
+  const teamTable = (r.teamTotals || r.oppTotals) ? `<section class="card"><h2><i></i>Équipe (moyennes par match)</h2>
+    <table class="cmp" style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="text-align:right;color:#1B2A4A80"><th style="text-align:left"></th><th>Pts</th><th>Reb</th><th>Pds</th><th>3 pts</th><th>T %</th><th>LF %</th><th>Pertes</th></tr></thead><tbody>
+    ${[["Équipe", r.teamTotals], ["Adversaires", r.oppTotals]].filter(x => x[1]).map(([l, t]) => `<tr style="text-align:right;border-top:1px solid #1B2A4A14"><td style="text-align:left;font-weight:700;padding:6px 0">${l}</td><td>${f1(t.pts)}</td><td>${f1(t.reb)}</td><td>${f1(t.ast)}</td><td>${shot(t.tpm, t.tpa)}</td><td>${pc(t.fgPct)}</td><td>${pc(t.ftPct)}</td><td>${f1(t.tov)}</td></tr>`).join("")}
+    </tbody></table></section>` : "";
+  const notes = (r.notes || "").trim() ? `<section class="card"><h2><i></i>Notes du coach</h2><p style="white-space:pre-wrap;font-size:14px;line-height:1.5">${esc(r.notes)}</p></section>` : "";
+  const players = playersReportHtml({ list: merged, photos, manual }, r.opponent);
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Scouting report — ${esc(r.opponent)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>${SCOUT_REPORT_CSS}</style>
+</head>
+<body>
+  <div class="page">
+    <header class="hero">
+      ${logo ? `<img src="${logo}" alt="Logo" class="hero-logo" />` : ""}
+      <div class="kicker">Scouting report</div>
+      <h1>${esc(r.opponent)}</h1>
+      <div class="meta">${esc(dateStr) || "Date non précisée"}</div>
+    </header>
+    ${notes}
+    ${teamTable}
+    ${players || `<section class="card"><p class="muted">Aucun joueur renseigné.</p></section>`}
+  </div>
+</body>
+</html>`;
 }
 // Lignes du tableur → matchs. Colonnes reconnues par leur intitulé (anglais ou français). Format
 // détaillé accepté : sous chaque match, une ligne sans adversaire = les stats de l'ADVERSAIRE de ce
@@ -8626,7 +8758,7 @@ function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAl
 function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
   const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, canUseMatchmode, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
-  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, teamAnalyses, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
+  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, teamAnalyses, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
   const SPORT_FORMATS = formats;
@@ -8702,7 +8834,7 @@ function CoachingProBoost({ session }) {
   const pdfReady = usePdfJs();
   const [view, setView] = useState(() => {
     const saved = localStorage.getItem("cpb_view");
-    return ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","myteam","wellness"].includes(saved) ? saved : "library";
+    return ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","myteam","wellness"].includes(saved) ? saved : "library";
   });
   // Toujours à jour, contrairement à `view` capturé dans la closure de l'effet ci-dessous
   // (qui ne tourne qu'une fois au montage) — évite qu'un retour arrière égaré (ex: swipe
@@ -8722,7 +8854,7 @@ function CoachingProBoost({ session }) {
       const v = e.state?.view;
       if (v === "session" && activeSessionRef.current) {
         setView("session");
-      } else if (v && ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","myteam","wellness"].includes(v)) {
+      } else if (v && ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","myteam","wellness"].includes(v)) {
         setView(v);
         localStorage.setItem("cpb_view", v);
       } else if (activeSessionRef.current) {
@@ -9071,6 +9203,16 @@ function CoachingProBoost({ session }) {
         cpbAlert?.("L'export a échoué : " + (e?.message || e) + " — envoie-moi ce message pour que je corrige.");
       }
     }
+    else if (p.kind === "scoutreport") {
+      try {
+        const html = buildScoutReportHtml(p.report, logo);
+        downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `scouting-report-${slugifyForFile(p.report.opponent)}.html`);
+        toast?.("✓ Scouting report exporté");
+      } catch (e) {
+        console.error("Export scouting report", e);
+        cpbAlert?.("L'export a échoué : " + (e?.message || e) + " — envoie-moi ce message pour que je corrige.");
+      }
+    }
     else if (p.kind === "videoscout") {
       // Une erreur ici ne doit jamais rester silencieuse (c'est ce qui rendait le bouton "muet").
       // Schémas + photos des plays de l'équipe chargés avant de générer le récap.
@@ -9284,6 +9426,10 @@ function CoachingProBoost({ session }) {
   const [activeVideoScoutId, setActiveVideoScoutId] = useState(null);
   // Analyse de mon équipe (voir view === "myteam" plus bas)
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
+  // Scouting report joueurs (voir view === "scoutreport")
+  const [activeScoutReportId, setActiveScoutReportId] = useState(null);
+  const [srNewOpen, setSrNewOpen] = useState(false), [srNewOpponent, setSrNewOpponent] = useState(""), [srNewDate, setSrNewDate] = useState("");
+  const [srPasteOpen, setSrPasteOpen] = useState(false), [srPaste, setSrPaste] = useState(""), [srAddName, setSrAddName] = useState("");
   const [taNewName, setTaNewName] = useState("");
   const [vsTfFilters, setVsTfFilters] = useState([]);
   const [vsTypeFilters, setVsTypeFilters] = useState([]);
@@ -10267,6 +10413,7 @@ function CoachingProBoost({ session }) {
               ...(isAdmin ? [{ key: "suivi", label: "Suivi individuel (admin)", icon: UserCheck }] : []),
               ...(isAdmin || canUseMatchmode ? [{ key: "matchmode", label: isAdmin ? "Mode match (admin)" : "Mode match", icon: Zap }] : []),
               ...(isAdmin ? [{ key: "videoscout", label: "Scouting vidéo (admin)", icon: Video }] : []),
+              ...(isAdmin ? [{ key: "scoutreport", label: "Scouting report (admin)", icon: FileText }] : []),
               ...(isAdmin ? [{ key: "myteam", label: "Mon équipe (admin)", icon: BarChart3 }] : []),
               ...(isAdmin || canManageWellness ? [{ key: "wellness", label: "Bien-être joueurs", icon: UserCheck }] : []),
               { key: "account", label: "Mon compte", icon: Users },
@@ -12867,6 +13014,157 @@ function CoachingProBoost({ session }) {
                 })}
                 {videoScoutSessions.length === 0 && !vsNewSessionOpen && <p className="text-sm text-[#1B2A4A]/40">Aucune session de scouting vidéo pour l'instant.</p>}
               </div>
+            </div>
+          );
+        })()}
+
+        {view === "scoutreport" && isAdmin && (() => {
+          const activeSr = scoutReports.find(r => r.id === activeScoutReportId) || null;
+          const updateActiveSr = (patch) => saveScoutReports(scoutReports.map(r => r.id === activeScoutReportId ? { ...r, ...patch } : r));
+          const inputCls = "w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60";
+          const lbl = "text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1";
+          const f1 = (x) => x === null || x === undefined ? "—" : x.toFixed(1).replace(".", ",");
+
+          if (!activeSr) {
+            return (
+              <div className="max-w-3xl mx-auto px-4 py-6">
+                <h1 className="text-2xl font-bold text-[#1B2A4A] mb-1">Scouting report</h1>
+                <p className="text-sm text-[#1B2A4A]/50 mb-4">Fiches des joueurs adverses : stats importées (Excel ou tableau de box score collé) + tes propres infos sur chaque joueur.</p>
+                {srNewOpen ? (
+                  <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-5">
+                    <div className="grid sm:grid-cols-2 gap-3 mb-3">
+                      <div><div className={lbl}>Équipe adverse</div><input value={srNewOpponent} onChange={e => setSrNewOpponent(e.target.value)} placeholder="Ex: Charleville-Mézières" className={inputCls} /></div>
+                      <div><div className={lbl}>Date du match (facultatif)</div><input type="date" value={srNewDate} onChange={e => setSrNewDate(e.target.value)} className={inputCls} /></div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => {
+                        if (!srNewOpponent.trim()) { cpbAlert?.("Indique l'équipe adverse."); return; }
+                        const r = { id: uid(), opponent: srNewOpponent.trim(), date: srNewDate || null, notes: "", createdAt: new Date().toISOString() };
+                        saveScoutReports([...scoutReports, r]);
+                        setSrNewOpen(false); setSrNewOpponent(""); setSrNewDate(""); setActiveScoutReportId(r.id);
+                      }} className="text-sm font-semibold text-white px-4 py-2 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>Créer</button>
+                      <button onClick={() => setSrNewOpen(false)} className="text-sm text-[#1B2A4A]/50 px-4 py-2">Annuler</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setSrNewOpen(true)} className="mb-5 px-4 py-2 rounded-md text-sm font-semibold text-white flex items-center gap-1.5" style={{ backgroundColor: "var(--sport-accent)" }}><Plus size={15} /> Nouveau scouting report</button>
+                )}
+                <div className="flex flex-col gap-2">
+                  {[...scoutReports].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).map(r => (
+                    <div key={r.id} onClick={() => setActiveScoutReportId(r.id)} className="flex items-center justify-between gap-2 border border-[#1B2A4A]/15 rounded-xl bg-white/70 px-4 py-3 cursor-pointer hover:bg-white">
+                      <div><div className="font-semibold text-[#1B2A4A]">{r.opponent}</div><div className="text-xs text-[#1B2A4A]/50">{r.date || "Sans date"} · {mergeScoutPlayers(r).length} joueur{mergeScoutPlayers(r).length > 1 ? "s" : ""}</div></div>
+                      <button onClick={async (e) => { e.stopPropagation(); const ok = await cpbAlert?.(`Supprimer le report « ${r.opponent} » ?`, { confirm: true }); if (ok) saveScoutReports(scoutReports.filter(x => x.id !== r.id)); }} className="text-[#1B2A4A]/30 hover:text-red-600"><Trash2 size={15} /></button>
+                    </div>
+                  ))}
+                  {scoutReports.length === 0 && !srNewOpen && <p className="text-sm text-[#1B2A4A]/40">Aucun scouting report pour l'instant.</p>}
+                </div>
+              </div>
+            );
+          }
+
+          const merged = mergeScoutPlayers(activeSr);
+          const setMan = (p, patch) => updateActiveSr({ manual: { ...(activeSr.manual || {}), [scoutKey(p)]: { ...((activeSr.manual || {})[scoutKey(p)] || {}), ...patch } } });
+          const handleExcel = async (file) => {
+            if (!file) return;
+            try {
+              if (/\.xls$/i.test(file.name)) throw new Error("ancien format .xls : enregistre-le en .xlsx");
+              const list = parsePlayersRows(await readXlsxFirstSheet(await file.arrayBuffer()));
+              updateActiveSr({ excelPlayers: list, excelFileName: file.name });
+              cpbAlert?.(`${list.length} joueurs importés depuis l'Excel.`);
+            } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
+          };
+          const importPaste = () => {
+            try {
+              const r = parseBoxTableText(srPaste);
+              updateActiveSr({ boxPlayers: r.players, teamTotals: r.team, oppTotals: r.opp });
+              setSrPaste(""); setSrPasteOpen(false);
+              cpbAlert?.(`${r.players.length} joueurs importés${r.team ? " + totaux équipe" : ""}${r.opp ? " + adversaires" : ""}.`);
+            } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
+          };
+          return (
+            <div className="max-w-3xl mx-auto px-4 py-6">
+              <button onClick={() => setActiveScoutReportId(null)} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] mb-3">← Tous les reports</button>
+              <div className="grid sm:grid-cols-2 gap-3 mb-4">
+                <div><div className={lbl}>Équipe adverse</div><input value={activeSr.opponent} onChange={e => updateActiveSr({ opponent: e.target.value })} className={inputCls} /></div>
+                <div><div className={lbl}>Date du match</div><input type="date" value={activeSr.date || ""} onChange={e => updateActiveSr({ date: e.target.value || null })} className={inputCls} /></div>
+              </div>
+              <div className="mb-4"><div className={lbl}>Notes générales (apparaissent en tête du report)</div>
+                <textarea value={activeSr.notes || ""} onChange={e => updateActiveSr({ notes: e.target.value })} rows={3} placeholder="Ex: équipe qui joue vite, très dépendante de ses extérieurs…" className={inputCls} /></div>
+
+              <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
+                <div className={lbl}>Importer des stats</div>
+                <div className="flex flex-wrap items-center gap-3 mb-2">
+                  <label className="text-xs font-semibold text-white px-3 py-1.5 rounded-md cursor-pointer" style={{ backgroundColor: "#16a34a" }}>
+                    📊 Excel joueurs détaillé
+                    <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; handleExcel(f); }} />
+                  </label>
+                  <button onClick={() => setSrPasteOpen(!srPasteOpen)} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md bg-[#2563EB]">📋 Coller un box score</button>
+                  {activeSr.excelPlayers && <span className="text-xs text-[#1B2A4A]/60">Excel : {activeSr.excelFileName} ({activeSr.excelPlayers.length}) <button onClick={() => updateActiveSr({ excelPlayers: null, excelFileName: null })} className="text-red-500 ml-1 hover:underline">retirer</button></span>}
+                  {activeSr.boxPlayers && <span className="text-xs text-[#1B2A4A]/60">Box score collé ({activeSr.boxPlayers.length}) <button onClick={() => updateActiveSr({ boxPlayers: null, teamTotals: null, oppTotals: null })} className="text-red-500 ml-1 hover:underline">retirer</button></span>}
+                </div>
+                {srPasteOpen && (
+                  <div className="mt-2">
+                    <p className="text-xs text-[#1B2A4A]/50 mb-1">Sélectionne le tableau sur le site de stats (en-tête MJ, Min, Pts, Reb, Pds, 2R-2T… jusqu'à la ligne « Adversaires »), copie-le et colle-le ici.</p>
+                    <textarea value={srPaste} onChange={e => setSrPaste(e.target.value)} rows={8} className={inputCls + " font-mono text-xs"} placeholder="Joueurs	MJ	Min	Pts	Reb	Pds	2R-2T…" />
+                    <button onClick={importPaste} disabled={!srPaste.trim()} className="mt-2 text-sm font-semibold text-white px-4 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "var(--sport-accent)" }}>Importer le tableau</button>
+                  </div>
+                )}
+                <p className="text-[11px] text-[#1B2A4A]/40 mt-2">Les deux sources se complètent (par nom de joueur) : l'Excel détaillé prime quand les deux existent.</p>
+              </div>
+
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                <div className={lbl + " mb-0"}>Joueurs ({merged.length})</div>
+                <div className="flex items-center gap-2">
+                  <input value={srAddName} onChange={e => setSrAddName(e.target.value)} placeholder="Nom d'un joueur à ajouter" className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white/60" />
+                  <button onClick={() => {
+                    const n = srAddName.trim(); if (!n) return;
+                    if (merged.some(p => scoutKey(p) === scoutKey({ name: n }))) { cpbAlert?.("Ce joueur existe déjà."); return; }
+                    updateActiveSr({ extraPlayers: [...(activeSr.extraPlayers || []), { name: n }] }); setSrAddName("");
+                  }} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>+ Ajouter</button>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3 mb-6">
+                {merged.map(p => {
+                  const k = scoutKey(p), m = (activeSr.manual || {})[k] || {}, ph = (activeSr.photos || {})[k];
+                  const field = (key, label, rows = 2, ph2 = "") => (
+                    <div><div className={lbl}>{label}</div><textarea value={m[key] || ""} onChange={e => setMan(p, { [key]: e.target.value })} rows={rows} placeholder={ph2} className={inputCls} /></div>
+                  );
+                  return (
+                    <div key={k} className={`border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-3 ${m.hidden ? "opacity-50" : ""}`}>
+                      <div className="flex items-center gap-3 mb-2">
+                        <label className="cursor-pointer shrink-0">
+                          {ph ? <img src={ph} alt="" className="w-12 h-12 rounded-full object-cover" /> : <span className="w-12 h-12 rounded-full bg-[#1B2A4A]/10 flex items-center justify-center text-lg">📷</span>}
+                          <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                            const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+                            try { const url = await readImageAsJpeg(f, 320, 0.75); updateActiveSr({ photos: { ...(activeSr.photos || {}), [k]: url } }); } catch { cpbAlert?.("Photo illisible."); }
+                          }} />
+                        </label>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-[#1B2A4A] truncate">{p.num !== null && p.num !== undefined ? `#${p.num} ` : ""}{p.name}</div>
+                          <div className="text-xs text-[#1B2A4A]/50">{p.gp ? `${p.gp} match${p.gp > 1 ? "s" : ""} · ${f1(p.min)} min · ${f1(p.pts)} pts · ${f1(p.reb)} reb · ${f1(p.ast)} pds` : "Pas de stats importées"}</div>
+                        </div>
+                        <label className="text-xs text-[#1B2A4A]/60 flex items-center gap-1 shrink-0"><input type="checkbox" checked={!!m.hidden} onChange={e => setMan(p, { hidden: e.target.checked })} /> Masquer</label>
+                        {(activeSr.extraPlayers || []).some(x => scoutKey(x) === k) && (
+                          <button onClick={() => updateActiveSr({ extraPlayers: (activeSr.extraPlayers || []).filter(x => scoutKey(x) !== k) })} className="text-[#1B2A4A]/30 hover:text-red-600"><Trash2 size={14} /></button>
+                        )}
+                      </div>
+                      <div className="grid sm:grid-cols-2 gap-2">
+                        <div><div className={lbl}>Poste / rôle</div><input value={m.role || ""} onChange={e => setMan(p, { role: e.target.value })} placeholder="Ex: meneur, 4 shooteur…" className={inputCls} /></div>
+                        <div><div className={lbl}>Close-out</div>
+                          <select value={m.closeout || ""} onChange={e => setMan(p, { closeout: e.target.value })} className={inputCls}>
+                            <option value="">Automatique (selon ses stats)</option>
+                            <option value="red">🔴 Très agressif</option><option value="blue">🔵 Moyen</option><option value="green">🟢 Faible</option>
+                          </select></div>
+                        {field("strengths", "Points forts", 2, "Ce que tu as vu…")}
+                        {field("weaknesses", "Points faibles", 2)}
+                      </div>
+                      <div className="mt-2">{field("instruction", "Consigne défensive / à retenir", 2)}</div>
+                    </div>
+                  );
+                })}
+                {merged.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Importe des stats ou ajoute un joueur à la main.</p>}
+              </div>
+              <button onClick={() => setLogoExportPrompt({ report: activeSr, kind: "scoutreport" })} className="px-5 py-2.5 rounded-md text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>📄 Exporter le scouting report</button>
             </div>
           );
         })()}
