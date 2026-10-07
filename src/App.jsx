@@ -1655,13 +1655,13 @@ function classifyShot(u, v, is3) {
   const r = Math.hypot(u, v), th = Math.atan2(u, v) * 180 / Math.PI, side = u < 0 ? "L" : "R";
   const threeZone = (corner) => corner ? "corner" + side : Math.abs(th) <= 22 ? "top" : "wing" + side;
   const midZone = () => Math.abs(th) <= 35 ? "midC" : "mid" + side;
-  if (Math.abs(u) >= 6.6 && v <= 3.0) return threeZone(true);
+  if (Math.abs(u) >= 6.6 && v <= 1.6) return threeZone(true);
   if (r > 6.75 || is3) {
-    if (is3) return threeZone(Math.abs(u) >= 5.5 && v <= 3.5);
+    if (is3) return threeZone(Math.abs(u) >= 5.5 && v <= 1.9);
     return midZone();
   }
-  if (r <= 1.8) return "cercle";
-  if (Math.abs(u) <= 2.45 && v <= 5.8) return "raquette";
+  if (r <= 2.4) return "cercle";
+  if (Math.abs(u) <= 2.45 && v <= 4.225) return "raquette";
   return midZone();
 }
 // Fichier XML de tirs : une instance par tir (code "11 Minfir Tyron (575941)", libellés Team / Action "3 pt Made - …", pos_x, pos_y).
@@ -1717,45 +1717,53 @@ function shotInsights(shots) {
   return { good, watch };
 }
 function shotChartSvg(shots, opts = {}) {
-  const S = 34, W = 15 * S, H = 10.2 * S, cx = W / 2, cy = 1.575 * S;
+  // Terrain FIBA vu d'au-dessus, panier en haut : ligne de fond à v = -1,575 ; lancer franc à 5,80 m de la ligne de fond (v = 4,225).
+  const S = 34, W = 15 * S, H = 10.6 * S, cx = W / 2, cy = 1.575 * S, FT = 4.225, LANE = 2.45, ARC = 6.75, CORNER_V = 1.6;
   const X = (u) => (cx + u * S).toFixed(1), Y = (v) => (cy + v * S).toFixed(1);
   const P = (r, th) => `${X(r * Math.sin(th * Math.PI / 180))},${Y(r * Math.cos(th * Math.PI / 180))}`;
   const sector = (r1, r2, a1, a2) => {
-    const pts = []; for (let a = a1; a <= a2; a += 5) pts.push(P(r2, a)); for (let a = a2; a >= a1; a -= 5) pts.push(P(r1, a));
+    const pts = []; for (let a = a1; a <= a2; a += 4) pts.push(P(r2, a)); for (let a = a2; a >= a1; a -= 4) pts.push(P(r1, a));
     return pts.join(" ");
   };
   const { zones } = shotZoneStats(shots);
-  const col = (z) => { const q = zones[z]; if (!q.a) return "#f5e6d0"; const p = q.m / q.a; return p >= 0.5 ? "#fb923c" : p >= 0.35 ? "#fdba74" : "#bfdbfe"; };
-  const poly = (z, pts) => `<polygon points="${pts}" fill="${col(z)}" stroke="#8a6a45" stroke-width="1"/>`;
-  const rect = (z, u1, u2, v1, v2) => `<rect x="${X(u1)}" y="${Y(v1)}" width="${((u2 - u1) * S).toFixed(1)}" height="${((v2 - v1) * S).toFixed(1)}" fill="${col(z)}" stroke="#8a6a45" stroke-width="1"/>`;
-  let g = `<clipPath id="cc${opts.id || 0}"><rect x="0" y="0" width="${W}" height="${H}"/></clipPath><g clip-path="url(#cc${opts.id || 0})">`;
-  g += `<rect width="${W}" height="${H}" fill="#f5e6d0"/>`;
-  g += poly("top", sector(6.75, 30, -22, 22)) + poly("wingR", sector(6.75, 30, 22, 120)) + poly("wingL", sector(6.75, 30, -120, -22));
-  g += poly("midL", sector(1.8, 6.75, -120, -35)) + poly("midC", sector(1.8, 6.75, -35, 35)) + poly("midR", sector(1.8, 6.75, 35, 120));
-  g += rect("cornerL", -7.5, -6.6, -1.575, 3.0) + rect("cornerR", 6.6, 7.5, -1.575, 3.0);
-  g += rect("raquette", -2.45, 2.45, -1.575, 5.8);
-  g += `<circle cx="${cx}" cy="${cy}" r="${1.8 * S}" fill="${col("cercle")}" stroke="#8a6a45" stroke-width="1"/>`;
-  // lignes du terrain
-  const ln = `fill="none" stroke="#fff" stroke-width="1.6"`;
-  g += `<path d="M ${X(-6.6)} ${Y(-1.575)} L ${X(-6.6)} ${Y(1.42)} A ${6.75 * S} ${6.75 * S} 0 0 0 ${X(6.6)} ${Y(1.42)} L ${X(6.6)} ${Y(-1.575)}" ${ln}/>`;
-  g += `<path d="M ${X(-1.8)} ${Y(5.8)} A ${1.8 * S} ${1.8 * S} 0 0 0 ${X(1.8)} ${Y(5.8)}" ${ln}/><path d="M ${X(-1.25)} ${Y(0)} A ${1.25 * S} ${1.25 * S} 0 0 0 ${X(1.25)} ${Y(0)}" ${ln}/>`;
-  g += `<line x1="${X(-0.9)}" y1="${Y(-0.15)}" x2="${X(0.9)}" y2="${Y(-0.15)}" stroke="#fff" stroke-width="2"/><circle cx="${cx}" cy="${Y(0.3)}" r="${0.225 * S}" ${ln}/>`;
-  [-35, 35].forEach(a => { g += `<line x1="${P(1.8, a).split(",")[0]}" y1="${P(1.8, a).split(",")[1]}" x2="${P(6.75, a).split(",")[0]}" y2="${P(6.75, a).split(",")[1]}" stroke="#8a6a45" stroke-width="1"/>`; });
+  const FLOOR = "#f1dcbc", ZBR = "#7a5a34";
+  const col = (z, tint) => { const q = zones[z]; if (!q.a) return tint; const p = q.m / q.a; return p >= 0.5 ? "#fb923c" : p >= 0.35 ? "#fdc58a" : "#bcd7f7"; };
+  const poly = (z, pts, tint) => `<polygon points="${pts}" fill="${col(z, tint)}" stroke="${col(z, tint)}" stroke-width=".8"/>`;
+  const rect = (z, u1, u2, v1, v2, tint) => `<rect x="${X(u1)}" y="${Y(v1)}" width="${((u2 - u1) * S).toFixed(1)}" height="${((v2 - v1) * S).toFixed(1)}" fill="${col(z, tint)}" stroke="${ZBR}" stroke-width="1.4"/>`;
+  const id = "cc" + (opts.id || 0);
+  let g = `<clipPath id="${id}"><rect x="0" y="0" width="${W}" height="${H}"/></clipPath><g clip-path="url(#${id})">`;
+  g += `<rect width="${W}" height="${H}" fill="${FLOOR}"/>`;
+  // zones (les plus larges d'abord, les plus proches du panier par-dessus)
+  g += poly("top", sector(ARC, 30, -22, 22), "#f6e8d0") + poly("wingR", sector(ARC, 30, 22, 120), "#ecd3ae") + poly("wingL", sector(ARC, 30, -120, -22), "#ecd3ae");
+  g += poly("midL", sector(2.4, ARC, -120, -35), "#f6e8d0") + poly("midC", sector(2.4, ARC, -35, 35), "#ecd3ae") + poly("midR", sector(2.4, ARC, 35, 120), "#f6e8d0");
+  g += rect("cornerL", -7.5, -6.6, -1.575, CORNER_V, "#f6e8d0") + rect("cornerR", 6.6, 7.5, -1.575, CORNER_V, "#f6e8d0");
+  g += rect("raquette", -LANE, LANE, -1.575, FT, "#e6c898");
+  g += `<path d="M ${X(-2.4)} ${Y(0)} A ${2.4 * S} ${2.4 * S} 0 0 0 ${X(2.4)} ${Y(0)} L ${X(2.4)} ${Y(-1.575)} L ${X(-2.4)} ${Y(-1.575)} Z" fill="${col("cercle", "#f6e8d0")}" stroke="${ZBR}" stroke-width="1.4"/>`;
+  // lignes du terrain (blanc)
+  const ln = `fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"`;
+  const yc = Math.sqrt(ARC * ARC - 6.6 * 6.6);
+  g += `<path d="M ${X(-6.6)} ${Y(-1.575)} L ${X(-6.6)} ${Y(yc)} A ${ARC * S} ${ARC * S} 0 0 0 ${X(6.6)} ${Y(yc)} L ${X(6.6)} ${Y(-1.575)}" ${ln}/>`;
+  g += `<rect x="${X(-LANE)}" y="${Y(-1.575)}" width="${(2 * LANE * S).toFixed(1)}" height="${((FT + 1.575) * S).toFixed(1)}" ${ln}/>`;
+  g += `<path d="M ${X(-1.8)} ${Y(FT)} A ${1.8 * S} ${1.8 * S} 0 0 0 ${X(1.8)} ${Y(FT)}" ${ln}/><path d="M ${X(-1.8)} ${Y(FT)} A ${1.8 * S} ${1.8 * S} 0 0 1 ${X(1.8)} ${Y(FT)}" fill="none" stroke="#fff" stroke-width="2" stroke-dasharray="4 4"/>`;
+  g += `<path d="M ${X(-1.25)} ${Y(-0.375)} L ${X(-1.25)} ${Y(0)} A ${1.25 * S} ${1.25 * S} 0 0 0 ${X(1.25)} ${Y(0)} L ${X(1.25)} ${Y(-0.375)}" ${ln}/>`;
+  g += `<line x1="${X(-0.9)}" y1="${Y(-0.375)}" x2="${X(0.9)}" y2="${Y(-0.375)}" stroke="#444" stroke-width="3"/><circle cx="${X(0)}" cy="${Y(0)}" r="${0.225 * S}" fill="none" stroke="#e8590c" stroke-width="2.2"/>`;
+  [-22, 22].forEach(a => { const [x1, y1] = P(ARC, a).split(","), [x2, y2] = P(30, a).split(","); g += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${ZBR}" stroke-width="1.4"/>`; });
+  [-35, 35].forEach(a => { const [x1, y1] = P(2.4, a).split(","), [x2, y2] = P(ARC, a).split(","); g += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${ZBR}" stroke-width="1.4"/>`; });
   // tirs
   shots.forEach(s => {
     const x = X(s.u), y = Y(s.v);
-    g += s.m ? `<circle cx="${x}" cy="${y}" r="3.2" fill="#15803d" fill-opacity=".85" stroke="#fff" stroke-width=".8"/>`
-      : `<path d="M ${(+x - 3).toFixed(1)} ${(+y - 3).toFixed(1)} l 6 6 M ${(+x + 3).toFixed(1)} ${(+y - 3).toFixed(1)} l -6 6" stroke="#b91c1c" stroke-width="1.6" stroke-opacity=".85"/>`;
+    g += s.m ? `<circle cx="${x}" cy="${y}" r="3.2" fill="#15803d" fill-opacity=".9" stroke="#fff" stroke-width=".8"/>`
+      : `<path d="M ${(+x - 3).toFixed(1)} ${(+y - 3).toFixed(1)} l 6 6 M ${(+x + 3).toFixed(1)} ${(+y - 3).toFixed(1)} l -6 6" stroke="#b91c1c" stroke-width="1.7" stroke-opacity=".9"/>`;
   });
-  // libellés : % et réussis-tentés
-  const anchors = { cercle: [0, 0.75], raquette: [0, 3.7], midL: [-4.4, 3.4], midC: [0, 6.3], midR: [4.4, 3.4], cornerL: [-7.05, 0.9], cornerR: [7.05, 0.9], wingL: [-5.6, 5.4], wingR: [5.6, 5.4], top: [0, 8.1] };
+  // libellés : % et réussis-tentés (zones sans tir : nom discret)
+  const anchors = { cercle: [0, 1.5], raquette: [0, 3.2], midL: [-4.1, 2.0], midC: [0, 5.6], midR: [4.1, 2.0], cornerL: [-7.05, 0.2], cornerR: [7.05, 0.2], wingL: [-5.7, 5.0], wingR: [5.7, 5.0], top: [0, 8.0] };
   Object.entries(anchors).forEach(([z, [u, v]]) => {
-    const q = zones[z]; if (!q.a) return;
-    const small = z.startsWith("corner");
+    const q = zones[z], small = z.startsWith("corner");
+    if (!q.a) return;
     g += `<text x="${X(u)}" y="${(+Y(v) - 1).toFixed(1)}" text-anchor="middle" font-family="Oswald,Inter,sans-serif" font-size="${small ? 11 : 16}" font-weight="600" fill="#1B2A4A" stroke="#fff" stroke-width="3" paint-order="stroke">${Math.round(q.m / q.a * 100)}%</text>`;
     g += `<text x="${X(u)}" y="${(+Y(v) + (small ? 10 : 13)).toFixed(1)}" text-anchor="middle" font-family="Inter,sans-serif" font-size="${small ? 8.5 : 11}" fill="#1B2A4A" stroke="#fff" stroke-width="2.5" paint-order="stroke">${q.m}-${q.a}</text>`;
   });
-  g += `</g><rect width="${W}" height="${H}" fill="none" stroke="#8a6a45" stroke-width="1.5"/>`;
+  g += `</g><rect width="${W}" height="${H}" fill="none" stroke="${ZBR}" stroke-width="1.5"/>`;
   return `<svg class="shot-chart" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">${g}</svg>`;
 }
 function playersReportHtml(pl, opponent) {
