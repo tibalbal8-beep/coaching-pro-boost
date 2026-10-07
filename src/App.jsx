@@ -1118,6 +1118,8 @@ const SCOUT_REPORT_CSS = `
   .pl-co-blue{background:#2563EB14;border-color:#2563EB}.pl-co-blue b{color:#1d4ed8}
   .pl-co-green{background:#22c55e18;border-color:#16a34a}.pl-co-green b{color:#15803d}
   .pl-cosum{margin:12px 0 4px}.pl-cot{font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:.6px;text-transform:uppercase;color:#1B2A4A99}
+  .pl-sp{margin:6px 0}.pl-spbar{display:flex;height:9px;border-radius:5px;overflow:hidden;background:#1B2A4A12}.pl-spbar i{display:block;height:100%}
+  .pl-splab{font-size:11.5px;color:#1B2A4Acc;margin-top:3px;line-height:1.35}.pl-splab em{color:#1B2A4A80}
   .pl-how{font-size:12.5px;background:#2563EB14;border-radius:8px;padding:6px 8px;margin-top:6px}.pl-low{margin-top:12px}
   .ff-hint{font-size:10.5px;font-weight:400;color:#1B2A4A80;margin-top:2px;line-height:1.35;max-width:46ch}
   .cmp-win{background:#22c55e1f;color:#15803d;font-weight:700!important}
@@ -1612,6 +1614,17 @@ function playerCloseout(p) {
   if (tpa < 1.5 || (tot >= 8 && r < 0.25 && tpa < 3)) return { lvl: "green", label: "Faible", why: tpa ? `${vol} (${pc(r)}) : peu menaçant, close-out contrôlé, protéger la raquette.` : "ne tire pas à 3 pts : close-out contrôlé, protéger la raquette." };
   return { lvl: "blue", label: "Moyen", why: `${vol}${r !== null ? ` (${pc(r)})` : ""} : sortir en contrôle, main haute, sans se faire passer.` };
 }
+// Profil de tir ESTIMÉ (le fichier n'a pas de zones) : extérieur = tirs à 3 pts ; près du cercle = coupe, post up,
+// roller et catch & drive (plafonné aux tirs à 2 pts) ; le reste des 2 pts = mi-distance / autres.
+function playerShotProfile(p) {
+  const fga = p.fga || 0;
+  if (fga * (p.gp || 1) < 15) return null;
+  const out = Math.min(p.tpa || 0, fga), two = fga - out;
+  const rimLabels = ["Coupe", "Post up", "Pick & roll — roller", "Catch & drive"];
+  const rim = Math.min(two, (p.plays || []).filter(x => rimLabels.includes(x.label)).reduce((a, x) => a + (x.att || 0), 0));
+  const mid = Math.max(0, two - rim);
+  return { rim: rim / fga, mid: mid / fga, out: out / fga };
+}
 function playersReportHtml(pl, opponent) {
   const list = (pl && pl.list) || [];
   if (!list.length) return "";
@@ -1623,7 +1636,7 @@ function playersReportHtml(pl, opponent) {
   const main = sorted.filter(p => !playerLowSample(p)), low = sorted.filter(playerLowSample);
   const mmss = (m) => m === null || m === undefined ? "—" : `${Math.floor(m)}:${String(Math.round((m % 1) * 60)).padStart(2, "0")}`;
   const card = (p) => {
-    const ins = playerInsights(p), co = playerCloseout(p), ph = photos[playerKey(p)];
+    const ins = playerInsights(p), co = playerCloseout(p), sp = playerShotProfile(p), ph = photos[playerKey(p)];
     const avatar = ph ? `<img class="pl-photo" src="${ph}" alt="${esc(p.name)}" />` : `<div class="pl-photo pl-ph0">${esc(p.name.split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase())}</div>`;
     const kp = (v, l) => `<div class="pl-k"><b>${v}</b><span>${l}</span></div>`;
     const shot = (m, a) => a ? `${f1(m)}/${f1(a)} (${pc(m / a)})` : "—";
@@ -1632,6 +1645,7 @@ function playersReportHtml(pl, opponent) {
       <div class="pl-sub">${p.gp} match${p.gp > 1 ? "s" : ""} · ${mmss(p.min)} min / match</div></div></div>
       <div class="pl-kpis">${kp(f1(p.pts), "pts")}${kp(f1(p.reb), "reb")}${kp(f1(p.ast), "passes")}${kp(pc(p.ts), "TS %")}${kp(pc(p.usg), "usage")}</div>
       <div class="pl-shots">Tirs <b>${shot(p.fgm, p.fga)}</b> · 3 pts <b>${shot(p.tpm, p.tpa)}</b> · LF <b>${shot(p.ftm, p.fta)}</b></div>
+      ${sp ? (() => { const w = (x) => Math.round(x * 100); const line = sp.rim < 0.15 ? "Ne va presque jamais finir près du cercle." : sp.out >= 0.55 ? "Joueur surtout extérieur." : sp.rim >= 0.4 ? "Finit surtout près du cercle." : ""; return `<div class="pl-sp"><div class="pl-spbar"><i style="width:${w(sp.rim)}%;background:#ea580c"></i><i style="width:${w(sp.mid)}%;background:#a3a3a3"></i><i style="width:${w(sp.out)}%;background:#2563EB"></i></div><div class="pl-splab">Profil de tir <em>(estimé)</em> : <b>${w(sp.rim)} %</b> près du cercle · <b>${w(sp.mid)} %</b> mi-distance/autres · <b>${w(sp.out)} %</b> à 3 pts${line ? ` — ${line}` : ""}</div></div>`; })() : ""}
       <div class="pl-co pl-co-${co.lvl}"><b>Close-out : ${co.label}</b><span>${esc(co.why)}</span></div>
       ${ins.good.length ? `<ul class="pl-ins pl-good">${ins.good.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
       ${ins.watch.length ? `<ul class="pl-ins pl-watch">${ins.watch.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
@@ -1639,7 +1653,7 @@ function playersReportHtml(pl, opponent) {
     </div>`;
   };
   return `<section class="card"><h2><i></i>Les joueurs${opponent ? " de " + esc(opponent) : ""}</h2>
-    <p class="muted">Moyennes par match (arrondies) issues du fichier Excel. Les constats ne sont donnés qu'à partir de 3 matchs et 8 minutes de moyenne, et sur un volume de tirs suffisant.</p>
+    <p class="muted">Moyennes par match (arrondies) issues du fichier Excel. Le profil de tir est une estimation (le fichier n'a pas de zones). Les constats ne sont donnés qu'à partir de 3 matchs et 8 minutes de moyenne, et sur un volume de tirs suffisant.</p>
     ${(() => { const g = { red: [], blue: [], green: [] }; main.forEach(p => g[playerCloseout(p).lvl].push(`${p.num !== null && p.num !== undefined ? "#" + esc(p.num) + " " : ""}${esc(p.name)}`)); const row = (k, t) => g[k].length ? `<div class="pl-co pl-co-${k}"><b>${t}</b><span>${g[k].join(" · ")}</span></div>` : ""; return `<div class="pl-cosum"><div class="pl-cot">Intensité du close-out</div>${row("red", "Très agressif")}${row("blue", "Moyen")}${row("green", "Faible")}</div>`; })()}
     <div class="pl-grid">${main.map(card).join("")}</div>
     ${low.length ? `<p class="muted pl-low"><b>Échantillon trop faible pour conclure :</b> ${low.map(p => `${p.num !== null && p.num !== undefined ? "#" + esc(p.num) + " " : ""}${esc(p.name)} (${p.gp} match${p.gp > 1 ? "s" : ""}, ${mmss(p.min)} min)`).join(" · ")}.</p>` : ""}
