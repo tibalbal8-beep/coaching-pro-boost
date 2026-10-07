@@ -1151,7 +1151,12 @@ const SCOUT_REPORT_CSS = `
     html,body{width:auto}
     body{background:#fff;padding:0;font-size:12px}
     .print-bar{display:none!important}
-    .page{max-width:none;gap:6mm}
+    .page{display:block;max-width:none}
+    .page>*{margin-bottom:6mm}
+    .card{overflow:visible}
+    .pb-row,.detail,.def-block{-webkit-column-break-inside:avoid;break-inside:avoid-page}
+    .pb-row .rank-row{break-after:avoid;page-break-after:avoid}
+    .pb-imgs{break-before:avoid;page-break-before:avoid}
     .card{box-shadow:none;border:1px solid #1B2A4A22;border-radius:10px;padding:14px 16px}
     .hero{border-radius:12px;padding:18px 20px;break-inside:avoid}
     .hero h1{font-size:30px}
