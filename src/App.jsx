@@ -2417,10 +2417,12 @@ function parseFibaPbp(raw) {
   const len = +d.periodLengthREGULAR || 10, otLen = +d.periodLengthOVERTIME || 5;
   const start = (p) => p <= 4 ? (p - 1) * len : 4 * len + (p - 5) * otLen;
   const plen = (p) => p <= 4 ? len : otLen;
+  // Prolongations : FIBA recommence la numérotation (période 1 de type OVERTIME) → on les range après le Q4.
+  const ep = (a) => String(a.periodType).toUpperCase() === "OVERTIME" ? 4 + (+a.period || 1) : +a.period;
   const elapsed = (a) => {
     const g = String(a.clock || "").split(":").map(Number);
     const rem = (g[0] || 0) * 60 + (g[1] || 0) + (g[2] || 0) / 100;
-    return start(a.period) + (plen(a.period) * 60 - rem) / 60;
+    return start(ep(a)) + (plen(ep(a)) * 60 - rem) / 60;
   };
   const teams = {};
   ["1", "2"].forEach(k => {
@@ -2435,12 +2437,12 @@ function parseFibaPbp(raw) {
   const events = []; let s1 = 0, s2 = 0, end = 0;
   acts.forEach(({ a, t }) => {
     if (a.actionType === "substitution" && (a.subType === "in" || a.subType === "out")) events.push({ t, k: "s", tno: a.tno, pno: a.pno, io: a.subType });
-    else if ((a.actionType === "2pt" || a.actionType === "3pt" || a.actionType === "freethrow") && a.tno) events.push({ t, p: a.period, k: "sh", tno: a.tno, pno: a.pno, pt: a.actionType === "3pt" ? 3 : a.actionType === "2pt" ? 2 : 1, m: a.success ? 1 : 0 });
-    else if (a.actionType === "turnover" && a.tno) events.push({ t, p: a.period, k: "to", tno: a.tno });
-    else if (a.actionType === "rebound" && a.tno) events.push({ t, p: a.period, k: "rb", tno: a.tno, off: /^offensive$/.test(a.subType) ? 1 : 0 });
-    else if (a.actionType === "timeout" && a.tno) events.push({ t, p: a.period, k: "tm", tno: a.tno });
+    else if ((a.actionType === "2pt" || a.actionType === "3pt" || a.actionType === "freethrow") && a.tno) events.push({ t, p: ep(a), k: "sh", tno: a.tno, pno: a.pno, pt: a.actionType === "3pt" ? 3 : a.actionType === "2pt" ? 2 : 1, m: a.success ? 1 : 0 });
+    else if (a.actionType === "turnover" && a.tno) events.push({ t, p: ep(a), k: "to", tno: a.tno });
+    else if (a.actionType === "rebound" && a.tno) events.push({ t, p: ep(a), k: "rb", tno: a.tno, off: /^offensive$/.test(a.subType) ? 1 : 0 });
+    else if (a.actionType === "timeout" && a.tno) events.push({ t, p: ep(a), k: "tm", tno: a.tno });
     if (a.s1 !== undefined && a.s2 !== undefined && (+a.s1 + +a.s2) > s1 + s2) { s1 = +a.s1; s2 = +a.s2; events.push({ t, k: "p", s1, s2 }); }
-    if (a.actionType === "period" && a.subType === "end") end = Math.max(end, start(a.period) + plen(a.period));
+    if (a.actionType === "period" && a.subType === "end") end = Math.max(end, start(ep(a)) + plen(ep(a)));
   });
   if (!end) end = acts.length ? Math.max(...acts.map(x => x.t)) : 40;
   return { teams, events, end, final: [s1, s2] };
@@ -2462,7 +2464,7 @@ function computeRotation(rec, tno, postes, postes2 = {}) {
   const close = (t) => { if (t > lastT + 1e-6) { segs.push({ t0: lastT, t1: t, players: [...on].sort((a, b) => a - b), d: own(s1, s2) - d0 }); lastT = t; d0 = own(s1, s2); } };
   rec.events.forEach(e => {
     if (e.k === "p") { s1 = e.s1; s2 = e.s2; return; }
-    if (String(e.tno) !== String(tno)) return;
+    if (e.k !== "s" || String(e.tno) !== String(tno)) return;
     close(e.t);
     if (e.io === "in") on.add(e.pno); else on.delete(e.pno);
   });
