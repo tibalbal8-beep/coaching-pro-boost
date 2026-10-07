@@ -1930,6 +1930,18 @@ function buildScoutReportHtml(r, logo = null) {
     <table class="cmp" style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left;padding:6px 8px"></th><th style="text-align:right;padding:6px 8px;color:#1B2A4A80;font-weight:600">Pts</th><th style="text-align:right;padding:6px 8px;color:#1B2A4A80;font-weight:600">Reb</th><th style="text-align:right;padding:6px 8px;color:#1B2A4A80;font-weight:600">Pds</th><th style="text-align:right;padding:6px 8px;color:#1B2A4A80;font-weight:600">3 pts</th><th style="text-align:right;padding:6px 8px;color:#1B2A4A80;font-weight:600">T %</th><th style="text-align:right;padding:6px 8px;color:#1B2A4A80;font-weight:600">LF %</th><th style="text-align:right;padding:6px 8px;color:#1B2A4A80;font-weight:600">Balles perdues</th></tr></thead><tbody>
     ${[["Équipe", r.teamTotals], ["Adversaires", r.oppTotals]].filter(x => x[1]).map(([l, t]) => `<tr style="border-top:1px solid #1B2A4A14"><td style="text-align:left;font-weight:700;padding:6px 8px">${l}</td><td style="text-align:right;padding:6px 8px">${f1(t.pts)}</td><td style="text-align:right;padding:6px 8px">${f1(t.reb)}</td><td style="text-align:right;padding:6px 8px">${f1(t.ast)}</td><td style="text-align:right;padding:6px 8px">${shot(t.tpm, t.tpa)}</td><td style="text-align:right;padding:6px 8px">${pc(t.fgPct)}</td><td style="text-align:right;padding:6px 8px">${pc(t.ftPct)}</td><td style="text-align:right;padding:6px 8px">${f1(t.tov)}</td></tr>`).join("")}
     </tbody></table></section>` : "";
+  const bilan = (() => {
+    const bs = boxSelected(r.boxScore); if (!bs || !(bs.games || []).length) return "";
+    const S = boxScoreSummary(bs.games), rc = (x) => `${x.w}V-${x.l}D`;
+    const pill = (l, v) => `<div class="bs-kpi"><b>${v}</b><span>${l}</span></div>`;
+    const rows = S.perGame.map(({ g, m }) => {
+      const away = /^\s*@/.test(g.opponent), name = esc(String(g.opponent).replace(/^\s*(@|vs\.?|contre)\s*/i, ""));
+      return `<tr style="border-top:1px solid #1B2A4A14"><td style="padding:5px 8px">${esc(g.date)}</td><td style="padding:5px 8px">${away ? "Extérieur" : "Domicile"}</td><td style="padding:5px 8px;font-weight:600">${name}</td><td style="padding:5px 8px;text-align:right">${esc(g.score)}</td><td style="padding:5px 8px;text-align:right;font-weight:700;color:${m.win === true ? "#15803d" : m.win === false ? "#b91c1c" : "#1B2A4A"}">${m.win === true ? "V" : m.win === false ? "D" : ""}</td></tr>`;
+    }).join("");
+    return `<section class="card"><h2><i></i>Bilan de ${esc(r.opponent)}</h2>
+      <div class="bs-kpis">${pill("Total", rc({ w: S.wins, l: S.losses }))}${pill("À domicile", rc(S.homeRec))}${pill("À l'extérieur", rc(S.awayRec))}</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:10px"><tbody>${rows}</tbody></table></section>`;
+  })();
   const notes = (r.notes || "").trim() ? `<section class="card"><h2><i></i>Notes du coach</h2><p style="white-space:pre-wrap;font-size:14px;line-height:1.5">${esc(r.notes)}</p></section>` : "";
   const shotsAll = r.shots || [];
   const withShots = merged.map(p => ({ ...p, shotList: shotsAll.filter(s => sameScoutName(s.n, p.name)) }));
@@ -1953,6 +1965,7 @@ function buildScoutReportHtml(r, logo = null) {
       <div class="meta">${esc(dateStr) || "Date non précisée"}</div>
     </header>
     ${notes}
+    ${bilan}
     ${teamTable}
     ${players || `<section class="card"><p class="muted">Aucun joueur renseigné.</p></section>`}
     <p class="stamp">Coaching Pro Boost · coachingproboost.com · scouting report généré le ${new Date().toLocaleDateString("fr-FR")}</p>
@@ -13306,6 +13319,18 @@ function CoachingProBoost({ session }) {
                     📊 Excel joueurs détaillé
                     <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; handleExcel(f); }} />
                   </label>
+                  <label className="text-xs font-semibold text-white px-3 py-1.5 rounded-md cursor-pointer bg-[#7c3aed]">
+                    🏀 Box score des matchs (Excel)
+                    <input type="file" accept=".xlsx,.xls" className="hidden" onChange={async e => {
+                      const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+                      try {
+                        if (/\.xls$/i.test(f.name)) throw new Error("ancien format .xls : enregistre-le en .xlsx");
+                        const games = parseBoxScoreRows(await readXlsxFirstSheet(await f.arrayBuffer()));
+                        updateActiveSr({ boxScore: { fileName: f.name, games, excluded: [] } });
+                        cpbAlert?.(`${games.length} match${games.length > 1 ? "s" : ""} importé${games.length > 1 ? "s" : ""} — bilan total, domicile et extérieur ajouté au report.`);
+                      } catch (err) { cpbAlert?.("Import impossible : " + err.message); }
+                    }} />
+                  </label>
                   <button onClick={() => setSrPasteOpen(!srPasteOpen)} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md bg-[#2563EB]">📋 Coller un box score</button>
                   <label className="text-xs font-semibold text-white px-3 py-1.5 rounded-md cursor-pointer bg-[#ea580c]">
                     🎯 XML des tirs (un ou plusieurs matchs)
@@ -13323,6 +13348,26 @@ function CoachingProBoost({ session }) {
                   {activeSr.excelPlayers && <span className="text-xs text-[#1B2A4A]/60">Excel : {activeSr.excelFileName} ({activeSr.excelPlayers.length}) <button onClick={() => updateActiveSr({ excelPlayers: null, excelFileName: null })} className="text-red-500 ml-1 hover:underline">retirer</button></span>}
                   {activeSr.boxPlayers && <span className="text-xs text-[#1B2A4A]/60">Box score collé ({activeSr.boxPlayers.length}) <button onClick={() => updateActiveSr({ boxPlayers: null, teamTotals: null, oppTotals: null })} className="text-red-500 ml-1 hover:underline">retirer</button></span>}
                 </div>
+                {activeSr.boxScore && (() => {
+                  const bsAll = activeSr.boxScore, ex = bsAll.excluded || [], sel = boxSelected(bsAll).games || [];
+                  const S = boxScoreSummary(sel.length ? sel : bsAll.games), all = boxScoreSummary(bsAll.games);
+                  const toggle = (i) => updateActiveSr({ boxScore: { ...bsAll, excluded: ex.includes(i) ? ex.filter(x => x !== i) : [...ex, i] } });
+                  return (
+                    <div className="mt-3 p-3 rounded-lg bg-[#7c3aed]/10">
+                      <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                        <span className="text-xs text-[#1B2A4A]"><b>{bsAll.fileName}</b> · {S.wins}V-{S.losses}D · dom. {S.homeRec.w}V-{S.homeRec.l}D · ext. {S.awayRec.w}V-{S.awayRec.l}D</span>
+                        <button onClick={() => updateActiveSr({ boxScore: null })} className="text-xs text-red-500 hover:underline">retirer</button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {all.perGame.map(({ g, m }, i) => (
+                          <button key={i} onClick={() => toggle(i)} className={`text-xs px-2 py-1 rounded-full border ${ex.includes(i) ? "opacity-40 line-through border-dashed border-[#1B2A4A]/40 bg-white" : "border-transparent " + (m.win === true ? "bg-green-100 text-green-800" : m.win === false ? "bg-red-100 text-red-700" : "bg-white")}`}>
+                            {ex.includes(i) ? "☐" : "☑"} {g.opponent} {g.score}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {srXmlPending && (
                   <div className="mt-2 p-3 rounded-lg bg-[#ea580c]/10">
                     <p className="text-xs text-[#1B2A4A] mb-2">Les fichiers contiennent les tirs de deux équipes. Quelle équipe veux-tu scouter ?</p>
