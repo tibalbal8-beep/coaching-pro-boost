@@ -1120,6 +1120,7 @@ const SCOUT_REPORT_CSS = `
   .rot-b b{font-family:'Inter',sans-serif;font-weight:700;font-size:10.5px;letter-spacing:.2px}.rot-b span{font-size:10.5px;opacity:.85}
   .rot-b b.rot-v{writing-mode:vertical-rl;transform:rotate(180deg);font-size:9px}.rot-b span.rot-vs{display:none}
   .rot-axis{display:flex;border-top:1px solid #1B2A4A33;height:20px}.rot-ticks{position:relative;flex:1}.rot-ticks span{position:absolute;top:3px;font-size:10px;color:#1B2A4A99;transform:translateX(-50%)}
+  .game-chart{width:100%;height:auto;display:block;margin:6px 0 4px}
   .rot-per{font-size:12px;color:#1B2A4A99}
   .pm-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:0;border:1px solid #1B2A4A22;border-radius:8px;overflow:hidden}
   .pm-tile{padding:10px 8px;min-height:84px}.pm-n{font-family:'Oswald',sans-serif;font-weight:700;font-size:12px;letter-spacing:.3px;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2434,6 +2435,10 @@ function parseFibaPbp(raw) {
   const events = []; let s1 = 0, s2 = 0, end = 0;
   acts.forEach(({ a, t }) => {
     if (a.actionType === "substitution" && (a.subType === "in" || a.subType === "out")) events.push({ t, k: "s", tno: a.tno, pno: a.pno, io: a.subType });
+    else if ((a.actionType === "2pt" || a.actionType === "3pt" || a.actionType === "freethrow") && a.tno) events.push({ t, p: a.period, k: "sh", tno: a.tno, pno: a.pno, pt: a.actionType === "3pt" ? 3 : a.actionType === "2pt" ? 2 : 1, m: a.success ? 1 : 0 });
+    else if (a.actionType === "turnover" && a.tno) events.push({ t, p: a.period, k: "to", tno: a.tno });
+    else if (a.actionType === "rebound" && a.tno) events.push({ t, p: a.period, k: "rb", tno: a.tno, off: /^offensive$/.test(a.subType) ? 1 : 0 });
+    else if (a.actionType === "timeout" && a.tno) events.push({ t, p: a.period, k: "tm", tno: a.tno });
     if (a.s1 !== undefined && a.s2 !== undefined && (+a.s1 + +a.s2) > s1 + s2) { s1 = +a.s1; s2 = +a.s2; events.push({ t, k: "p", s1, s2 }); }
     if (a.actionType === "period" && a.subType === "end") end = Math.max(end, start(a.period) + plen(a.period));
   });
@@ -2518,7 +2523,7 @@ function rotationReportHtml(r, a) {
   const own = tno === "1" ? rec.final[0] : rec.final[1], opp = tno === "1" ? rec.final[1] : rec.final[0];
   return `<section class="card rot">
     <h2><i></i>${esc(teamName)} — Rotations par poste</h2>
-    <p class="hint">${esc(teamName)} vs ${esc(oppName)} · score final ${own} – ${opp}. Chaque bloc = un joueur sur un poste ; le chiffre est le +/- de l'équipe sur le score du match pendant sa présence. Postes : ${byPost}. ${Object.keys(postes2).filter(n => postes2[n] && R.players.some(x => x.p?.name === n)).length ? `Priorités : ${Object.keys(postes2).filter(n => postes2[n] && R.players.some(x => x.p?.name === n)).map(n => `${esc(n.charAt(0) + n.slice(1).toLowerCase())} joue au poste ${postes[n] || 3}, et au poste ${postes2[n]} quand le ${postes[n] || 3} est déjà pris`).join(" ; ")}. ` : ""}Quand deux joueurs d'un même poste sont ensemble, l'un est décalé sur le poste voisin libre.</p>
+    <p class="hint">${esc(teamName)} vs ${esc(oppName)} · score final ${own} – ${opp}. Chaque bloc = un joueur sur un poste ; le chiffre est le +/- de l'équipe sur le score du match pendant sa présence. Postes : ${byPost}. ${Object.keys(postes2).filter(n => postes2[n] && R.players.some(x => x.p?.name === n)).length ? `Priorités : ${Object.keys(postes2).filter(n => postes2[n] && R.players.some(x => x.p?.name === n)).map(n => `${esc(n.charAt(0) + n.slice(1).toLowerCase())} joue ${postes[n] || 3} s'il est libre, sinon ${postes2[n]}`).join(" ; ")}. ` : ""}Quand deux joueurs d'un même poste sont ensemble, l'un est décalé sur le poste voisin libre.</p>
     <div class="rot-wrap">${rows}<div class="rot-axis"><div class="rot-lab"></div><div class="rot-ticks">${ticks.join("")}</div></div>${cinq}</div>
   </section>
   <section class="card"><h2><i></i>Classement des +/- par joueur</h2>
@@ -2529,6 +2534,111 @@ function rotationReportHtml(r, a) {
     ${R.fives.map(f => { const v = Math.round(f.pm); return `<tr><td>${f.players.map(pno => esc(nm(R.byPno.get(pno)))).join(" · ")}</td><td class="num">${f.min.toFixed(1).replace(".", ",")} min</td><td class="num"><b class="${v > 0 ? "pm-pos" : v < 0 ? "pm-neg" : ""}">${sg(v)}</b></td><td class="rot-per">${per(f.per)}</td></tr>`; }).join("")}
     </tbody></table></div></section>`;
 }
+
+// ── Lecture du match : évolution du score, séries, tirs à 3 pts, temps morts, moments notés par le coach ──
+function analyzeGame(rec, tno, moments = []) {
+  const T = String(tno), O = T === "1" ? "2" : "1";
+  const own = (s1, s2) => T === "1" ? s1 : s2, opp = (s1, s2) => T === "1" ? s2 : s1;
+  const sc = rec.events.filter(e => e.k === "p");
+  const scoreAt = (t) => { let r = [0, 0]; for (const e of sc) { if (e.t <= t + 1e-9) r = [own(e.s1, e.s2), opp(e.s1, e.s2)]; else break; } return r; };
+  const marginAt = (t) => { const [a, b] = scoreAt(t); return a - b; };
+  const hasDetail = rec.events.some(e => e.k === "sh");
+  const nq = Math.max(4, ...rec.events.filter(e => e.p).map(e => e.p));
+  const qEnd = (q) => q <= 4 ? q * 10 : 40 + (q - 4) * 5, qStart = (q) => q <= 1 ? 0 : qEnd(q - 1);
+  const mk = () => ({ fg: [0, 0], t3: [0, 0], ft: [0, 0], tov: 0, oreb: 0, pts: 0 });
+  const quarters = Array.from({ length: nq }, (_, i) => ({ q: i + 1, own: mk(), opp: mk() }));
+  rec.events.forEach(e => {
+    if (!e.p) return;
+    const Q = quarters[e.p - 1]; if (!Q) return;
+    const side = String(e.tno) === T ? Q.own : Q.opp;
+    if (e.k === "sh") { if (e.pt === 1) { side.ft[1]++; side.ft[0] += e.m; } else { side.fg[1]++; side.fg[0] += e.m; if (e.pt === 3) { side.t3[1]++; side.t3[0] += e.m; } } }
+    else if (e.k === "to") side.tov++;
+    else if (e.k === "rb" && e.off) side.oreb++;
+  });
+  quarters.forEach(Q => { const [a0, b0] = scoreAt(qStart(Q.q)), [a1, b1] = scoreAt(qEnd(Q.q)); Q.own.pts = a1 - a0; Q.opp.pts = b1 - b0; Q.diff = Q.own.pts - Q.opp.pts; });
+  // extrêmes et changements de tête
+  let maxLead = { d: 0, t: 0 }, maxDef = { d: 0, t: 0 }, changes = 0, lastSign = 0;
+  sc.forEach(e => { const d = own(e.s1, e.s2) - opp(e.s1, e.s2); if (d > maxLead.d) maxLead = { d, t: e.t }; if (d < maxDef.d) maxDef = { d, t: e.t }; const s = Math.sign(d); if (s !== 0) { if (lastSign !== 0 && s !== lastSign) changes++; lastSign = s; } });
+  // séries sans réponse (≥ 8 points)
+  const runs = []; let cur = null, pa = 0, pb = 0;
+  sc.forEach(e => {
+    const da = own(e.s1, e.s2) - pa, db = opp(e.s1, e.s2) - pb; pa = own(e.s1, e.s2); pb = opp(e.s1, e.s2);
+    const who = da > 0 && db <= 0 ? "own" : db > 0 && da <= 0 ? "opp" : null;
+    if (!who) { cur = null; return; }
+    if (cur && cur.who === who) { cur.pts += who === "own" ? da : db; cur.t1 = e.t; } else { cur = { who, pts: who === "own" ? da : db, t0: e.t, t1: e.t }; runs.push(cur); }
+  });
+  const bigRuns = runs.filter(r => r.pts >= 8).sort((x, y) => y.pts - x.pts).slice(0, 4).sort((x, y) => x.t0 - y.t0);
+  // tirs à 3 pts : joueurs et plus longue série ratée
+  const nameOf = new Map((rec.teams[T]?.players || []).map(p => [p.pno, p.name]));
+  const sh3 = rec.events.filter(e => e.k === "sh" && e.pt === 3 && String(e.tno) === T);
+  const by3 = new Map(); sh3.forEach(e => { const x = by3.get(e.pno) || { name: nameOf.get(e.pno) || "?", m: 0, a: 0 }; x.a++; x.m += e.m; by3.set(e.pno, x); });
+  let cold = null, run = [];
+  sh3.forEach(e => { if (!e.m) { run.push(e); if (!cold || run.length > cold.n) cold = { n: run.length, t0: run[0].t, t1: e.t }; } else run = []; });
+  const timeouts = rec.events.filter(e => e.k === "tm").map(e => { const t1 = Math.min(rec.end, e.t + 3), [a0, b0] = scoreAt(e.t), [a1, b1] = scoreAt(t1); return { t: e.t, mine: String(e.tno) === T, margin: a0 - b0, own: a1 - a0, opp: b1 - b0 }; });
+  const momentStats = moments.map(m => {
+    const [a0, b0] = scoreAt(m.from), [a1, b1] = scoreAt(m.to), inR = (e) => e.t >= m.from - 1e-9 && e.t <= m.to + 1e-9;
+    const ev = rec.events.filter(inR), mine = (e) => String(e.tno) === T;
+    const sh = (pt, own2) => { const l = ev.filter(e => e.k === "sh" && e.pt === pt && mine(e) === own2); return [l.reduce((s, e) => s + e.m, 0), l.length]; };
+    const fgm = (own2) => { const l = ev.filter(e => e.k === "sh" && e.pt !== 1 && mine(e) === own2); return [l.reduce((s, e) => s + e.m, 0), l.length]; };
+    return { ...m, own: a1 - a0, opp: b1 - b0, t3: sh(3, true), t3o: sh(3, false), fg: fgm(true), fgo: fgm(false), tov: ev.filter(e => e.k === "to" && mine(e)).length, tovo: ev.filter(e => e.k === "to" && !mine(e)).length, from: m.from, to: m.to };
+  });
+  const tot = (side) => quarters.reduce((s, Q) => ({ fg: [s.fg[0] + Q[side].fg[0], s.fg[1] + Q[side].fg[1]], t3: [s.t3[0] + Q[side].t3[0], s.t3[1] + Q[side].t3[1]], tov: s.tov + Q[side].tov, oreb: s.oreb + Q[side].oreb }), { fg: [0, 0], t3: [0, 0], tov: 0, oreb: 0 });
+  return { hasDetail, quarters, maxLead, maxDef, changes, bigRuns, by3: [...by3.values()].sort((a, b) => b.a - a.a), cold, timeouts, momentStats, tot: { own: tot("own"), opp: tot("opp") }, marginAt, end: rec.end, sc: sc.map(e => [e.t, own(e.s1, e.s2) - opp(e.s1, e.s2)]) };
+}
+function gameChartSvg(G, moments = []) {
+  const W = 760, H = 210, L = 34, Rr = 10, Tt = 24, B = 22, pw = W - L - Rr, ph = H - Tt - B;
+  const maxAbs = Math.max(10, ...G.sc.map(x => Math.abs(x[1]))), M = Math.ceil(maxAbs / 5) * 5;
+  const x = (t) => L + t / G.end * pw, y = (d) => Tt + (M - d) / (2 * M) * ph;
+  let path = `M ${x(0)} ${y(0)}`, last = 0;
+  G.sc.forEach(([t, d]) => { path += ` L ${x(t).toFixed(1)} ${y(last).toFixed(1)} L ${x(t).toFixed(1)} ${y(d).toFixed(1)}`; last = d; });
+  path += ` L ${x(G.end).toFixed(1)} ${y(last).toFixed(1)}`;
+  const area = path + ` L ${x(G.end).toFixed(1)} ${y(0)} L ${x(0)} ${y(0)} Z`;
+  let g = `<clipPath id="gcp"><rect x="${L}" y="${Tt}" width="${pw}" height="${ph / 2}"/></clipPath><clipPath id="gcn"><rect x="${L}" y="${y(0)}" width="${pw}" height="${ph / 2}"/></clipPath>`;
+  moments.forEach(m => { g += `<rect x="${x(m.from).toFixed(1)}" y="${Tt}" width="${(x(m.to) - x(m.from)).toFixed(1)}" height="${ph}" fill="#FF6B35" fill-opacity=".16"/><text x="${((x(m.from) + x(m.to)) / 2).toFixed(1)}" y="${Tt - 8}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#c2410c">${String(m.text || "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])).slice(0, 26)}</text>`; });
+  for (let q = 1; q <= 4 + Math.max(0, Math.round((G.end - 40) / 5)); q++) { const t = q <= 4 ? q * 10 : 40 + (q - 4) * 5; if (t < G.end - 0.01) g += `<line x1="${x(t)}" y1="${Tt}" x2="${x(t)}" y2="${Tt + ph}" stroke="#1B2A4A" stroke-opacity=".25" stroke-dasharray="3 3"/>`; }
+  [...Array(Math.round(G.end / 10))].forEach((_, i) => { const t0 = i * 10; g += `<text x="${x(t0 + (i < 4 ? 5 : 2.5))}" y="${H - 6}" text-anchor="middle" font-size="10" fill="#1B2A4A99">${i < 4 ? "Q" + (i + 1) : "Prol."}</text>`; });
+  for (let v = -M; v <= M; v += M / 2) g += `<line x1="${L}" y1="${y(v)}" x2="${W - Rr}" y2="${y(v)}" stroke="#1B2A4A" stroke-opacity="${v === 0 ? .5 : .12}"/><text x="${L - 4}" y="${y(v) + 3}" text-anchor="end" font-size="9.5" fill="#1B2A4A99">${v > 0 ? "+" : ""}${v}</text>`;
+  g += `<path d="${area}" fill="#16a34a" fill-opacity=".35" clip-path="url(#gcp)"/><path d="${area}" fill="#dc2626" fill-opacity=".35" clip-path="url(#gcn)"/><path d="${path}" fill="none" stroke="#1B2A4A" stroke-width="1.6"/>`;
+  G.timeouts.forEach(o => { g += `<path d="M ${x(o.t) - 4} ${Tt + ph + 1} l 8 0 l -4 -7 z" fill="${o.mine ? "#1B2A4A" : "#9ca3af"}"/>`; });
+  return `<svg class="game-chart" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" font-family="Inter,sans-serif">${g}</svg>`;
+}
+function gameAnalysisHtml(r, teamName, oppName) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const moments = (r.moments || []).filter(m => m.to > m.from).sort((a, b) => a.from - b.from);
+  const G = analyzeGame(r.rec, r.tno, moments), pc = (m, a) => a ? Math.round(m / a * 100) + " %" : "—";
+  const mn = (t) => Math.round(t) + "'", sg = (v) => (v > 0 ? "+" : "") + Math.round(v);
+  const ins = [];
+  ins.push(`<b>Évolution</b> : ${G.maxLead.d > 0 ? `${esc(teamName)} a mené jusqu'à <b>+${G.maxLead.d}</b> (${mn(G.maxLead.t)})` : `${esc(teamName)} n'a jamais mené`}${G.maxDef.d < 0 ? `, et a été mené jusqu'à <b>${G.maxDef.d}</b> (${mn(G.maxDef.t)})` : ""}. ${G.changes} changement${G.changes > 1 ? "s" : ""} de tête.`);
+  const best = [...G.quarters].sort((a, b) => b.diff - a.diff)[0], worst = [...G.quarters].sort((a, b) => a.diff - b.diff)[0];
+  if (best && worst && best !== worst) ins.push(`<b>Meilleur quart-temps</b> : Q${best.q} (${best.own.pts}-${best.opp.pts}, ${sg(best.diff)}) · <b>le plus difficile</b> : Q${worst.q} (${worst.own.pts}-${worst.opp.pts}, ${sg(worst.diff)}).`);
+  if (G.hasDetail) {
+    const o = G.tot.own, p = G.tot.opp;
+    if (o.t3[1] >= 8) {
+      const bad = [...G.quarters].filter(Q => Q.own.t3[1] >= 4).sort((a, b) => a.own.t3[0] / a.own.t3[1] - b.own.t3[0] / b.own.t3[1])[0];
+      ins.push(`<b>Adresse à 3 pts</b> : ${o.t3[0]}/${o.t3[1]} (${pc(o.t3[0], o.t3[1])}) contre ${p.t3[0]}/${p.t3[1]} (${pc(p.t3[0], p.t3[1])}) pour ${esc(oppName)}${bad ? ` — pire quart-temps : Q${bad.q} (${bad.own.t3[0]}/${bad.own.t3[1]})` : ""}.${o.t3[0] / o.t3[1] < 0.3 ? " <b>Beaucoup de tirs manqués à 3 pts</b>." : ""}`);
+      if (G.cold && G.cold.n >= 5) ins.push(`<b>Plus longue série ratée à 3 pts</b> : ${G.cold.n} tirs de suite manqués entre ${mn(G.cold.t0)} et ${mn(G.cold.t1)}.`);
+      const miss = G.by3.filter(x => x.a >= 4 && x.m / x.a < 0.3).map(x => `${esc(x.name.charAt(0) + x.name.slice(1).toLowerCase())} ${x.m}/${x.a}`);
+      if (miss.length) ins.push(`<b>Tirs à 3 pts les plus difficiles</b> : ${miss.join(" · ")}.`);
+    }
+    const tq = [...G.quarters].sort((a, b) => b.own.tov - a.own.tov)[0];
+    ins.push(`<b>Balles perdues</b> : ${o.tov} pour ${esc(teamName)} (${p.tov} pour ${esc(oppName)})${tq && tq.own.tov >= 4 ? ` — surtout au Q${tq.q} (${tq.own.tov})` : ""}. <b>Rebonds offensifs</b> : ${o.oreb} contre ${p.oreb}.`);
+  } else ins.push(`<i>Ce match a été importé avant l'ajout des détails (tirs, balles perdues) : retire-le et réimporte-le pour avoir l'adresse à 3 pts, les balles perdues et les temps morts.</i>`);
+  G.bigRuns.forEach(r2 => ins.push(`<b>Série ${r2.who === "own" ? "de " + esc(teamName) : "de " + esc(oppName)}</b> : ${r2.pts}-0 entre ${mn(r2.t0)} et ${mn(r2.t1)}.`));
+  const tmo = G.timeouts.filter(t => t.mine);
+  if (tmo.length) ins.push(`<b>Temps morts de ${esc(teamName)}</b> : ${tmo.map(t => `${mn(t.t)} (${sg(t.margin)}) → ${t.own}-${t.opp} dans les 3 min suivantes`).join(" · ")}.`);
+  const qRows = G.quarters.map(Q => `<tr><td><b>${Q.q <= 4 ? "Q" + Q.q : "Prol."}</b></td><td class="num">${Q.own.pts}-${Q.opp.pts}</td><td class="num"><b class="${Q.diff > 0 ? "pm-pos" : Q.diff < 0 ? "pm-neg" : ""}">${sg(Q.diff)}</b></td>${G.hasDetail ? `<td class="num">${Q.own.t3[0]}/${Q.own.t3[1]} <small>(${pc(Q.own.t3[0], Q.own.t3[1])})</small></td><td class="num">${Q.opp.t3[0]}/${Q.opp.t3[1]}</td><td class="num">${pc(Q.own.fg[0], Q.own.fg[1])} / ${pc(Q.opp.fg[0], Q.opp.fg[1])}</td><td class="num">${Q.own.tov} / ${Q.opp.tov}</td><td class="num">${Q.own.oreb} / ${Q.opp.oreb}</td>` : ""}</tr>`).join("");
+  const mRows = G.momentStats.map(m => `<tr><td><b>${esc(m.text)}</b><br><small>${mn(m.from)} → ${mn(m.to)}</small></td><td class="num"><b class="${m.own - m.opp > 0 ? "pm-pos" : m.own - m.opp < 0 ? "pm-neg" : ""}">${m.own}-${m.opp}</b></td>${G.hasDetail ? `<td class="num">${m.t3[0]}/${m.t3[1]} <small>(adv. ${m.t3o[0]}/${m.t3o[1]})</small></td><td class="num">${m.fg[0]}/${m.fg[1]} <small>(adv. ${m.fgo[0]}/${m.fgo[1]})</small></td><td class="num">${m.tov} / ${m.tovo}</td>` : ""}</tr>`).join("");
+  return `<section class="card"><h2><i></i>Lecture du match — ${esc(teamName)} vs ${esc(oppName)}</h2>
+    <p class="hint">Évolution de l'écart (vert : ${esc(teamName)} devant). Triangles : temps morts (foncé : ${esc(teamName)}). Zones orangées : moments notés par le coach.</p>
+    ${gameChartSvg(G, moments)}
+    <ul class="bs-ins">${ins.map(x => `<li>${x}</li>`).join("")}</ul>
+    <div class="sub-title">Quart-temps par quart-temps</div>
+    <div class="bs-table"><table class="pm-five"><thead><tr><th></th><th class="num">Score</th><th class="num">Écart</th>${G.hasDetail ? `<th class="num">3 pts ${esc(teamName.split(" ")[0])}</th><th class="num">3 pts adv.</th><th class="num">Tirs % (nous / adv.)</th><th class="num">Balles perdues</th><th class="num">Reb. off.</th>` : ""}</tr></thead><tbody>${qRows}</tbody></table></div>
+    ${mRows ? `<div class="sub-title">Moments du match (notés par le coach)</div><div class="bs-table"><table class="pm-five"><thead><tr><th>Moment</th><th class="num">Score sur la période</th>${G.hasDetail ? `<th class="num">3 pts</th><th class="num">Tirs réussis</th><th class="num">Balles perdues</th>` : ""}</tr></thead><tbody>${mRows}</tbody></table></div>` : ""}
+    ${(r.retour || "").trim() ? `<div class="sub-title">Retour de match du coach</div><p style="white-space:pre-wrap;font-size:13.5px;line-height:1.55">${esc(r.retour)}</p>` : ""}
+  </section>`;
+}
+
 function buildTeamReportHtml(a, logo = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const f = (x, d = 1) => x === null || x === undefined ? "—" : x.toFixed(d).replace(".", ",");
@@ -2554,7 +2664,7 @@ function buildTeamReportHtml(a, logo = null) {
       <div class="rank-side"><div class="rank-count">${sg(l.pm || m.diff, 0)}</div><div class="rank-share">+/-</div></div>
       ${netBadge(m.net)}
     </div>`;
-  const rotHtml = (a.rotations || []).map(r => { try { return rotationReportHtml(r, a); } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
+  const rotHtml = (a.rotations || []).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; return gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a); } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
   let lineupsHtml = "";
   if (LA) {
     const used = [...LA.rows].sort((x, y) => y.m.min - x.m.min).slice(0, 8);
@@ -9768,6 +9878,7 @@ function CoachingProBoost({ session }) {
   const [activeVideoScoutId, setActiveVideoScoutId] = useState(null);
   // Analyse de mon équipe (voir view === "myteam" plus bas)
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
+  const [taMom, setTaMom] = useState({});
   const [taFibaUrl, setTaFibaUrl] = useState(""), [taFibaPending, setTaFibaPending] = useState(null), [taFibaBusy, setTaFibaBusy] = useState(false);
   // Scouting report joueurs (voir view === "scoutreport")
   const [activeScoutReportId, setActiveScoutReportId] = useState(null);
@@ -13717,6 +13828,32 @@ function CoachingProBoost({ session }) {
                       <span className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-medium bg-[#7c3aed]/10 text-[#1B2A4A]">🔄 {r.label} ({r.rec.final[0]}–{r.rec.final[1]})
                         <button onClick={() => updateActiveTa({ rotations: activeTa.rotations.filter(x => x.id !== r.id) })} title="Retirer" className="w-5 h-5 rounded-full text-[#1B2A4A]/40 hover:text-red-600 flex items-center justify-center"><X size={11} /></button>
                       </span>
+                      {(() => {
+                        const setR = (patch) => updateActiveTa({ rotations: activeTa.rotations.map(x => x.id === r.id ? { ...x, ...patch } : x) });
+                        const f = taMom[r.id] || { from: "", to: "", text: "" }, setF = (patch) => setTaMom({ ...taMom, [r.id]: { ...f, ...patch } });
+                        return (
+                          <div className="mt-2 p-3 rounded-lg bg-white/70 border border-[#1B2A4A]/10">
+                            <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Ton retour de match</div>
+                            <textarea value={r.retour || ""} onChange={e => setR({ retour: e.target.value })} rows={4} placeholder="Ce qu'il s'est passé : défense adverse (zone…), tirs ratés, changements, fatigue…" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60 mb-2" />
+                            <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Moments du match (apparaissent sur la courbe, avec leurs stats)</div>
+                            {(r.moments || []).map((m, mi) => (
+                              <div key={mi} className="flex items-center gap-2 text-xs mb-1"><span className="bg-[#FF6B35]/15 text-[#c2410c] rounded-full px-2 py-0.5 font-semibold">{m.from}' → {m.to}'</span><span className="flex-1">{m.text}</span>
+                                <button onClick={() => setR({ moments: r.moments.filter((_, k) => k !== mi) })} className="text-[#1B2A4A]/30 hover:text-red-600"><X size={12} /></button></div>
+                            ))}
+                            <div className="flex gap-2 flex-wrap items-center">
+                              <input value={f.from} onChange={e => setF({ from: e.target.value })} placeholder="de (min)" inputMode="decimal" className="w-20 border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white/60" />
+                              <input value={f.to} onChange={e => setF({ to: e.target.value })} placeholder="à (min)" inputMode="decimal" className="w-20 border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white/60" />
+                              <input value={f.text} onChange={e => setF({ text: e.target.value })} placeholder="Ex: Zone 2-3 adverse" className="flex-1 min-w-[160px] border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white/60" />
+                              <button onClick={() => {
+                                const a0 = parseFloat(String(f.from).replace(",", ".")), b0 = parseFloat(String(f.to).replace(",", "."));
+                                if (isNaN(a0) || isNaN(b0) || b0 <= a0 || !f.text.trim()) { cpbAlert?.("Indique le début, la fin (en minutes de jeu, de 0 à 40) et un libellé."); return; }
+                                setR({ moments: [...(r.moments || []), { from: a0, to: b0, text: f.text.trim() }] }); setF({ from: "", to: "", text: "" });
+                              }} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "#FF6B35" }}>+ Ajouter</button>
+                            </div>
+                            <p className="text-[11px] text-[#1B2A4A]/40 mt-1">Minutes de jeu écoulées : 0 = début du match, 10 = fin du Q1, 20 = mi-temps, 30 = fin du Q3.</p>
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
                   {(activeTa.rotations || []).length > 0 && (() => {
