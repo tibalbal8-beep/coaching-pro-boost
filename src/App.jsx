@@ -9640,6 +9640,7 @@ function CoachingProBoost({ session }) {
   const [vsImportPreview, setVsImportPreview] = useState(null);
   // Recherche dans les attaques importées (texte libre + libellés cliqués, ex. TOP52, Stagger)
   const [vsAtkQuery, setVsAtkQuery] = useState("");
+  const [vsOrderOpen, setVsOrderOpen] = useState(false);
   const [vsGlobalOpen, setVsGlobalOpen] = useState(false); // vue globale (récap affiché dans l'app)
   const [vsAtkFilters, setVsAtkFilters] = useState([]);
   const [vsAnnounceTfInput, setVsAnnounceTfInput] = useState("");
@@ -12486,7 +12487,26 @@ function CoachingProBoost({ session }) {
                     try { exportVideoScoutReport(activeVs, rows, playTypes, sorted.map(p => p.id)); }
                     catch (e) { console.error("Export scouting vidéo", e); cpbAlert?.("Impossible de préparer l'export : " + (e?.message || e)); }
                   }} className="text-sm font-semibold text-white px-4 py-2 rounded-md" style={{ backgroundColor: "#2563EB" }}>📤 Exporter le récap</button>
+                  <button onClick={() => setVsOrderOpen(o => !o)} title="Choisir et réordonner les sections de l'export" className="text-sm font-semibold px-3 py-2 rounded-md border border-[#1B2A4A]/20 text-[#1B2A4A] bg-white">⚙️ Ordre {vsOrderOpen ? "▴" : "▾"}</button>
                 </div>
+                {vsOrderOpen && (
+                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white p-4 mb-4 shadow-sm">
+                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Contenu et ordre de l'export</div>
+                  <p className="text-xs text-[#1B2A4A]/40 italic mb-2">Décoche une section pour la retirer, utilise les flèches pour la déplacer. Une section sans données n'apparaît de toute façon pas.</p>
+                  {(() => {
+                    const order = vsSectionOrder(activeVs), hid = activeVs.exportHidden || [];
+                    const move = (i, d) => { const o = [...order]; const j = i + d; if (j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j], o[i]]; updateActiveVs({ exportOrder: o }); };
+                    return order.map((k, i) => (
+                      <div key={k} className="flex items-center gap-2 py-1 border-t border-[#1B2A4A]/8 first:border-t-0">
+                        <input type="checkbox" checked={!hid.includes(k)} onChange={e => updateActiveVs({ exportHidden: e.target.checked ? hid.filter(x => x !== k) : [...hid, k], exportOrder: order })} />
+                        <span className={`text-sm flex-1 ${hid.includes(k) ? "text-[#1B2A4A]/35 line-through" : "text-[#1B2A4A]"}`}>{VS_SECTIONS.find(x => x[0] === k)[1]}</span>
+                        <button onClick={() => move(i, -1)} disabled={i === 0} className="px-2 text-[#1B2A4A]/60 disabled:opacity-20">↑</button>
+                        <button onClick={() => move(i, 1)} disabled={i === order.length - 1} className="px-2 text-[#1B2A4A]/60 disabled:opacity-20">↓</button>
+                      </div>
+                    ));
+                  })()}
+                </div>
+                )}
                 {vsGlobalOpen && (() => {
                   // Même document que l'export (schémas du Playbook inclus ; photos chargées seulement à l'export).
                   let html = "";
@@ -12731,23 +12751,6 @@ function CoachingProBoost({ session }) {
                     </div>
                   </div>
                 )}
-
-                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
-                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Contenu et ordre de l'export</div>
-                  <p className="text-xs text-[#1B2A4A]/40 italic mb-2">Décoche une section pour la retirer, utilise les flèches pour la déplacer. Une section sans données n'apparaît de toute façon pas.</p>
-                  {(() => {
-                    const order = vsSectionOrder(activeVs), hid = activeVs.exportHidden || [];
-                    const move = (i, d) => { const o = [...order]; const j = i + d; if (j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j], o[i]]; updateActiveVs({ exportOrder: o }); };
-                    return order.map((k, i) => (
-                      <div key={k} className="flex items-center gap-2 py-1 border-t border-[#1B2A4A]/8 first:border-t-0">
-                        <input type="checkbox" checked={!hid.includes(k)} onChange={e => updateActiveVs({ exportHidden: e.target.checked ? hid.filter(x => x !== k) : [...hid, k], exportOrder: order })} />
-                        <span className={`text-sm flex-1 ${hid.includes(k) ? "text-[#1B2A4A]/35 line-through" : "text-[#1B2A4A]"}`}>{VS_SECTIONS.find(x => x[0] === k)[1]}</span>
-                        <button onClick={() => move(i, -1)} disabled={i === 0} className="px-2 text-[#1B2A4A]/60 disabled:opacity-20">↑</button>
-                        <button onClick={() => move(i, 1)} disabled={i === order.length - 1} className="px-2 text-[#1B2A4A]/60 disabled:opacity-20">↓</button>
-                      </div>
-                    ));
-                  })()}
-                </div>
 
                 <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
                   <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
