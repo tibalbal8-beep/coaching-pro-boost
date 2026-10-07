@@ -1111,6 +1111,16 @@ const SCOUT_REPORT_CSS = `
   .cmp td,.cmp th{padding:7px 10px}
   .cmp td.num{width:28%;font-weight:600}
   .muted{font-size:12.5px;color:#1B2A4A99;margin:4px 0}
+  .rot-wrap{margin-top:8px;border:1px solid #1B2A4A33;border-radius:6px;overflow:hidden;background:#fff}
+  .rot-row{display:flex;border-top:1px solid #1B2A4A33}.rot-row:first-child{border-top:none}
+  .rot-lab{flex:none;width:46px;display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:14px;background:#f1efe9;border-right:1px solid #1B2A4A33}
+  .rot-cinq{background:#d9d9d9;font-size:12px}
+  .rot-track{position:relative;flex:1;height:58px}.rot-short{height:36px}
+  .rot-b{position:absolute;top:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;border-right:1px solid rgba(255,255,255,.7);font-size:10.5px;line-height:1.25;text-align:center}
+  .rot-b b{font-family:'Inter',sans-serif;font-weight:700;font-size:10.5px;letter-spacing:.2px}.rot-b span{font-size:10.5px;opacity:.85}
+  .rot-b b.rot-v{writing-mode:vertical-rl;transform:rotate(180deg);font-size:9px}.rot-b span.rot-vs{display:none}
+  .rot-axis{display:flex;border-top:1px solid #1B2A4A33;height:20px}.rot-ticks{position:relative;flex:1}.rot-ticks span{position:absolute;top:3px;font-size:10px;color:#1B2A4A99;transform:translateX(-50%)}
+  .rot-per{font-size:12px;color:#1B2A4A99}
   .pm-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:0;border:1px solid #1B2A4A22;border-radius:8px;overflow:hidden}
   .pm-tile{padding:10px 8px;min-height:84px}.pm-n{font-family:'Oswald',sans-serif;font-weight:700;font-size:12px;letter-spacing:.3px;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .pm-v{font-size:22px;font-weight:500}.pm-m{font-size:10.5px;opacity:.8;margin-top:2px}
@@ -2397,6 +2407,123 @@ function lineupAnalysis(lineups) {
     .filter(d => d.m.poss >= minDuoPoss && d.m.net !== null).sort((a, b) => b.m.net - a.m.net);
   return { total: totalMetrics, rows, reliable, minPoss, players, duos, minDuoPoss };
 }
+// ── Rotations par poste (play-by-play FIBA LiveStats : data.json) ──
+const pmClass = (v) => v >= 10 ? "pm-g3" : v >= 4 ? "pm-g2" : v >= 1 ? "pm-g1" : v === 0 ? "pm-0" : v >= -3 ? "pm-r1" : v >= -9 ? "pm-r2" : "pm-r3";
+// data.json brut → version compacte : équipes, joueurs (cinq de départ, stats utiles aux postes), remplacements et changements de score, en minutes écoulées.
+function parseFibaPbp(raw) {
+  const d = typeof raw === "string" ? JSON.parse(raw) : raw;
+  if (!d || !d.tm || !Array.isArray(d.pbp)) throw new Error("ce fichier n'est pas un data.json FIBA LiveStats (il faut les clés « tm » et « pbp »)");
+  const len = +d.periodLengthREGULAR || 10, otLen = +d.periodLengthOVERTIME || 5;
+  const start = (p) => p <= 4 ? (p - 1) * len : 4 * len + (p - 5) * otLen;
+  const plen = (p) => p <= 4 ? len : otLen;
+  const elapsed = (a) => {
+    const g = String(a.clock || "").split(":").map(Number);
+    const rem = (g[0] || 0) * 60 + (g[1] || 0) + (g[2] || 0) / 100;
+    return start(a.period) + (plen(a.period) * 60 - rem) / 60;
+  };
+  const teams = {};
+  ["1", "2"].forEach(k => {
+    const t = d.tm[k]; if (!t) return;
+    teams[k] = { name: t.name, code: t.code, players: Object.entries(t.pl || {}).map(([pno, p]) => ({
+      pno: +pno, name: String(p.familyName || p.name || "").toUpperCase(), first: p.firstName || "", shirt: p.shirtNumber, starter: p.starter ? 1 : 0,
+      min: p.sMinutes, ast: p.sAssists || 0, reb: p.sReboundsTotal || 0, stl: p.sSteals || 0, blk: p.sBlocks || 0, tpa: p.sThreePointersAttempted || 0, pm: p.sPlusMinusPoints,
+    })) };
+  });
+  // Ordre chronologique réel (le numéro d'action n'est pas toujours dans l'ordre du temps quand la table de marque corrige après coup) ; le score ne fait que monter.
+  const acts = d.pbp.map(a => ({ a, t: elapsed(a), tot: (+a.s1 || 0) + (+a.s2 || 0) })).sort((x, y) => x.t - y.t || x.tot - y.tot || x.a.actionNumber - y.a.actionNumber);
+  const events = []; let s1 = 0, s2 = 0, end = 0;
+  acts.forEach(({ a, t }) => {
+    if (a.actionType === "substitution" && (a.subType === "in" || a.subType === "out")) events.push({ t, k: "s", tno: a.tno, pno: a.pno, io: a.subType });
+    if (a.s1 !== undefined && a.s2 !== undefined && (+a.s1 + +a.s2) > s1 + s2) { s1 = +a.s1; s2 = +a.s2; events.push({ t, k: "p", s1, s2 }); }
+    if (a.actionType === "period" && a.subType === "end") end = Math.max(end, start(a.period) + plen(a.period));
+  });
+  if (!end) end = acts.length ? Math.max(...acts.map(x => x.t)) : 40;
+  return { teams, events, end, final: [s1, s2] };
+}
+// Poste suggéré (1 à 5) d'après les stats : plus de passes/interceptions → petit poste ; plus de rebonds/contres → grand poste.
+function suggestPostes(players) {
+  const sc = (p) => (p.ast * 2 + p.stl + p.tpa * 0.3) - (p.reb * 1.5 + p.blk * 2);
+  const sorted = [...players].sort((a, b) => sc(b) - sc(a)), out = {};
+  sorted.forEach((p, i) => { out[p.name] = Math.min(5, 1 + Math.floor(i * 5 / sorted.length)); });
+  return out;
+}
+function computeRotation(rec, tno, postes) {
+  const team = rec.teams[tno]; if (!team) throw new Error("équipe introuvable");
+  const byPno = new Map(team.players.map(p => [p.pno, p]));
+  let on = new Set(team.players.filter(p => p.starter).map(p => p.pno));
+  if (on.size !== 5) throw new Error("les cinq de départ ne sont pas indiqués dans ce fichier");
+  const own = (s1, s2) => tno === "1" || tno === 1 ? s1 - s2 : s2 - s1;
+  const segs = []; let lastT = 0, s1 = 0, s2 = 0, d0 = 0;
+  const close = (t) => { if (t > lastT + 1e-6) { segs.push({ t0: lastT, t1: t, players: [...on].sort((a, b) => a - b), d: own(s1, s2) - d0 }); lastT = t; d0 = own(s1, s2); } };
+  rec.events.forEach(e => {
+    if (e.k === "p") { s1 = e.s1; s2 = e.s2; return; }
+    if (String(e.tno) !== String(tno)) return;
+    close(e.t);
+    if (e.io === "in") on.add(e.pno); else on.delete(e.pno);
+  });
+  close(rec.end);
+  // affectation des 5 joueurs aux postes 1-5 : proche de leur poste, stable d'un instant à l'autre
+  const perms = []; (function gen(a, r) { if (!r.length) { perms.push(a); return; } r.forEach((x, i) => gen([...a, x], r.filter((_, j) => j !== i))); })([], [1, 2, 3, 4, 5]);
+  let prev = {};
+  segs.forEach(sg => {
+    let best = null, bc = 1e9;
+    perms.forEach(pm => {
+      let c = 0; sg.players.forEach((pno, i) => { const pref = postes[byPno.get(pno)?.name] || 3; c += 10 * Math.abs(pm[i] - pref) + (prev[pno] && prev[pno] !== pm[i] ? 1 : 0); });
+      if (c < bc) { bc = c; best = pm; }
+    });
+    sg.slot = {}; sg.players.forEach((pno, i) => { sg.slot[pno] = best[i]; });
+    prev = sg.slot;
+  });
+  const blocks = { 1: [], 2: [], 3: [], 4: [], 5: [] };
+  segs.forEach(sg => sg.players.forEach(pno => {
+    const arr = blocks[sg.slot[pno]], last = arr[arr.length - 1];
+    if (last && last.pno === pno && Math.abs(last.t1 - sg.t0) < 1e-6) { last.t1 = sg.t1; last.d += sg.d; } else arr.push({ pno, t0: sg.t0, t1: sg.t1, d: sg.d });
+  }));
+  const pl = new Map();
+  segs.forEach(sg => sg.players.forEach(pno => { const e = pl.get(pno) || { pno, min: 0, pm: 0 }; e.min += sg.t1 - sg.t0; e.pm += sg.d; pl.set(pno, e); }));
+  const fiveMap = new Map();
+  segs.forEach(sg => {
+    const k = sg.players.join(","), e = fiveMap.get(k) || { players: sg.players, min: 0, pm: 0, per: [] };
+    e.min += sg.t1 - sg.t0; e.pm += sg.d;
+    const lp = e.per[e.per.length - 1];
+    if (lp && Math.abs(lp[1] - sg.t0) < 1e-6) lp[1] = sg.t1; else e.per.push([sg.t0, sg.t1]);
+    fiveMap.set(k, e);
+  });
+  return { segs, blocks, players: [...pl.values()].map(x => ({ ...x, p: byPno.get(x.pno) })).sort((a, b) => b.pm - a.pm), fives: [...fiveMap.values()].sort((a, b) => b.min - a.min), byPno, end: rec.end };
+}
+function rotationReportHtml(r, a) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const rec = r.rec, tno = String(r.tno), other = tno === "1" ? "2" : "1";
+  const postes = { ...suggestPostes(rec.teams[tno].players), ...(a.rotationPostes || {}) };
+  const R = computeRotation(rec, tno, postes);
+  const sg = (v) => (v > 0 ? "+" : "") + Math.round(v);
+  const nm = (p) => p ? p.name : "?";
+  const END = R.end, pct = (t) => (t / END * 100).toFixed(2);
+  const blockHtml = (b, label) => {
+    const w = (b.t1 - b.t0) / END * 100, v = Math.round(b.d);
+    const inner = w >= 7 ? `<b>${esc(label)}</b><span>${sg(v)}</span>` : w >= 1.6 ? `<b class="rot-v">${esc(label)}</b><span class="rot-vs">${sg(v)}</span>` : "";
+    return `<div class="rot-b ${pmClass(v)}" style="left:${pct(b.t0)}%;width:${w.toFixed(2)}%">${inner}</div>`;
+  };
+  const rows = [1, 2, 3, 4, 5].map(s => `<div class="rot-row"><div class="rot-lab">P${s}</div><div class="rot-track">${R.blocks[s].map(b => blockHtml(b, nm(R.byPno.get(b.pno)))).join("")}</div></div>`).join("");
+  const cinq = `<div class="rot-row"><div class="rot-lab rot-cinq">CINQ</div><div class="rot-track rot-short">${R.segs.map(sgm => { const v = Math.round(sgm.d), w = (sgm.t1 - sgm.t0) / END * 100; return `<div class="rot-b ${pmClass(v)}" style="left:${pct(sgm.t0)}%;width:${w.toFixed(2)}%">${w >= 2.2 ? `<span>${sg(v)}</span>` : ""}</div>`; }).join("")}</div></div>`;
+  const ticks = []; for (let t = 0; t <= END + 0.01; t += 5) ticks.push(`<span style="left:${pct(t)}%">${t}'</span>`);
+  const byPost = [1, 2, 3, 4, 5].map(s => `${s} ${R.players.filter(x => (postes[x.p?.name] || 3) === s).map(x => esc(nm(x.p).charAt(0) + nm(x.p).slice(1).toLowerCase())).join(" / ")}`).join(" · ");
+  const per = (arr) => arr.map(([x, y]) => `${Math.round(x)}-${Math.round(y)}`).join(", ");
+  const oppName = rec.teams[other]?.name || "", teamName = rec.teams[tno].name;
+  const own = tno === "1" ? rec.final[0] : rec.final[1], opp = tno === "1" ? rec.final[1] : rec.final[0];
+  return `<section class="card rot">
+    <h2><i></i>${esc(teamName)} — Rotations par poste</h2>
+    <p class="hint">${esc(teamName)} vs ${esc(oppName)} · score final ${own} – ${opp}. Chaque bloc = un joueur sur un poste ; le chiffre est le +/- de l'équipe sur le score du match pendant sa présence. Postes : ${byPost}. Quand deux joueurs d'un même poste sont ensemble, l'un est décalé sur le poste voisin libre.</p>
+    <div class="rot-wrap">${rows}<div class="rot-axis"><div class="rot-lab"></div><div class="rot-ticks">${ticks.join("")}</div></div>${cinq}</div>
+  </section>
+  <section class="card"><h2><i></i>Classement des +/- par joueur</h2>
+    <p class="hint">+/- de l'équipe sur le score du match pendant la présence de chaque joueur sur le parquet.</p>
+    <div class="pm-tiles">${R.players.map(x => `<div class="pm-tile ${pmClass(Math.round(x.pm))}"><div class="pm-n">${esc(nm(x.p))}</div><div class="pm-v">${sg(x.pm)}</div><div class="pm-m">${x.min.toFixed(1).replace(".", ",")} min</div></div>`).join("")}</div></section>
+  <section class="card"><h2><i></i>Les 5 majeurs utilisés par ${esc(teamName)} (par temps de jeu)</h2>
+    <div class="bs-table"><table class="pm-five"><thead><tr><th>Cinq majeur</th><th class="num">Minutes</th><th class="num">+/-</th><th>Périodes (min)</th></tr></thead><tbody>
+    ${R.fives.map(f => { const v = Math.round(f.pm); return `<tr><td>${f.players.map(pno => esc(nm(R.byPno.get(pno)))).join(" · ")}</td><td class="num">${f.min.toFixed(1).replace(".", ",")} min</td><td class="num"><b class="${v > 0 ? "pm-pos" : v < 0 ? "pm-neg" : ""}">${sg(v)}</b></td><td class="rot-per">${per(f.per)}</td></tr>`; }).join("")}
+    </tbody></table></div></section>`;
+}
 function buildTeamReportHtml(a, logo = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const f = (x, d = 1) => x === null || x === undefined ? "—" : x.toFixed(d).replace(".", ",");
@@ -2422,6 +2549,7 @@ function buildTeamReportHtml(a, logo = null) {
       <div class="rank-side"><div class="rank-count">${sg(l.pm || m.diff, 0)}</div><div class="rank-share">+/-</div></div>
       ${netBadge(m.net)}
     </div>`;
+  const rotHtml = (a.rotations || []).map(r => { try { return rotationReportHtml(r, a); } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
   let lineupsHtml = "";
   if (LA) {
     const used = [...LA.rows].sort((x, y) => y.m.min - x.m.min).slice(0, 8);
@@ -2519,6 +2647,7 @@ function buildTeamReportHtml(a, logo = null) {
       ${kpis.length ? `<div class="kpis">${kpis.map(([v, l]) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join("")}</div>` : ""}
     </header>
     ${a.notes ? `<section class="card"><h2><i></i>Notes</h2><p class="notes-text">${esc(a.notes).replace(/\n/g, "<br>")}</p></section>` : ""}
+    ${rotHtml}
     ${lineupsHtml}
     ${boxHtml}
     ${empty}
@@ -9634,6 +9763,7 @@ function CoachingProBoost({ session }) {
   const [activeVideoScoutId, setActiveVideoScoutId] = useState(null);
   // Analyse de mon équipe (voir view === "myteam" plus bas)
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
+  const [taFibaUrl, setTaFibaUrl] = useState(""), [taFibaPending, setTaFibaPending] = useState(null), [taFibaBusy, setTaFibaBusy] = useState(false);
   // Scouting report joueurs (voir view === "scoutreport")
   const [activeScoutReportId, setActiveScoutReportId] = useState(null);
   const [srNewOpen, setSrNewOpen] = useState(false), [srNewOpponent, setSrNewOpponent] = useState(""), [srNewDate, setSrNewDate] = useState("");
@@ -13538,6 +13668,71 @@ function CoachingProBoost({ session }) {
                       <button onClick={() => updateActiveTa({ boxScore: null })} title="Retirer" className="w-5 h-5 rounded-full text-[#1B2A4A]/40 hover:text-red-600 flex items-center justify-center"><X size={11} /></button>
                     </span>
                   )}
+                </div>
+                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-3">
+                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Rotations par poste (play-by-play FIBA LiveStats)</div>
+                  <p className="text-xs text-[#1B2A4A]/40 italic mb-2">Colle le lien de la page « pbp » du match (ex: …/u/FFBB/2875004/pbp.html) ou son numéro. L'app lit les remplacements et le score pour construire la frise des rotations, le +/- par joueur et les cinq majeurs avec leurs périodes.</p>
+                  <div className="flex gap-2 flex-wrap items-center mb-2">
+                    <input value={taFibaUrl} onChange={e => setTaFibaUrl(e.target.value)} placeholder="Lien ou numéro du match" className="flex-1 min-w-[220px] border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                    <button disabled={taFibaBusy || !taFibaUrl.trim()} onClick={async () => {
+                      const m = taFibaUrl.match(/\/(\d{4,10})(?:\/|$|\?)/) || taFibaUrl.trim().match(/^(\d{4,10})$/);
+                      if (!m) { cpbAlert?.("Je ne trouve pas le numéro du match dans ce lien."); return; }
+                      setTaFibaBusy(true);
+                      try {
+                        const res = await fetch("/api/fiba-pbp?id=" + m[1]);
+                        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "erreur " + res.status);
+                        setTaFibaPending({ matchId: m[1], rec: parseFibaPbp(await res.text()) });
+                      } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
+                      setTaFibaBusy(false);
+                    }} className="text-sm font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>{taFibaBusy ? "Chargement…" : "Importer le match"}</button>
+                    <label className="text-xs text-[#1B2A4A]/60 underline cursor-pointer">ou un fichier data.json
+                      <input type="file" accept=".json,application/json" className="hidden" onChange={async e => {
+                        const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+                        try { setTaFibaPending({ matchId: f.name, rec: parseFibaPbp(await f.text()) }); } catch (err) { cpbAlert?.("Import impossible : " + err.message); }
+                      }} />
+                    </label>
+                  </div>
+                  {taFibaPending && (
+                    <div className="p-3 rounded-lg bg-[#7c3aed]/10 mb-2">
+                      <p className="text-xs text-[#1B2A4A] mb-2">Score final {taFibaPending.rec.final[0]} – {taFibaPending.rec.final[1]}. Quelle équipe veux-tu analyser ?</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {Object.entries(taFibaPending.rec.teams).map(([k, t]) => (
+                          <button key={k} onClick={() => {
+                            const other = taFibaPending.rec.teams[k === "1" ? "2" : "1"];
+                            updateActiveTa({ rotations: [...(activeTa.rotations || []), { id: uid(), matchId: taFibaPending.matchId, tno: k, rec: taFibaPending.rec, label: `${t.name} vs ${other?.name || ""}` }] });
+                            setTaFibaPending(null); setTaFibaUrl("");
+                          }} className="text-xs font-semibold px-3 py-1.5 rounded-md bg-white border border-[#1B2A4A]/20 text-[#1B2A4A]">{t.name}</button>
+                        ))}
+                        <button onClick={() => setTaFibaPending(null)} className="text-xs text-[#1B2A4A]/50 px-2">Annuler</button>
+                      </div>
+                    </div>
+                  )}
+                  {(activeTa.rotations || []).map(r => (
+                    <div key={r.id} className="mb-2">
+                      <span className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-medium bg-[#7c3aed]/10 text-[#1B2A4A]">🔄 {r.label} ({r.rec.final[0]}–{r.rec.final[1]})
+                        <button onClick={() => updateActiveTa({ rotations: activeTa.rotations.filter(x => x.id !== r.id) })} title="Retirer" className="w-5 h-5 rounded-full text-[#1B2A4A]/40 hover:text-red-600 flex items-center justify-center"><X size={11} /></button>
+                      </span>
+                    </div>
+                  ))}
+                  {(activeTa.rotations || []).length > 0 && (() => {
+                    const r0 = activeTa.rotations[0], pls = r0.rec.teams[r0.tno].players.filter(p => p.min && p.min !== "0:00");
+                    const sug = suggestPostes(r0.rec.teams[r0.tno].players), cur = { ...sug, ...(activeTa.rotationPostes || {}) };
+                    return (
+                      <div className="mt-2">
+                        <div className="text-xs text-[#1B2A4A]/50 mb-1">Poste de chaque joueur (1 meneur … 5 pivot) — proposé d'après les stats, corrige-le si besoin :</div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {pls.map(p => (
+                            <label key={p.pno} className="flex items-center justify-between gap-2 text-xs bg-[#1B2A4A]/5 rounded-md px-2 py-1">
+                              <span className="truncate">{p.shirt ? `#${p.shirt} ` : ""}{p.name}</span>
+                              <select value={cur[p.name] || 3} onChange={e => updateActiveTa({ rotationPostes: { ...(activeTa.rotationPostes || {}), [p.name]: +e.target.value } })} className="border border-[#1B2A4A]/20 rounded px-1 py-0.5 bg-white">
+                                {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                              </select>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
                 <textarea value={activeTa.notes || ""} onChange={e => updateActiveTa({ notes: e.target.value })}
                   placeholder="Notes (reprises dans l'export) : constats, axes de travail, rotations à tester..."
