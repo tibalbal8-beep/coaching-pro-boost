@@ -13250,7 +13250,10 @@ function CoachingProBoost({ session }) {
           };
           return (
             <div className="max-w-3xl mx-auto px-4 py-6">
-              <button onClick={() => setActiveScoutReportId(null)} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] mb-3">← Tous les reports</button>
+              <div className="flex items-center justify-between gap-2 mb-3 flex-wrap sticky top-0 z-10 py-2 bg-[#F2EDE4]/95 backdrop-blur">
+                <button onClick={() => setActiveScoutReportId(null)} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Tous les reports</button>
+                <button onClick={() => setLogoExportPrompt({ report: activeSr, kind: "scoutreport" })} className="px-4 py-2 rounded-md text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>📄 Exporter le scouting report</button>
+              </div>
               <div className="grid sm:grid-cols-2 gap-3 mb-4">
                 <div><div className={lbl}>Équipe adverse</div><input value={activeSr.opponent} onChange={e => updateActiveSr({ opponent: e.target.value })} className={inputCls} /></div>
                 <div><div className={lbl}>Date du match</div><input type="date" value={activeSr.date || ""} onChange={e => updateActiveSr({ date: e.target.value || null })} className={inputCls} /></div>
@@ -13364,7 +13367,6 @@ function CoachingProBoost({ session }) {
                 })}
                 {merged.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Importe des stats ou ajoute un joueur à la main.</p>}
               </div>
-              <button onClick={() => setLogoExportPrompt({ report: activeSr, kind: "scoutreport" })} className="px-5 py-2.5 rounded-md text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>📄 Exporter le scouting report</button>
             </div>
           );
         })()}
