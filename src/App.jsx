@@ -1190,7 +1190,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null, t
   const globalPpp = totalResolved ? totalPoints / totalResolved : null;
   // Part des possessions taguées sans résultat (= pertes de balle), pour le contrôle avec le box score.
   const totalZero = attacks.reduce((s, a) => s + [...(a.xmlOutcomes || []), ...(a.outcomes || [])].slice(0, a.count).filter(v => v === 0).length, 0);
-  const boxHtml = boxScoreReportHtml(session.boxScore, session.opponent, { ppp: globalPpp, tovRate: totalResolved ? totalZero / totalResolved : null });
+  const boxHtml = boxScoreReportHtml(boxSelected(session.boxScore), session.opponent, { ppp: globalPpp, tovRate: totalResolved ? totalZero / totalResolved : null });
 
   // Défenses rencontrées, toutes attaques confondues
   // Défenses adverses rencontrées, par famille (ÉCRANS, DÉFENSE COLLECTIVE, ÉCRANS NON PORTEUR...)
@@ -1210,7 +1210,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null, t
   // Chiffres clés : possessions et pts/possession viennent du BOX SCORE (formule : tirs − rebonds off.
   // + 0,44 × lancers francs + pertes) dès qu'il est importé ; les possessions taguées en vidéo
   // restent affichées à part. Sans box score, on retombe sur les chiffres du tag vidéo.
-  const boxSum = session.boxScore && (session.boxScore.games || []).length ? boxScoreSummary(session.boxScore.games) : null;
+  const boxSel = boxSelected(session.boxScore), boxSum = boxSel && (boxSel.games || []).length ? boxScoreSummary(boxSel.games) : null;
   const kfr = (x, d) => x === null || x === undefined ? "—" : x.toFixed(d).replace(".", ",");
   const kpis = attacks.length === 0 && !boxSum ? "" : `
     <div class="kpis">
@@ -1780,6 +1780,8 @@ function boxScoreSummary(games) {
 }
 // Bloc "Profil statistique" de l'export : indicateurs, constats, tableau par match, types d'action,
 // ce que subit leur défense (lignes adverses), et le contrôle avec les attaques taguées en vidéo.
+// Matchs cochés du box score (les autres, listés dans box.excluded par position, sont ignorés dans le récap).
+const boxSelected = (box) => box ? { ...box, games: (box.games || []).filter((_, i) => !(box.excluded || []).includes(i)) } : box;
 function boxScoreReportHtml(box, opponent, video = null, own = false) {
   if (!box || !(box.games || []).length) return "";
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
@@ -12424,22 +12426,27 @@ function CoachingProBoost({ session }) {
                   {!activeVs.boxScore ? (
                     <p className="text-xs text-[#1B2A4A]/40 italic">Box score de l'équipe (un match par ligne) ou fiche de comparaison avec ton équipe (Team comparison) — profil statistique et face à face dans le récap.</p>
                   ) : (() => {
-                    const S = boxScoreSummary(activeVs.boxScore.games || []);
+                    const allGames = activeVs.boxScore.games || [], excl = activeVs.boxScore.excluded || [];
+                    const toggleGame = (i) => updateActiveVs({ boxScore: { ...activeVs.boxScore, excluded: excl.includes(i) ? excl.filter(x => x !== i) : [...excl, i] } });
+                    const selGames = boxSelected(activeVs.boxScore).games || [];
+                    const S = boxScoreSummary(selGames.length ? selGames : allGames);
+                    const all = boxScoreSummary(allGames);
                     const pc = (x) => x === null ? "—" : Math.round(x * 100) + " %";
                     const nb = (x, d = 1) => x === null ? "—" : x.toFixed(d).replace(".", ",");
                     return (
                       <div className="mt-1">
-                        <p className="text-xs text-[#1B2A4A]/50 mb-2">{activeVs.boxScore.fileName} · {S.n} match{S.n > 1 ? "s" : ""}{S.wins + S.losses ? ` · ${S.wins}V ${S.losses}D` : ""}</p>
+                        <p className="text-xs text-[#1B2A4A]/50 mb-2">{activeVs.boxScore.fileName} · {S.n} match{S.n > 1 ? "s" : ""} sur {allGames.length} (clique sur un match pour l'exclure){S.wins + S.losses ? ` · ${S.wins}V ${S.losses}D` : ""}</p>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
                           {[[nb(S.ptsPerGame), "pts / match"], [nb(S.ppp, 2), "pts / poss."], [pc(S.efg), "eFG%"], [pc(S.tovPct), "pertes / poss."]].map(([v, l]) => (
                             <div key={l} className="rounded-lg bg-[#1B2A4A]/5 px-3 py-2"><div className="font-bold text-[#1B2A4A]">{v}</div><div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/50">{l}</div></div>
                           ))}
                         </div>
                         <div className="flex flex-wrap gap-1.5">
-                          {S.perGame.map(({ g, m }, i) => (
-                            <span key={i} className={`text-xs px-2 py-1 rounded-full ${m.win === true ? "bg-green-100 text-green-800" : m.win === false ? "bg-red-100 text-red-700" : "bg-[#1B2A4A]/8 text-[#1B2A4A]"}`}>
-                              {g.opponent} {g.score} · {g.tov} pertes
-                            </span>
+                          {all.perGame.map(({ g, m }, i) => (
+                            <button key={i} onClick={() => toggleGame(i)} title={excl.includes(i) ? "Exclu du récap — clique pour l'inclure" : "Inclus dans le récap — clique pour l'exclure"}
+                              className={`text-xs px-2 py-1 rounded-full border ${excl.includes(i) ? "opacity-40 line-through border-dashed border-[#1B2A4A]/40 bg-white text-[#1B2A4A]" : "border-transparent " + (m.win === true ? "bg-green-100 text-green-800" : m.win === false ? "bg-red-100 text-red-700" : "bg-[#1B2A4A]/8 text-[#1B2A4A]")}`}>
+                              {excl.includes(i) ? "☐" : "☑"} {g.opponent} {g.score} · {g.tov} pertes
+                            </button>
                           ))}
                         </div>
                       </div>
