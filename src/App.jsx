@@ -1001,6 +1001,8 @@ function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
 // vues, notes libres, et le classement des systèmes avec leur rentabilité (même mécanique
 // que buildMatchReportHtml, sans le tableau de score qui n'a pas de sens hors match réel).
 // Repère de version affiché en bas de l'export (à faire évoluer à chaque refonte du rapport).
+// Barre d'impression des exports HTML (masquée à l'impression) : A4, avec option « une section par page ».
+const PRINT_BAR_HTML = `<div class="print-bar"><label><input type="checkbox" onchange="document.body.classList.toggle('sec-page',this.checked)"> Une section par page</label><button onclick="window.print()">🖨️ Imprimer / PDF (A4)</button></div>`;
 const VIDEO_SCOUT_REPORT_VERSION = "2026-10-07-a";
 // Feuille de style commune aux récaps (scouting vidéo, analyse de mon équipe).
 const SCOUT_REPORT_CSS = `
@@ -1139,7 +1141,29 @@ const SCOUT_REPORT_CSS = `
   .cmp-win{background:#22c55e1f;color:#15803d;font-weight:700!important}
   .cmp-them{background:#ef44441a;color:#b91c1c}
   @media (max-width:600px){.bs-kpis{grid-template-columns:repeat(2,1fr)}.bs-act{grid-template-columns:110px 1fr 46px 96px}}
-  @media print{body{background:#fff;padding:0}.card{box-shadow:none;border:1px solid #1B2A4A14}.hero{border-radius:12px}}
+  .brand{position:relative;display:inline-flex;align-items:center;gap:6px;font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:rgba(255,255,255,.75);margin-bottom:10px}
+  .brand b{color:#FF6B35}
+  .print-bar{position:fixed;top:12px;right:12px;z-index:50;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #1B2A4A22;border-radius:10px;padding:8px 12px;box-shadow:0 4px 16px rgba(27,42,74,.15);font-size:12px;color:#1B2A4A}
+  .print-bar button{background:#FF6B35;color:#fff;border:0;border-radius:8px;padding:7px 14px;font-weight:700;font-size:13px;cursor:pointer}
+  .print-bar label{display:flex;align-items:center;gap:5px;cursor:pointer}
+  @page{size:A4 portrait;margin:10mm 9mm 12mm}
+  @media print{
+    html,body{width:auto}
+    body{background:#fff;padding:0;font-size:12px}
+    .print-bar{display:none!important}
+    .page{max-width:none;gap:6mm}
+    .card{box-shadow:none;border:1px solid #1B2A4A22;border-radius:10px;padding:14px 16px}
+    .hero{border-radius:12px;padding:18px 20px;break-inside:avoid}
+    .hero h1{font-size:30px}
+    .card h2,.cat-title,.sub{break-after:avoid;page-break-after:avoid}
+    .rank-row,.mini-row,.pl-card,.bs-kpi,.detail,.def-block,.pb-row,.pl-co,.pl-man,tr,.cmp,.shot-chart,img{break-inside:avoid;page-break-inside:avoid}
+    .pl-grid{grid-template-columns:repeat(2,1fr);gap:8px}
+    .pl-card{padding:9px}
+    .shot-chart{max-height:62mm}
+    body.sec-page .card{break-before:page;page-break-before:always}
+    body.sec-page .card:first-of-type{break-before:auto;page-break-before:auto}
+    .stamp{margin-top:4mm}
+  }
 `;
 // Sections du récap vidéo : ordre par défaut ; chaque session peut en masquer (exportHidden) ou les réordonner (exportOrder).
 const VS_SECTIONS = [
@@ -1469,9 +1493,11 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null, t
 <style>${SCOUT_REPORT_CSS}</style>
 </head>
 <body>
+  ${PRINT_BAR_HTML}
   <div class="page">
     <header class="hero">
       ${logo ? `<img src="${logo}" alt="Logo" class="hero-logo" />` : ""}
+      <div class="brand"><b>●</b> Coaching Pro Boost</div>
       <div class="kicker">Scouting vidéo</div>
       <h1>${esc(session.opponent)}</h1>
       <div class="meta">${esc(dateStr) || "Date non précisée"}</div>
@@ -1484,7 +1510,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null, t
       return vsSectionOrder(session).filter(k => !hidden.includes(k)).map(k => byKey[k] || "").join("\n    ");
     })()}
     ${empty}
-    <p class="stamp">Coaching Pro Boost · récap généré le ${new Date().toLocaleDateString("fr-FR")} · version ${VIDEO_SCOUT_REPORT_VERSION}</p>
+    <p class="stamp">Coaching Pro Boost · coachingproboost.com · récap généré le ${new Date().toLocaleDateString("fr-FR")} · version ${VIDEO_SCOUT_REPORT_VERSION}</p>
   </div>
 </body>
 </html>`;
@@ -1912,9 +1938,11 @@ function buildScoutReportHtml(r, logo = null) {
 <style>${SCOUT_REPORT_CSS}</style>
 </head>
 <body>
+  ${PRINT_BAR_HTML}
   <div class="page">
     <header class="hero">
       ${logo ? `<img src="${logo}" alt="Logo" class="hero-logo" />` : ""}
+      <div class="brand"><b>●</b> Coaching Pro Boost</div>
       <div class="kicker">Scouting report</div>
       <h1>${esc(r.opponent)}</h1>
       <div class="meta">${esc(dateStr) || "Date non précisée"}</div>
@@ -1922,6 +1950,7 @@ function buildScoutReportHtml(r, logo = null) {
     ${notes}
     ${teamTable}
     ${players || `<section class="card"><p class="muted">Aucun joueur renseigné.</p></section>`}
+    <p class="stamp">Coaching Pro Boost · coachingproboost.com · scouting report généré le ${new Date().toLocaleDateString("fr-FR")}</p>
   </div>
 </body>
 </html>`;
