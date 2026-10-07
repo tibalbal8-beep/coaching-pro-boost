@@ -1771,6 +1771,7 @@ function playersReportHtml(pl, opponent) {
   const sorted = [...shown].sort((a, b) => (b.min || 0) * (b.gp || 0) - (a.min || 0) * (a.gp || 0));
   const isMain = (p) => !playerLowSample(p) || hasMan(manual[playerKey(p)]) || (p.shotList || []).length >= 5;
   let chartId = 0;
+  const nbMatchs = new Set(list.flatMap(p => (p.shotList || []).map(s => s.f))).size;
   const main = sorted.filter(isMain), low = sorted.filter(p => !isMain(p));
   const mmss = (m) => m === null || m === undefined ? "—" : `${Math.floor(m)}:${String(Math.round((m % 1) * 60)).padStart(2, "0")}`;
   const lines = (t) => esc(t).replace(/\n/g, "<br>");
@@ -1793,7 +1794,7 @@ function playersReportHtml(pl, opponent) {
       ${hasStats && !lowS ? `<div class="pl-kpis">${kp(f1(p.pts), "pts")}${kp(f1(p.reb), "reb")}${kp(f1(p.ast), "passes")}${kp(pc(p.ts), "TS %")}${kp(pc(p.usg), "usage")}</div>
       <div class="pl-shots">Tirs <b>${shot(p.fgm, p.fga)}</b> · 3 pts <b>${shot(p.tpm, p.tpa)}</b> · LF <b>${shot(p.ftm, p.fta)}</b></div>` : ""}
       ${sp ? (() => { const w = (x) => Math.round(x * 100); const line = sp.rim < 0.15 ? "Ne va presque jamais finir près du cercle." : sp.out >= 0.55 ? "Joueur surtout extérieur." : sp.rim >= 0.4 ? "Finit surtout près du cercle." : ""; return `<div class="pl-sp"><div class="pl-spbar"><i style="width:${w(sp.rim)}%;background:#ea580c"></i><i style="width:${w(sp.mid)}%;background:#a3a3a3"></i><i style="width:${w(sp.out)}%;background:#2563EB"></i></div><div class="pl-splab">Profil de tir <em>(${spr ? `mesuré sur ${spr.n} tirs` : "estimé"})</em> : <b style="color:#ea580c">${w(sp.rim)} % près du cercle</b> · <b style="color:#737373">${w(sp.mid)} % mi-distance/autres</b> · <b style="color:#2563EB">${w(sp.out)} % à 3 pts</b>${line ? ` — ${line}` : ""}</div></div>`; })() : ""}
-      ${shots.length >= 3 ? `<div class="pl-chart">${shotChartSvg(shots, { id: ++chartId })}<div class="pl-chartcap">${shots.length} tirs observés · ● réussi · ✕ raté · % et réussis-tentés par zone</div></div>` : ""}
+      ${shots.length >= 3 ? `<div class="pl-chart">${shotChartSvg(shots, { id: ++chartId })}<div class="pl-chartcap">${shots.length} tirs observés${nbMatchs > 1 ? ` sur ${nbMatchs} matchs` : ""} · ● réussi · ✕ raté · % et réussis-tentés par zone</div></div>` : ""}
       ${co ? coBlock(co) : ""}
       ${m.strengths ? `<div class="pl-man pl-man-g"><b>Points forts</b><span>${lines(m.strengths)}</span></div>` : ""}
       ${m.weaknesses ? `<div class="pl-man pl-man-w"><b>Points faibles</b><span>${lines(m.weaknesses)}</span></div>` : ""}
@@ -13217,12 +13218,19 @@ function CoachingProBoost({ session }) {
               cpbAlert?.(`${list.length} joueurs importés depuis l'Excel.`);
             } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
           };
-          const importShots = (fileName, parsed, team) => {
-            const id = uid(), mine = parsed.shots.filter(x => x.t === team).map(x => ({ f: id, n: x.n, m: x.m, th: x.th, c: x.c, u: x.u, v: x.v }));
-            const known = mergeScoutPlayers(activeSr), add = [];
-            parsed.shots.filter(x => x.t === team).forEach(x => { if (!known.some(k => sameScoutName(k.name, x.n)) && !add.some(a => sameScoutName(a.name, x.n))) add.push({ name: x.n, ...(x.num ? { num: +x.num } : {}) }); });
-            updateActiveSr({ shots: [...(activeSr.shots || []), ...mine], shotFiles: [...(activeSr.shotFiles || []), { id, name: fileName, team, count: mine.length }], extraPlayers: [...(activeSr.extraPlayers || []), ...add] });
-            cpbAlert?.(`${mine.length} tirs de ${team} importés${add.length ? ` — ${add.length} joueur(s) ajouté(s) à la liste` : ""}.`);
+          const importShots = (files, team) => {
+            const known = mergeScoutPlayers(activeSr), add = [], newShots = [], newFiles = [];
+            files.filter(fi => fi.teams[team]).forEach(fi => {
+              const id = uid(), mine = fi.shots.filter(x => x.t === team);
+              mine.forEach(x => {
+                newShots.push({ f: id, n: x.n, m: x.m, th: x.th, c: x.c, u: x.u, v: x.v });
+                if (!known.some(k => sameScoutName(k.name, x.n)) && !add.some(a => sameScoutName(a.name, x.n))) add.push({ name: x.n, ...(x.num ? { num: +x.num } : {}) });
+              });
+              newFiles.push({ id, name: fi.fileName, team, count: mine.length });
+            });
+            if (!newFiles.length) { cpbAlert?.("Aucun fichier ne contient cette équipe."); return; }
+            updateActiveSr({ shots: [...(activeSr.shots || []), ...newShots], shotFiles: [...(activeSr.shotFiles || []), ...newFiles], extraPlayers: [...(activeSr.extraPlayers || []), ...add] });
+            cpbAlert?.(`${newShots.length} tirs de ${team} importés sur ${newFiles.length} match${newFiles.length > 1 ? "s" : ""}${add.length ? ` — ${add.length} joueur(s) ajouté(s) à la liste` : ""}.`);
           };
           const importPaste = () => {
             try {
@@ -13251,14 +13259,16 @@ function CoachingProBoost({ session }) {
                   </label>
                   <button onClick={() => setSrPasteOpen(!srPasteOpen)} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md bg-[#2563EB]">📋 Coller un box score</button>
                   <label className="text-xs font-semibold text-white px-3 py-1.5 rounded-md cursor-pointer bg-[#ea580c]">
-                    🎯 XML des tirs (Sportscode)
-                    <input type="file" accept=".xml,text/xml" className="hidden" onChange={async e => {
-                      const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
-                      try {
-                        const r = parseShotChartXml(await f.text());
-                        const names = Object.keys(r.teams);
-                        if (names.length === 1) importShots(f.name, r, names[0]); else setSrXmlPending({ fileName: f.name, ...r });
-                      } catch (err) { cpbAlert?.("Import impossible : " + err.message); }
+                    🎯 XML des tirs (un ou plusieurs matchs)
+                    <input type="file" accept=".xml,text/xml" multiple className="hidden" onChange={async e => {
+                      const fl = [...(e.target.files || [])]; e.target.value = ""; if (!fl.length) return;
+                      const files = [], errs = [];
+                      for (const f of fl) { try { files.push({ fileName: f.name, ...parseShotChartXml(await f.text()) }); } catch (err) { errs.push(`${f.name} : ${err.message}`); } }
+                      if (errs.length) cpbAlert?.("Fichier(s) ignoré(s) :\n" + errs.join("\n"));
+                      if (!files.length) return;
+                      const teams = {}; files.forEach(fi => Object.entries(fi.teams).forEach(([t, n]) => { teams[t] = (teams[t] || 0) + n; }));
+                      const names = Object.keys(teams);
+                      if (names.length === 1) importShots(files, names[0]); else setSrXmlPending({ files, teams });
                     }} />
                   </label>
                   {activeSr.excelPlayers && <span className="text-xs text-[#1B2A4A]/60">Excel : {activeSr.excelFileName} ({activeSr.excelPlayers.length}) <button onClick={() => updateActiveSr({ excelPlayers: null, excelFileName: null })} className="text-red-500 ml-1 hover:underline">retirer</button></span>}
@@ -13266,10 +13276,10 @@ function CoachingProBoost({ session }) {
                 </div>
                 {srXmlPending && (
                   <div className="mt-2 p-3 rounded-lg bg-[#ea580c]/10">
-                    <p className="text-xs text-[#1B2A4A] mb-2">Ce fichier contient les tirs de deux équipes. Quelle équipe veux-tu scouter ?</p>
+                    <p className="text-xs text-[#1B2A4A] mb-2">Les fichiers contiennent les tirs de deux équipes. Quelle équipe veux-tu scouter ?</p>
                     <div className="flex gap-2 flex-wrap">
                       {Object.entries(srXmlPending.teams).map(([t, n]) => (
-                        <button key={t} onClick={() => { importShots(srXmlPending.fileName, srXmlPending, t); setSrXmlPending(null); }} className="text-xs font-semibold px-3 py-1.5 rounded-md bg-white border border-[#1B2A4A]/20 text-[#1B2A4A]">{t} ({n} tirs)</button>
+                        <button key={t} onClick={() => { importShots(srXmlPending.files, t); setSrXmlPending(null); }} className="text-xs font-semibold px-3 py-1.5 rounded-md bg-white border border-[#1B2A4A]/20 text-[#1B2A4A]">{t} ({n} tirs)</button>
                       ))}
                       <button onClick={() => setSrXmlPending(null)} className="text-xs text-[#1B2A4A]/50 px-2">Annuler</button>
                     </div>
