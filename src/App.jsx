@@ -1140,6 +1140,17 @@ const SCOUT_REPORT_CSS = `
   @media (max-width:600px){.bs-kpis{grid-template-columns:repeat(2,1fr)}.bs-act{grid-template-columns:110px 1fr 46px 96px}}
   @media print{body{background:#fff;padding:0}.card{box-shadow:none;border:1px solid #1B2A4A14}.hero{border-radius:12px}}
 `;
+// Sections du récap vidéo : ordre par défaut ; chaque session peut en masquer (exportHidden) ou les réordonner (exportOrder).
+const VS_SECTIONS = [
+  ["notes", "Notes"], ["comparison", "Face à face"], ["box", "Profil statistique (box score)"], ["players", "Les joueurs (Excel)"],
+  ["playbook", "Playbook : les plus joués"], ["ranking", "Classement des attaques"], ["entries", "Entrées les plus utilisées"],
+  ["defOverview", "Attaque sur défenses adverses"], ["detail", "Le même play selon la défense"], ["systems", "Systèmes (détail)"],
+  ["ownDef", "Défenses de l'équipe"], ["manualDef", "Défenses notées à la main"],
+];
+const vsSectionOrder = (session) => {
+  const saved = (session.exportOrder || []).filter(k => VS_SECTIONS.some(x => x[0] === k));
+  return [...saved, ...VS_SECTIONS.map(x => x[0]).filter(k => !saved.includes(k))];
+};
 function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null, teamPlays = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const dateStr = session.date ? new Date(session.date).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
@@ -1465,18 +1476,12 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null, t
       <div class="meta">${esc(dateStr) || "Date non précisée"}</div>
       ${kpis}
     </header>
-    ${notesHtml}
-    ${comparisonReportHtml(session.comparison, session.opponent)}
-    ${boxHtml}
-    ${playersReportHtml(session.players, session.opponent)}
-    ${playbookHtml}
-    ${rankingHtml}
-    ${entriesHtml}
-    ${defOverviewHtml}
-    ${detailSection}
-    ${playRank ? "" : systemsHtml}
-    ${ownDefHtml}
-    ${manualDefHtml}
+    ${(() => {
+      const byKey = { notes: notesHtml, comparison: comparisonReportHtml(session.comparison, session.opponent), box: boxHtml, players: playersReportHtml(session.players, session.opponent),
+        playbook: playbookHtml, ranking: rankingHtml, entries: entriesHtml, defOverview: defOverviewHtml, detail: detailSection, systems: playRank ? "" : systemsHtml, ownDef: ownDefHtml, manualDef: manualDefHtml };
+      const hidden = session.exportHidden || [];
+      return vsSectionOrder(session).filter(k => !hidden.includes(k)).map(k => byKey[k] || "").join("\n    ");
+    })()}
     ${empty}
     <p class="stamp">Coaching Pro Boost · récap généré le ${new Date().toLocaleDateString("fr-FR")} · version ${VIDEO_SCOUT_REPORT_VERSION}</p>
   </div>
@@ -12544,6 +12549,23 @@ function CoachingProBoost({ session }) {
                     </div>
                   </div>
                 )}
+
+                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
+                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Contenu et ordre de l'export</div>
+                  <p className="text-xs text-[#1B2A4A]/40 italic mb-2">Décoche une section pour la retirer, utilise les flèches pour la déplacer. Une section sans données n'apparaît de toute façon pas.</p>
+                  {(() => {
+                    const order = vsSectionOrder(activeVs), hid = activeVs.exportHidden || [];
+                    const move = (i, d) => { const o = [...order]; const j = i + d; if (j < 0 || j >= o.length) return; [o[i], o[j]] = [o[j], o[i]]; updateActiveVs({ exportOrder: o }); };
+                    return order.map((k, i) => (
+                      <div key={k} className="flex items-center gap-2 py-1 border-t border-[#1B2A4A]/8 first:border-t-0">
+                        <input type="checkbox" checked={!hid.includes(k)} onChange={e => updateActiveVs({ exportHidden: e.target.checked ? hid.filter(x => x !== k) : [...hid, k], exportOrder: order })} />
+                        <span className={`text-sm flex-1 ${hid.includes(k) ? "text-[#1B2A4A]/35 line-through" : "text-[#1B2A4A]"}`}>{VS_SECTIONS.find(x => x[0] === k)[1]}</span>
+                        <button onClick={() => move(i, -1)} disabled={i === 0} className="px-2 text-[#1B2A4A]/60 disabled:opacity-20">↑</button>
+                        <button onClick={() => move(i, 1)} disabled={i === order.length - 1} className="px-2 text-[#1B2A4A]/60 disabled:opacity-20">↓</button>
+                      </div>
+                    ));
+                  })()}
+                </div>
 
                 <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
                   <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
