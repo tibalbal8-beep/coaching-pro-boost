@@ -2447,7 +2447,7 @@ function suggestPostes(players) {
   sorted.forEach((p, i) => { out[p.name] = Math.min(5, 1 + Math.floor(i * 5 / sorted.length)); });
   return out;
 }
-function computeRotation(rec, tno, postes) {
+function computeRotation(rec, tno, postes, postes2 = {}) {
   const team = rec.teams[tno]; if (!team) throw new Error("équipe introuvable");
   const byPno = new Map(team.players.map(p => [p.pno, p]));
   let on = new Set(team.players.filter(p => p.starter).map(p => p.pno));
@@ -2468,7 +2468,11 @@ function computeRotation(rec, tno, postes) {
   segs.forEach(sg => {
     let best = null, bc = 1e9;
     perms.forEach(pm => {
-      let c = 0; sg.players.forEach((pno, i) => { const pref = postes[byPno.get(pno)?.name] || 3; c += 10 * Math.abs(pm[i] - pref) + (prev[pno] && prev[pno] !== pm[i] ? 1 : 0); });
+      // Coût : 0 au poste principal, 3 au poste alternatif (« sinon »), sinon 5 + 10 par poste d'écart ; un léger bonus de stabilité.
+      let c = 0; sg.players.forEach((pno, i) => {
+        const nmP = byPno.get(pno)?.name, pref = postes[nmP] || 3, alt = postes2[nmP];
+        c += (pm[i] === pref ? 0 : alt && pm[i] === alt ? 3 : 5 + 10 * Math.abs(pm[i] - pref)) + (prev[pno] && prev[pno] !== pm[i] ? 1 : 0);
+      });
       if (c < bc) { bc = c; best = pm; }
     });
     sg.slot = {}; sg.players.forEach((pno, i) => { sg.slot[pno] = best[i]; });
@@ -2495,7 +2499,8 @@ function rotationReportHtml(r, a) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const rec = r.rec, tno = String(r.tno), other = tno === "1" ? "2" : "1";
   const postes = { ...suggestPostes(rec.teams[tno].players), ...(a.rotationPostes || {}) };
-  const R = computeRotation(rec, tno, postes);
+  const postes2 = a.rotationPostes2 || {};
+  const R = computeRotation(rec, tno, postes, postes2);
   const sg = (v) => (v > 0 ? "+" : "") + Math.round(v);
   const nm = (p) => p ? p.name : "?";
   const END = R.end, pct = (t) => (t / END * 100).toFixed(2);
@@ -2513,7 +2518,7 @@ function rotationReportHtml(r, a) {
   const own = tno === "1" ? rec.final[0] : rec.final[1], opp = tno === "1" ? rec.final[1] : rec.final[0];
   return `<section class="card rot">
     <h2><i></i>${esc(teamName)} — Rotations par poste</h2>
-    <p class="hint">${esc(teamName)} vs ${esc(oppName)} · score final ${own} – ${opp}. Chaque bloc = un joueur sur un poste ; le chiffre est le +/- de l'équipe sur le score du match pendant sa présence. Postes : ${byPost}. Quand deux joueurs d'un même poste sont ensemble, l'un est décalé sur le poste voisin libre.</p>
+    <p class="hint">${esc(teamName)} vs ${esc(oppName)} · score final ${own} – ${opp}. Chaque bloc = un joueur sur un poste ; le chiffre est le +/- de l'équipe sur le score du match pendant sa présence. Postes : ${byPost}. ${Object.keys(postes2).filter(n => postes2[n] && R.players.some(x => x.p?.name === n)).length ? `Priorités : ${Object.keys(postes2).filter(n => postes2[n] && R.players.some(x => x.p?.name === n)).map(n => `${esc(n.charAt(0) + n.slice(1).toLowerCase())} joue au poste ${postes[n] || 3}, et au poste ${postes2[n]} quand le ${postes[n] || 3} est déjà pris`).join(" ; ")}. ` : ""}Quand deux joueurs d'un même poste sont ensemble, l'un est décalé sur le poste voisin libre.</p>
     <div class="rot-wrap">${rows}<div class="rot-axis"><div class="rot-lab"></div><div class="rot-ticks">${ticks.join("")}</div></div>${cinq}</div>
   </section>
   <section class="card"><h2><i></i>Classement des +/- par joueur</h2>
@@ -13719,14 +13724,21 @@ function CoachingProBoost({ session }) {
                     const sug = suggestPostes(r0.rec.teams[r0.tno].players), cur = { ...sug, ...(activeTa.rotationPostes || {}) };
                     return (
                       <div className="mt-2">
-                        <div className="text-xs text-[#1B2A4A]/50 mb-1">Poste de chaque joueur (1 meneur … 5 pivot) — proposé d'après les stats, corrige-le si besoin :</div>
+                        <div className="text-xs text-[#1B2A4A]/50 mb-1">Poste de chaque joueur (1 meneur … 5 pivot), proposé d'après les stats — corrige-le. « Sinon » = le poste qu'il prend quand son poste principal est déjà occupé par un coéquipier (ex. un joueur au 1 sinon au 2 : il joue 1 en l'absence du meneur titulaire, 2 quand celui-ci est là) :</div>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                           {pls.map(p => (
                             <label key={p.pno} className="flex items-center justify-between gap-2 text-xs bg-[#1B2A4A]/5 rounded-md px-2 py-1">
                               <span className="truncate">{p.shirt ? `#${p.shirt} ` : ""}{p.name}</span>
-                              <select value={cur[p.name] || 3} onChange={e => updateActiveTa({ rotationPostes: { ...(activeTa.rotationPostes || {}), [p.name]: +e.target.value } })} className="border border-[#1B2A4A]/20 rounded px-1 py-0.5 bg-white">
-                                {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
-                              </select>
+                              <span className="flex items-center gap-1 shrink-0">
+                                <select value={cur[p.name] || 3} title="Poste principal" onChange={e => updateActiveTa({ rotationPostes: { ...(activeTa.rotationPostes || {}), [p.name]: +e.target.value } })} className="border border-[#1B2A4A]/20 rounded px-1 py-0.5 bg-white">
+                                  {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                                </select>
+                                <span className="text-[#1B2A4A]/40">sinon</span>
+                                <select value={(activeTa.rotationPostes2 || {})[p.name] || 0} title="Poste joué quand son poste principal est déjà pris par un coéquipier" onChange={e => updateActiveTa({ rotationPostes2: { ...(activeTa.rotationPostes2 || {}), [p.name]: +e.target.value } })} className="border border-[#1B2A4A]/20 rounded px-1 py-0.5 bg-white">
+                                  <option value={0}>—</option>
+                                  {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                                </select>
+                              </span>
                             </label>
                           ))}
                         </div>
