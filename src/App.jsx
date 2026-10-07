@@ -2071,8 +2071,12 @@ function boxScoreSummary(games) {
   const perGame = games.map(g => ({ g, m: boxScoreMetrics(g, g.opp || null) }));
   const wins = perGame.filter(x => x.m.win === true), losses = perGame.filter(x => x.m.win === false);
   const avg = (list, f) => list.length ? list.reduce((s, x) => s + f(x), 0) / list.length : null;
+  // Domicile / extérieur d'après le préfixe de l'adversaire dans le fichier : « vs Mulhouse » = domicile, « @ Besancon » = extérieur.
+  const where = (x) => /^\s*@/.test(x.g.opponent) ? "away" : /^\s*(vs\.?|contre)\s/i.test(x.g.opponent) ? "home" : null;
+  const rec = (loc) => { const l = perGame.filter(x => where(x) === loc && x.m.win !== undefined && x.m.win !== null); return { w: l.filter(x => x.m.win === true).length, l: l.filter(x => x.m.win === false).length }; };
+  const homeRec = rec("home"), awayRec = rec("away");
   return {
-    n, perGame, tot, oppTot, om, wins: wins.length, losses: losses.length, ...m,
+    homeRec, awayRec, n, perGame, tot, oppTot, om, wins: wins.length, losses: losses.length, ...m,
     pace: m.poss / n, ptsPerGame: tot.pts / n, oppPtsPerGame: tot.oppPts !== undefined ? tot.oppPts / n : null,
     orebPerGame: tot.oreb / n, tovPerGame: tot.tov / n, astPerGame: tot.ast / n,
     tovWins: avg(wins, x => x.g.tov), tovLosses: avg(losses, x => x.g.tov),
@@ -2147,7 +2151,7 @@ function boxScoreReportHtml(box, opponent, video = null, own = false) {
   return `
     <section class="card">
       <h2><i></i>Profil statistique de ${esc(opponent)}</h2>
-      <p class="hint">${S.n} match${S.n > 1 ? "s" : ""}${S.wins + S.losses ? ` · ${S.wins} victoire${S.wins > 1 ? "s" : ""}, ${S.losses} défaite${S.losses > 1 ? "s" : ""}` : ""}${box.fileName ? ` · ${esc(box.fileName)}` : ""}</p>
+      <p class="hint">${S.n} match${S.n > 1 ? "s" : ""}${S.wins + S.losses ? ` · ${S.wins} victoire${S.wins > 1 ? "s" : ""}, ${S.losses} défaite${S.losses > 1 ? "s" : ""}` : ""}${S.homeRec.w + S.homeRec.l + S.awayRec.w + S.awayRec.l ? ` (domicile : ${S.homeRec.w}V-${S.homeRec.l}D · extérieur : ${S.awayRec.w}V-${S.awayRec.l}D)` : ""}${box.fileName ? ` · ${esc(box.fileName)}` : ""}</p>
       <div class="bs-kpis">
         ${kpi(f(S.ptsPerGame, 1), "pts marqués / match")}
         ${S.oppPtsPerGame !== null ? kpi(f(S.oppPtsPerGame, 1), "pts encaissés / match") : ""}
@@ -12769,7 +12773,7 @@ function CoachingProBoost({ session }) {
                     const nb = (x, d = 1) => x === null ? "—" : x.toFixed(d).replace(".", ",");
                     return (
                       <div className="mt-1">
-                        <p className="text-xs text-[#1B2A4A]/50 mb-2">{activeVs.boxScore.fileName} · {S.n} match{S.n > 1 ? "s" : ""} sur {allGames.length} (clique sur un match pour l'exclure){S.wins + S.losses ? ` · ${S.wins}V ${S.losses}D` : ""}</p>
+                        <p className="text-xs text-[#1B2A4A]/50 mb-2">{activeVs.boxScore.fileName} · {S.n} match{S.n > 1 ? "s" : ""} sur {allGames.length} (clique sur un match pour l'exclure){S.wins + S.losses ? ` · ${S.wins}V ${S.losses}D` : ""}{S.homeRec.w + S.homeRec.l + S.awayRec.w + S.awayRec.l ? ` · dom. ${S.homeRec.w}V-${S.homeRec.l}D · ext. ${S.awayRec.w}V-${S.awayRec.l}D` : ""}</p>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
                           {[[nb(S.ptsPerGame), "pts / match"], [nb(S.ppp, 2), "pts / poss."], [pc(S.efg), "eFG%"], [pc(S.tovPct), "pertes / poss."]].map(([v, l]) => (
                             <div key={l} className="rounded-lg bg-[#1B2A4A]/5 px-3 py-2"><div className="font-bold text-[#1B2A4A]">{v}</div><div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/50">{l}</div></div>
