@@ -1111,6 +1111,12 @@ const SCOUT_REPORT_CSS = `
   .cmp td,.cmp th{padding:7px 10px}
   .cmp td.num{width:28%;font-weight:600}
   .muted{font-size:12.5px;color:#1B2A4A99;margin:4px 0}
+  .pm-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:0;border:1px solid #1B2A4A22;border-radius:8px;overflow:hidden}
+  .pm-tile{padding:10px 8px;min-height:84px}.pm-n{font-family:'Oswald',sans-serif;font-weight:700;font-size:12px;letter-spacing:.3px;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pm-v{font-size:22px;font-weight:500}.pm-m{font-size:10.5px;opacity:.8;margin-top:2px}
+  .pm-g3{background:#2d6a35;color:#fff}.pm-g2{background:#58a95e;color:#fff}.pm-g1{background:#bfe8bf;color:#1B2A4A}.pm-0{background:#f4f4f2;color:#1B2A4A}
+  .pm-r1{background:#f8d5cd;color:#1B2A4A}.pm-r2{background:#ee6e55;color:#fff}.pm-r3{background:#a32a18;color:#fff}
+  .pm-five td{font-size:13px}.pm-pos{color:#15803d}.pm-neg{color:#b91c1c}
   .pl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin-top:12px}
   .pl-card{border:1px solid #1B2A4A1f;border-radius:12px;padding:12px;background:#fff;break-inside:avoid}
   .pl-head{display:flex;gap:10px;align-items:center;margin-bottom:8px}
@@ -2432,11 +2438,27 @@ function buildTeamReportHtml(a, logo = null) {
     const lastDuo = LA.duos[LA.duos.length - 1];
     if (lastDuo && lastDuo !== LA.duos[0] && lastDuo.m.net < 0) ins.push(`<b>Duo qui souffre</b> : ${lastDuo.players.map(esc).join(" + ")} (${sg(lastDuo.m.net)}).`);
     const t = LA.total;
-    lineupsHtml = `
+    // +/- réel de chaque joueur = somme du +/- des cinq où il joue (comme un +/- de feuille de match), coloré du vert foncé au rouge foncé.
+    const shortName = (n) => { const w = String(n).replace(/^\d+\s*/, "").split(/\s+/).filter(x => x && !/^[A-ZÀ-Ý]\.$/.test(x)); return (w.length ? w : String(n).split(/\s+/)).join(" ").toUpperCase(); };
+    const pmOf = (l) => (l.pm !== undefined && l.pm !== null && !isNaN(l.pm)) ? l.pm : (l.pts - (l.opp ? l.opp.pts : 0));
+    const pmCls = (v) => v >= 10 ? "pm-g3" : v >= 4 ? "pm-g2" : v >= 1 ? "pm-g1" : v === 0 ? "pm-0" : v >= -3 ? "pm-r1" : v >= -9 ? "pm-r2" : "pm-r3";
+    const pmPlayers = [...new Set(a.lineups.flatMap(l => l.players))].map(name => {
+      const on = a.lineups.filter(l => l.players.some(x => x.toLowerCase() === name.toLowerCase()));
+      return { name, pm: on.reduce((acc, l) => acc + pmOf(l), 0), min: on.reduce((acc, l) => acc + (l.min || 0), 0) };
+    }).sort((x, y) => y.pm - x.pm);
+    const pmHtml = `<section class="card"><h2><i></i>Classement des +/- par joueur</h2>
+      <p class="hint">+/- de l'équipe pendant la présence du joueur sur le parquet (somme des cinq où il joue), et minutes correspondantes.</p>
+      <div class="pm-tiles">${pmPlayers.map(x => `<div class="pm-tile ${pmCls(Math.round(x.pm))}"><div class="pm-n">${esc(shortName(x.name))}</div><div class="pm-v">${x.pm > 0 ? "+" : ""}${Math.round(x.pm)}</div><div class="pm-m">${f(x.min, 1)} min</div></div>`).join("")}</div></section>`;
+    const fivesTable = `<div class="sub-title">Les 5 majeurs utilisés (par temps de jeu)</div>
+      <div class="bs-table"><table class="pm-five"><thead><tr><th>Cinq majeur</th><th class="num">Minutes</th><th class="num">+/-</th></tr></thead><tbody>
+      ${[...a.lineups].sort((x, y) => (y.min || 0) - (x.min || 0)).slice(0, 10).map(l => { const v = Math.round(pmOf(l)); return `<tr><td>${l.players.map(x => esc(shortName(x))).join(" · ")}</td><td class="num">${f(l.min, 1)} min</td><td class="num"><b class="${v > 0 ? "pm-pos" : v < 0 ? "pm-neg" : ""}">${v > 0 ? "+" : ""}${v}</b></td></tr>`; }).join("")}
+      </tbody></table></div>`;
+    lineupsHtml = pmHtml + `
     <section class="card">
       <h2><i></i>Les cinq</h2>
       <p class="hint">${LA.rows.length} cinq différents · efficacité nette = points marqués − points encaissés pour 100 possessions (vert ≥ +5, rouge ≤ −5). Fiable à partir de ${f(LA.minPoss, 0)} possessions.</p>
       ${ins.length ? `<ul class="bs-ins">${ins.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
+      ${fivesTable}
       <div class="sub-title">Les plus utilisés</div>
       ${used.map((x, i) => lineupRow(x, i)).join("")}
       ${best.length ? `<div class="sub-title">Ceux qui fonctionnent</div>${best.map((x, i) => lineupRow(x, i)).join("")}` : ""}
