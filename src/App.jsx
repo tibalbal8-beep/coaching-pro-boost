@@ -2547,7 +2547,7 @@ function computeMatchups(rec, tno) {
   if (!tm[T] || !tm[O]) throw new Error("équipes introuvables");
   const on = { [T]: new Set(tm[T].players.filter(p => p.starter).map(p => p.pno)), [O]: new Set(tm[O].players.filter(p => p.starter).map(p => p.pno)) };
   if (on[T].size !== 5 || on[O].size !== 5) throw new Error("les cinq de départ ne sont pas indiqués dans ce fichier");
-  const pair = new Map(), me = new Map(), you = new Map();
+  const pair = new Map(), me = new Map(), you = new Map(), duel = new Map();
   let lastT = 0, s1 = 0, s2 = 0, d0 = 0;
   const own = () => T === "1" ? s1 - s2 : s2 - s1;
   const close = (t) => {
@@ -2562,6 +2562,13 @@ function computeMatchups(rec, tno) {
   };
   rec.events.forEach(e => {
     if (e.k === "p") { s1 = e.s1; s2 = e.s2; return; }
+    if (e.k === "sh") {
+      // Points et tirs de chaque joueur pendant que tel adversaire / coéquipier est sur le terrain.
+      const side = String(e.tno), pts = e.m ? e.pt : 0, fga = e.pt === 1 ? 0 : 1, fgm = e.pt === 1 ? 0 : e.m;
+      if (side === O) on[T].forEach(a => { const k = a + "|" + e.pno, x = duel.get(k) || { opp: 0, oppFg: [0, 0], own: 0, ownFg: [0, 0] }; x.opp += pts; x.oppFg[0] += fgm; x.oppFg[1] += fga; duel.set(k, x); });
+      else if (side === T) on[O].forEach(b => { const k = e.pno + "|" + b, x = duel.get(k) || { opp: 0, oppFg: [0, 0], own: 0, ownFg: [0, 0] }; x.own += pts; x.ownFg[0] += fgm; x.ownFg[1] += fga; duel.set(k, x); });
+      return;
+    }
     if (e.k !== "s") return;
     const side = String(e.tno); if (!on[side]) return;
     close(e.t);
@@ -2571,7 +2578,7 @@ function computeMatchups(rec, tno) {
   const nameOf = (side, pno) => { const p = tm[side].players.find(x => x.pno === pno); if (!p) return "?"; return tm[side].players.filter(x => x.name === p.name).length > 1 ? `${(p.first || "?")[0]}. ${p.name}` : p.name; };
   const mine = [...me.entries()].map(([pno, v]) => ({ pno, name: nameOf(T, pno), ...v })).filter(x => x.min >= 3).sort((a, b) => b.min - a.min);
   const theirs = [...you.entries()].map(([pno, v]) => ({ pno, name: nameOf(O, pno), min: v.min })).filter(x => x.min >= 4).sort((a, b) => b.min - a.min);
-  return { mine, theirs, pair, nameOf };
+  return { mine, theirs, pair, duel, nameOf };
 }
 function matchupHtml(r) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
@@ -2583,18 +2590,27 @@ function matchupHtml(r) {
   M.mine.forEach(p => {
     if (p.min < 8 || p.d > -4) return;
     const worst = M.theirs.map(o => ({ o, x: M.pair.get(p.pno + "|" + o.pno) })).filter(z => z.x && z.x.min >= 3).sort((a, b) => a.x.d - b.x.d)[0];
-    if (worst && worst.x.d <= -3) ins.push(`<b>${esc(p.name)}</b> : ${sg(p.d)} au total, dont <b>${sg(worst.x.d)}</b> en ${worst.x.min.toFixed(0)} min face à <b>${esc(worst.o.name)}</b> ; sans cet adversaire sur le terrain : ${sg(p.d - worst.x.d)} en ${(p.min - worst.x.min).toFixed(0)} min.`);
+    if (worst && worst.x.d <= -3) {
+      const du = M.duel.get(p.pno + "|" + worst.o.pno) || { opp: 0, oppFg: [0, 0], own: 0, ownFg: [0, 0] };
+      ins.push(`<b>${esc(p.name)}</b> : ${sg(p.d)} au total, dont <b>${sg(worst.x.d)}</b> en ${worst.x.min.toFixed(0)} min face à <b>${esc(worst.o.name)}</b>. Pendant ce temps, <b>${esc(worst.o.name)} a marqué ${du.opp} pts</b> (${du.oppFg[0]}/${du.oppFg[1]} aux tirs) et ${esc(p.name)} ${du.own} pts (${du.ownFg[0]}/${du.ownFg[1]}). Sans cet adversaire sur le terrain : ${sg(p.d - worst.x.d)} en ${(p.min - worst.x.min).toFixed(0)} min.`);
+    }
   });
   M.mine.forEach(p => {
     if (p.min < 8) return;
     const best = M.theirs.map(o => ({ o, x: M.pair.get(p.pno + "|" + o.pno) })).filter(z => z.x && z.x.min >= 4).sort((a, b) => b.x.d - a.x.d)[0];
     if (best && best.x.d >= 6) ins.push(`<b>${esc(p.name)}</b> domine face à <b>${esc(best.o.name)}</b> : ${sg(best.x.d)} en ${best.x.min.toFixed(0)} min.`);
   });
+  const ptsCell = (a, b) => { const x = M.duel.get(a + "|" + b), t = M.pair.get(a + "|" + b); if (!t || t.min < 1) return `<td class="mx-e">·</td>`; const v = x ? x.opp : 0; return `<td class="${v >= 12 ? "pm-r3" : v >= 8 ? "pm-r2" : v >= 4 ? "pm-r1" : "pm-0"} mx-c ${t.min < 3 ? "mx-low" : ""}" title="${esc(M.nameOf(other, b))} : ${v} pts (${x ? x.oppFg[0] : 0}/${x ? x.oppFg[1] : 0}) · ${esc(M.nameOf(tno, a))} : ${x ? x.own : 0} pts (${x ? x.ownFg[0] : 0}/${x ? x.ownFg[1] : 0})"><b>${v}</b><small>${x ? x.oppFg[0] + "/" + x.oppFg[1] : "0/0"}</small></td>`; };
   return `<section class="card"><h2><i></i>Face-à-face : qui jouait contre qui</h2>
     <p class="hint">Chaque case = +/- de notre joueur (ligne) pendant que l'adversaire (colonne) était sur le terrain avec lui, et les minutes passées ensemble. Cases pâles = moins de 3 min (à relativiser). Utile pour savoir si un +/- négatif vient d'une opposition qui ne convenait pas.</p>
     ${ins.length ? `<ul class="bs-ins">${ins.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
     <div class="bs-table"><table class="mx"><thead><tr><th></th>${M.theirs.map(o => `<th title="${esc(o.name)}">${esc(short(o.name))}<small>${o.min.toFixed(0)}'</small></th>`).join("")}</tr></thead><tbody>
     ${M.mine.map(p => `<tr><th class="mx-n">${esc(p.name)}<small>${sg(p.d)} · ${p.min.toFixed(0)}'</small></th>${M.theirs.map(o => cell(p.pno, o.pno)).join("")}</tr>`).join("")}
+    </tbody></table></div>
+    <div class="sub-title">Points marqués par l'adversaire (colonne) pendant que notre joueur (ligne) est sur le terrain</div>
+    <p class="hint">Chiffre = points de l'adversaire, dessous ses tirs réussis/tentés (sans lancers). C'est le score de l'adversaire pendant qu'il partage le terrain avec notre joueur, pas forcément sur lui : à croiser avec la vidéo pour savoir qui le défendait. Survole une case pour voir aussi les points de notre joueur.</p>
+    <div class="bs-table"><table class="mx"><thead><tr><th></th>${M.theirs.map(o => `<th title="${esc(o.name)}">${esc(short(o.name))}</th>`).join("")}</tr></thead><tbody>
+    ${M.mine.map(p => `<tr><th class="mx-n">${esc(p.name)}</th>${M.theirs.map(o => ptsCell(p.pno, o.pno)).join("")}</tr>`).join("")}
     </tbody></table></div></section>`;
 }
 // ── Lecture du match : évolution du score, séries, tirs à 3 pts, temps morts, moments notés par le coach ──
