@@ -8,7 +8,7 @@ export default async function handler(req, res) {
     if (!r.ok) return res.status(r.status === 404 ? 404 : 502).json({ error: `FIBA LiveStats a répondu ${r.status}` });
     const text = await r.text();
     res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.setHeader("Cache-Control", "s-maxage=60");
+    res.setHeader("Cache-Control", "s-maxage=15");
     return res.status(200).send(text);
   } catch (e) {
     return res.status(502).json({ error: "Impossible de joindre FIBA LiveStats" });

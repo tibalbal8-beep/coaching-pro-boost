@@ -2451,7 +2451,8 @@ function parseFibaPbp(raw) {
     if (a.actionType === "period" && a.subType === "end") end = Math.max(end, start(ep(a)) + plen(ep(a)));
   });
   if (!end) end = acts.length ? Math.max(...acts.map(x => x.t)) : 40;
-  return { teams, events, end, final: [s1, s2] };
+  const live = !d.pbp.some(a => a.actionType === "game" && a.subType === "end");
+  return { teams, events, end, final: [s1, s2], live, at: live ? { p: ep(acts[acts.length - 1].a), clock: String(acts[acts.length - 1].a.gt || "") } : null };
 }
 // Poste suggéré (1 à 5) d'après les stats : plus de passes/interceptions → petit poste ; plus de rebonds/contres → grand poste.
 function suggestPostes(players) {
@@ -2531,7 +2532,7 @@ function rotationReportHtml(r, a) {
   const own = tno === "1" ? rec.final[0] : rec.final[1], opp = tno === "1" ? rec.final[1] : rec.final[0];
   return `<section class="card rot">
     <h2><i></i>${esc(teamName)} — Rotations par poste</h2>
-    <p class="hint">${esc(teamName)} vs ${esc(oppName)} · score final ${own} – ${opp}. Chaque bloc = un joueur sur un poste ; le chiffre est le +/- de l'équipe sur le score du match pendant sa présence. Postes : ${byPost}. ${Object.keys(postes2).filter(n => postes2[n] && R.players.some(x => x.p?.name === n)).length ? `Priorités : ${Object.keys(postes2).filter(n => postes2[n] && R.players.some(x => x.p?.name === n)).map(n => `${esc(n.charAt(0) + n.slice(1).toLowerCase())} joue ${postes[n] || 3} s'il est libre, sinon ${postes2[n]}`).join(" ; ")}. ` : ""}Quand deux joueurs d'un même poste sont ensemble, l'un est décalé sur le poste voisin libre.</p>
+    <p class="hint">${esc(teamName)} vs ${esc(oppName)} · ${rec.live ? `score actuel ${own} – ${opp} (match en cours, ${rec.at && rec.at.p <= 4 ? "Q" + rec.at.p : "prolongation"}, ${esc(rec.at ? rec.at.clock : "")} restantes)` : `score final ${own} – ${opp}`}. Chaque bloc = un joueur sur un poste ; le chiffre est le +/- de l'équipe sur le score du match pendant sa présence. Postes : ${byPost}. ${Object.keys(postes2).filter(n => postes2[n] && R.players.some(x => x.p?.name === n)).length ? `Priorités : ${Object.keys(postes2).filter(n => postes2[n] && R.players.some(x => x.p?.name === n)).map(n => `${esc(n.charAt(0) + n.slice(1).toLowerCase())} joue ${postes[n] || 3} s'il est libre, sinon ${postes2[n]}`).join(" ; ")}. ` : ""}Quand deux joueurs d'un même poste sont ensemble, l'un est décalé sur le poste voisin libre.</p>
     <div class="rot-wrap">${rows}<div class="rot-axis"><div class="rot-lab"></div><div class="rot-ticks">${ticks.join("")}</div></div>${cinq}</div>
   </section>
   <section class="card"><h2><i></i>Classement des +/- par joueur</h2>
@@ -2786,7 +2787,7 @@ function analyzeGame(rec, tno, moments = []) {
   const scoreAt = (t) => { let r = [0, 0]; for (const e of sc) { if (e.t <= t + 1e-9) r = [own(e.s1, e.s2), opp(e.s1, e.s2)]; else break; } return r; };
   const marginAt = (t) => { const [a, b] = scoreAt(t); return a - b; };
   const hasDetail = rec.events.some(e => e.k === "sh");
-  const nq = Math.max(4, ...rec.events.filter(e => e.p).map(e => e.p));
+  const nq = Math.max(1, ...rec.events.filter(e => e.p).map(e => e.p));
   const qEnd = (q) => q <= 4 ? q * 10 : 40 + (q - 4) * 5, qStart = (q) => q <= 1 ? 0 : qEnd(q - 1);
   const mk = () => ({ fg: [0, 0], t3: [0, 0], ft: [0, 0], tov: 0, oreb: 0, pts: 0 });
   const quarters = Array.from({ length: nq }, (_, i) => ({ q: i + 1, own: mk(), opp: mk() }));
@@ -14053,7 +14054,7 @@ function CoachingProBoost({ session }) {
                   </div>
                   {taFibaPending && (
                     <div className="p-3 rounded-lg bg-[#7c3aed]/10 mb-2">
-                      <p className="text-xs text-[#1B2A4A] mb-2">Score final {taFibaPending.rec.final[0]} – {taFibaPending.rec.final[1]}. Quelle équipe veux-tu analyser ?</p>
+                      <p className="text-xs text-[#1B2A4A] mb-2">{taFibaPending.rec.live ? "Match en cours — score actuel" : "Score final"} {taFibaPending.rec.final[0]} – {taFibaPending.rec.final[1]}. Quelle équipe veux-tu analyser ?</p>
                       <div className="flex gap-2 flex-wrap">
                         {Object.entries(taFibaPending.rec.teams).map(([k, t]) => (
                           <button key={k} onClick={() => {
@@ -14068,7 +14069,18 @@ function CoachingProBoost({ session }) {
                   )}
                   {(activeTa.rotations || []).map(r => (
                     <div key={r.id} className="mb-2">
-                      <span className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-medium bg-[#7c3aed]/10 text-[#1B2A4A]">🔄 {r.label} ({r.rec.final[0]}–{r.rec.final[1]})
+                      <span className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-medium bg-[#7c3aed]/10 text-[#1B2A4A]">🔄 {r.label} ({r.rec.final[0]}–{r.rec.final[1]}{r.rec.live ? ", en cours" : ""})
+                        {r.matchId && /^\d+$/.test(String(r.matchId)) && (
+                          <button onClick={async () => {
+                            try {
+                              const res = await fetch("/api/fiba-pbp?id=" + r.matchId);
+                              if (!res.ok) throw new Error("erreur " + res.status);
+                              const rec = parseFibaPbp(await res.text());
+                              updateActiveTa({ rotations: activeTa.rotations.map(x => x.id === r.id ? { ...x, rec } : x) });
+                              toast?.("✓ Match actualisé");
+                            } catch (e) { cpbAlert?.("Actualisation impossible : " + e.message); }
+                          }} title="Recharger les données du match (utile pendant le match)" className="px-2 py-0.5 rounded-full bg-white text-[#7c3aed] font-semibold">↻ Actualiser</button>
+                        )}
                         <button onClick={() => updateActiveTa({ rotations: activeTa.rotations.filter(x => x.id !== r.id) })} title="Retirer" className="w-5 h-5 rounded-full text-[#1B2A4A]/40 hover:text-red-600 flex items-center justify-center"><X size={11} /></button>
                       </span>
                       {(() => {
