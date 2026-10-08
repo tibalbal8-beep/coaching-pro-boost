@@ -2663,9 +2663,9 @@ function computeImpact(rec, tno) {
   const list = (m) => [...m.entries()].map(([pno, v]) => ({ pno, ...v })).sort((a, b) => b.n - a.n || b.pts - a.pts);
   return { to: list(out.to), or: list(out.or), teamTO: out.teamTO, team2: out.team2, hasPno: out.hasPno };
 }
-function impactHtml(r) {
+function impactHtml(r, over = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-  const I = computeImpact(r.rec, r.tno), f1 = (x) => x.toFixed(1).replace(".", ",");
+  const I = over || computeImpact(r.rec, r.tno), f1 = (x) => x.toFixed(1).replace(".", ",");
   if (!I.hasPno) return `<section class="card"><h2><i></i>Pertes de balle et rebonds offensifs</h2><p class="hint">Ce match a été importé avant l'ajout de ces détails : retire-le et réimporte-le pour voir ce que rapportent les rebonds offensifs et ce que coûtent les pertes de balle de chaque joueur.</p></section>`;
   const ins = [];
   const costly = [...I.to].filter(x => x.n >= 2).sort((a, b) => b.pts - a.pts)[0];
@@ -2749,10 +2749,10 @@ function computeTransition(rec, tno) {
   close();
   return res;
 }
-function transitionHtml(r, teamName, oppName) {
+function transitionHtml(r, teamName, oppName, over = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-  const tr = computeTransition(r.rec, r.tno);
-  const hasTy = r.rec.events.some(e => e.k === "sh" && e.ty !== undefined) && r.rec.events.some(e => e.k === "rb" && e.df !== undefined);
+  const tr = over || computeTransition(r.rec, r.tno);
+  const hasTy = over ? true : r.rec.events.some(e => e.k === "sh" && e.ty !== undefined) && r.rec.events.some(e => e.k === "rb" && e.df !== undefined);
   if (!hasTy) return `<section class="card"><h2><i></i>Après rebond défensif</h2><p class="hint">Ce match a été importé avant l'ajout de ces détails : retire-le et réimporte-le.</p></section>`;
   const f2 = (x) => x.toFixed(2).replace(".", ","), pc = (a, b) => b ? Math.round(a / b * 100) + " %" : "–";
   const CATS = ["3 pts raté", "Tir proche du cercle raté", "Tir à mi-distance raté", "Lancer franc raté"];
@@ -2778,6 +2778,61 @@ function transitionHtml(r, teamName, oppName) {
     <div class="sub-title">Quand ${esc(oppName)} prend le rebond d'un de nos tirs ratés</div>
     <ul class="bs-ins">${b.map(x => `<li>${x}</li>`).join("") || "<li>Aucune possession.</li>"}</ul>${table(tr.theirs)}
   </section>`;
+}
+// ── Plusieurs matchs : moyennes et cumuls sur la sélection ──
+function multiGameHtml(a, picks) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const f1 = (x) => x === null || x === undefined || isNaN(x) ? "–" : x.toFixed(1).replace(".", ","), f0 = (x) => Math.round(x), sg = (v) => (v > 0 ? "+" : "") + Math.round(v);
+  const pct = (m, n) => n ? Math.round(m / n * 100) + "%" : "–";
+  const mm = (v) => { const [x, y] = String(v || "0:00").split(":").map(Number); return (x || 0) + (y || 0) / 60; };
+  const n = picks.length, teamName = picks[0].rec.teams[String(picks[0].tno)].name;
+  const postes = { ...suggestPostes(picks[0].rec.teams[String(picks[0].tno)].players), ...(a.rotationPostes || {}) }, postes2 = a.rotationPostes2 || {};
+  // --- box score moyen par joueur
+  const pl = new Map(), tot = { pts: 0, opp: 0, fg: [0, 0], t3: [0, 0], ft: [0, 0], or: 0, dr: 0, ast: 0, tov: 0, stl: 0, blk: 0, pf: 0 };
+  const sumInto = (x, y) => { ["pts", "or", "dr", "ast", "tov", "stl", "blk", "pf"].forEach(k => { x[k] += y[k] || 0; }); ["fg", "t3", "ft"].forEach(k => { x[k][0] += y[k][0]; x[k][1] += y[k][1]; }); };
+  const perMatch = picks.map(r => {
+    const T = String(r.tno), O = T === "1" ? "2" : "1", team = r.rec.teams[T];
+    team.players.forEach(p => {
+      if (!p.st || !p.min || p.min === "0:00") return;
+      const k = fibaKey(team.players, p), e = pl.get(k) || { name: p.name, first: p.first, gp: 0, min: 0, pm: 0, st: { pts: 0, fg: [0, 0], t3: [0, 0], ft: [0, 0], or: 0, dr: 0, ast: 0, tov: 0, stl: 0, blk: 0, pf: 0, ev: 0 } };
+      e.gp++; e.min += mm(p.min); e.pm += p.pm || 0; sumInto(e.st, p.st); e.st.ev += p.st.ev || 0; pl.set(k, e);
+    });
+    sumInto(tot, team.tot); tot.opp += T === "1" ? r.rec.final[1] : r.rec.final[0];
+    const R = computeRotation(r.rec, T, postes, postes2), G = analyzeGame(r.rec, T, []), I = computeImpact(r.rec, T), TR = computeTransition(r.rec, T);
+    return { r, R, G, I, TR, key: (p) => fibaKey(team.players, p) };
+  });
+  const rows = [...pl.values()].sort((x, y) => y.min - x.min);
+  const avg = (v, g) => f1(v / g);
+  const boxRow = (e) => `<tr><td class="bx-n">${esc(e.first ? e.first.charAt(0) + ". " : "")}${esc(e.name.charAt(0) + e.name.slice(1).toLowerCase())}</td><td class="num">${e.gp}</td><td class="num">${avg(e.min, e.gp)}</td><td class="num"><b>${avg(e.st.pts, e.gp)}</b></td><td class="num">${f1(e.st.fg[0] / e.gp)}/${f1(e.st.fg[1] / e.gp)} <small>${pct(...e.st.fg)}</small></td><td class="num">${f1(e.st.t3[0] / e.gp)}/${f1(e.st.t3[1] / e.gp)} <small>${pct(...e.st.t3)}</small></td><td class="num">${f1(e.st.ft[0] / e.gp)}/${f1(e.st.ft[1] / e.gp)} <small>${pct(...e.st.ft)}</small></td><td class="num">${avg(e.st.or + e.st.dr, e.gp)}</td><td class="num">${avg(e.st.ast, e.gp)}</td><td class="num">${avg(e.st.tov, e.gp)}</td><td class="num">${avg(e.st.stl, e.gp)}</td><td class="num">${avg(e.st.blk, e.gp)}</td><td class="num">${avg(e.st.pf, e.gp)}</td><td class="num"><b class="${e.pm > 0 ? "pm-pos" : e.pm < 0 ? "pm-neg" : ""}">${sg(e.pm)}</b></td><td class="num">${avg(e.st.ev, e.gp)}</td></tr>`;
+  const labels = picks.map(r => `${esc(r.label)} (${r.rec.final[0]}–${r.rec.final[1]})`).join(" · ");
+  const box = `<section class="card"><h2><i></i>Moyennes sur ${n} match${n > 1 ? "s" : ""} — ${esc(teamName)}</h2>
+    <p class="hint">${labels}. Chiffres par match (moyenne sur les matchs joués par chaque joueur) ; +/- = cumul.</p>
+    <div class="kpis-mini"><b>${f1(tot.pts / n)}</b> pts marqués · <b>${f1(tot.opp / n)}</b> encaissés · tirs ${pct(...tot.fg)} · 3 pts ${pct(...tot.t3)} · LF ${pct(...tot.ft)} · ${f1(tot.tov / n)} balles perdues · ${f1((tot.or) / n)} reb. off. par match</div>
+    <div class="bs-table"><table class="pm-five bx"><thead><tr><th>Joueur</th><th class="num">MJ</th><th class="num">Min</th><th class="num">Pts</th><th class="num">Tirs</th><th class="num">3 pts</th><th class="num">LF</th><th class="num">Reb</th><th class="num">Pd</th><th class="num">BP</th><th class="num">Int</th><th class="num">Ct</th><th class="num">Fau</th><th class="num">+/-</th><th class="num">Éval</th></tr></thead><tbody>${rows.map(boxRow).join("")}</tbody></table></div></section>`;
+  // --- +/- cumulé par joueur et cinq majeurs
+  const pmMap = new Map(), fives = new Map();
+  perMatch.forEach(m => {
+    m.R.players.forEach(x => { const k = m.key(x.p), e = pmMap.get(k) || { name: x.p.name, pm: 0, min: 0 }; e.pm += x.pm; e.min += x.min; pmMap.set(k, e); });
+    m.R.fives.forEach(f => { const names = f.players.map(pno => m.key(m.R.byPno.get(pno))).sort(), k = names.join("|"), e = fives.get(k) || { names, min: 0, pm: 0, g: 0 }; e.min += f.min; e.pm += f.pm; e.g++; fives.set(k, e); });
+  });
+  const pmList = [...pmMap.values()].sort((x, y) => y.pm - x.pm);
+  const tiles = `<section class="card"><h2><i></i>Classement des +/- cumulés (${n} match${n > 1 ? "s" : ""})</h2><p class="hint">Somme du +/- de l'équipe pendant la présence de chaque joueur, avec ses minutes totales.</p>
+    <div class="pm-tiles">${pmList.map(x => `<div class="pm-tile ${pmClass(Math.round(x.pm / Math.max(1, n)))}"><div class="pm-n">${esc(x.name)}</div><div class="pm-v">${sg(x.pm)}</div><div class="pm-m">${x.min.toFixed(0)} min</div></div>`).join("")}</div></section>`;
+  const fiveRows = [...fives.values()].sort((x, y) => y.min - x.min).slice(0, 10).map(f => `<tr><td>${f.names.map(x => esc(x.replace(/^[A-Z]\.\s/, ""))).join(" · ")}</td><td class="num">${f.min.toFixed(1).replace(".", ",")} min</td><td class="num"><b class="${f.pm > 0 ? "pm-pos" : f.pm < 0 ? "pm-neg" : ""}">${sg(f.pm)}</b></td><td class="num">${f.g}</td></tr>`).join("");
+  const fiveHtml = `<section class="card"><h2><i></i>Les 5 majeurs cumulés (${n} matchs)</h2><div class="bs-table"><table class="pm-five"><thead><tr><th>Cinq majeur</th><th class="num">Minutes</th><th class="num">+/-</th><th class="num">Matchs</th></tr></thead><tbody>${fiveRows}</tbody></table></div></section>`;
+  // --- quart-temps (moyennes)
+  const qs = []; perMatch.forEach(m => m.G.quarters.forEach(Q => { const i = Math.min(Q.q, 5) - 1; const e = qs[i] || (qs[i] = { q: i + 1, g: 0, own: 0, opp: 0, t3: [0, 0], t3o: [0, 0], tov: 0, tovo: 0, or: 0, oro: 0 }); e.g++; e.own += Q.own.pts; e.opp += Q.opp.pts; e.t3[0] += Q.own.t3[0]; e.t3[1] += Q.own.t3[1]; e.t3o[0] += Q.opp.t3[0]; e.t3o[1] += Q.opp.t3[1]; e.tov += Q.own.tov; e.tovo += Q.opp.tov; e.or += Q.own.oreb; e.oro += Q.opp.oreb; }));
+  const qHtml = `<section class="card"><h2><i></i>Quart-temps : moyennes sur ${n} match${n > 1 ? "s" : ""}</h2><div class="bs-table"><table class="pm-five"><thead><tr><th></th><th class="num">Score moyen</th><th class="num">Écart</th><th class="num">3 pts (nous)</th><th class="num">3 pts adv.</th><th class="num">Balles perdues</th><th class="num">Reb. off.</th></tr></thead><tbody>${qs.filter(Boolean).map(e => `<tr><td><b>${e.q <= 4 ? "Q" + e.q : "Prol."}</b></td><td class="num">${f1(e.own / e.g)}–${f1(e.opp / e.g)}</td><td class="num"><b class="${e.own > e.opp ? "pm-pos" : e.own < e.opp ? "pm-neg" : ""}">${sg((e.own - e.opp) / e.g)}</b></td><td class="num">${e.t3[0]}/${e.t3[1]} <small>${pct(...e.t3)}</small></td><td class="num">${e.t3o[0]}/${e.t3o[1]} <small>${pct(...e.t3o)}</small></td><td class="num">${f1(e.tov / e.g)} / ${f1(e.tovo / e.g)}</td><td class="num">${f1(e.or / e.g)} / ${f1(e.oro / e.g)}</td></tr>`).join("")}</tbody></table></div></section>`;
+  // --- pertes / rebonds off. cumulés
+  const mergeI = (kind) => { const mp = new Map(); perMatch.forEach(m => m.I[kind].forEach(x => { const k = x.name, e = mp.get(k) || { name: x.name, n: 0, pts: 0 }; e.n += x.n; e.pts += x.pts; mp.set(k, e); })); return [...mp.values()].sort((x, y) => y.n - x.n || y.pts - x.pts); };
+  const I = { to: mergeI("to"), or: mergeI("or"), hasPno: perMatch.every(m => m.I.hasPno), teamTO: { own: { n: 0, pts: 0 }, opp: { n: 0, pts: 0 } }, team2: { own: { n: 0, pts: 0 }, opp: { n: 0, pts: 0 } } };
+  perMatch.forEach(m => { ["own", "opp"].forEach(k => { I.teamTO[k].n += m.I.teamTO[k].n; I.teamTO[k].pts += m.I.teamTO[k].pts; I.team2[k].n += m.I.team2[k].n; I.team2[k].pts += m.I.team2[k].pts; }); });
+  const impact = impactHtml(picks[0], I).replace("ce que ça coûte, ce que ça rapporte", `cumul sur ${n} match${n > 1 ? "s" : ""}`);
+  // --- après rebond défensif cumulé
+  const TR = { ours: perMatch.flatMap(m => m.TR.ours), theirs: perMatch.flatMap(m => m.TR.theirs) };
+  const oppN = picks.length > 1 ? "les adversaires" : picks[0].rec.teams[String(picks[0].tno) === "1" ? "2" : "1"].name;
+  const trH = picks.every(r => r.rec.events.some(e => e.k === "sh" && e.ty !== undefined)) ? transitionHtml(picks[0], teamName, oppN, TR).replace("vitesse et efficacité", `cumul sur ${n} match${n > 1 ? "s" : ""}`) : "";
+  return box + tiles + fiveHtml + qHtml + impact + trH;
 }
 // ── Lecture du match : évolution du score, séries, tirs à 3 pts, temps morts, moments notés par le coach ──
 function analyzeGame(rec, tno, moments = []) {
@@ -2908,7 +2963,9 @@ function buildTeamReportHtml(a, logo = null) {
       <div class="rank-side"><div class="rank-count">${sg(l.pm || m.diff, 0)}</div><div class="rank-share">+/-</div></div>
       ${netBadge(m.net)}
     </div>`;
-  const rotHtml = (a.rotations || []).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r, a); } catch (e2) { mxh = ""; } try { mxh += impactHtml(r); } catch (e3) { } try { mxh += transitionHtml(r, tn, on); } catch (e4) { } return fibaBoxHtml(r) + gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
+  const rotPicks = (a.rotations || []).filter(r => r.sel !== false), rotMode = a.rotationMode || "each";
+  const rotMulti = rotPicks.length >= 2 && (rotMode === "avg" || rotMode === "both") ? (() => { try { return multiGameHtml(a, rotPicks); } catch (e5) { return `<section class="card"><p class="hint">Moyennes indisponibles : ${esc(e5.message)}</p></section>`; } })() : "";
+  const rotHtml = rotMulti + (rotMode === "avg" && rotPicks.length >= 2 ? [] : rotPicks).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r, a); } catch (e2) { mxh = ""; } try { mxh += impactHtml(r); } catch (e3) { } try { mxh += transitionHtml(r, tn, on); } catch (e4) { } return fibaBoxHtml(r) + gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
   let lineupsHtml = "";
   if (LA) {
     const used = [...LA.rows].sort((x, y) => y.m.min - x.m.min).slice(0, 8);
@@ -14067,9 +14124,20 @@ function CoachingProBoost({ session }) {
                       </div>
                     </div>
                   )}
+                  {(activeTa.rotations || []).length >= 2 && (
+                    <div className="flex items-center gap-2 flex-wrap mb-2 p-2 rounded-md bg-[#7c3aed]/10 text-xs text-[#1B2A4A]">
+                      <span><b>{(activeTa.rotations || []).filter(r => r.sel !== false).length}</b> match(s) coché(s) — l'export affichera :</span>
+                      <select value={activeTa.rotationMode || "each"} onChange={e => updateActiveTa({ rotationMode: e.target.value })} className="border border-[#1B2A4A]/20 rounded px-2 py-1 bg-white">
+                        <option value="each">chaque match séparément</option>
+                        <option value="avg">les moyennes / cumuls des matchs cochés</option>
+                        <option value="both">les moyennes puis chaque match</option>
+                      </select>
+                    </div>
+                  )}
                   {(activeTa.rotations || []).map(r => (
                     <div key={r.id} className="mb-2">
-                      <span className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-medium bg-[#7c3aed]/10 text-[#1B2A4A]">🔄 {r.label} ({r.rec.final[0]}–{r.rec.final[1]}{r.rec.live ? ", en cours" : ""})
+                      <span className={`inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-medium bg-[#7c3aed]/10 text-[#1B2A4A] ${r.sel === false ? "opacity-50" : ""}`}>
+                        <input type="checkbox" checked={r.sel !== false} title="Inclure ce match dans l'export" onChange={e => updateActiveTa({ rotations: activeTa.rotations.map(x => x.id === r.id ? { ...x, sel: e.target.checked } : x) })} />🔄 {r.label} ({r.rec.final[0]}–{r.rec.final[1]}{r.rec.live ? ", en cours" : ""})
                         {r.matchId && /^\d+$/.test(String(r.matchId)) && (
                           <button onClick={async () => {
                             try {
