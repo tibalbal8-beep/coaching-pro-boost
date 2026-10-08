@@ -1120,6 +1120,9 @@ const SCOUT_REPORT_CSS = `
   .rot-b b{font-family:'Inter',sans-serif;font-weight:700;font-size:10.5px;letter-spacing:.2px}.rot-b span{font-size:10.5px;opacity:.85}
   .rot-b b.rot-v{writing-mode:vertical-rl;transform:rotate(180deg);font-size:9px}.rot-b span.rot-vs{display:none}
   .rot-axis{display:flex;border-top:1px solid #1B2A4A33;height:20px}.rot-ticks{position:relative;flex:1}.rot-ticks span{position:absolute;top:3px;font-size:10px;color:#1B2A4A99;transform:translateX(-50%)}
+  .mx{border-collapse:collapse;width:100%}.mx th,.mx td{padding:5px 4px;text-align:center;font-size:12px;border:1px solid #fff}
+  .mx thead th{font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:.2px;color:#1B2A4A;vertical-align:bottom}.mx small{display:block;font-size:9.5px;font-weight:400;opacity:.7}
+  .mx .mx-n{text-align:left;white-space:nowrap;font-weight:700;padding-right:10px}.mx-c b{font-size:13px}.mx-low{opacity:.5}.mx-e{color:#1B2A4A33}
   .game-chart{width:100%;height:auto;display:block;margin:6px 0 4px}
   .rot-per{font-size:12px;color:#1B2A4A99}
   .pm-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:0;border:1px solid #1B2A4A22;border-radius:8px;overflow:hidden}
@@ -2537,6 +2540,63 @@ function rotationReportHtml(r, a) {
     </tbody></table></div></section>`;
 }
 
+// ── Face-à-face joueur contre joueur : +/- de chacun de nos joueurs pendant qu'un adversaire donné est sur le terrain ──
+function computeMatchups(rec, tno) {
+  const T = String(tno), O = T === "1" ? "2" : "1";
+  const tm = { [T]: rec.teams[T], [O]: rec.teams[O] };
+  if (!tm[T] || !tm[O]) throw new Error("équipes introuvables");
+  const on = { [T]: new Set(tm[T].players.filter(p => p.starter).map(p => p.pno)), [O]: new Set(tm[O].players.filter(p => p.starter).map(p => p.pno)) };
+  if (on[T].size !== 5 || on[O].size !== 5) throw new Error("les cinq de départ ne sont pas indiqués dans ce fichier");
+  const pair = new Map(), me = new Map(), you = new Map();
+  let lastT = 0, s1 = 0, s2 = 0, d0 = 0;
+  const own = () => T === "1" ? s1 - s2 : s2 - s1;
+  const close = (t) => {
+    if (t <= lastT + 1e-6) return;
+    const dur = t - lastT, d = own() - d0;
+    on[T].forEach(a => {
+      const m = me.get(a) || { min: 0, d: 0 }; m.min += dur; m.d += d; me.set(a, m);
+      on[O].forEach(b => { const k = a + "|" + b, x = pair.get(k) || { min: 0, d: 0 }; x.min += dur; x.d += d; pair.set(k, x); });
+    });
+    on[O].forEach(b => { const y = you.get(b) || { min: 0 }; y.min += dur; you.set(b, y); });
+    lastT = t; d0 = own();
+  };
+  rec.events.forEach(e => {
+    if (e.k === "p") { s1 = e.s1; s2 = e.s2; return; }
+    if (e.k !== "s") return;
+    const side = String(e.tno); if (!on[side]) return;
+    close(e.t);
+    if (e.io === "in") on[side].add(e.pno); else on[side].delete(e.pno);
+  });
+  close(rec.end);
+  const nameOf = (side, pno) => { const p = tm[side].players.find(x => x.pno === pno); if (!p) return "?"; return tm[side].players.filter(x => x.name === p.name).length > 1 ? `${(p.first || "?")[0]}. ${p.name}` : p.name; };
+  const mine = [...me.entries()].map(([pno, v]) => ({ pno, name: nameOf(T, pno), ...v })).filter(x => x.min >= 3).sort((a, b) => b.min - a.min);
+  const theirs = [...you.entries()].map(([pno, v]) => ({ pno, name: nameOf(O, pno), min: v.min })).filter(x => x.min >= 4).sort((a, b) => b.min - a.min);
+  return { mine, theirs, pair, nameOf };
+}
+function matchupHtml(r) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const rec = r.rec, tno = String(r.tno), other = tno === "1" ? "2" : "1";
+  const M = computeMatchups(rec, tno), sg = (v) => (v > 0 ? "+" : "") + Math.round(v);
+  const cell = (a, b) => { const x = M.pair.get(a + "|" + b); if (!x || x.min < 1) return `<td class="mx-e">·</td>`; const v = Math.round(x.d); return `<td class="${pmClass(v)} mx-c ${x.min < 3 ? "mx-low" : ""}"><b>${sg(v)}</b><small>${x.min.toFixed(0)}'</small></td>`; };
+  const short = (n) => n.length > 9 ? n.slice(0, 8) + "." : n;
+  const ins = [];
+  M.mine.forEach(p => {
+    if (p.min < 8 || p.d > -4) return;
+    const worst = M.theirs.map(o => ({ o, x: M.pair.get(p.pno + "|" + o.pno) })).filter(z => z.x && z.x.min >= 3).sort((a, b) => a.x.d - b.x.d)[0];
+    if (worst && worst.x.d <= -3) ins.push(`<b>${esc(p.name)}</b> : ${sg(p.d)} au total, dont <b>${sg(worst.x.d)}</b> en ${worst.x.min.toFixed(0)} min face à <b>${esc(worst.o.name)}</b> ; sans cet adversaire sur le terrain : ${sg(p.d - worst.x.d)} en ${(p.min - worst.x.min).toFixed(0)} min.`);
+  });
+  M.mine.forEach(p => {
+    if (p.min < 8) return;
+    const best = M.theirs.map(o => ({ o, x: M.pair.get(p.pno + "|" + o.pno) })).filter(z => z.x && z.x.min >= 4).sort((a, b) => b.x.d - a.x.d)[0];
+    if (best && best.x.d >= 6) ins.push(`<b>${esc(p.name)}</b> domine face à <b>${esc(best.o.name)}</b> : ${sg(best.x.d)} en ${best.x.min.toFixed(0)} min.`);
+  });
+  return `<section class="card"><h2><i></i>Face-à-face : qui jouait contre qui</h2>
+    <p class="hint">Chaque case = +/- de notre joueur (ligne) pendant que l'adversaire (colonne) était sur le terrain avec lui, et les minutes passées ensemble. Cases pâles = moins de 3 min (à relativiser). Utile pour savoir si un +/- négatif vient d'une opposition qui ne convenait pas.</p>
+    ${ins.length ? `<ul class="bs-ins">${ins.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
+    <div class="bs-table"><table class="mx"><thead><tr><th></th>${M.theirs.map(o => `<th title="${esc(o.name)}">${esc(short(o.name))}<small>${o.min.toFixed(0)}'</small></th>`).join("")}</tr></thead><tbody>
+    ${M.mine.map(p => `<tr><th class="mx-n">${esc(p.name)}<small>${sg(p.d)} · ${p.min.toFixed(0)}'</small></th>${M.theirs.map(o => cell(p.pno, o.pno)).join("")}</tr>`).join("")}
+    </tbody></table></div></section>`;
+}
 // ── Lecture du match : évolution du score, séries, tirs à 3 pts, temps morts, moments notés par le coach ──
 function analyzeGame(rec, tno, moments = []) {
   const T = String(tno), O = T === "1" ? "2" : "1";
@@ -2666,7 +2726,7 @@ function buildTeamReportHtml(a, logo = null) {
       <div class="rank-side"><div class="rank-count">${sg(l.pm || m.diff, 0)}</div><div class="rank-share">+/-</div></div>
       ${netBadge(m.net)}
     </div>`;
-  const rotHtml = (a.rotations || []).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; return gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a); } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
+  const rotHtml = (a.rotations || []).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r); } catch (e2) { mxh = ""; } return gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
   let lineupsHtml = "";
   if (LA) {
     const used = [...LA.rows].sort((x, y) => y.m.min - x.m.min).slice(0, 8);
