@@ -1123,6 +1123,7 @@ const SCOUT_REPORT_CSS = `
   .mx{border-collapse:collapse;width:100%}.mx th,.mx td{padding:5px 4px;text-align:center;font-size:12px;border:1px solid #fff}
   .mx thead th{font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:.2px;color:#1B2A4A;vertical-align:bottom}.mx small{display:block;font-size:9.5px;font-weight:400;opacity:.7}
   .mx .mx-n{text-align:left;white-space:nowrap;font-weight:700;padding-right:10px}.mx-c b{font-size:13px}.mx-low{opacity:.5}.mx-far{opacity:.28}.mx-e{color:#1B2A4A33}
+  .bx td,.bx th{padding:5px 5px;font-size:11.5px;white-space:nowrap}.bx .bx-n{text-align:left;font-weight:600}.bx-num{display:inline-block;min-width:20px;color:#1B2A4A80;font-weight:700}.bx small{opacity:.6;font-size:9.5px}.bx-tot td{border-top:2px solid #1B2A4A;font-weight:700}
   .game-chart{width:100%;height:auto;display:block;margin:6px 0 4px}
   .rot-per{font-size:12px;color:#1B2A4A99}
   .pm-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:0;border:1px solid #1B2A4A22;border-radius:8px;overflow:hidden}
@@ -2433,7 +2434,8 @@ function parseFibaPbp(raw) {
     teams[k] = { name: t.name, code: t.code, players: Object.entries(t.pl || {}).map(([pno, p]) => ({
       pno: +pno, name: String(p.familyName || p.name || "").toUpperCase(), first: p.firstName || "", shirt: p.shirtNumber, starter: p.starter ? 1 : 0,
       min: p.sMinutes, ast: p.sAssists || 0, reb: p.sReboundsTotal || 0, stl: p.sSteals || 0, blk: p.sBlocks || 0, tpa: p.sThreePointersAttempted || 0, pm: p.sPlusMinusPoints,
-    })) };
+      st: { pts: p.sPoints || 0, fg: [p.sFieldGoalsMade || 0, p.sFieldGoalsAttempted || 0], t3: [p.sThreePointersMade || 0, p.sThreePointersAttempted || 0], ft: [p.sFreeThrowsMade || 0, p.sFreeThrowsAttempted || 0], or: p.sReboundsOffensive || 0, dr: p.sReboundsDefensive || 0, ast: p.sAssists || 0, tov: p.sTurnovers || 0, stl: p.sSteals || 0, blk: p.sBlocks || 0, pf: p.sFoulsPersonal || 0, ev: p.eff_1 },
+    })), tot: { pts: t.tot_sPoints || 0, fg: [t.tot_sFieldGoalsMade || 0, t.tot_sFieldGoalsAttempted || 0], t3: [t.tot_sThreePointersMade || 0, t.tot_sThreePointersAttempted || 0], ft: [t.tot_sFreeThrowsMade || 0, t.tot_sFreeThrowsAttempted || 0], or: t.tot_sReboundsOffensive || 0, dr: t.tot_sReboundsDefensive || 0, ast: t.tot_sAssists || 0, tov: t.tot_sTurnovers || 0, stl: t.tot_sSteals || 0, blk: t.tot_sBlocks || 0, pf: t.tot_sFoulsPersonal || 0 } };
   });
   // Ordre chronologique réel (le numéro d'action n'est pas toujours dans l'ordre du temps quand la table de marque corrige après coup) ; le score ne fait que monter.
   const acts = d.pbp.map(a => ({ a, t: elapsed(a), tot: (+a.s1 || 0) + (+a.s2 || 0) })).sort((x, y) => x.t - y.t || x.tot - y.tot || x.a.actionNumber - y.a.actionNumber);
@@ -2683,6 +2685,27 @@ function impactHtml(r) {
     <div class="bs-table"><table class="pm-five"><thead><tr><th>Joueur</th><th class="num">Reb. off.</th><th class="num">Pts rapportés</th><th class="num">Par rebond</th></tr></thead><tbody>${I.or.map(rowOr).join("") || `<tr><td colspan="4">Aucun rebond offensif enregistré.</td></tr>`}</tbody></table></div>
   </section>`;
 }
+// ── Box score classique d'un match FIBA LiveStats (les deux équipes) ──
+function fibaBoxHtml(r) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const rec = r.rec, T = String(r.tno), O = T === "1" ? "2" : "1";
+  if (!rec.teams[T].players.some(p => p.st)) return `<section class="card"><h2><i></i>Box score</h2><p class="hint">Ce match a été importé avant l'ajout du box score : retire-le et réimporte-le pour l'afficher.</p></section>`;
+  const mm = (v) => { const [a, b] = String(v || "0:00").split(":").map(Number); return (a || 0) + (b || 0) / 60; };
+  const pct = (m, a) => a ? Math.round(m / a * 100) + "%" : "–";
+  const ma = (x) => `${x[0]}/${x[1]}`;
+  const sg = (v) => v === null || v === undefined ? "–" : (v > 0 ? "+" : "") + v;
+  const table = (side) => {
+    const team = rec.teams[side];
+    const rows = team.players.filter(p => p.min && p.min !== "0:00").sort((a, b) => (b.starter - a.starter) || mm(b.min) - mm(a.min));
+    const tr = (p) => `<tr><td class="bx-n">${p.shirt ? `<span class="bx-num">${esc(p.shirt)}</span>` : ""}${esc(p.first ? p.first.charAt(0) + ". " : "")}${esc(p.name.charAt(0) + p.name.slice(1).toLowerCase())}${p.starter ? " <small>(5)</small>" : ""}</td><td class="num">${esc(p.min)}</td><td class="num"><b>${p.st.pts}</b></td><td class="num">${ma(p.st.fg)} <small>${pct(...p.st.fg)}</small></td><td class="num">${ma(p.st.t3)} <small>${pct(...p.st.t3)}</small></td><td class="num">${ma(p.st.ft)}</td><td class="num">${p.st.or}-${p.st.dr}</td><td class="num">${p.st.or + p.st.dr}</td><td class="num">${p.st.ast}</td><td class="num">${p.st.tov}</td><td class="num">${p.st.stl}</td><td class="num">${p.st.blk}</td><td class="num">${p.st.pf}</td><td class="num"><b class="${p.pm > 0 ? "pm-pos" : p.pm < 0 ? "pm-neg" : ""}">${sg(p.pm)}</b></td><td class="num">${p.st.ev ?? "–"}</td></tr>`;
+    const t = team.tot;
+    return `<div class="sub-title">${esc(team.name)} — ${side === "1" ? rec.final[0] : rec.final[1]}</div>
+      <div class="bs-table"><table class="pm-five bx"><thead><tr><th>Joueur</th><th class="num">Min</th><th class="num">Pts</th><th class="num">Tirs</th><th class="num">3 pts</th><th class="num">LF</th><th class="num">Reb O-D</th><th class="num">Reb</th><th class="num">Pd</th><th class="num">BP</th><th class="num">Int</th><th class="num">Ct</th><th class="num">Fau</th><th class="num">+/-</th><th class="num">Éval</th></tr></thead><tbody>
+      ${rows.map(tr).join("")}
+      <tr class="bx-tot"><td>Total</td><td class="num"></td><td class="num"><b>${t.pts}</b></td><td class="num">${ma(t.fg)} <small>${pct(...t.fg)}</small></td><td class="num">${ma(t.t3)} <small>${pct(...t.t3)}</small></td><td class="num">${ma(t.ft)}</td><td class="num">${t.or}-${t.dr}</td><td class="num">${t.or + t.dr}</td><td class="num">${t.ast}</td><td class="num">${t.tov}</td><td class="num">${t.stl}</td><td class="num">${t.blk}</td><td class="num">${t.pf}</td><td class="num"></td><td class="num"></td></tr></tbody></table></div>`;
+  };
+  return `<section class="card"><h2><i></i>Box score — ${esc(rec.teams[T].name)} vs ${esc(rec.teams[O].name)}</h2>${table(T)}${table(O)}</section>`;
+}
 // ── Lecture du match : évolution du score, séries, tirs à 3 pts, temps morts, moments notés par le coach ──
 function analyzeGame(rec, tno, moments = []) {
   const T = String(tno), O = T === "1" ? "2" : "1";
@@ -2812,7 +2835,7 @@ function buildTeamReportHtml(a, logo = null) {
       <div class="rank-side"><div class="rank-count">${sg(l.pm || m.diff, 0)}</div><div class="rank-share">+/-</div></div>
       ${netBadge(m.net)}
     </div>`;
-  const rotHtml = (a.rotations || []).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r, a); } catch (e2) { mxh = ""; } try { mxh += impactHtml(r); } catch (e3) { } return gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
+  const rotHtml = (a.rotations || []).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r, a); } catch (e2) { mxh = ""; } try { mxh += impactHtml(r); } catch (e3) { } return fibaBoxHtml(r) + gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
   let lineupsHtml = "";
   if (LA) {
     const used = [...LA.rows].sort((x, y) => y.m.min - x.m.min).slice(0, 8);
