@@ -1124,6 +1124,7 @@ const SCOUT_REPORT_CSS = `
   .mx thead th{font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:.2px;color:#1B2A4A;vertical-align:bottom}.mx small{display:block;font-size:9.5px;font-weight:400;opacity:.7}
   .mx .mx-n{text-align:left;white-space:nowrap;font-weight:700;padding-right:10px}.mx-c b{font-size:13px}.mx-low{opacity:.5}.mx-far{opacity:.28}.mx-e{color:#1B2A4A33}
   .bx td,.bx th{padding:5px 5px;font-size:11.5px;white-space:nowrap}.bx .bx-n{text-align:left;font-weight:600}.bx-num{display:inline-block;min-width:20px;color:#1B2A4A80;font-weight:700}.bx small{opacity:.6;font-size:9.5px}.bx-tot td{border-top:2px solid #1B2A4A;font-weight:700}
+  .tr td,.tr th{font-size:12px;vertical-align:top}.tr small{opacity:.65;font-size:10px}
   .game-chart{width:100%;height:auto;display:block;margin:6px 0 4px}
   .rot-per{font-size:12px;color:#1B2A4A99}
   .pm-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:0;border:1px solid #1B2A4A22;border-radius:8px;overflow:hidden}
@@ -2442,9 +2443,9 @@ function parseFibaPbp(raw) {
   const events = []; let s1 = 0, s2 = 0, end = 0;
   acts.forEach(({ a, t }) => {
     if (a.actionType === "substitution" && (a.subType === "in" || a.subType === "out")) events.push({ t, k: "s", tno: a.tno, pno: a.pno, io: a.subType });
-    else if ((a.actionType === "2pt" || a.actionType === "3pt" || a.actionType === "freethrow") && a.tno) events.push({ t, p: ep(a), k: "sh", tno: a.tno, pno: a.pno, pt: a.actionType === "3pt" ? 3 : a.actionType === "2pt" ? 2 : 1, m: a.success ? 1 : 0 });
+    else if ((a.actionType === "2pt" || a.actionType === "3pt" || a.actionType === "freethrow") && a.tno) events.push({ t, p: ep(a), k: "sh", tno: a.tno, pno: a.pno, pt: a.actionType === "3pt" ? 3 : a.actionType === "2pt" ? 2 : 1, m: a.success ? 1 : 0, ty: a.actionType === "freethrow" ? "" : String(a.subType || "") });
     else if (a.actionType === "turnover" && a.tno) events.push({ t, p: ep(a), k: "to", tno: a.tno, pno: a.pno });
-    else if (a.actionType === "rebound" && a.tno) events.push({ t, p: ep(a), k: "rb", tno: a.tno, pno: a.pno, off: /^offensive$/.test(a.subType) ? 1 : 0 });
+    else if (a.actionType === "rebound" && a.tno) events.push({ t, p: ep(a), k: "rb", tno: a.tno, pno: a.pno, off: /^offensive$/.test(a.subType) ? 1 : 0, df: /^defensive$/.test(a.subType) ? 1 : 0 });
     else if (a.actionType === "timeout" && a.tno) events.push({ t, p: ep(a), k: "tm", tno: a.tno });
     if (a.s1 !== undefined && a.s2 !== undefined && (+a.s1 + +a.s2) > s1 + s2) { s1 = +a.s1; s2 = +a.s2; events.push({ t, k: "p", s1, s2 }); }
     if (a.actionType === "period" && a.subType === "end") end = Math.max(end, start(ep(a)) + plen(ep(a)));
@@ -2706,6 +2707,77 @@ function fibaBoxHtml(r) {
   };
   return `<section class="card"><h2><i></i>Box score — ${esc(rec.teams[T].name)} vs ${esc(rec.teams[O].name)}</h2>${table(T)}${table(O)}</section>`;
 }
+// ── Possessions après rebond défensif : délai avant le tir, selon le tir raté qui précède ──
+const TR_BUCKETS = [["≤ 6 s", 0, 6], ["6 – 14 s", 6, 14], ["14 – 20 s", 14, 20], ["20 – 24 s", 20, 1e9]];
+const TR_CLOSE = ["layup", "drivinglayup", "reverselayup", "dunk", "alleyoop", "tipinlayup", "hookshot"];
+function missCategory(e) {
+  if (e.pt === 3) return "3 pts raté";
+  if (e.pt === 1) return "Lancer franc raté";
+  return TR_CLOSE.includes(e.ty) ? "Tir proche du cercle raté" : "Tir à mi-distance raté";
+}
+function computeTransition(rec, tno) {
+  const T = String(tno), O = T === "1" ? "2" : "1";
+  const res = { ours: [], theirs: [] };   // ours : nous rebondissons un tir raté adverse ; theirs : ils rebondissent un de nos tirs ratés
+  let lastMiss = null, ch = null;
+  const close = () => {
+    if (!ch) return;
+    (ch.side === T ? res.ours : res.theirs).push({ cat: ch.cat, dt: ch.dt, pts: ch.pts, tov: ch.tov, fgm: ch.fgm, fga: ch.fga, shot: ch.first });
+    ch = null;
+  };
+  rec.events.forEach(e => {
+    if (e.k === "sh" && !e.m && (e.pt !== 1)) { lastMiss = e; }
+    if (e.k === "sh" && e.pt === 1 && !e.m) { lastMiss = e; }
+    if (e.k === "rb") {
+      if (e.df && lastMiss && String(lastMiss.tno) !== String(e.tno) && e.t - lastMiss.t < 0.1) {
+        close();
+        ch = { side: String(e.tno), cat: missCategory(lastMiss), t0: e.t, p: e.p, dt: null, pts: 0, tov: false, ended: false, endT: 0, fgm: 0, fga: 0, first: null };
+      } else if (ch && String(e.tno) !== ch.side) close();
+      return;
+    }
+    if (!ch) return;
+    if (e.p && ch.p && e.p !== ch.p) { close(); return; }
+    if (e.k === "to") { if (String(e.tno) === ch.side) { if (ch.dt === null) ch.dt = (e.t - ch.t0) * 60; ch.tov = true; } close(); return; }
+    if (e.k === "sh") {
+      if (String(e.tno) !== ch.side) { close(); return; }
+      if (ch.ended && !(e.pt === 1 && Math.abs(e.t - ch.endT) < 0.02)) { close(); return; }
+      if (ch.dt === null) { ch.dt = (e.t - ch.t0) * 60; ch.first = { pt: e.pt, ty: e.ty }; }
+      if (e.pt !== 1) { ch.fga++; ch.fgm += e.m; }
+      if (e.m) { ch.pts += e.pt; if (e.pt !== 1) { ch.ended = true; ch.endT = e.t; } }
+    }
+  });
+  close();
+  return res;
+}
+function transitionHtml(r, teamName, oppName) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const tr = computeTransition(r.rec, r.tno);
+  const hasTy = r.rec.events.some(e => e.k === "sh" && e.ty !== undefined) && r.rec.events.some(e => e.k === "rb" && e.df !== undefined);
+  if (!hasTy) return `<section class="card"><h2><i></i>Après rebond défensif</h2><p class="hint">Ce match a été importé avant l'ajout de ces détails : retire-le et réimporte-le.</p></section>`;
+  const f2 = (x) => x.toFixed(2).replace(".", ","), pc = (a, b) => b ? Math.round(a / b * 100) + " %" : "–";
+  const CATS = ["3 pts raté", "Tir proche du cercle raté", "Tir à mi-distance raté", "Lancer franc raté"];
+  const inB = (x, b) => x.dt !== null && x.dt >= b[1] && x.dt < b[2];
+  const cellOf = (list) => { if (!list.length) return `<td class="num mx-e">·</td>`; const pts = list.reduce((s, x) => s + x.pts, 0), sc = list.filter(x => x.pts > 0).length; return `<td class="num">${list.length} <small>poss.</small><br><b>${f2(pts / list.length)}</b> <small>pt/poss.</small><br><small>${pc(sc, list.length)} marquent</small></td>`; };
+  const table = (list) => `<div class="bs-table"><table class="pm-five tr"><thead><tr><th>Tir raté qui précède</th>${TR_BUCKETS.map(b => `<th class="num">Tir ${b[0]}</th>`).join("")}<th class="num">Total</th></tr></thead><tbody>
+    ${CATS.map(c => { const L = list.filter(x => x.cat === c && x.dt !== null); return L.length ? `<tr><td><b>${c.replace(" raté", "")}</b></td>${TR_BUCKETS.map(b => cellOf(L.filter(x => inB(x, b)))).join("")}${cellOf(L)}</tr>` : ""; }).join("")}
+    <tr class="bx-tot"><td>Toutes</td>${TR_BUCKETS.map(b => cellOf(list.filter(x => x.dt !== null && inB(x, b)))).join("")}${cellOf(list.filter(x => x.dt !== null))}</tr></tbody></table></div>`;
+  const insOf = (list, who, adv) => {
+    const out = [], L = list.filter(x => x.dt !== null);
+    if (!L.length) return out;
+    const fast = L.filter(x => x.dt < 6), ppp = (l) => l.length ? l.reduce((s, x) => s + x.pts, 0) / l.length : 0;
+    out.push(`<b>${who}</b> : ${L.length} possessions après rebond défensif, ${pc(fast.length, L.length)} avec un tir dans les 6 premières secondes (${f2(ppp(fast))} pt/poss. en transition rapide contre ${f2(ppp(L.filter(x => x.dt >= 6)))} ensuite).`);
+    CATS.forEach(c => { const l = L.filter(x => x.cat === c); if (l.length >= 3) { const lf = l.filter(x => x.dt < 6); out.push(`Après un <b>${c.replace(" raté", "").toLowerCase()}</b> raté ${adv} : ${l.length} possessions, ${f2(ppp(l))} pt/poss.${lf.length ? ` — dont ${lf.length} tirs en moins de 6 s (${f2(ppp(lf))} pt/poss.)` : ""}`); } });
+    const pertes = L.filter(x => x.tov).length; if (pertes) out.push(`${pertes} de ces possessions finissent par une perte de balle.`);
+    return out;
+  };
+  const a = insOf(tr.ours, esc(teamName), "adverse"), b = insOf(tr.theirs, esc(oppName), "de " + esc(teamName));
+  return `<section class="card"><h2><i></i>Après rebond défensif : vitesse et efficacité</h2>
+    <p class="hint">Délai entre le rebond défensif et le premier tir (ou la première perte) de la possession, selon le tir raté qui précède. « Marquent » = possessions avec au moins 1 point. Les points comptent jusqu'à la fin de la possession (rebonds offensifs et lancers francs compris).</p>
+    <div class="sub-title">Quand nous prenons le rebond d'un tir raté adverse</div>
+    <ul class="bs-ins">${a.map(x => `<li>${x}</li>`).join("") || "<li>Aucune possession.</li>"}</ul>${table(tr.ours)}
+    <div class="sub-title">Quand ${esc(oppName)} prend le rebond d'un de nos tirs ratés</div>
+    <ul class="bs-ins">${b.map(x => `<li>${x}</li>`).join("") || "<li>Aucune possession.</li>"}</ul>${table(tr.theirs)}
+  </section>`;
+}
 // ── Lecture du match : évolution du score, séries, tirs à 3 pts, temps morts, moments notés par le coach ──
 function analyzeGame(rec, tno, moments = []) {
   const T = String(tno), O = T === "1" ? "2" : "1";
@@ -2835,7 +2907,7 @@ function buildTeamReportHtml(a, logo = null) {
       <div class="rank-side"><div class="rank-count">${sg(l.pm || m.diff, 0)}</div><div class="rank-share">+/-</div></div>
       ${netBadge(m.net)}
     </div>`;
-  const rotHtml = (a.rotations || []).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r, a); } catch (e2) { mxh = ""; } try { mxh += impactHtml(r); } catch (e3) { } return fibaBoxHtml(r) + gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
+  const rotHtml = (a.rotations || []).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r, a); } catch (e2) { mxh = ""; } try { mxh += impactHtml(r); } catch (e3) { } try { mxh += transitionHtml(r, tn, on); } catch (e4) { } return fibaBoxHtml(r) + gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
   let lineupsHtml = "";
   if (LA) {
     const used = [...LA.rows].sort((x, y) => y.m.min - x.m.min).slice(0, 8);
