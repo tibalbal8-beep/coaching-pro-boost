@@ -2441,8 +2441,8 @@ function parseFibaPbp(raw) {
   acts.forEach(({ a, t }) => {
     if (a.actionType === "substitution" && (a.subType === "in" || a.subType === "out")) events.push({ t, k: "s", tno: a.tno, pno: a.pno, io: a.subType });
     else if ((a.actionType === "2pt" || a.actionType === "3pt" || a.actionType === "freethrow") && a.tno) events.push({ t, p: ep(a), k: "sh", tno: a.tno, pno: a.pno, pt: a.actionType === "3pt" ? 3 : a.actionType === "2pt" ? 2 : 1, m: a.success ? 1 : 0 });
-    else if (a.actionType === "turnover" && a.tno) events.push({ t, p: ep(a), k: "to", tno: a.tno });
-    else if (a.actionType === "rebound" && a.tno) events.push({ t, p: ep(a), k: "rb", tno: a.tno, off: /^offensive$/.test(a.subType) ? 1 : 0 });
+    else if (a.actionType === "turnover" && a.tno) events.push({ t, p: ep(a), k: "to", tno: a.tno, pno: a.pno });
+    else if (a.actionType === "rebound" && a.tno) events.push({ t, p: ep(a), k: "rb", tno: a.tno, pno: a.pno, off: /^offensive$/.test(a.subType) ? 1 : 0 });
     else if (a.actionType === "timeout" && a.tno) events.push({ t, p: ep(a), k: "tm", tno: a.tno });
     if (a.s1 !== undefined && a.s2 !== undefined && (+a.s1 + +a.s2) > s1 + s2) { s1 = +a.s1; s2 = +a.s2; events.push({ t, k: "p", s1, s2 }); }
     if (a.actionType === "period" && a.subType === "end") end = Math.max(end, start(ep(a)) + plen(ep(a)));
@@ -2624,6 +2624,65 @@ function matchupHtml(r, a = {}) {
     ${M.mine.map(p => `<tr><th class="mx-n">${esc(p.name)}</th>${M.theirs.map(o => ptsCell(p.pno, o.pno)).join("")}</tr>`).join("")}
     </tbody></table></div></section>`;
 }
+// ── Ce que rapportent / coûtent les pertes de balle et les rebonds offensifs (action qui suit) ──
+function computeImpact(rec, tno) {
+  const T = String(tno), O = T === "1" ? "2" : "1";
+  const nameOf = (side, pno) => rec.teams[side]?.players.find(p => p.pno === pno)?.name || "Équipe (violation)";
+  const out = { to: new Map(), or: new Map(), teamTO: { own: { n: 0, pts: 0 }, opp: { n: 0, pts: 0 } }, team2: { own: { n: 0, pts: 0 }, opp: { n: 0, pts: 0 } }, hasPno: false };
+  const bump = (m, key, name, pts) => { const x = m.get(key) || { name, n: 0, pts: 0 }; x.n++; x.pts += pts; m.set(key, x); };
+  let ch = null;
+  const close = () => {
+    if (!ch) return;
+    if (ch.kind === "to") { bump(out.to, ch.pno, nameOf(T, ch.pno), ch.pts); out.teamTO.own.n++; out.teamTO.own.pts += ch.pts; }
+    else if (ch.kind === "oto") { out.teamTO.opp.n++; out.teamTO.opp.pts += ch.pts; }
+    else if (ch.kind === "or") { bump(out.or, ch.pno, nameOf(T, ch.pno), ch.pts); out.team2.own.n++; out.team2.own.pts += ch.pts; }
+    else if (ch.kind === "oor") { out.team2.opp.n++; out.team2.opp.pts += ch.pts; }
+    ch = null;
+  };
+  const start = (kind, scoring, e) => { close(); ch = { kind, scoring, pno: e.pno, pts: 0, p: e.p, ended: false, endT: 0 }; };
+  rec.events.forEach(e => {
+    if (e.k === "to") { if (e.pno) out.hasPno = true; start(String(e.tno) === T ? "to" : "oto", String(e.tno) === T ? O : T, e); return; }
+    if (e.k === "rb") {
+      if (e.off && e.pno) { out.hasPno = true; start(String(e.tno) === T ? "or" : "oor", String(e.tno), e); return; }
+      if (ch && !(String(e.tno) === ch.scoring)) close();            // rebond défensif adverse : la possession change
+      return;
+    }
+    if (!ch) return;
+    if (e.p && ch.p && e.p !== ch.p) { close(); return; }
+    if (e.k === "sh") {
+      if (String(e.tno) !== ch.scoring) { close(); return; }
+      if (ch.ended && !(e.pt === 1 && Math.abs(e.t - ch.endT) < 0.02)) { close(); return; }
+      if (e.m) { ch.pts += e.pt; if (e.pt !== 1) { ch.ended = true; ch.endT = e.t; } }
+    }
+  });
+  close();
+  const list = (m) => [...m.entries()].map(([pno, v]) => ({ pno, ...v })).sort((a, b) => b.n - a.n || b.pts - a.pts);
+  return { to: list(out.to), or: list(out.or), teamTO: out.teamTO, team2: out.team2, hasPno: out.hasPno };
+}
+function impactHtml(r) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const I = computeImpact(r.rec, r.tno), f1 = (x) => x.toFixed(1).replace(".", ",");
+  if (!I.hasPno) return `<section class="card"><h2><i></i>Pertes de balle et rebonds offensifs</h2><p class="hint">Ce match a été importé avant l'ajout de ces détails : retire-le et réimporte-le pour voir ce que rapportent les rebonds offensifs et ce que coûtent les pertes de balle de chaque joueur.</p></section>`;
+  const ins = [];
+  const costly = [...I.to].filter(x => x.n >= 2).sort((a, b) => b.pts - a.pts)[0];
+  if (costly && costly.pts >= 3) ins.push(`<b>${esc(costly.name)}</b> : ses ${costly.n} pertes de balle ont coûté <b>${costly.pts} pts</b> dans l'action suivante (${f1(costly.pts / costly.n)} par perte).`);
+  const clean = I.to.filter(x => x.n >= 3 && x.pts === 0)[0];
+  if (clean) ins.push(`<b>${esc(clean.name)}</b> : ${clean.n} pertes de balle mais <b>aucun point encaissé</b> derrière (bonne transition défensive).`);
+  const best = [...I.or].filter(x => x.n >= 2).sort((a, b) => b.pts - a.pts)[0];
+  if (best && best.pts >= 3) ins.push(`<b>${esc(best.name)}</b> : ses ${best.n} rebonds offensifs ont rapporté <b>${best.pts} pts</b> à l'équipe sur l'action qui suit (${f1(best.pts / best.n)} par rebond).`);
+  const t = I.teamTO, s2 = I.team2;
+  ins.push(`<b>Sur pertes de balle</b> : nous encaissons ${t.own.pts} pts sur nos ${t.own.n} pertes, et nous marquons ${t.opp.pts} pts sur leurs ${t.opp.n}. <b>Secondes chances</b> : ${s2.own.pts} pts sur nos ${s2.own.n} rebonds offensifs (${s2.own.n ? f1(s2.own.pts / s2.own.n) : "0"} par rebond), ${s2.opp.pts} pts pour eux sur leurs ${s2.opp.n}.`);
+  const rowTo = (x) => `<tr><td>${esc(x.name)}</td><td class="num">${x.n}</td><td class="num"><b class="${x.pts > 0 ? "pm-neg" : ""}">${x.pts}</b></td><td class="num">${f1(x.pts / x.n)}</td></tr>`;
+  const rowOr = (x) => `<tr><td>${esc(x.name)}</td><td class="num">${x.n}</td><td class="num"><b class="${x.pts > 0 ? "pm-pos" : ""}">${x.pts}</b></td><td class="num">${f1(x.pts / x.n)}</td></tr>`;
+  return `<section class="card"><h2><i></i>Pertes de balle et rebonds offensifs : ce que ça coûte, ce que ça rapporte</h2>
+    <p class="hint">Points marqués par l'équipe qui récupère le ballon, <b>jusqu'à la fin de l'action qui suit</b> (panier marqué, rebond défensif ou nouvelle perte). Un rebond offensif compte les points de son action, y compris les lancers francs.</p>
+    <ul class="bs-ins">${ins.map(x => `<li>${x}</li>`).join("")}</ul>
+    <div class="sub-title">Pertes de balle : points encaissés dans l'action suivante</div>
+    <div class="bs-table"><table class="pm-five"><thead><tr><th>Joueur</th><th class="num">Pertes</th><th class="num">Pts encaissés</th><th class="num">Par perte</th></tr></thead><tbody>${I.to.map(rowTo).join("") || `<tr><td colspan="4">Aucune perte de balle enregistrée.</td></tr>`}</tbody></table></div>
+    <div class="sub-title">Rebonds offensifs : points marqués dans l'action qui suit</div>
+    <div class="bs-table"><table class="pm-five"><thead><tr><th>Joueur</th><th class="num">Reb. off.</th><th class="num">Pts rapportés</th><th class="num">Par rebond</th></tr></thead><tbody>${I.or.map(rowOr).join("") || `<tr><td colspan="4">Aucun rebond offensif enregistré.</td></tr>`}</tbody></table></div>
+  </section>`;
+}
 // ── Lecture du match : évolution du score, séries, tirs à 3 pts, temps morts, moments notés par le coach ──
 function analyzeGame(rec, tno, moments = []) {
   const T = String(tno), O = T === "1" ? "2" : "1";
@@ -2753,7 +2812,7 @@ function buildTeamReportHtml(a, logo = null) {
       <div class="rank-side"><div class="rank-count">${sg(l.pm || m.diff, 0)}</div><div class="rank-share">+/-</div></div>
       ${netBadge(m.net)}
     </div>`;
-  const rotHtml = (a.rotations || []).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r, a); } catch (e2) { mxh = ""; } return gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
+  const rotHtml = (a.rotations || []).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r, a); } catch (e2) { mxh = ""; } try { mxh += impactHtml(r); } catch (e3) { } return gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
   let lineupsHtml = "";
   if (LA) {
     const used = [...LA.rows].sort((x, y) => y.m.min - x.m.min).slice(0, 8);
