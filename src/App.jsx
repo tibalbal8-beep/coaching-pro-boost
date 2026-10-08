@@ -1122,7 +1122,7 @@ const SCOUT_REPORT_CSS = `
   .rot-axis{display:flex;border-top:1px solid #1B2A4A33;height:20px}.rot-ticks{position:relative;flex:1}.rot-ticks span{position:absolute;top:3px;font-size:10px;color:#1B2A4A99;transform:translateX(-50%)}
   .mx{border-collapse:collapse;width:100%}.mx th,.mx td{padding:5px 4px;text-align:center;font-size:12px;border:1px solid #fff}
   .mx thead th{font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:.2px;color:#1B2A4A;vertical-align:bottom}.mx small{display:block;font-size:9.5px;font-weight:400;opacity:.7}
-  .mx .mx-n{text-align:left;white-space:nowrap;font-weight:700;padding-right:10px}.mx-c b{font-size:13px}.mx-low{opacity:.5}.mx-e{color:#1B2A4A33}
+  .mx .mx-n{text-align:left;white-space:nowrap;font-weight:700;padding-right:10px}.mx-c b{font-size:13px}.mx-low{opacity:.5}.mx-far{opacity:.28}.mx-e{color:#1B2A4A33}
   .game-chart{width:100%;height:auto;display:block;margin:6px 0 4px}
   .rot-per{font-size:12px;color:#1B2A4A99}
   .pm-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:0;border:1px solid #1B2A4A22;border-radius:8px;overflow:hidden}
@@ -2580,16 +2580,27 @@ function computeMatchups(rec, tno) {
   const theirs = [...you.entries()].map(([pno, v]) => ({ pno, name: nameOf(O, pno), min: v.min })).filter(x => x.min >= 4).sort((a, b) => b.min - a.min);
   return { mine, theirs, pair, duel, nameOf };
 }
-function matchupHtml(r) {
+// Clé d'un joueur dans son équipe (nom, avec l'initiale du prénom s'il y a un homonyme).
+const fibaKey = (players, p) => players.filter(x => x.name === p.name).length > 1 ? `${(p.first || "?")[0]}. ${p.name}` : p.name;
+function matchupHtml(r, a = {}) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const rec = r.rec, tno = String(r.tno), other = tno === "1" ? "2" : "1";
   const M = computeMatchups(rec, tno), sg = (v) => (v > 0 ? "+" : "") + Math.round(v);
-  const cell = (a, b) => { const x = M.pair.get(a + "|" + b); if (!x || x.min < 1) return `<td class="mx-e">·</td>`; const v = Math.round(x.d); return `<td class="${pmClass(v)} mx-c ${x.min < 3 ? "mx-low" : ""}"><b>${sg(v)}</b><small>${x.min.toFixed(0)}'</small></td>`; };
+  // Postes : les nôtres (réglés pour la frise) et ceux des adversaires (notés à la main, sinon proposés d'après leurs stats).
+  const ownPl = rec.teams[tno].players, oppPl = rec.teams[other].players;
+  const sugO = suggestPostes(oppPl), pOwn = { ...suggestPostes(ownPl), ...(a.rotationPostes || {}) }, pOppMap = a.rotationPostesOpp || {};
+  const oppKey = (pno) => { const p = oppPl.find(x => x.pno === pno); return p ? fibaKey(oppPl, p) : ""; };
+  const posteOpp = (pno) => { const p = oppPl.find(x => x.pno === pno); return p ? (pOppMap[oppKey(pno)] || sugO[p.name] || 3) : 3; };
+  const posteOwn = (pno) => { const p = ownPl.find(x => x.pno === pno); return p ? (pOwn[p.name] || 3) : 3; };
+  const comparable = (pa, pb) => Math.abs(posteOwn(pa) - posteOpp(pb)) <= 1;
+  M.theirs.sort((x, y) => posteOpp(x.pno) - posteOpp(y.pno) || y.min - x.min);
+  M.mine.sort((x, y) => posteOwn(x.pno) - posteOwn(y.pno) || y.min - x.min);
+  const cell = (a, b) => { const x = M.pair.get(a + "|" + b); if (!x || x.min < 1) return `<td class="mx-e">·</td>`; const v = Math.round(x.d); return `<td class="${pmClass(v)} mx-c ${x.min < 3 ? "mx-low" : ""} ${comparable(a, b) ? "" : "mx-far"}"><b>${sg(v)}</b><small>${x.min.toFixed(0)}'</small></td>`; };
   const short = (n) => n.length > 9 ? n.slice(0, 8) + "." : n;
   const ins = [];
   M.mine.forEach(p => {
     if (p.min < 8 || p.d > -4) return;
-    const worst = M.theirs.map(o => ({ o, x: M.pair.get(p.pno + "|" + o.pno) })).filter(z => z.x && z.x.min >= 3).sort((a, b) => a.x.d - b.x.d)[0];
+    const worst = M.theirs.filter(o => comparable(p.pno, o.pno)).map(o => ({ o, x: M.pair.get(p.pno + "|" + o.pno) })).filter(z => z.x && z.x.min >= 3).sort((a, b) => a.x.d - b.x.d)[0];
     if (worst && worst.x.d <= -3) {
       const du = M.duel.get(p.pno + "|" + worst.o.pno) || { opp: 0, oppFg: [0, 0], own: 0, ownFg: [0, 0] };
       ins.push(`<b>${esc(p.name)}</b> : ${sg(p.d)} au total, dont <b>${sg(worst.x.d)}</b> en ${worst.x.min.toFixed(0)} min face à <b>${esc(worst.o.name)}</b>. Pendant ce temps, <b>${esc(worst.o.name)} a marqué ${du.opp} pts</b> (${du.oppFg[0]}/${du.oppFg[1]} aux tirs) et ${esc(p.name)} ${du.own} pts (${du.ownFg[0]}/${du.ownFg[1]}). Sans cet adversaire sur le terrain : ${sg(p.d - worst.x.d)} en ${(p.min - worst.x.min).toFixed(0)} min.`);
@@ -2597,15 +2608,15 @@ function matchupHtml(r) {
   });
   M.mine.forEach(p => {
     if (p.min < 8) return;
-    const best = M.theirs.map(o => ({ o, x: M.pair.get(p.pno + "|" + o.pno) })).filter(z => z.x && z.x.min >= 4).sort((a, b) => b.x.d - a.x.d)[0];
+    const best = M.theirs.filter(o => comparable(p.pno, o.pno)).map(o => ({ o, x: M.pair.get(p.pno + "|" + o.pno) })).filter(z => z.x && z.x.min >= 4).sort((a, b) => b.x.d - a.x.d)[0];
     if (best && best.x.d >= 6) ins.push(`<b>${esc(p.name)}</b> domine face à <b>${esc(best.o.name)}</b> : ${sg(best.x.d)} en ${best.x.min.toFixed(0)} min.`);
   });
   const ptsCell = (a, b) => { const x = M.duel.get(a + "|" + b), t = M.pair.get(a + "|" + b); if (!t || t.min < 1) return `<td class="mx-e">·</td>`; const v = x ? x.opp : 0; return `<td class="${v >= 12 ? "pm-r3" : v >= 8 ? "pm-r2" : v >= 4 ? "pm-r1" : "pm-0"} mx-c ${t.min < 3 ? "mx-low" : ""}" title="${esc(M.nameOf(other, b))} : ${v} pts (${x ? x.oppFg[0] : 0}/${x ? x.oppFg[1] : 0}) · ${esc(M.nameOf(tno, a))} : ${x ? x.own : 0} pts (${x ? x.ownFg[0] : 0}/${x ? x.ownFg[1] : 0})"><b>${v}</b><small>${x ? x.oppFg[0] + "/" + x.oppFg[1] : "0/0"}</small></td>`; };
   return `<section class="card"><h2><i></i>Face-à-face : qui jouait contre qui</h2>
-    <p class="hint">Chaque case = +/- de notre joueur (ligne) pendant que l'adversaire (colonne) était sur le terrain avec lui, et les minutes passées ensemble. Cases pâles = moins de 3 min (à relativiser). Utile pour savoir si un +/- négatif vient d'une opposition qui ne convenait pas.</p>
+    <p class="hint">Chaque case = +/- de notre joueur (ligne) pendant que l'adversaire (colonne) était sur le terrain avec lui, et les minutes passées ensemble. Cases pâles = moins de 3 min (à relativiser) ; cases très atténuées = postes éloignés (ex. notre meneur contre leur intérieur) : elles sont ignorées dans les constats, qui ne comparent que des postes voisins. Postes (P1 à P5) réglés dans l'app.</p>
     ${ins.length ? `<ul class="bs-ins">${ins.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
-    <div class="bs-table"><table class="mx"><thead><tr><th></th>${M.theirs.map(o => `<th title="${esc(o.name)}">${esc(short(o.name))}<small>${o.min.toFixed(0)}'</small></th>`).join("")}</tr></thead><tbody>
-    ${M.mine.map(p => `<tr><th class="mx-n">${esc(p.name)}<small>${sg(p.d)} · ${p.min.toFixed(0)}'</small></th>${M.theirs.map(o => cell(p.pno, o.pno)).join("")}</tr>`).join("")}
+    <div class="bs-table"><table class="mx"><thead><tr><th></th>${M.theirs.map(o => `<th title="${esc(o.name)}">${esc(short(o.name))}<small>P${posteOpp(o.pno)} · ${o.min.toFixed(0)}'</small></th>`).join("")}</tr></thead><tbody>
+    ${M.mine.map(p => `<tr><th class="mx-n">${esc(p.name)}<small>P${posteOwn(p.pno)} · ${sg(p.d)} · ${p.min.toFixed(0)}'</small></th>${M.theirs.map(o => cell(p.pno, o.pno)).join("")}</tr>`).join("")}
     </tbody></table></div>
     <div class="sub-title">Points marqués par l'adversaire (colonne) pendant que notre joueur (ligne) est sur le terrain</div>
     <p class="hint">Chiffre = points de l'adversaire, dessous ses tirs réussis/tentés (sans lancers). C'est le score de l'adversaire pendant qu'il partage le terrain avec notre joueur, pas forcément sur lui : à croiser avec la vidéo pour savoir qui le défendait. Survole une case pour voir aussi les points de notre joueur.</p>
@@ -2742,7 +2753,7 @@ function buildTeamReportHtml(a, logo = null) {
       <div class="rank-side"><div class="rank-count">${sg(l.pm || m.diff, 0)}</div><div class="rank-share">+/-</div></div>
       ${netBadge(m.net)}
     </div>`;
-  const rotHtml = (a.rotations || []).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r); } catch (e2) { mxh = ""; } return gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
+  const rotHtml = (a.rotations || []).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r, a); } catch (e2) { mxh = ""; } return gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
   let lineupsHtml = "";
   if (LA) {
     const used = [...LA.rows].sort((x, y) => y.m.min - x.m.min).slice(0, 8);
@@ -13957,6 +13968,25 @@ function CoachingProBoost({ session }) {
                             </label>
                           ))}
                         </div>
+                        {(() => {
+                          const oth = r0.rec.teams[String(r0.tno) === "1" ? "2" : "1"], opl = oth.players.filter(p => p.min && p.min !== "0:00");
+                          const sugO = suggestPostes(oth.players), curO = activeTa.rotationPostesOpp || {};
+                          return (
+                            <div className="mt-3">
+                              <div className="text-xs text-[#1B2A4A]/50 mb-1">Postes des joueurs adverses ({oth.name}) — pour comparer ton meneur à leur meneur et pas à leur intérieur dans le face-à-face :</div>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                {opl.map(p => { const k = fibaKey(oth.players, p); return (
+                                  <label key={p.pno} className="flex items-center justify-between gap-2 text-xs bg-[#1B2A4A]/5 rounded-md px-2 py-1">
+                                    <span className="truncate">{p.shirt ? `#${p.shirt} ` : ""}{k}</span>
+                                    <select value={curO[k] || sugO[p.name] || 3} onChange={e => updateActiveTa({ rotationPostesOpp: { ...curO, [k]: +e.target.value } })} className="border border-[#1B2A4A]/20 rounded px-1 py-0.5 bg-white">
+                                      {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                                    </select>
+                                  </label>
+                                ); })}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })()}
