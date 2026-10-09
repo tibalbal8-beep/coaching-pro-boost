@@ -1125,6 +1125,12 @@ const SCOUT_REPORT_CSS = `
   .mx .mx-n{text-align:left;white-space:nowrap;font-weight:700;padding-right:10px}.mx-c b{font-size:13px}.mx-low{opacity:.5}.mx-far{opacity:.28}.mx-e{color:#1B2A4A33}
   .bx td,.bx th{padding:5px 5px;font-size:11.5px;white-space:nowrap}.bx .bx-n{text-align:left;font-weight:600}.bx-num{display:inline-block;min-width:20px;color:#1B2A4A80;font-weight:700}.bx small{opacity:.6;font-size:9.5px}.bx-tot td{border-top:2px solid #1B2A4A;font-weight:700}
   .tr td,.tr th{font-size:12px;vertical-align:top}.tr small{opacity:.65;font-size:10px}
+  .ph-wrap{overflow:hidden;border:1px solid #1B2A4A22;border-radius:6px;margin-top:8px}
+  .ph{width:100%;border-collapse:collapse;table-layout:fixed}.ph td{padding:0;height:20px;border:0}
+  .ph-n{width:96px;font-size:11.5px;font-weight:600;padding:0 6px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ph-c{border-right:1px solid rgba(255,255,255,.55)!important;border-bottom:1px solid #fff!important}.ph-c[data-q]{border-right:2px solid #1B2A4A!important}
+  .ph-h{font-size:8.5px;color:#1B2A4A99;text-align:left;height:14px!important;overflow:visible;white-space:nowrap}
+  .ph-s{width:54px;font-size:10.5px;text-align:center;color:#1B2A4Acc}
   .game-chart{width:100%;height:auto;display:block;margin:6px 0 4px}
   .rot-per{font-size:12px;color:#1B2A4A99}
   .pm-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:0;border:1px solid #1B2A4A22;border-radius:8px;overflow:hidden}
@@ -2779,6 +2785,49 @@ function transitionHtml(r, teamName, oppName, over = null) {
     <ul class="bs-ins">${b.map(x => `<li>${x}</li>`).join("") || "<li>Aucune possession.</li>"}</ul>${table(tr.theirs)}
   </section>`;
 }
+// ── Présence sur le terrain minute par minute (rouge = sur le terrain, blanc = sur le banc) ──
+function presenceHtml(picks, a) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const n = picks.length, W = Math.max(...picks.map(r => Math.ceil(r.rec.end)));
+  const map = new Map();
+  picks.forEach(r => {
+    const T = String(r.tno), team = r.rec.teams[T];
+    const postes = { ...suggestPostes(team.players), ...(a.rotationPostes || {}) }, R = computeRotation(r.rec, T, postes, a.rotationPostes2 || {});
+    const stints = new Map();
+    R.segs.forEach(sg => sg.players.forEach(pno => {
+      const k = fibaKey(team.players, R.byPno.get(pno)), e = map.get(k) || { name: R.byPno.get(pno).name, bins: Array(W).fill(0), gpSet: new Set(), min: 0, q: [0, 0, 0, 0], firsts: [], exits: [] };
+      map.set(k, e);
+      for (let b = Math.floor(sg.t0); b < Math.ceil(sg.t1) && b < W; b++) { const ov = Math.min(sg.t1, b + 1) - Math.max(sg.t0, b); if (ov > 0) { e.bins[b] += ov / n; e.q[Math.min(3, Math.floor(b / 10))] += ov; } }
+      e.min += sg.t1 - sg.t0;
+      const st = stints.get(k) || []; const last = st[st.length - 1];
+      if (last && Math.abs(last[1] - sg.t0) < 1e-6) last[1] = sg.t1; else st.push([sg.t0, sg.t1]);
+      stints.set(k, st);
+    }));
+    stints.forEach((st, k) => { const e = map.get(k); e.gpSet.add(r.id); e.firsts.push(st[0][0]); if (st[0][1] < R.end - 0.05) e.exits.push(st[0][1]); });
+  });
+  const rows = [...map.values()].filter(e => e.min >= 1).sort((x, y) => y.min - x.min);
+  if (!rows.length) return "";
+  const avg = (l) => l.length ? l.reduce((s, v) => s + v, 0) / l.length : null, mn = (v) => v === null ? "–" : Math.round(v) + "'";
+  const cells = (e) => e.bins.map((v, b) => `<td class="ph-c" style="background:rgba(220,38,38,${Math.min(1, v).toFixed(2)})"${(b + 1) % 10 === 0 && b + 1 < W ? ' data-q="1"' : ""}></td>`).join("");
+  const head = Array.from({ length: W }, (_, b) => `<td class="ph-h">${b % 5 === 0 ? b : ""}</td>`).join("");
+  const ins = [];
+  rows.forEach(e => {
+    const gp = e.gpSet.size, perG = e.min / gp;
+    if (perG < 10) return;
+    const qm = e.q.map(v => v / gp);
+    const f = avg(e.firsts), x = avg(e.exits);
+    if (f !== null && f < 0.5 && gp >= Math.min(n, 2)) ins.push(`<b>${esc(e.name)}</b> démarre le match${x !== null ? ` et sort en général vers <b>${mn(x)}</b>` : ""}.`);
+    else if (f !== null && f >= 3) ins.push(`<b>${esc(e.name)}</b> entre en général vers <b>${mn(f)}</b>.`);
+    const zero = qm.findIndex((v, i) => v < 0.5 && qm.slice(0, i).some(w => w >= 4));
+    if (zero !== -1 && gp >= Math.min(n, 2)) ins.push(`<b>${esc(e.name)}</b> ne joue presque pas au Q${zero + 1} (${qm[zero].toFixed(1).replace(".", ",")} min en moyenne).`);
+  });
+  const tbl = `<div class="ph-wrap"><table class="ph"><thead><tr><td class="ph-n"></td>${head}<td class="ph-s">Min/m.</td><td class="ph-s">Entre</td><td class="ph-s">Sort 1re fois</td></tr></thead><tbody>
+    ${rows.map(e => `<tr><td class="ph-n">${esc(e.name.charAt(0) + e.name.slice(1).toLowerCase())}</td>${cells(e)}<td class="ph-s">${(e.min / e.gpSet.size).toFixed(0)}</td><td class="ph-s">${mn(avg(e.firsts))}</td><td class="ph-s">${mn(avg(e.exits))}</td></tr>`).join("")}
+    </tbody></table></div>`;
+  return `<section class="card"><h2><i></i>Présence sur le terrain${n > 1 ? ` — moyenne sur ${n} matchs` : ""}</h2>
+    <p class="hint">Chaque case = une minute de jeu : <b style="color:#dc2626">rouge</b> quand le joueur est sur le terrain, <b>blanc</b> quand il est sur le banc${n > 1 ? " (nuances : sur combien des matchs cochés il y est)" : ""}. Traits verticaux = fin des quart-temps. « Entre » / « Sort 1re fois » : minutes moyennes de la première entrée et de la première sortie.</p>
+    ${ins.length ? `<ul class="bs-ins">${ins.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}${tbl}</section>`;
+}
 // ── Plusieurs matchs : moyennes et cumuls sur la sélection ──
 function multiGameHtml(a, picks) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
@@ -2832,7 +2881,7 @@ function multiGameHtml(a, picks) {
   const TR = { ours: perMatch.flatMap(m => m.TR.ours), theirs: perMatch.flatMap(m => m.TR.theirs) };
   const oppN = picks.length > 1 ? "les adversaires" : picks[0].rec.teams[String(picks[0].tno) === "1" ? "2" : "1"].name;
   const trH = picks.every(r => r.rec.events.some(e => e.k === "sh" && e.ty !== undefined)) ? transitionHtml(picks[0], teamName, oppN, TR).replace("vitesse et efficacité", `cumul sur ${n} match${n > 1 ? "s" : ""}`) : "";
-  return box + tiles + fiveHtml + qHtml + impact + trH;
+  return box + tiles + presenceHtml(picks, a) + fiveHtml + qHtml + impact + trH;
 }
 // ── Lecture du match : évolution du score, séries, tirs à 3 pts, temps morts, moments notés par le coach ──
 function analyzeGame(rec, tno, moments = []) {
@@ -2965,7 +3014,7 @@ function buildTeamReportHtml(a, logo = null) {
     </div>`;
   const rotPicks = (a.rotations || []).filter(r => r.sel !== false), rotMode = a.rotationMode || "each";
   const rotMulti = rotPicks.length >= 2 && (rotMode === "avg" || rotMode === "both") ? (() => { try { return multiGameHtml(a, rotPicks); } catch (e5) { return `<section class="card"><p class="hint">Moyennes indisponibles : ${esc(e5.message)}</p></section>`; } })() : "";
-  const rotHtml = rotMulti + (rotMode === "avg" && rotPicks.length >= 2 ? [] : rotPicks).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r, a); } catch (e2) { mxh = ""; } try { mxh += impactHtml(r); } catch (e3) { } try { mxh += transitionHtml(r, tn, on); } catch (e4) { } return fibaBoxHtml(r) + gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
+  const rotHtml = rotMulti + (rotMode === "avg" && rotPicks.length >= 2 ? [] : rotPicks).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r, a); } catch (e2) { mxh = ""; } try { mxh += impactHtml(r); } catch (e3) { } try { mxh += transitionHtml(r, tn, on); } catch (e4) { } return fibaBoxHtml(r) + gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + presenceHtml([r], a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
   let lineupsHtml = "";
   if (LA) {
     const used = [...LA.rows].sort((x, y) => y.m.min - x.m.min).slice(0, 8);
