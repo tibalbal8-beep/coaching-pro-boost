@@ -10229,7 +10229,7 @@ function CoachingProBoost({ session }) {
   const [activeVideoScoutId, setActiveVideoScoutId] = useState(null);
   // Analyse de mon équipe (voir view === "myteam" plus bas)
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
-  const [taMom, setTaMom] = useState({});
+  const [taMom, setTaMom] = useState({}), [taOpen, setTaOpen] = useState({});
   const [taFibaUrl, setTaFibaUrl] = useState(""), [taFibaPending, setTaFibaPending] = useState(null), [taFibaBusy, setTaFibaBusy] = useState(false);
   // Scouting report joueurs (voir view === "scoutreport")
   const [activeScoutReportId, setActiveScoutReportId] = useState(null);
@@ -14187,6 +14187,7 @@ function CoachingProBoost({ session }) {
                   {(activeTa.rotations || []).map(r => (
                     <div key={r.id} className="mb-2">
                       <span className={`inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-medium bg-[#7c3aed]/10 text-[#1B2A4A] ${r.sel === false ? "opacity-50" : ""}`}>
+                        <button onClick={() => setTaOpen({ ...taOpen, [r.id]: !taOpen[r.id] })} title={taOpen[r.id] ? "Replier le retour de match" : "Dérouler le retour de match et les moments"} className="w-5 h-5 rounded-full flex items-center justify-center text-[#7c3aed] hover:bg-white font-bold">{taOpen[r.id] ? "▾" : "▸"}</button>
                         <input type="checkbox" checked={r.sel !== false} title="Inclure ce match dans l'export" onChange={e => updateActiveTa({ rotations: activeTa.rotations.map(x => x.id === r.id ? { ...x, sel: e.target.checked } : x) })} />🔄 {r.label} ({r.rec.final[0]}–{r.rec.final[1]}{r.rec.live ? ", en cours" : ""})
                         {r.matchId && /^\d+$/.test(String(r.matchId)) && (
                           <button onClick={async () => {
@@ -14204,6 +14205,7 @@ function CoachingProBoost({ session }) {
                       {(() => {
                         const setR = (patch) => updateActiveTa({ rotations: activeTa.rotations.map(x => x.id === r.id ? { ...x, ...patch } : x) });
                         const f = taMom[r.id] || { from: "", to: "", text: "" }, setF = (patch) => setTaMom({ ...taMom, [r.id]: { ...f, ...patch } });
+                        if (!taOpen[r.id]) return (r.retour || (r.moments || []).length) ? <div className="text-[11px] text-[#1B2A4A]/45 mt-1 ml-1">📝 retour de match renseigné{(r.moments || []).length ? ` · ${(r.moments || []).length} moment${(r.moments || []).length > 1 ? "s" : ""}` : ""}</div> : null;
                         return (
                           <div className="mt-2 p-3 rounded-lg bg-white/70 border border-[#1B2A4A]/10">
                             <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Ton retour de match</div>
