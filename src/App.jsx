@@ -2808,7 +2808,7 @@ function presenceHtml(picks, a) {
   const rows = [...map.values()].filter(e => e.min >= 1).sort((x, y) => y.min - x.min);
   if (!rows.length) return "";
   const avg = (l) => l.length ? l.reduce((s, v) => s + v, 0) / l.length : null, mn = (v) => v === null ? "–" : Math.round(v) + "'";
-  const cells = (e) => e.bins.map((v, b) => `<td class="ph-c" style="background:rgba(220,38,38,${Math.min(1, v).toFixed(2)})"${(b + 1) % 10 === 0 && b + 1 < W ? ' data-q="1"' : ""}></td>`).join("");
+  const cells = (e) => e.bins.map((v0, b) => { const v = v0 * n / e.gpSet.size; return `<td class="ph-c" style="background:rgba(220,38,38,${Math.min(1, v).toFixed(2)})"${(b + 1) % 10 === 0 && b + 1 < W ? ' data-q="1"' : ""}></td>`; }).join("");
   const head = Array.from({ length: W }, (_, b) => `<td class="ph-h">${b % 5 === 0 ? b : ""}</td>`).join("");
   const ins = [];
   rows.forEach(e => {
@@ -2825,7 +2825,7 @@ function presenceHtml(picks, a) {
     ${rows.map(e => `<tr><td class="ph-n">${esc(e.name.charAt(0) + e.name.slice(1).toLowerCase())}</td>${cells(e)}<td class="ph-s">${(e.min / e.gpSet.size).toFixed(0)}</td><td class="ph-s">${mn(avg(e.firsts))}</td><td class="ph-s">${mn(avg(e.exits))}</td></tr>`).join("")}
     </tbody></table></div>`;
   return `<section class="card"><h2><i></i>Présence sur le terrain${n > 1 ? ` — moyenne sur ${n} matchs` : ""}</h2>
-    <p class="hint">Chaque case = une minute de jeu : <b style="color:#dc2626">rouge</b> quand le joueur est sur le terrain, <b>blanc</b> quand il est sur le banc${n > 1 ? " (nuances : sur combien des matchs cochés il y est)" : ""}. Traits verticaux = fin des quart-temps. « Entre » / « Sort 1re fois » : minutes moyennes de la première entrée et de la première sortie.</p>
+    <p class="hint">Chaque case = une minute de jeu : <b style="color:#dc2626">rouge</b> quand le joueur est sur le terrain, <b>blanc</b> quand il est sur le banc${n > 1 ? " (nuances : sur quelle part des matchs <b>joués</b> par ce joueur il est sur le terrain à cette minute — un match où il n'a pas joué ne compte pas)" : ""}. Traits verticaux = fin des quart-temps. « Entre » / « Sort 1re fois » : minutes moyennes de la première entrée et de la première sortie.</p>
     ${ins.length ? `<ul class="bs-ins">${ins.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}${tbl}</section>`;
 }
 // ── Plusieurs matchs : moyennes et cumuls sur la sélection ──
@@ -3014,7 +3014,8 @@ function buildTeamReportHtml(a, logo = null) {
     </div>`;
   const rotPicks = (a.rotations || []).filter(r => r.sel !== false), rotMode = a.rotationMode || "each";
   const rotMulti = rotPicks.length >= 2 && (rotMode === "avg" || rotMode === "both") ? (() => { try { return multiGameHtml(a, rotPicks); } catch (e5) { return `<section class="card"><p class="hint">Moyennes indisponibles : ${esc(e5.message)}</p></section>`; } })() : "";
-  const rotHtml = rotMulti + (rotMode === "avg" && rotPicks.length >= 2 ? [] : rotPicks).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r, a); } catch (e2) { mxh = ""; } try { mxh += impactHtml(r); } catch (e3) { } try { mxh += transitionHtml(r, tn, on); } catch (e4) { } return fibaBoxHtml(r) + gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + presenceHtml([r], a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
+  const rotPres = rotPicks.length >= 2 && rotMode === "each" ? (() => { try { return presenceHtml(rotPicks, a); } catch (e6) { return ""; } })() : "";
+  const rotHtml = rotMulti + rotPres + (rotMode === "avg" && rotPicks.length >= 2 ? [] : rotPicks).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r, a); } catch (e2) { mxh = ""; } try { mxh += impactHtml(r); } catch (e3) { } try { mxh += transitionHtml(r, tn, on); } catch (e4) { } return fibaBoxHtml(r) + gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + presenceHtml([r], a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
   let lineupsHtml = "";
   if (LA) {
     const used = [...LA.rows].sort((x, y) => y.m.min - x.m.min).slice(0, 8);
