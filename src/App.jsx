@@ -2467,6 +2467,95 @@ function suggestPostes(players) {
   sorted.forEach((p, i) => { out[p.name] = Math.min(5, 1 + Math.floor(i * 5 / sorted.length)); });
   return out;
 }
+// ── Import CSV d'une autre application de stats (play-by-play + tableau des joueurs, séparateur « ; ») ──
+// Le play-by-play nomme les joueurs de NOTRE équipe ; l'adversaire n'apparaît que comme équipe (pas de joueurs).
+function parseStatsCsv(pbpText, teamText = null) {
+  const norm = (x) => String(x ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  const lines = String(pbpText).split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const hi = lines.findIndex(l => /^(quart|quarter)\s*;\s*chrono/i.test(norm(l)));
+  if (hi === -1) throw new Error("ce n'est pas un play-by-play (colonnes Quart; Chrono; Equipe; Joueur; Action; Score introuvables)");
+  const rows = lines.slice(hi + 1).map(l => l.split(";").map(c => c.trim())).filter(c => c.length >= 6 && /^q\d|^ot|^pr/i.test(c[0]));
+  if (!rows.length) throw new Error("aucune action trouvée dans le play-by-play");
+  const teamsSeen = [...new Set(rows.map(r => r[2]))];
+  // notre équipe = celle dont la colonne Joueur contient des noms (l'adversaire y répète son nom d'équipe)
+  const hasNames = (t) => rows.some(r => r[2] === t && r[3] && norm(r[3]) !== norm(t) && norm(r[3]) !== "none");
+  const ours = teamsSeen.find(hasNames) || teamsSeen[0], theirs = teamsSeen.find(t => t !== ours) || "Adversaire";
+  const periodNum = (q) => { const m = /(\d+)/.exec(q); return m ? +m[1] : 1; };
+  const start = (p) => p <= 4 ? (p - 1) * 10 : 40 + (p - 5) * 5, plen = (p) => p <= 4 ? 10 : 5;
+  const players = new Map(); let pnoSeq = 1;
+  const splitName = (full) => { const m = /^(.*?)\.([A-Za-z])$/.exec(full); return m ? { name: m[1].trim().toUpperCase(), first: m[2].toUpperCase() } : { name: full.toUpperCase(), first: "" }; };
+  const pl = (full) => { let p = players.get(full); if (!p) { p = { pno: pnoSeq++, full, ...splitName(full), shirt: "", starter: 0, st: { pts: 0, fg: [0, 0], t3: [0, 0], ft: [0, 0], or: 0, dr: 0, ast: 0, tov: 0, stl: 0, blk: 0, pf: 0 } }; players.set(full, p); } return p; };
+  const tnoOf = (team) => team === ours ? 1 : 2;
+  const acts = [];
+  rows.forEach((c, i) => {
+    const p = periodNum(c[0]), [mm, ss] = c[1].split(":").map(Number), rem = (mm || 0) * 60 + (ss || 0);
+    const t = start(p) + (plen(p) * 60 - rem) / 60;
+    const sc = /^(\d+)-(\d+)/.exec(c[5]); const s1 = sc ? +sc[1] : null, s2 = sc ? +sc[2] : null;
+    acts.push({ i, p, t, team: c[2], who: c[3], act: norm(c[4]), s1, s2, tot: sc ? s1 + s2 : 0 });
+  });
+  acts.sort((a, b) => a.t - b.t || a.tot - b.tot || a.i - b.i);
+  const events = []; let sa = 0, sb = 0, nq = 1;
+  // quintettes de début de période : « Entrée » en série à 10:00 (5 joueurs, sans « Sortie » au même instant)
+  const startGroups = new Map();
+  acts.forEach(a => { if (a.team === ours && a.act.startsWith("entr") && Math.abs(a.t - start(a.p)) < 1e-6) { const g = startGroups.get(a.p) || []; g.push(a); startGroups.set(a.p, g); } });
+  const isStartIn = new Set(); startGroups.forEach(g => { if (g.length === 5) g.forEach(a => isStartIn.add(a)); });
+  startGroups.forEach((g, p) => { if (g.length === 5) events.push({ t: start(p), k: "L", tno: 1, pnos: g.map(a => pl(a.who).pno) }); });
+  startGroups.get(1)?.forEach(a => { pl(a.who).starter = 1; });
+  acts.forEach(a => {
+    nq = Math.max(nq, a.p);
+    const mine = a.team === ours, tno = tnoOf(a.team), pn = mine && a.who && norm(a.who) !== "none" ? pl(a.who) : null, pno = pn ? pn.pno : 0;
+    if (a.s1 !== null && a.s1 + a.s2 > sa + sb) { sa = a.s1; sb = a.s2; events.push({ t: a.t, k: "p", s1: sa, s2: sb }); }
+    if (mine && (a.act.startsWith("entr") || a.act.startsWith("sort"))) { if (!isStartIn.has(a) && pn) events.push({ t: a.t, k: "s", tno: 1, pno, io: a.act.startsWith("entr") ? "in" : "out" }); return; }
+    const sh = /^(2|3) pts (ok|ko)$|^lf (ok|ko)$/.exec(a.act);
+    if (sh) {
+      const pt = sh[1] ? +sh[1] : 1, m = (sh[2] || sh[3]) === "ok" ? 1 : 0;
+      events.push({ t: a.t, p: a.p, k: "sh", tno, pno, pt, m, ty: pt === 1 ? "" : "?" });
+      if (pn) { pn.st.ft[1] += pt === 1 ? 1 : 0; pn.st.ft[0] += pt === 1 ? m : 0; if (pt !== 1) { pn.st.fg[1]++; pn.st.fg[0] += m; } if (pt === 3) { pn.st.t3[1]++; pn.st.t3[0] += m; } pn.st.pts += m * pt; }
+      return;
+    }
+    if (a.act === "reb off" || a.act === "reb def") { events.push({ t: a.t, p: a.p, k: "rb", tno, pno, off: a.act === "reb off" ? 1 : 0, df: a.act === "reb def" ? 1 : 0 }); if (pn) pn.st[a.act === "reb off" ? "or" : "dr"]++; return; }
+    if (a.act.startsWith("balles perdues")) { events.push({ t: a.t, p: a.p, k: "to", tno, pno }); if (pn) pn.st.tov++; return; }
+    if (/temps.?mort|time.?out/.test(a.act)) { events.push({ t: a.t, p: a.p, k: "tm", tno }); return; }
+    if (pn) { if (a.act.startsWith("passes")) pn.st.ast++; else if (a.act.startsWith("intercept")) pn.st.stl++; else if (a.act.startsWith("contre")) pn.st.blk++; else if (a.act.startsWith("fautes commises")) pn.st.pf++; }
+  });
+  // les quintettes de début de période sont posés en tête : on remet tous les événements dans l'ordre du temps (stable, quintette d'abord à instant égal)
+  events.sort((x, y) => x.t - y.t || (x.k === "L" ? -1 : 0) - (y.k === "L" ? -1 : 0));
+  const end = nq <= 4 ? 40 : 40 + (nq - 4) * 5;
+  // --- tableau des joueurs (facultatif) : minutes, +/-, évaluation, numéros
+  const num = (v) => { const x = parseFloat(String(v ?? "").replace(",", ".")); return isNaN(x) ? 0 : x; };
+  const ma = (v) => { const m = /(\d+)\s*\/\s*(\d+)/.exec(String(v)); return m ? [+m[1], +m[2]] : [0, 0]; };
+  let tot1 = null, tot2 = null;
+  if (teamText) {
+    const L = String(teamText).split(/\r?\n/);
+    let hd = L.findIndex(l => /^(#|n°|n)\s*;\s*nom\s*;\s*tps/i.test(norm(l)));
+    if (hd !== -1) {
+      const head = L[hd].split(";").map(norm), ix = (re) => head.findIndex(h => re.test(h));
+      const C = { num: 0, nom: ix(/^nom$/), tps: ix(/^tps$/), pts: ix(/^pts$/), tirs: ix(/^tirs$/), t3: ix(/^3pts$/), lf: ix(/^lf$/), ro: ix(/^ro$/), rd: ix(/^rd$/), ct: ix(/^ct$/), int: ix(/^int$/), bp: ix(/^bp$/), pd: ix(/^pd$/), ftc: ix(/^ftc$/), pm: ix(/^\+\/-$/), ev: ix(/^eval$/) };
+      for (let i = hd + 1; i < L.length; i++) {
+        const c = L[i].split(";").map(x => x.trim()); if (!c[0] && !c[1]) continue;
+        if (/^q\d/i.test(c[0]) || /^(#|n°)$/i.test(c[0])) break;    // on ne garde que le tableau du match entier (le premier)
+        const get = (k) => C[k] >= 0 ? c[C[k]] : "";
+        const stats = { pts: num(get("pts")), fg: ma(get("tirs")), t3: ma(get("t3")), ft: ma(get("lf")), or: num(get("ro")), dr: num(get("rd")), ast: num(get("pd")), tov: num(get("bp")), stl: num(get("int")), blk: num(get("ct")), pf: num(get("ftc")), ev: num(get("ev")) };
+        if (c[0] === "-") { const nmT = norm(c[C.nom]); const t = { pts: stats.pts, fg: stats.fg, t3: stats.t3, ft: stats.ft, or: stats.or, dr: stats.dr, ast: stats.ast, tov: stats.tov, stl: stats.stl, blk: stats.blk, pf: stats.pf }; if (nmT === norm(ours)) tot1 = t; else if (nmT === norm(theirs)) tot2 = t; continue; }
+        const p = [...players.values()].find(x => norm(x.full) === norm(c[C.nom]));
+        if (p) { p.st = stats; p.shirt = c[0]; p.min = c[C.tps]; p.pmFile = num(get("pm")); }
+      }
+    }
+  }
+  const sumTot = (list) => list.reduce((t, p) => { t.pts += p.st.pts; t.fg[0] += p.st.fg[0]; t.fg[1] += p.st.fg[1]; t.t3[0] += p.st.t3[0]; t.t3[1] += p.st.t3[1]; t.ft[0] += p.st.ft[0]; t.ft[1] += p.st.ft[1]; ["or", "dr", "ast", "tov", "stl", "blk", "pf"].forEach(k => { t[k] += p.st[k]; }); return t; }, { pts: 0, fg: [0, 0], t3: [0, 0], ft: [0, 0], or: 0, dr: 0, ast: 0, tov: 0, stl: 0, blk: 0, pf: 0 });
+  const plist = [...players.values()];
+  const rec = {
+    teams: {
+      "1": { name: ours, code: ours, players: plist.map(p => ({ pno: p.pno, name: p.name, first: p.first, shirt: p.shirt, starter: p.starter, min: p.min || "0:00", ast: p.st.ast, reb: p.st.or + p.st.dr, stl: p.st.stl, blk: p.st.blk, tpa: p.st.t3[1], pm: p.pmFile, st: p.st })), tot: tot1 || sumTot(plist) },
+      "2": { name: theirs, code: theirs, players: [], tot: tot2 || { pts: sb, fg: [0, 0], t3: [0, 0], ft: [0, 0], or: 0, dr: 0, ast: 0, tov: 0, stl: 0, blk: 0, pf: 0 } },
+    },
+    events, end, final: [sa, sb], live: false, at: null, src: "csv",
+  };
+  // +/- recalculé d'après les remplacements et le score (le +/- global du fichier est parfois incohérent avec ses propres quart-temps) ; minutes du fichier si fournies
+  const R0 = computeRotation(rec, "1", {}, {});
+  R0.players.forEach(x => { const p = rec.teams["1"].players.find(q => q.pno === x.pno); if (p) { if (!teamText) { const tsec = Math.round(x.min * 60); p.min = `${Math.floor(tsec / 60)}:${String(tsec % 60).padStart(2, "0")}`; } p.pm = Math.round(x.pm); } });
+  return rec;
+}
 function computeRotation(rec, tno, postes, postes2 = {}) {
   const team = rec.teams[tno]; if (!team) throw new Error("équipe introuvable");
   const byPno = new Map(team.players.map(p => [p.pno, p]));
@@ -2477,6 +2566,7 @@ function computeRotation(rec, tno, postes, postes2 = {}) {
   const close = (t) => { if (t > lastT + 1e-6) { segs.push({ t0: lastT, t1: t, players: [...on].sort((a, b) => a - b), d: own(s1, s2) - d0 }); lastT = t; d0 = own(s1, s2); } };
   rec.events.forEach(e => {
     if (e.k === "p") { s1 = e.s1; s2 = e.s2; return; }
+    if (e.k === "L" && String(e.tno) === String(tno)) { close(e.t); on = new Set(e.pnos); return; }
     if (e.k !== "s" || String(e.tno) !== String(tno)) return;
     close(e.t);
     if (e.io === "in") on.add(e.pno); else on.delete(e.pno);
@@ -2653,7 +2743,7 @@ function computeImpact(rec, tno) {
   rec.events.forEach(e => {
     if (e.k === "to") { if (e.pno) out.hasPno = true; start(String(e.tno) === T ? "to" : "oto", String(e.tno) === T ? O : T, e); return; }
     if (e.k === "rb") {
-      if (e.off && e.pno) { out.hasPno = true; start(String(e.tno) === T ? "or" : "oor", String(e.tno), e); return; }
+      if (e.off && (e.pno || String(e.tno) !== T)) { if (e.pno) out.hasPno = true; start(String(e.tno) === T ? "or" : "oor", String(e.tno), e); return; }
       if (ch && !(String(e.tno) === ch.scoring)) close();            // rebond défensif adverse : la possession change
       return;
     }
@@ -2720,6 +2810,7 @@ const TR_CLOSE = ["layup", "drivinglayup", "reverselayup", "dunk", "alleyoop", "
 function missCategory(e) {
   if (e.pt === 3) return "3 pts raté";
   if (e.pt === 1) return "Lancer franc raté";
+  if (e.ty === "?") return "Tir à 2 pts raté";
   return TR_CLOSE.includes(e.ty) ? "Tir proche du cercle raté" : "Tir à mi-distance raté";
 }
 function computeTransition(rec, tno) {
@@ -2761,7 +2852,7 @@ function transitionHtml(r, teamName, oppName, over = null) {
   const hasTy = over ? true : r.rec.events.some(e => e.k === "sh" && e.ty !== undefined) && r.rec.events.some(e => e.k === "rb" && e.df !== undefined);
   if (!hasTy) return `<section class="card"><h2><i></i>Après rebond défensif</h2><p class="hint">Ce match a été importé avant l'ajout de ces détails : retire-le et réimporte-le.</p></section>`;
   const f2 = (x) => x.toFixed(2).replace(".", ","), pc = (a, b) => b ? Math.round(a / b * 100) + " %" : "–";
-  const CATS = ["3 pts raté", "Tir proche du cercle raté", "Tir à mi-distance raté", "Lancer franc raté"];
+  const CATS = ["3 pts raté", "Tir proche du cercle raté", "Tir à mi-distance raté", "Tir à 2 pts raté", "Lancer franc raté"];
   const inB = (x, b) => x.dt !== null && x.dt >= b[1] && x.dt < b[2];
   const cellOf = (list) => { if (!list.length) return `<td class="num mx-e">·</td>`; const pts = list.reduce((s, x) => s + x.pts, 0), sc = list.filter(x => x.pts > 0).length; return `<td class="num">${list.length} <small>poss.</small><br><b>${f2(pts / list.length)}</b> <small>pt/poss.</small><br><small>${pc(sc, list.length)} marquent</small></td>`; };
   const table = (list) => `<div class="bs-table"><table class="pm-five tr"><thead><tr><th>Tir raté qui précède</th>${TR_BUCKETS.map(b => `<th class="num">Tir ${b[0]}</th>`).join("")}<th class="num">Total</th></tr></thead><tbody>
@@ -14152,6 +14243,20 @@ function CoachingProBoost({ session }) {
                       } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
                       setTaFibaBusy(false);
                     }} className="text-sm font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>{taFibaBusy ? "Chargement…" : "Importer le match"}</button>
+                    <label className="text-xs font-semibold text-[#1B2A4A] bg-white border border-[#1B2A4A]/20 px-2 py-1.5 rounded-md cursor-pointer" title="Pour les matchs saisis dans une autre application de stats : play-by-play + tableau des joueurs (CSV, séparateur « ; »)">📄 Importer des CSV
+                      <input type="file" accept=".csv,text/csv,.txt" multiple className="hidden" onChange={async e => {
+                        const fl = [...(e.target.files || [])]; e.target.value = ""; if (!fl.length) return;
+                        try {
+                          const texts = await Promise.all(fl.map(async f => { const buf = await f.arrayBuffer(); let t = new TextDecoder("utf-8").decode(buf); if (t.includes("\uFFFD")) t = new TextDecoder("iso-8859-1").decode(buf); return t; }));
+                          const isPbp = (t) => /(quart|quarter)\s*;\s*chrono/i.test(t.normalize("NFD").replace(/[\u0300-\u036f]/g, "")), isTeam = (t) => /^(#|n°)\s*;\s*nom\s*;\s*tps/im.test(t);
+                          const pbp = texts.find(isPbp), team = texts.find(t => isTeam(t) && !isPbp(t));
+                          if (!pbp) throw new Error("il me faut le fichier play-by-play (colonnes Quart/Quarter; Chrono; Equipe/Team; Joueur/Player; Action; Score). Le fichier « Team » seul ne suffit pas.");
+                          const rec = parseStatsCsv(pbp, team || null);
+                          updateActiveTa({ rotations: [...(activeTa.rotations || []), { id: uid(), matchId: fl.map(f => f.name).join(" + "), tno: "1", rec, label: `${rec.teams["1"].name} vs ${rec.teams["2"].name}` }] });
+                          cpbAlert?.(`Match importé : ${rec.teams["1"].name} ${rec.final[0]}–${rec.final[1]} ${rec.teams["2"].name}${team ? "" : " (sans le tableau des joueurs : minutes et +/- calculés d'après le play-by-play)"}. Les analyses par joueur portent sur ${rec.teams["1"].name} ; l'adversaire n'a pas de joueurs nommés dans ce format.`);
+                        } catch (err) { cpbAlert?.("Import impossible : " + err.message); }
+                      }} />
+                    </label>
                     <label className="text-xs text-[#1B2A4A]/60 underline cursor-pointer">ou un fichier data.json
                       <input type="file" accept=".json,application/json" className="hidden" onChange={async e => {
                         const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
