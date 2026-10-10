@@ -214,6 +214,7 @@ function useAnnouncement(userId) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [canManageWellness, setCanManageWellness] = useState(false);
   const [canUseMatchmode, setCanUseMatchmode] = useState(false);
+  const [canUseMyteam, setCanUseMyteam] = useState(false);
 
   useEffect(() => {
     supabase.from("announcements").select("id, message").eq("active", true)
@@ -229,6 +230,9 @@ function useAnnouncement(userId) {
     if (!userId) return;
     supabase.from("profiles").select("is_admin, can_manage_wellness, can_use_matchmode").eq("id", userId).maybeSingle()
       .then(({ data }) => { setIsAdmin(!!data?.is_admin); setCanManageWellness(!!data?.can_manage_wellness); setCanUseMatchmode(!!data?.can_use_matchmode); });
+    // Permission « Mon équipe » lue à part : si la colonne n'existe pas encore (SQL pas exécuté), cela ne doit pas casser les autres droits.
+    supabase.from("profiles").select("can_use_myteam").eq("id", userId).maybeSingle()
+      .then(({ data, error }) => { setCanUseMyteam(!error && !!data?.can_use_myteam); }, () => setCanUseMyteam(false));
   }, [userId]);
 
   const dismiss = () => {
@@ -245,7 +249,7 @@ function useAnnouncement(userId) {
     await supabase.from("announcements").update({ active: false }).eq("active", true);
   };
 
-  return { announcement, dismiss, isAdmin, canManageWellness, canUseMatchmode, publish, deactivate };
+  return { announcement, dismiss, isAdmin, canManageWellness, canUseMatchmode, canUseMyteam, publish, deactivate };
 }
 
 async function startCheckout(priceId) {
@@ -9651,7 +9655,7 @@ function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAl
 
 function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
-  const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, canUseMatchmode, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
+  const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, canUseMatchmode, canUseMyteam, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
   const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, teamAnalyses, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
@@ -11312,7 +11316,7 @@ function CoachingProBoost({ session }) {
               ...(isAdmin || canUseMatchmode ? [{ key: "matchmode", label: isAdmin ? "Mode match (admin)" : "Mode match", icon: Zap }] : []),
               ...(isAdmin ? [{ key: "videoscout", label: "Scouting vidéo (admin)", icon: Video }] : []),
               ...(isAdmin ? [{ key: "scoutreport", label: "Scouting report (admin)", icon: FileText }] : []),
-              ...(isAdmin ? [{ key: "myteam", label: "Mon équipe (admin)", icon: BarChart3 }] : []),
+              ...(isAdmin || canUseMyteam ? [{ key: "myteam", label: isAdmin ? "Mon équipe (admin)" : "Mon équipe", icon: BarChart3 }] : []),
               ...(isAdmin || canManageWellness ? [{ key: "wellness", label: "Bien-être joueurs", icon: UserCheck }] : []),
               { key: "account", label: "Mon compte", icon: Users },
             ].map(item => {
@@ -14167,7 +14171,7 @@ function CoachingProBoost({ session }) {
           );
         })()}
 
-        {view === "myteam" && isAdmin && (() => {
+        {view === "myteam" && (isAdmin || canUseMyteam) && (() => {
           const activeTa = teamAnalyses.find(a => a.id === activeTeamAnalysisId) || null;
           const updateActiveTa = (patch) => saveTeamAnalyses(teamAnalyses.map(a => a.id === activeTeamAnalysisId ? { ...a, ...patch } : a));
           // Un seul bouton d'import : le type de fichier (cinq alignés ou box score) est reconnu
