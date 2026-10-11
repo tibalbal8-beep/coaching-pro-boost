@@ -18,33 +18,28 @@ export default async function handler(req, res) {
         headers: { "Authorization": `Bearer ${stripeKey}` },
       });
       if (!checkRes.ok) customerId = null;
+      else {
+        // Stripe répond 200 pour un client SUPPRIMÉ (objet avec deleted: true) : sans ce test, la création de session échoue ensuite avec « No such customer ».
+        const cust = await checkRes.json().catch(() => ({}));
+        if (cust.deleted) customerId = null;
+      }
     }
 
-    if (!customerId) {
+    const makeCustomer = async () => {
       const customerRes = await fetch("https://api.stripe.com/v1/customers", {
         method: "POST",
-        headers: {
-          "Authorization": `Bearer ${stripeKey}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          email: userEmail,
-          "metadata[supabase_uid]": userId,
-        }),
+        headers: { "Authorization": `Bearer ${stripeKey}`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ email: userEmail, "metadata[supabase_uid]": userId }),
       });
       const customer = await customerRes.json();
       if (customer.error) throw new Error(customer.error.message);
-      customerId = customer.id;
-    }
-
-    const sessionRes = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      return customer.id;
+    };
+    const makeSession = (cust) => fetch("https://api.stripe.com/v1/checkout/sessions", {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${stripeKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
+      headers: { "Authorization": `Bearer ${stripeKey}`, "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
-        customer: customerId,
+        customer: cust,
         mode: "subscription",
         "payment_method_types[0]": "card",
         "line_items[0][price]": priceId,
@@ -55,9 +50,16 @@ export default async function handler(req, res) {
         allow_promotion_codes: "true",
         "subscription_data[metadata][plan]": kind === "analysis" ? "analysis" : "premium",
       }),
-    });
+    }).then(r => r.json());
 
-    const session = await sessionRes.json();
+    if (!customerId) customerId = await makeCustomer();
+    let session = await makeSession(customerId);
+    // Client introuvable malgré le contrôle (autre mode Stripe, suppression récente…) : on en recrée un et on réessaie une fois
+    if (session.error && /No such customer/i.test(session.error.message || "")) {
+      customerId = await makeCustomer();
+      session = await makeSession(customerId);
+    }
+
     if (session.error) throw new Error(session.error.message);
 
     res.status(200).json({ url: session.url, customerId });
