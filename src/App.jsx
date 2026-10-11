@@ -2465,6 +2465,26 @@ function parseFibaPbp(raw) {
   return { teams, events, end, final: [s1, s2], live, at: live ? { p: ep(acts[acts.length - 1].a), clock: String(acts[acts.length - 1].a.gt || "") } : null };
 }
 // Poste suggéré (1 à 5) d'après les stats : plus de passes/interceptions → petit poste ; plus de rebonds/contres → grand poste.
+// Tous les joueurs d'une équipe sur l'ensemble des matchs importés (côté analysé « own » ou adverse), avec cumul de leurs stats et de leurs minutes.
+function unionPlayers(rotations, side = "own") {
+  const mmv = (v) => { const [x, y] = String(v || "0:00").split(":").map(Number); return (x || 0) + (y || 0) / 60; };
+  const agg = new Map();
+  (rotations || []).forEach(r => {
+    const T = String(r.tno), O = T === "1" ? "2" : "1", team = r.rec.teams[side === "own" ? T : O];
+    if (!team) return;
+    team.players.forEach(p => {
+      const min = mmv(p.min); if (min <= 0) return;
+      const k = side === "own" ? p.name : fibaKey(team.players, p);
+      const e = agg.get(k) || { key: k, name: p.name, first: p.first, shirt: p.shirt, ast: 0, reb: 0, stl: 0, blk: 0, tpa: 0, min: 0, games: 0 };
+      e.ast += p.ast || 0; e.reb += p.reb || 0; e.stl += p.stl || 0; e.blk += p.blk || 0; e.tpa += p.tpa || 0; e.min += min; e.games++; agg.set(k, e);
+    });
+  });
+  return [...agg.values()].sort((x, y) => y.min - x.min);
+}
+function suggestPostesAll(rotations, side = "own") {
+  const u = unionPlayers(rotations, side), sug = suggestPostes(u.map(x => ({ ...x, name: x.key })));
+  return sug;
+}
 function suggestPostes(players) {
   const sc = (p) => (p.ast * 2 + p.stl + p.tpa * 0.3) - (p.reb * 1.5 + p.blk * 2);
   const sorted = [...players].sort((a, b) => sc(b) - sc(a)), out = {};
@@ -2612,7 +2632,7 @@ function computeRotation(rec, tno, postes, postes2 = {}) {
 function rotationReportHtml(r, a) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const rec = r.rec, tno = String(r.tno), other = tno === "1" ? "2" : "1";
-  const postes = { ...suggestPostes(rec.teams[tno].players), ...(a.rotationPostes || {}) };
+  const postes = { ...suggestPostesAll(a.rotations && a.rotations.length ? a.rotations : [r]), ...(a.rotationPostes || {}) };
   const postes2 = a.rotationPostes2 || {};
   const R = computeRotation(rec, tno, postes, postes2);
   const sg = (v) => (v > 0 ? "+" : "") + Math.round(v);
@@ -2692,9 +2712,10 @@ function matchupHtml(r, a = {}) {
   const M = computeMatchups(rec, tno), sg = (v) => (v > 0 ? "+" : "") + Math.round(v);
   // Postes : les nôtres (réglés pour la frise) et ceux des adversaires (notés à la main, sinon proposés d'après leurs stats).
   const ownPl = rec.teams[tno].players, oppPl = rec.teams[other].players;
-  const sugO = suggestPostes(oppPl), pOwn = { ...suggestPostes(ownPl), ...(a.rotationPostes || {}) }, pOppMap = a.rotationPostesOpp || {};
+  const allRot = a.rotations && a.rotations.length ? a.rotations : [r];
+  const sugO = suggestPostesAll(allRot, "opp"), pOwn = { ...suggestPostesAll(allRot), ...(a.rotationPostes || {}) }, pOppMap = a.rotationPostesOpp || {};
   const oppKey = (pno) => { const p = oppPl.find(x => x.pno === pno); return p ? fibaKey(oppPl, p) : ""; };
-  const posteOpp = (pno) => { const p = oppPl.find(x => x.pno === pno); return p ? (pOppMap[oppKey(pno)] || sugO[p.name] || 3) : 3; };
+  const posteOpp = (pno) => { const p = oppPl.find(x => x.pno === pno); return p ? (pOppMap[oppKey(pno)] || sugO[oppKey(pno)] || 3) : 3; };
   const posteOwn = (pno) => { const p = ownPl.find(x => x.pno === pno); return p ? (pOwn[p.name] || 3) : 3; };
   const comparable = (pa, pb) => Math.abs(posteOwn(pa) - posteOpp(pb)) <= 1;
   M.theirs.sort((x, y) => posteOpp(x.pno) - posteOpp(y.pno) || y.min - x.min);
@@ -2887,7 +2908,7 @@ function presenceHtml(picks, a) {
   const map = new Map();
   picks.forEach(r => {
     const T = String(r.tno), team = r.rec.teams[T];
-    const postes = { ...suggestPostes(team.players), ...(a.rotationPostes || {}) }, R = computeRotation(r.rec, T, postes, a.rotationPostes2 || {});
+    const postes = { ...suggestPostesAll(a.rotations && a.rotations.length ? a.rotations : picks), ...(a.rotationPostes || {}) }, R = computeRotation(r.rec, T, postes, a.rotationPostes2 || {});
     const stints = new Map();
     R.segs.forEach(sg => sg.players.forEach(pno => {
       const k = fibaKey(team.players, R.byPno.get(pno)), e = map.get(k) || { name: R.byPno.get(pno).name, bins: Array(W).fill(0), gpSet: new Set(), min: 0, q: [0, 0, 0, 0], firsts: [], exits: [] };
@@ -2930,7 +2951,7 @@ function multiGameHtml(a, picks) {
   const pct = (m, n) => n ? Math.round(m / n * 100) + "%" : "–";
   const mm = (v) => { const [x, y] = String(v || "0:00").split(":").map(Number); return (x || 0) + (y || 0) / 60; };
   const n = picks.length, teamName = picks[0].rec.teams[String(picks[0].tno)].name;
-  const postes = { ...suggestPostes(picks[0].rec.teams[String(picks[0].tno)].players), ...(a.rotationPostes || {}) }, postes2 = a.rotationPostes2 || {};
+  const postes = { ...suggestPostesAll(a.rotations && a.rotations.length ? a.rotations : picks), ...(a.rotationPostes || {}) }, postes2 = a.rotationPostes2 || {};
   // --- box score moyen par joueur
   const pl = new Map(), tot = { pts: 0, opp: 0, fg: [0, 0], t3: [0, 0], ft: [0, 0], or: 0, dr: 0, ast: 0, tov: 0, stl: 0, blk: 0, pf: 0 };
   const sumInto = (x, y) => { ["pts", "or", "dr", "ast", "tov", "stl", "blk", "pf"].forEach(k => { x[k] += y[k] || 0; }); ["fg", "t3", "ft"].forEach(k => { x[k][0] += y[k][0]; x[k][1] += y[k][1]; }); };
@@ -14341,15 +14362,15 @@ function CoachingProBoost({ session }) {
                     </div>
                   ))}
                   {(activeTa.rotations || []).length > 0 && (() => {
-                    const r0 = activeTa.rotations[0], pls = r0.rec.teams[r0.tno].players.filter(p => p.min && p.min !== "0:00");
-                    const sug = suggestPostes(r0.rec.teams[r0.tno].players), cur = { ...sug, ...(activeTa.rotationPostes || {}) };
+                    const pls = unionPlayers(activeTa.rotations, "own"), nM = activeTa.rotations.length;
+                    const sug = suggestPostesAll(activeTa.rotations), cur = { ...sug, ...(activeTa.rotationPostes || {}) };
                     return (
                       <div className="mt-2">
                         <div className="text-xs text-[#1B2A4A]/50 mb-1">Poste de chaque joueur (1 meneur … 5 pivot), proposé d'après les stats — corrige-le. « Sinon » = le poste qu'il prend quand son poste principal est déjà occupé par un coéquipier (ex. un joueur au 1 sinon au 2 : il joue 1 en l'absence du meneur titulaire, 2 quand celui-ci est là) :</div>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                           {pls.map(p => (
-                            <label key={p.pno} className="flex items-center justify-between gap-2 text-xs bg-[#1B2A4A]/5 rounded-md px-2 py-1">
-                              <span className="truncate">{p.shirt ? `#${p.shirt} ` : ""}{p.name}</span>
+                            <label key={p.key} className="flex items-center justify-between gap-2 text-xs bg-[#1B2A4A]/5 rounded-md px-2 py-1">
+                              <span className="truncate" title={`${p.games} match${p.games > 1 ? "s" : ""} sur ${nM} · ${p.min.toFixed(0)} min`}>{p.shirt ? `#${p.shirt} ` : ""}{p.name}{nM > 1 ? <small className="text-[#1B2A4A]/40"> ({p.games}/{nM})</small> : null}</span>
                               <span className="flex items-center gap-1 shrink-0">
                                 <select value={cur[p.name] || 3} title="Poste principal" onChange={e => updateActiveTa({ rotationPostes: { ...(activeTa.rotationPostes || {}), [p.name]: +e.target.value } })} className="border border-[#1B2A4A]/20 rounded px-1 py-0.5 bg-white">
                                   {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
@@ -14364,16 +14385,16 @@ function CoachingProBoost({ session }) {
                           ))}
                         </div>
                         {(() => {
-                          const oth = r0.rec.teams[String(r0.tno) === "1" ? "2" : "1"], opl = oth.players.filter(p => p.min && p.min !== "0:00");
-                          const sugO = suggestPostes(oth.players), curO = activeTa.rotationPostesOpp || {};
+                          const opl = unionPlayers(activeTa.rotations, "opp"), othName = [...new Set(activeTa.rotations.map(r => r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name).filter(Boolean))].join(" / ");
+                          const sugO = suggestPostesAll(activeTa.rotations, "opp"), curO = activeTa.rotationPostesOpp || {};
                           return (
                             <div className="mt-3">
-                              <div className="text-xs text-[#1B2A4A]/50 mb-1">Postes des joueurs adverses ({oth.name}) — pour comparer ton meneur à leur meneur et pas à leur intérieur dans le face-à-face :</div>
+                              <div className="text-xs text-[#1B2A4A]/50 mb-1">Postes des joueurs adverses ({othName}) — pour comparer ton meneur à leur meneur et pas à leur intérieur dans le face-à-face :</div>
                               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {opl.map(p => { const k = fibaKey(oth.players, p); return (
-                                  <label key={p.pno} className="flex items-center justify-between gap-2 text-xs bg-[#1B2A4A]/5 rounded-md px-2 py-1">
+                                {opl.map(p => { const k = p.key; return (
+                                  <label key={k} className="flex items-center justify-between gap-2 text-xs bg-[#1B2A4A]/5 rounded-md px-2 py-1">
                                     <span className="truncate">{p.shirt ? `#${p.shirt} ` : ""}{k}</span>
-                                    <select value={curO[k] || sugO[p.name] || 3} onChange={e => updateActiveTa({ rotationPostesOpp: { ...curO, [k]: +e.target.value } })} className="border border-[#1B2A4A]/20 rounded px-1 py-0.5 bg-white">
+                                    <select value={curO[k] || sugO[k] || 3} onChange={e => updateActiveTa({ rotationPostesOpp: { ...curO, [k]: +e.target.value } })} className="border border-[#1B2A4A]/20 rounded px-1 py-0.5 bg-white">
                                       {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
                                     </select>
                                   </label>
