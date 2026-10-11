@@ -2580,6 +2580,115 @@ function parseStatsCsv(pbpText, teamText = null) {
   R0.players.forEach(x => { const p = rec.teams["1"].players.find(q => q.pno === x.pno); if (p) { if (!teamText) { const tsec = Math.round(x.min * 60); p.min = `${Math.floor(tsec / 60)}:${String(tsec % 60).padStart(2, "0")}`; } p.pm = Math.round(x.pm); } });
   return rec;
 }
+// ── Import du play-by-play copié depuis la page Match Center de la LNB (Cmd+A / Cmd+C sur l'onglet « Play By Play ») ──
+// Chaque action = [#N Joueur] / Qn mm:ss / action / score « domicile - extérieur ». Le texte ne dit pas de quelle équipe est chaque joueur :
+// on le déduit des points marqués (quel score bouge), puis des rebonds, interceptions, fautes et remplacements voisins.
+function parseLnbPbpText(text) {
+  const lines = String(text).replace(/￼/g, "\n").split(/\r?\n/).map(l => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+  const evs = []; let cur = null;
+  const flush = () => { if (cur && cur.q && cur.sc && cur.act) evs.push(cur); cur = null; };
+  lines.forEach(l => {
+    let m;
+    if ((m = /^#(\d+) (.+)$/.exec(l))) { flush(); cur = { num: m[1], pname: m[2].trim() }; return; }
+    if ((m = /^Q(\d) (\d{1,2}):(\d{2})$/.exec(l))) { if (!cur || cur.q) { flush(); cur = {}; } cur.q = +m[1]; cur.ck = +m[2] * 60 + +m[3]; return; }
+    if (!cur || !cur.q) return;
+    if ((m = /^(\d+) - (\d+)$/.exec(l))) { if (cur.act) { cur.sc = [+m[1], +m[2]]; flush(); } return; }
+    if (!cur.act && !/^Période|^Match Center|^BOXSCORE|^PLAY BY PLAY/i.test(l)) cur.act = l;
+  });
+  flush();
+  if (evs.length < 20) throw new Error("je ne reconnais pas un play-by-play de la LNB (il faut des lignes « #N Joueur », « Q1 09:52 », l'action et le score)");
+  evs.reverse();   // la page affiche le plus récent en premier
+  // noms des équipes et score final : « Boulazac  84  vs  73  Bourg-en-Bresse » dans l'en-tête de la page
+  let nameH = "Domicile", nameA = "Extérieur";
+  const iv = lines.findIndex((l, i) => /^vs$/i.test(l) && /^\d+$/.test(lines[i - 1] || "") && /^\d+$/.test(lines[i + 1] || ""));
+  if (iv > 1) { const before = lines.slice(0, iv - 1).filter(x => !/^\d+$/.test(x)); nameH = before[before.length - 1] || nameH; const after = lines.slice(iv + 2).filter(x => !/^\d+$/.test(x)); nameA = after[0] || nameA; }
+  // --- équipe de chaque joueur
+  const key = (e) => e.num + "|" + e.pname, team = new Map(), opp = (t) => t === "H" ? "A" : "H";
+  let pv = [0, 0];
+  evs.forEach((e, i) => { e.dh = e.sc[0] - pv[0]; e.da = e.sc[1] - pv[1]; pv = e.sc; e.i = i; });
+  evs.forEach(e => { if (e.pname && /réussi/.test(e.act) && (e.dh > 0) !== (e.da > 0)) team.set(key(e), e.dh > 0 ? "H" : "A"); });
+  const near = (e, k) => { const out = []; for (let j = Math.max(0, k - 8); j < Math.min(evs.length, k + 9); j++) { const f = evs[j]; if (j !== k && f.pname && f.q === e.q && Math.abs(f.ck - e.ck) <= 2) out.push([j, f]); } return out; };
+  for (let guard = 0, changed = true; changed && guard < 20; guard++) {
+    changed = false;
+    evs.forEach((e, k) => {
+      if (!e.pname) return;
+      near(e, k).forEach(([j, f]) => {
+        const a = e.act, pa = f.act; let rel = null;
+        if (a === "Rebond Défensif" && /raté/.test(pa) && j < k) rel = "opp";
+        else if (a === "Rebond Offensif" && /raté/.test(pa) && j < k) rel = "same";
+        else if (a === "Interception" && /^Balle Perdue/.test(pa)) rel = "opp";
+        else if (a === "Faute Provoquée" && /^(Faute Personnelle|Faute Offensive|Foul)/.test(pa)) rel = "opp";
+        else if (a === "Remplacement entrant" && pa === "Remplacement sortant") rel = "same";
+        else if (a === "Passe Décisive" && /pts.*réussi/.test(pa)) rel = "same";
+        else if (a === "Contre" && /raté/.test(pa) && j < k) rel = "opp";
+        if (!rel) return;
+        const ke = key(e), kf = key(f);
+        if (!team.has(ke) && team.has(kf)) { team.set(ke, rel === "same" ? team.get(kf) : opp(team.get(kf))); changed = true; }
+        else if (!team.has(kf) && team.has(ke)) { team.set(kf, rel === "same" ? team.get(ke) : opp(team.get(ke))); changed = true; }
+      });
+    });
+  }
+  const unknown = [...new Set(evs.filter(e => e.pname && !team.has(key(e))).map(key))];
+  // --- joueurs, numéros de pno
+  const pl = { H: new Map(), A: new Map() }; let seq = 1;
+  const person = (e) => { const t = team.get(key(e)); if (!t) return null; let p = pl[t].get(key(e)); if (!p) { const parts = e.pname.split(" "); p = { pno: seq++, shirt: e.num, first: parts.length > 1 ? parts[0] : "", name: (parts.length > 1 ? parts.slice(1).join(" ") : parts[0]).toUpperCase(), starter: 0, ast: 0, reb: 0, stl: 0, blk: 0, tpa: 0, st: { pts: 0, fg: [0, 0], t3: [0, 0], ft: [0, 0], or: 0, dr: 0, ast: 0, tov: 0, stl: 0, blk: 0, pf: 0 } }; pl[t].set(key(e), p); } return p; };
+  const tno = (t) => t === "H" ? 1 : 2;
+  const evOut = []; let last = [0, 0], lastMiss = null;
+  const start = (q) => q <= 4 ? (q - 1) * 10 : 40 + (q - 5) * 5, plen = (q) => q <= 4 ? 10 : 5;
+  evs.forEach(e => { e.t = start(e.q) + (plen(e.q) * 60 - e.ck) / 60; e.t = Math.min(e.t, start(e.q) + plen(e.q)); });
+  evs.forEach(e => {
+    const t = team.get(key(e)), p = e.pname ? person(e) : null, a = e.act;
+    if (e.sc[0] + e.sc[1] > last[0] + last[1]) { last = e.sc; evOut.push({ t: e.t, k: "p", s1: e.sc[0], s2: e.sc[1] }); }
+    const sh = /^(\d) ?pts? (.+?) (réussi|raté)$/.exec(a), ft = /^Lancer franc \d sur \d (réussi|raté)$/.exec(a);
+    const slug = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z]/g, "");
+    const TY = { jumpshot: "jumpshot", claquette: "tipinlayup", dunk: "dunk", alleyoop: "alleyoop", alleyoopdunk: "alleyoop", layup: "layup", hook: "hookshot", hookshot: "hookshot", drivinglayup: "drivinglayup" };
+    if ((sh || ft) && t) {
+      const pt = ft ? 1 : +sh[1], m = (ft ? ft[1] : sh[3]) === "réussi" ? 1 : 0, ty = ft ? "" : (TY[slug(sh[2])] || slug(sh[2]));
+      evOut.push({ t: e.t, p: e.q, k: "sh", tno: tno(t), pno: p.pno, pt, m, ty });
+      if (pt === 1) { p.st.ft[1]++; p.st.ft[0] += m; } else { p.st.fg[1]++; p.st.fg[0] += m; if (pt === 3) { p.st.t3[1]++; p.st.t3[0] += m; } }
+      p.st.pts += m * pt; if (!m && pt !== 1 || (pt === 1 && !m)) lastMiss = { t: e.t, tno: tno(t) }; else lastMiss = null; return;
+    }
+    if (/^Rebond (Offensif|Défensif)$/.test(a)) {
+      const off = /Offensif/.test(a) ? 1 : 0; let tt = t;
+      if (!tt && lastMiss) tt = (off ? lastMiss.tno : lastMiss.tno === 1 ? 2 : 1) === 1 ? "H" : "A";   // rebond d'équipe : déduit du tir raté qui précède
+      if (!tt) return;
+      evOut.push({ t: e.t, p: e.q, k: "rb", tno: tno(tt), pno: p ? p.pno : 0, off, df: off ? 0 : 1 });
+      if (p) p.st[off ? "or" : "dr"]++; return;
+    }
+    if (/^Balle Perdue/.test(a) && t) { evOut.push({ t: e.t, p: e.q, k: "to", tno: tno(t), pno: p.pno }); p.st.tov++; return; }
+    if (!p) return;
+    if (a === "Remplacement entrant" || a === "Remplacement sortant") { evOut.push({ t: e.t, k: "s", tno: tno(t), pno: p.pno, io: a === "Remplacement entrant" ? "in" : "out" }); return; }
+    if (a === "Passe Décisive") p.st.ast++; else if (a === "Interception") p.st.stl++; else if (a === "Contre") p.st.blk++; else if (/^Faute (Personnelle|Offensive)|^Foul/.test(a)) p.st.pf++;
+  });
+  evOut.sort((x, y) => x.t - y.t);   // ordre du temps (stable)
+  // remplacements d'une même équipe saisis à quelques secondes d'écart (sortants puis entrants) : on les ramène au même instant
+  const lastSub = {};
+  evOut.forEach(e => { if (e.k !== "s") return; const l = lastSub[e.tno]; if (l && e.t - l.t0 < 0.3 && e.t >= l.t0) e.t = l.t0; else lastSub[e.tno] = { t0: e.t }; });
+  evOut.sort((x, y) => x.t - y.t);
+  // --- cinq de départ : joueurs vus sur le terrain avant leur première entrée, ou jamais remplacés
+  const starters = (side) => {
+    const ps = [...pl[side].values()], T = tno(side);
+    const firstIo = new Map(), firstAct = new Map();
+    evOut.forEach(e => { if (e.k === "s" && e.tno === T && !firstIo.has(e.pno)) firstIo.set(e.pno, { io: e.io, t: e.t }); if ((e.k === "sh" || e.k === "rb" || e.k === "to") && e.tno === T && e.pno && !firstAct.has(e.pno)) firstAct.set(e.pno, e.t); });
+    return ps.filter(p => { const f = firstIo.get(p.pno); if (!f) return firstAct.has(p.pno); if (f.io === "out") return true; return firstAct.has(p.pno) && firstAct.get(p.pno) < f.t - 1e-6; });
+  };
+  const sH = starters("H"), sA = starters("A");
+  sH.forEach(p => { p.starter = 1; }); sA.forEach(p => { p.starter = 1; });
+  const sumTot = (list) => list.reduce((t, p) => { t.pts += p.st.pts; t.fg[0] += p.st.fg[0]; t.fg[1] += p.st.fg[1]; t.t3[0] += p.st.t3[0]; t.t3[1] += p.st.t3[1]; t.ft[0] += p.st.ft[0]; t.ft[1] += p.st.ft[1]; ["or", "dr", "ast", "tov", "stl", "blk", "pf"].forEach(k => { t[k] += p.st[k]; }); return t; }, { pts: 0, fg: [0, 0], t3: [0, 0], ft: [0, 0], or: 0, dr: 0, ast: 0, tov: 0, stl: 0, blk: 0, pf: 0 });
+  const mk = (side, name) => { const list = [...pl[side].values()]; return { name, code: name, players: list.map(p => ({ pno: p.pno, name: p.name, first: p.first, shirt: p.shirt, starter: p.starter, min: "0:00", ast: p.st.ast, reb: p.st.or + p.st.dr, stl: p.st.stl, blk: p.st.blk, tpa: p.st.t3[1], pm: null, st: p.st })), tot: sumTot(list) }; };
+  const nq = Math.max(...evs.map(e => e.q)), end = nq <= 4 ? 40 : 40 + (nq - 4) * 5;
+  const rec = { teams: { "1": mk("H", nameH), "2": mk("A", nameA) }, events: evOut, end, final: last, live: false, at: null, src: "lnb", unknown };
+  if (sH.length !== 5 || sA.length !== 5) rec.warn = `cinq de départ reconnus : ${sH.length} (${nameH}) et ${sA.length} (${nameA}) au lieu de 5`;
+  // minutes et +/- d'après les remplacements
+  ["1", "2"].forEach(T => {
+    try {
+      const R = computeRotation(rec, T, {}, {}); R.players.forEach(x => { const p = rec.teams[T].players.find(q => q.pno === x.pno); if (p) { const s = Math.round(x.min * 60); p.min = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; p.pm = Math.round(x.pm); } });
+      const cov = R.players.reduce((a, x) => a + x.min, 0) / (end * 5);
+      if (cov < 0.97) rec.warn = (rec.warn ? rec.warn + " ; " : "") + `${T === "1" ? nameH : nameA} : saisie des remplacements incomplète sur le site de la LNB, ${Math.round(cov * 100)} % du temps de jeu reconstitué (minutes et +/- légèrement sous-estimés)`;
+    } catch (e) { rec.warn = (rec.warn ? rec.warn + " ; " : "") + `rotations de ${T === "1" ? nameH : nameA} : ${e.message}`; }
+  });
+  return rec;
+}
 function computeRotation(rec, tno, postes, postes2 = {}) {
   const team = rec.teams[tno]; if (!team) throw new Error("équipe introuvable");
   const byPno = new Map(team.players.map(p => [p.pno, p]));
@@ -2587,19 +2696,27 @@ function computeRotation(rec, tno, postes, postes2 = {}) {
   if (on.size !== 5) throw new Error("les cinq de départ ne sont pas indiqués dans ce fichier");
   const own = (s1, s2) => tno === "1" || tno === 1 ? s1 - s2 : s2 - s1;
   const segs = []; let lastT = 0, s1 = 0, s2 = 0, d0 = 0;
-  const close = (t) => { if (t > lastT + 1e-6) { segs.push({ t0: lastT, t1: t, players: [...on].sort((a, b) => a - b), d: own(s1, s2) - d0 }); lastT = t; d0 = own(s1, s2); } };
+  // Réparation des saisies incomplètes (surtout LNB) : un joueur qui agit est forcément sur le terrain ; s'ils sont plus de 5, on retire celui vu le moins récemment.
+  const seen = new Map(); on.forEach(pno => seen.set(pno, 0));
+  const fix = () => { while (on.size > 5) { let worst = null, wt = 1e9; on.forEach(pno => { const v = seen.get(pno) ?? -1; if (v < wt) { wt = v; worst = pno; } }); on.delete(worst); } };
+  const close = (t) => { if (t > lastT + 1e-6) { fix(); segs.push({ t0: lastT, t1: t, players: [...on].sort((a, b) => a - b), d: own(s1, s2) - d0 }); lastT = t; d0 = own(s1, s2); } };
   rec.events.forEach(e => {
     if (e.k === "p") { s1 = e.s1; s2 = e.s2; return; }
+    if ((e.k === "sh" || e.k === "rb" || e.k === "to") && e.pno && String(e.tno) === String(tno) && byPno.has(e.pno)) {
+      if (!on.has(e.pno)) { close(e.t); on.add(e.pno); }
+      seen.set(e.pno, e.t); return;
+    }
     if (e.k === "L" && String(e.tno) === String(tno)) { close(e.t); on = new Set(e.pnos); return; }
     if (e.k !== "s" || String(e.tno) !== String(tno)) return;
     close(e.t);
-    if (e.io === "in") on.add(e.pno); else on.delete(e.pno);
+    if (e.io === "in") { on.add(e.pno); seen.set(e.pno, e.t); } else on.delete(e.pno);
   });
   close(rec.end);
   // affectation des 5 joueurs aux postes 1-5 : proche de leur poste, stable d'un instant à l'autre
   const perms = []; (function gen(a, r) { if (!r.length) { perms.push(a); return; } r.forEach((x, i) => gen([...a, x], r.filter((_, j) => j !== i))); })([], [1, 2, 3, 4, 5]);
   let prev = {};
   segs.forEach(sg => {
+    if (sg.players.length !== 5) { sg.slot = {}; sg.players.forEach(pno => { sg.slot[pno] = 0; }); sg.partial = true; return; }   // saisie incomplète (remplacements non simultanés) : pas de poste attribué
     let best = null, bc = 1e9;
     perms.forEach(pm => {
       // Coût : 0 au poste principal, 3 au poste alternatif (« sinon »), sinon 5 + 10 par poste d'écart ; un léger bonus de stabilité.
@@ -2614,6 +2731,7 @@ function computeRotation(rec, tno, postes, postes2 = {}) {
   });
   const blocks = { 1: [], 2: [], 3: [], 4: [], 5: [] };
   segs.forEach(sg => sg.players.forEach(pno => {
+    if (!sg.slot[pno]) return;
     const arr = blocks[sg.slot[pno]], last = arr[arr.length - 1];
     if (last && last.pno === pno && Math.abs(last.t1 - sg.t0) < 1e-6) { last.t1 = sg.t1; last.d += sg.d; } else arr.push({ pno, t0: sg.t0, t1: sg.t1, d: sg.d });
   }));
@@ -10346,6 +10464,7 @@ function CoachingProBoost({ session }) {
   // Analyse de mon équipe (voir view === "myteam" plus bas)
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
   const [taMom, setTaMom] = useState({}), [taOpen, setTaOpen] = useState({});
+  const [taLnbOpen, setTaLnbOpen] = useState(false), [taLnbText, setTaLnbText] = useState("");
   const [taFibaUrl, setTaFibaUrl] = useState(""), [taFibaPending, setTaFibaPending] = useState(null), [taFibaBusy, setTaFibaBusy] = useState(false);
   // Scouting report joueurs (voir view === "scoutreport")
   const [activeScoutReportId, setActiveScoutReportId] = useState(null);
@@ -14282,6 +14401,7 @@ function CoachingProBoost({ session }) {
                         } catch (err) { cpbAlert?.("Import impossible : " + err.message); }
                       }} />
                     </label>
+                    <button onClick={() => setTaLnbOpen(o => !o)} className="text-xs font-semibold text-[#1B2A4A] bg-white border border-[#1B2A4A]/20 px-2 py-1.5 rounded-md" title="Match de la LNB : copier-coller du play-by-play de la page Match Center">📋 Coller un play-by-play LNB</button>
                     <label className="text-xs text-[#1B2A4A]/60 underline cursor-pointer">ou un fichier data.json
                       <input type="file" accept=".json,application/json" className="hidden" onChange={async e => {
                         const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
@@ -14289,6 +14409,19 @@ function CoachingProBoost({ session }) {
                       }} />
                     </label>
                   </div>
+                  {taLnbOpen && (
+                    <div className="mb-2 p-3 rounded-lg bg-white border border-[#1B2A4A]/15">
+                      <p className="text-xs text-[#1B2A4A]/60 mb-1">Sur la page du match (lnb.fr, Match Center), ouvre l'onglet <b>Play By Play</b>, fais défiler jusqu'en bas pour tout afficher, puis <b>Cmd + A</b> et <b>Cmd + C</b>, et colle ici. L'équipe de chaque joueur est déduite des points marqués.</p>
+                      <textarea value={taLnbText} onChange={e => setTaLnbText(e.target.value)} rows={5} placeholder="Colle ici le texte de la page…" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white/60 font-mono" />
+                      <button disabled={!taLnbText.trim()} onClick={() => {
+                        try {
+                          const rec = parseLnbPbpText(taLnbText);
+                          setTaFibaPending({ matchId: "LNB (copier-coller)", rec }); setTaLnbText(""); setTaLnbOpen(false);
+                          if (rec.warn || (rec.unknown || []).length) cpbAlert?.("Match lu, avec quelques réserves : " + [rec.warn, (rec.unknown || []).length ? `${rec.unknown.length} joueur(s) dont l'équipe n'a pas pu être déduite (ignorés)` : ""].filter(Boolean).join(" ; ") + ".");
+                        } catch (err) { cpbAlert?.("Import impossible : " + err.message); }
+                      }} className="mt-2 text-sm font-semibold text-white px-4 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>Lire le play-by-play</button>
+                    </div>
+                  )}
                   {taFibaPending && (
                     <div className="p-3 rounded-lg bg-[#7c3aed]/10 mb-2">
                       <p className="text-xs text-[#1B2A4A] mb-2">{taFibaPending.rec.live ? "Match en cours — score actuel" : "Score final"} {taFibaPending.rec.final[0]} – {taFibaPending.rec.final[1]}. Quelle équipe veux-tu analyser ?</p>
