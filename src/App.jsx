@@ -1954,6 +1954,16 @@ function mergeScoutPlayers(r) {
   (r.boxPlayers || []).forEach(p => put(p, false));
   (r.excelPlayers || []).forEach(p => put(p, true));
   (r.extraPlayers || []).forEach(p => put(p, false));
+  // stats saisies à la main : elles priment sur les fichiers importés, champ par champ ; TS % et A/TO recalculés
+  Object.entries(r.statOverrides || {}).forEach(([k, o]) => {
+    const cur = map.get(k); if (!cur) return;
+    const n = { ...cur };
+    Object.entries(o).forEach(([f, v]) => { if (v !== null && v !== undefined && v !== "") n[f] = v; });
+    if (n.pts !== null && n.pts !== undefined && n.fga !== null && n.fga !== undefined) { const d = 2 * (n.fga + 0.44 * (n.fta || 0)); if (d > 0) n.ts = n.pts / d; }
+    if (n.ast !== null && n.ast !== undefined && n.tov) n.astTo = n.ast / n.tov;
+    if (n.fgm !== undefined && n.tpm !== undefined && n.fga) n.efg = (n.fgm + 0.5 * n.tpm) / n.fga;
+    map.set(k, n);
+  });
   return order.map(k => map.get(k));
 }
 function buildScoutReportHtml(r, logo = null) {
@@ -10484,7 +10494,7 @@ function CoachingProBoost({ session }) {
   // Scouting report joueurs (voir view === "scoutreport")
   const [activeScoutReportId, setActiveScoutReportId] = useState(null);
   const [srNewOpen, setSrNewOpen] = useState(false), [srNewOpponent, setSrNewOpponent] = useState(""), [srNewDate, setSrNewDate] = useState("");
-  const [srXmlPending, setSrXmlPending] = useState(null);
+  const [srXmlPending, setSrXmlPending] = useState(null), [srStatsOpen, setSrStatsOpen] = useState({});
   const [srPasteOpen, setSrPasteOpen] = useState(false), [srPaste, setSrPaste] = useState(""), [srAddName, setSrAddName] = useState("");
   const [taNewName, setTaNewName] = useState("");
   const [vsTfFilters, setVsTfFilters] = useState([]);
@@ -14317,6 +14327,34 @@ function CoachingProBoost({ session }) {
                         {field("weaknesses", "Points faibles", 2)}
                       </div>
                       <div className="mt-2">{field("instruction", "Consigne défensive / à retenir", 2)}</div>
+                      {(() => {
+                        const so = (activeSr.statOverrides || {})[k] || {}, open = !!srStatsOpen[k];
+                        const setSo = (patch) => { const next = { ...so, ...patch }; Object.keys(next).forEach(f => { if (next[f] === "" || next[f] === null || next[f] === undefined) delete next[f]; }); updateActiveSr({ statOverrides: { ...(activeSr.statOverrides || {}), [k]: next } }); };
+                        const num = (f) => (e) => { const v = e.target.value.replace(",", "."); setSo({ [f]: v === "" ? "" : (isNaN(parseFloat(v)) ? so[f] : parseFloat(v)) }); };
+                        const show = (f) => so[f] !== undefined ? so[f] : (p[f] !== null && p[f] !== undefined ? Math.round(p[f] * 10) / 10 : "");
+                        const inp = (f, label, w = "w-16") => (
+                          <label key={f} className="flex flex-col text-[10px] uppercase tracking-wide text-[#1B2A4A]/45">{label}
+                            <input defaultValue={show(f)} key={k + f + (so[f] ?? "") + (open ? "o" : "c")} onBlur={num(f)} inputMode="decimal" className={`${w} border border-[#1B2A4A]/20 rounded-md px-1.5 py-1 text-sm text-[#1B2A4A] normal-case bg-white/60`} />
+                          </label>
+                        );
+                        return (
+                          <div className="mt-2">
+                            <button onClick={() => setSrStatsOpen({ ...srStatsOpen, [k]: !open })} className="text-xs font-semibold text-[#1B2A4A]/70 hover:text-[#1B2A4A]">{open ? "▾" : "▸"} Stats à la main{Object.keys(so).length ? ` (${Object.keys(so).length} champ${Object.keys(so).length > 1 ? "s" : ""} saisi${Object.keys(so).length > 1 ? "s" : ""})` : ""}</button>
+                            {open && (
+                              <div className="mt-2 p-3 rounded-lg bg-[#1B2A4A]/5" style={{ background: "rgba(27,42,74,.05)" }}>
+                                <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Moyennes <b>par match</b>. Ce que tu saisis remplace les valeurs importées pour ce joueur ; laisse vide pour garder l'import. Le True Shooting, l'A/TO et l'eFG se recalculent.</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {inp("gp", "Matchs")}{inp("min", "Min")}{inp("pts", "Pts")}{inp("reb", "Reb")}{inp("oreb", "Reb off.")}{inp("ast", "Passes")}{inp("tov", "Pertes")}{inp("stl", "Int.")}{inp("blk", "Contres")}
+                                </div>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  {inp("fgm", "Tirs réussis")}{inp("fga", "Tirs tentés")}{inp("tpm", "3 pts réussis")}{inp("tpa", "3 pts tentés")}{inp("ftm", "LF réussis")}{inp("fta", "LF tentés")}
+                                </div>
+                                {Object.keys(so).length > 0 && <button onClick={() => { const rest = { ...(activeSr.statOverrides || {}) }; delete rest[k]; updateActiveSr({ statOverrides: rest }); }} className="mt-2 text-[11px] text-red-500 hover:underline">Effacer mes saisies pour ce joueur</button>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
