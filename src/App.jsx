@@ -258,7 +258,7 @@ function useAnnouncement(userId) {
 }
 
 // Pack « Analyse » : abonnement ANNUEL de 200 € (Scouting report + Mon équipe). Renseigne ici l'identifiant du prix créé dans Stripe.
-const PRICE_ANALYSIS_YEARLY = "price_A_REMPLACER";
+const PRICE_ANALYSIS_YEARLY = "price_1UPOYzLH4wEQmwblCEjCGsT5";
 async function startCheckout(priceId, kind = "premium") {
   if (priceId === "price_A_REMPLACER") throw new Error("L'offre n'est pas encore ouverte : reviens très bientôt.");
   const { data: { user } } = await supabase.auth.getUser();

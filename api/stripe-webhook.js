@@ -13,7 +13,7 @@ async function getRawBody(req) {
 }
 
 // Pack « Analyse » (Scouting report + Mon équipe) : abonnement annuel distinct du Premium, reconnu à son prix Stripe.
-const ANALYSIS_PRICE = process.env.STRIPE_PRICE_ANALYSIS_YEARLY;
+const ANALYSIS_PRICE = process.env.STRIPE_PRICE_ANALYSIS_YEARLY || "price_1UPOYzLH4wEQmwblCEjCGsT5";
 const isAnalysisSub = (sub) => !!ANALYSIS_PRICE && (sub.items?.data || []).some(i => i.price?.id === ANALYSIS_PRICE);
 
 // Accorde l'accès jusqu'à `untilISO` sans jamais raccourcir un accès déjà offert (ex. gratuité des abonnés Premium jusqu'au 30 juin).

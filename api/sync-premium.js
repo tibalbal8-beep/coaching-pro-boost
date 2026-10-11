@@ -29,7 +29,7 @@ export default async function handler(req, res) {
       { headers: { "Authorization": `Bearer ${process.env.STRIPE_SECRET_KEY}` } }
     );
     const subs = await subsRes.json();
-    const ANALYSIS_PRICE = process.env.STRIPE_PRICE_ANALYSIS_YEARLY;
+    const ANALYSIS_PRICE = process.env.STRIPE_PRICE_ANALYSIS_YEARLY || "price_1UPOYzLH4wEQmwblCEjCGsT5";
     const isAn = (s) => !!ANALYSIS_PRICE && (s.items?.data || []).some(i => i.price?.id === ANALYSIS_PRICE);
     const activeSub = (subs.data || []).find(s => !isAn(s));
     const analysisSub = (subs.data || []).find(isAn);
