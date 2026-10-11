@@ -1135,7 +1135,13 @@ const SCOUT_REPORT_CSS = `
   .ph-c{border-right:1px solid rgba(255,255,255,.55)!important;border-bottom:1px solid #fff!important}.ph-c[data-q]{border-right:2px solid #1B2A4A!important}
   .ph-h{font-size:8.5px;color:#1B2A4A99;text-align:left;height:14px!important;overflow:visible;white-space:nowrap}
   .ph-s{width:54px;font-size:10.5px;text-align:center;color:#1B2A4Acc}
-  .tm-logo{height:24px;width:24px;object-fit:contain;vertical-align:middle;margin-right:6px;border-radius:4px;background:#fff}
+  .mh-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .mh-side{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0}
+  .mh-logo{width:64px;height:64px;object-fit:contain;border-radius:10px;background:#fff}
+  .mh-ph{display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;font-size:28px;font-weight:700;color:#1B2A4A66;background:#1B2A4A10}
+  .mh-name{font-family:'Oswald',sans-serif;font-size:15px;font-weight:600;text-align:center;line-height:1.2}
+  .mh-score{font-family:'Oswald',sans-serif;font-size:40px;font-weight:700;color:#1B2A4A;white-space:nowrap;text-align:center}.mh-score span{color:#FF6B35}.mh-score small{display:block;font-family:'Inter',sans-serif;font-size:10.5px;font-weight:500;color:#1B2A4A80;text-transform:uppercase;letter-spacing:.8px}
+  .tm-logo{height:30px;width:30px;object-fit:contain;vertical-align:middle;margin-right:6px;border-radius:4px;background:#fff}
   .game-chart{width:100%;height:auto;display:block;margin:6px 0 4px}
   .rot-per{font-size:12px;color:#1B2A4A99}
   .pm-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:0;border:1px solid #1B2A4A22;border-radius:8px;overflow:hidden}
@@ -2928,6 +2934,12 @@ function impactHtml(r, over = null) {
   </section>`;
 }
 // ── Box score classique d'un match FIBA LiveStats (les deux équipes) ──
+// En-tête de match : logos, noms et score des deux équipes
+function matchHeaderHtml(r) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const rec = r.rec, side = (k, score) => `<div class="mh-side">${r.logos && r.logos[k] ? `<img class="mh-logo" src="${r.logos[k]}" alt="" />` : `<div class="mh-logo mh-ph">${esc(String(rec.teams[k].name || "?").charAt(0).toUpperCase())}</div>`}<div class="mh-name">${esc(rec.teams[k].name)}</div></div>`;
+  return `<section class="card mh"><div class="mh-row">${side("1")}<div class="mh-score">${rec.final[0]} <span>–</span> ${rec.final[1]}<small>${rec.live ? "match en cours" : "score final"}</small></div>${side("2")}</div></section>`;
+}
 const tmLogo = (r, k) => (r.logos && r.logos[k]) ? `<img class="tm-logo" src="${r.logos[k]}" alt="" />` : "";
 function fibaBoxHtml(r) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
@@ -3251,7 +3263,7 @@ function buildTeamReportHtml(a, logo = null) {
   const rotPicks = (a.rotations || []).filter(r => r.sel !== false), rotMode = a.rotationMode || "each";
   const rotMulti = rotPicks.length >= 2 && (rotMode === "avg" || rotMode === "both") ? (() => { try { return multiGameHtml(a, rotPicks); } catch (e5) { return `<section class="card"><p class="hint">Moyennes indisponibles : ${esc(e5.message)}</p></section>`; } })() : "";
   const rotPres = rotPicks.length >= 2 && rotMode === "each" ? (() => { try { return presenceHtml(rotPicks, a); } catch (e6) { return ""; } })() : "";
-  const rotHtml = rotMulti + rotPres + (rotMode === "avg" && rotPicks.length >= 2 ? [] : rotPicks).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r, a); } catch (e2) { mxh = ""; } try { mxh += impactHtml(r); } catch (e3) { } try { mxh += transitionHtml(r, tn, on); } catch (e4) { } return fibaBoxHtml(r) + gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + presenceHtml([r], a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
+  const rotHtml = rotMulti + rotPres + (rotMode === "avg" && rotPicks.length >= 2 ? [] : rotPicks).map(r => { try { const tn = r.rec.teams[r.tno].name, on = r.rec.teams[String(r.tno) === "1" ? "2" : "1"]?.name || ""; let mxh = ""; try { mxh = matchupHtml(r, a); } catch (e2) { mxh = ""; } try { mxh += impactHtml(r); } catch (e3) { } try { mxh += transitionHtml(r, tn, on); } catch (e4) { } return matchHeaderHtml(r) + fibaBoxHtml(r) + gameAnalysisHtml(r, tn, on) + rotationReportHtml(r, a) + presenceHtml([r], a) + mxh; } catch (e) { return `<section class="card"><p class="hint">Rotations indisponibles pour ${esc(r.label)} : ${esc(e.message)}</p></section>`; } }).join("");
   let lineupsHtml = "";
   if (LA) {
     const used = [...LA.rows].sort((x, y) => y.m.min - x.m.min).slice(0, 8);
