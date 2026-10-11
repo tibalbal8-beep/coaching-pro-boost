@@ -1893,6 +1893,43 @@ function playersReportHtml(pl, opponent) {
     ${low.length ? `<p class="muted pl-low"><b>Échantillon trop faible pour conclure :</b> ${low.map(p => `${p.num !== null && p.num !== undefined ? "#" + esc(p.num) + " " : ""}${esc(p.name)}${p.gp ? ` (${p.gp} match${p.gp > 1 ? "s" : ""}, ${mmss(p.min)} min)` : ""}`).join(" · ")}.</p>` : ""}
   </section>`;
 }
+// ── Page « Statistiques » d'une équipe sur lnb.fr (copier-coller) : moyennes par joueur ──
+function parseLnbTeamStatsText(text) {
+  const lines = String(text).split(/\r?\n/).map(l => l.replace(/ /g, " ").trimEnd());
+  const num = (v) => { if (v === undefined || v === null) return null; const s = String(v).trim().replace(",", "."); if (!s || s === "-" || s === "—") return null; const x = parseFloat(s.replace("%", "")); return isNaN(x) ? null : /%$/.test(s) ? x / 100 : x; };
+  const mins = (v) => { const m = /(\d+)\s*['’]\s*(\d+)/.exec(String(v)); return m ? +m[1] + +m[2] / 60 : num(v); };
+  const nameOk = (l) => l && /^[A-Za-zÀ-ÿ'’.\- ]{3,}$/.test(l.trim()) && !/^(Standing-table|TOTAL|EQUIPE|Joueur|MOYENNE|TOUS|TOUS)/i.test(l.trim());
+  const players = []; let totals = null;
+  for (let i = 0; i < lines.length; i++) {
+    const cells = lines[i].split("\t");
+    if (cells.length >= 24 && /^\d+$/.test(cells[0].trim()) && /['’]/.test(cells[2] || "")) {
+      let j = i - 1; while (j >= 0 && (!lines[j].trim() || /^Standing-table$/i.test(lines[j].trim()))) j--;
+      const nm = (lines[j] || "").trim(); if (!nameOk(nm)) continue;
+      const c = cells.map(x => x.trim());
+      const title = nm.toLowerCase().replace(/(^|[\s\-'’.])([a-zà-ÿ])/g, (m, a, b) => a + b.toUpperCase());
+      const p = { name: title, gp: num(c[0]), starts: num(c[1]), min: mins(c[2]), pts: num(c[3]), twom: num(c[4]), twoa: num(c[5]), tpm: num(c[7]), tpa: num(c[8]), ftm: num(c[10]), fta: num(c[11]), oreb: num(c[13]), dreb: num(c[14]), reb: num(c[15]), ast: num(c[16]), blk: num(c[17]), stl: num(c[19]), tov: num(c[20]), pf: num(c[21]), fd: num(c[22]), pm: num(c[23]), eval: num(c[24]), plays: [] };
+      p.fgm = (p.twom ?? 0) + (p.tpm ?? 0); p.fga = (p.twoa ?? 0) + (p.tpa ?? 0);
+      if (p.pts !== null && p.fga) { const d = 2 * (p.fga + 0.44 * (p.fta || 0)); if (d > 0) p.ts = p.pts / d; }
+      if (p.fga) p.efg = (p.fgm + 0.5 * (p.tpm || 0)) / p.fga;
+      if (p.ast !== null && p.tov) p.astTo = p.ast / p.tov;
+      players.push(p); continue;
+    }
+    if (/^TOTAL$/i.test(lines[i].trim())) {
+      let j = i + 1; while (j < lines.length && !lines[j].trim()) j++;
+      const c = (lines[j] || "").split("\t").map(x => x.trim());
+      if (c.length >= 19) { const fgm = (num(c[2]) ?? 0) + (num(c[5]) ?? 0), fga = (num(c[3]) ?? 0) + (num(c[6]) ?? 0); totals = { min: mins(c[0]), pts: num(c[1]), tpm: num(c[5]), tpa: num(c[6]), fgPct: fga ? fgm / fga : null, ftPct: num(c[10]), reb: num(c[13]), ast: num(c[14]), tov: num(c[18]) }; }
+    }
+  }
+  if (!players.length) throw new Error("je ne reconnais pas la page Statistiques de la LNB (il faut le tableau des joueurs avec MJ, S5, MIN, PTS…)");
+  const idx = lines.findIndex(l => /VISITER LE SITE/i.test(l));
+  let team = ""; if (idx > 0) { let j = idx - 1; while (j >= 0 && !lines[j].trim()) j--; team = (lines[j] || "").trim(); team = team.charAt(0) + team.slice(1).toLowerCase(); }
+  const extra = {}; [["Points Sur Seconde Chance", "secondChance"], ["Points Dans La Raquette", "paint"], ["Points Sur Balles Perdues", "offTov"], ["Points De Contre-Attaque", "fastBreak"]].forEach(([lab, key]) => {
+    const k = lines.findIndex(l => l.trim().toLowerCase() === lab.toLowerCase()); if (k === -1) return;
+    for (let j = k + 1; j < Math.min(lines.length, k + 4); j++) { const v = num(lines[j]); if (v !== null) { extra[key] = v; break; } }
+  });
+  const isTotals = !/MOYENNE/i.test(text) && /TOTAL/.test(text) && players.some(p => (p.pts || 0) > 60);
+  return { team, players, totals, extra, isTotals };
+}
 // ── Onglet "Scouting report" : fiches joueurs adverses (Excel détaillé et/ou tableau de box score collé) + infos du coach ──
 const scoutKey = (p) => String(p.name || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 // Tableau de box score collé depuis un site (colonnes MJ, Min, Pts, Reb, Pds, 2R-2T, 3R-3T, T%, LFR-LFT, LF%, RO, RD, IN, BP, CT, +/-, EVAL).
@@ -1952,6 +1989,7 @@ function mergeScoutPlayers(r) {
     map.set(k, o);
   };
   (r.boxPlayers || []).forEach(p => put(p, false));
+  (r.lnbPlayers || []).forEach(p => put(p, true));
   (r.excelPlayers || []).forEach(p => put(p, true));
   (r.extraPlayers || []).forEach(p => put(p, false));
   // stats saisies à la main : elles priment sur les fichiers importés, champ par champ ; TS % et A/TO recalculés
@@ -1991,6 +2029,7 @@ function buildScoutReportHtml(r, logo = null) {
       <div class="bs-kpis">${pill("Total", rc({ w: S.wins, l: S.losses }))}${pill("À domicile", rc(S.homeRec))}${pill("À l'extérieur", rc(S.awayRec))}</div>
       <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:10px"><tbody>${rows}</tbody></table></section>`;
   })();
+  const es = r.extraStats, extraHtml = es ? `<section class="card"><h2><i></i>Statistiques supplémentaires (par match)</h2><div class="bs-kpis">${[["Points sur seconde chance", es.secondChance], ["Points dans la raquette", es.paint], ["Points sur balles perdues", es.offTov], ["Points de contre-attaque", es.fastBreak]].filter(x => x[1] !== undefined).map(([l, v]) => `<div class="bs-kpi"><b>${f1(v)}</b><span>${l}</span></div>`).join("")}</div></section>` : "";
   const notes = (r.notes || "").trim() ? `<section class="card"><h2><i></i>Notes du coach</h2><p style="white-space:pre-wrap;font-size:14px;line-height:1.5">${esc(r.notes)}</p></section>` : "";
   const shotsAll = r.shots || [];
   const withShots = merged.map(p => ({ ...p, shotList: shotsAll.filter(s => sameScoutName(s.n, p.name)) }));
@@ -2016,6 +2055,7 @@ function buildScoutReportHtml(r, logo = null) {
     ${notes}
     ${bilan}
     ${teamTable}
+    ${extraHtml}
     ${players || `<section class="card"><p class="muted">Aucun joueur renseigné.</p></section>`}
     <p class="stamp">Coaching Pro Boost · coachingproboost.com · scouting report généré le ${new Date().toLocaleDateString("fr-FR")}</p>
   </div>
@@ -14175,6 +14215,14 @@ function CoachingProBoost({ session }) {
           };
           const importPaste = () => {
             try {
+              // Page « Statistiques » de la LNB (tableau MJ S5 MIN PTS…) ou tableau d'un autre site de stats
+              if (/\bMJ\b[\s\S]{0,40}\bS5\b|Standing-table|STATISTIQUES SUPPLÉMENTAIRES/.test(srPaste)) {
+                const r = parseLnbTeamStatsText(srPaste);
+                updateActiveSr({ lnbPlayers: r.players, teamTotals: r.totals || activeSr.teamTotals || null, extraStats: Object.keys(r.extra).length ? r.extra : activeSr.extraStats || null, lnbTeam: r.team || activeSr.lnbTeam || "" });
+                setSrPaste(""); setSrPasteOpen(false);
+                cpbAlert?.(`${r.players.length} joueurs importés de la page LNB${r.team ? " (" + r.team + ")" : ""}${r.isTotals ? ". Attention : la page semble en mode TOTAL ; choisis « MOYENNE » sur le site pour avoir des moyennes par match." : "."}`);
+                return;
+              }
               const r = parseBoxTableText(srPaste);
               updateActiveSr({ boxPlayers: r.players, teamTotals: r.team, oppTotals: r.opp });
               setSrPaste(""); setSrPasteOpen(false);
@@ -14213,7 +14261,7 @@ function CoachingProBoost({ session }) {
                       } catch (err) { cpbAlert?.("Import impossible : " + err.message); }
                     }} />
                   </label>
-                  <button onClick={() => setSrPasteOpen(!srPasteOpen)} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md bg-[#2563EB]">📋 Coller un box score</button>
+                  <button onClick={() => setSrPasteOpen(!srPasteOpen)} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md bg-[#2563EB]">📋 Coller un box score / page LNB</button>
                   <label className="text-xs font-semibold text-white px-3 py-1.5 rounded-md cursor-pointer bg-[#ea580c]">
                     🎯 XML des tirs (un ou plusieurs matchs)
                     <input type="file" accept=".xml,text/xml" multiple className="hidden" onChange={async e => {
@@ -14228,6 +14276,7 @@ function CoachingProBoost({ session }) {
                     }} />
                   </label>
                   {activeSr.excelPlayers && <span className="text-xs text-[#1B2A4A]/60">Excel : {activeSr.excelFileName} ({activeSr.excelPlayers.length}) <button onClick={() => updateActiveSr({ excelPlayers: null, excelFileName: null })} className="text-red-500 ml-1 hover:underline">retirer</button></span>}
+                  {activeSr.lnbPlayers && <span className="text-xs text-[#1B2A4A]/60">Page LNB{activeSr.lnbTeam ? ` (${activeSr.lnbTeam})` : ""} ({activeSr.lnbPlayers.length}) <button onClick={() => updateActiveSr({ lnbPlayers: null, extraStats: null })} className="text-red-500 ml-1 hover:underline">retirer</button></span>}
                   {activeSr.boxPlayers && <span className="text-xs text-[#1B2A4A]/60">Box score collé ({activeSr.boxPlayers.length}) <button onClick={() => updateActiveSr({ boxPlayers: null, teamTotals: null, oppTotals: null })} className="text-red-500 ml-1 hover:underline">retirer</button></span>}
                 </div>
                 {activeSr.boxScore && (() => {
@@ -14272,7 +14321,7 @@ function CoachingProBoost({ session }) {
                 )}
                 {srPasteOpen && (
                   <div className="mt-2">
-                    <p className="text-xs text-[#1B2A4A]/50 mb-1">Sélectionne le tableau sur le site de stats (en-tête MJ, Min, Pts, Reb, Pds, 2R-2T… jusqu'à la ligne « Adversaires »), copie-le et colle-le ici.</p>
+                    <p className="text-xs text-[#1B2A4A]/50 mb-1">Sélectionne le tableau sur le site de stats (en-tête MJ, Min, Pts, Reb, Pds, 2R-2T… jusqu'à la ligne « Adversaires »), copie-le et colle-le ici. <b>LNB</b> : sur la page Statistiques de l'équipe (réglée sur « MOYENNE »), fais Cmd + A puis Cmd + C et colle ici : l'app reconnaît le format toute seule.</p>
                     <textarea value={srPaste} onChange={e => setSrPaste(e.target.value)} rows={8} className={inputCls + " font-mono text-xs"} placeholder="Joueurs	MJ	Min	Pts	Reb	Pds	2R-2T…" />
                     <button onClick={importPaste} disabled={!srPaste.trim()} className="mt-2 text-sm font-semibold text-white px-4 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "var(--sport-accent)" }}>Importer le tableau</button>
                   </div>
