@@ -1135,6 +1135,7 @@ const SCOUT_REPORT_CSS = `
   .ph-c{border-right:1px solid rgba(255,255,255,.55)!important;border-bottom:1px solid #fff!important}.ph-c[data-q]{border-right:2px solid #1B2A4A!important}
   .ph-h{font-size:8.5px;color:#1B2A4A99;text-align:left;height:14px!important;overflow:visible;white-space:nowrap}
   .ph-s{width:54px;font-size:10.5px;text-align:center;color:#1B2A4Acc}
+  .tm-logo{height:24px;width:24px;object-fit:contain;vertical-align:middle;margin-right:6px;border-radius:4px;background:#fff}
   .game-chart{width:100%;height:auto;display:block;margin:6px 0 4px}
   .rot-per{font-size:12px;color:#1B2A4A99}
   .pm-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:0;border:1px solid #1B2A4A22;border-radius:8px;overflow:hidden}
@@ -2769,7 +2770,7 @@ function rotationReportHtml(r, a) {
   const oppName = rec.teams[other]?.name || "", teamName = rec.teams[tno].name;
   const own = tno === "1" ? rec.final[0] : rec.final[1], opp = tno === "1" ? rec.final[1] : rec.final[0];
   return `<section class="card rot">
-    <h2><i></i>${esc(teamName)} — Rotations par poste</h2>
+    <h2><i></i>${tmLogo(r, tno)}${esc(teamName)} — Rotations par poste</h2>
     <p class="hint">${esc(teamName)} vs ${esc(oppName)} · ${rec.live ? `score actuel ${own} – ${opp} (match en cours, ${rec.at && rec.at.p <= 4 ? "Q" + rec.at.p : "prolongation"}, ${esc(rec.at ? rec.at.clock : "")} restantes)` : `score final ${own} – ${opp}`}. Chaque bloc = un joueur sur un poste ; le chiffre est le +/- de l'équipe sur le score du match pendant sa présence. Postes : ${byPost}. ${Object.keys(postes2).filter(n => postes2[n] && R.players.some(x => x.p?.name === n)).length ? `Priorités : ${Object.keys(postes2).filter(n => postes2[n] && R.players.some(x => x.p?.name === n)).map(n => `${esc(n.charAt(0) + n.slice(1).toLowerCase())} joue ${postes[n] || 3} s'il est libre, sinon ${postes2[n]}`).join(" ; ")}. ` : ""}Quand deux joueurs d'un même poste sont ensemble, l'un est décalé sur le poste voisin libre.</p>
     <div class="rot-wrap">${rows}<div class="rot-axis"><div class="rot-lab"></div><div class="rot-ticks">${ticks.join("")}</div></div>${cinq}</div>
   </section>
@@ -2927,6 +2928,7 @@ function impactHtml(r, over = null) {
   </section>`;
 }
 // ── Box score classique d'un match FIBA LiveStats (les deux équipes) ──
+const tmLogo = (r, k) => (r.logos && r.logos[k]) ? `<img class="tm-logo" src="${r.logos[k]}" alt="" />` : "";
 function fibaBoxHtml(r) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const rec = r.rec, T = String(r.tno), O = T === "1" ? "2" : "1";
@@ -2940,12 +2942,12 @@ function fibaBoxHtml(r) {
     const rows = team.players.filter(p => p.min && p.min !== "0:00").sort((a, b) => (b.starter - a.starter) || mm(b.min) - mm(a.min));
     const tr = (p) => `<tr><td class="bx-n">${p.shirt ? `<span class="bx-num">${esc(p.shirt)}</span>` : ""}${esc(p.first ? p.first.charAt(0) + ". " : "")}${esc(p.name.charAt(0) + p.name.slice(1).toLowerCase())}${p.starter ? " <small>(5)</small>" : ""}</td><td class="num">${esc(p.min)}</td><td class="num"><b>${p.st.pts}</b></td><td class="num">${ma(p.st.fg)} <small>${pct(...p.st.fg)}</small></td><td class="num">${ma(p.st.t3)} <small>${pct(...p.st.t3)}</small></td><td class="num">${ma(p.st.ft)}</td><td class="num">${p.st.or}-${p.st.dr}</td><td class="num">${p.st.or + p.st.dr}</td><td class="num">${p.st.ast}</td><td class="num">${p.st.tov}</td><td class="num">${p.st.stl}</td><td class="num">${p.st.blk}</td><td class="num">${p.st.pf}</td><td class="num"><b class="${p.pm > 0 ? "pm-pos" : p.pm < 0 ? "pm-neg" : ""}">${sg(p.pm)}</b></td><td class="num">${p.st.ev ?? "–"}</td></tr>`;
     const t = team.tot;
-    return `<div class="sub-title">${esc(team.name)} — ${side === "1" ? rec.final[0] : rec.final[1]}</div>
+    return `<div class="sub-title">${tmLogo(r, side)}${esc(team.name)} — ${side === "1" ? rec.final[0] : rec.final[1]}</div>
       <div class="bs-table"><table class="pm-five bx"><thead><tr><th>Joueur</th><th class="num">Min</th><th class="num">Pts</th><th class="num">Tirs</th><th class="num">3 pts</th><th class="num">LF</th><th class="num">Reb O-D</th><th class="num">Reb</th><th class="num">Pd</th><th class="num">BP</th><th class="num">Int</th><th class="num">Ct</th><th class="num">Fau</th><th class="num">+/-</th><th class="num">Éval</th></tr></thead><tbody>
       ${rows.map(tr).join("")}
       <tr class="bx-tot"><td>Total</td><td class="num"></td><td class="num"><b>${t.pts}</b></td><td class="num">${ma(t.fg)} <small>${pct(...t.fg)}</small></td><td class="num">${ma(t.t3)} <small>${pct(...t.t3)}</small></td><td class="num">${ma(t.ft)}</td><td class="num">${t.or}-${t.dr}</td><td class="num">${t.or + t.dr}</td><td class="num">${t.ast}</td><td class="num">${t.tov}</td><td class="num">${t.stl}</td><td class="num">${t.blk}</td><td class="num">${t.pf}</td><td class="num"></td><td class="num"></td></tr></tbody></table></div>`;
   };
-  return `<section class="card"><h2><i></i>Box score — ${esc(rec.teams[T].name)} vs ${esc(rec.teams[O].name)}</h2>${table(T)}${table(O)}</section>`;
+  return `<section class="card"><h2><i></i>Box score — ${tmLogo(r, T)}${esc(rec.teams[T].name)} vs ${tmLogo(r, O)}${esc(rec.teams[O].name)}</h2>${table(T)}${table(O)}</section>`;
 }
 // ── Possessions après rebond défensif : délai avant le tir, selon le tir raté qui précède ──
 const TR_BUCKETS = [["≤ 6 s", 0, 6], ["6 – 14 s", 6, 14], ["14 – 20 s", 14, 20], ["20 – 24 s", 20, 1e9]];
@@ -3210,7 +3212,7 @@ function gameAnalysisHtml(r, teamName, oppName) {
   if (tmo.length) ins.push(`<b>Temps morts de ${esc(teamName)}</b> : ${tmo.map(t => `${mn(t.t)} (${sg(t.margin)}) → ${t.own}-${t.opp} dans les 3 min suivantes`).join(" · ")}.`);
   const qRows = G.quarters.map(Q => `<tr><td><b>${Q.q <= 4 ? "Q" + Q.q : "Prol."}</b></td><td class="num">${Q.own.pts}-${Q.opp.pts}</td><td class="num"><b class="${Q.diff > 0 ? "pm-pos" : Q.diff < 0 ? "pm-neg" : ""}">${sg(Q.diff)}</b></td>${G.hasDetail ? `<td class="num">${Q.own.t3[0]}/${Q.own.t3[1]} <small>(${pc(Q.own.t3[0], Q.own.t3[1])})</small></td><td class="num">${Q.opp.t3[0]}/${Q.opp.t3[1]}</td><td class="num">${pc(Q.own.fg[0], Q.own.fg[1])} / ${pc(Q.opp.fg[0], Q.opp.fg[1])}</td><td class="num">${Q.own.tov} / ${Q.opp.tov}</td><td class="num">${Q.own.oreb} / ${Q.opp.oreb}</td>` : ""}</tr>`).join("");
   const mRows = G.momentStats.map(m => `<tr><td><b>${esc(m.text)}</b><br><small>${mn(m.from)} → ${mn(m.to)}</small></td><td class="num"><b class="${m.own - m.opp > 0 ? "pm-pos" : m.own - m.opp < 0 ? "pm-neg" : ""}">${m.own}-${m.opp}</b></td>${G.hasDetail ? `<td class="num">${m.t3[0]}/${m.t3[1]} <small>(adv. ${m.t3o[0]}/${m.t3o[1]})</small></td><td class="num">${m.fg[0]}/${m.fg[1]} <small>(adv. ${m.fgo[0]}/${m.fgo[1]})</small></td><td class="num">${m.tov} / ${m.tovo}</td>` : ""}</tr>`).join("");
-  return `<section class="card"><h2><i></i>Lecture du match — ${esc(teamName)} vs ${esc(oppName)}</h2>
+  return `<section class="card"><h2><i></i>Lecture du match — ${tmLogo(r, String(r.tno))}${esc(teamName)} vs ${tmLogo(r, String(r.tno) === "1" ? "2" : "1")}${esc(oppName)}</h2>
     <p class="hint">Évolution de l'écart (vert : ${esc(teamName)} devant). Triangles : temps morts (foncé : ${esc(teamName)}). Zones orangées : moments notés par le coach.</p>
     ${gameChartSvg(G, moments)}
     <ul class="bs-ins">${ins.map(x => `<li>${x}</li>`).join("")}</ul>
@@ -10465,6 +10467,7 @@ function CoachingProBoost({ session }) {
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
   const [taMom, setTaMom] = useState({}), [taOpen, setTaOpen] = useState({});
   const [taLnbOpen, setTaLnbOpen] = useState(false), [taLnbText, setTaLnbText] = useState("");
+  const [taWizard, setTaWizard] = useState(null), [taWizTab, setTaWizTab] = useState("live"), [taSetup, setTaSetup] = useState(false);
   const [taFibaUrl, setTaFibaUrl] = useState(""), [taFibaPending, setTaFibaPending] = useState(null), [taFibaBusy, setTaFibaBusy] = useState(false);
   // Scouting report joueurs (voir view === "scoutreport")
   const [activeScoutReportId, setActiveScoutReportId] = useState(null);
@@ -14333,6 +14336,48 @@ function CoachingProBoost({ session }) {
             } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
           };
 
+
+          // ── Import d'un match (partagé par la fenêtre d'accueil et le bloc « Rotations ») ──
+          const afterImport = () => {
+            setTaWizard(null); setTaSetup(true);
+            setTimeout(() => { try { document.getElementById("ta-postes")?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch {} }, 250);
+          };
+          const addRotation = (rec, tnoKey, matchId) => {
+            const other = rec.teams[tnoKey === "1" ? "2" : "1"];
+            updateActiveTa({ rotations: [...(activeTa.rotations || []), { id: uid(), matchId, tno: tnoKey, rec, label: `${rec.teams[tnoKey].name} vs ${other?.name || ""}` }] });
+            setTaFibaPending(null); setTaFibaUrl(""); afterImport();
+          };
+          const importFibaLink = async () => {
+            const m = taFibaUrl.match(/\/(\d{4,10})(?:\/|$|\?)/) || taFibaUrl.trim().match(/^(\d{4,10})$/);
+            if (!m) { cpbAlert?.("Je ne trouve pas le numéro du match dans ce lien."); return; }
+            setTaFibaBusy(true);
+            try {
+              const res = await fetch("/api/fiba-pbp?id=" + m[1]);
+              if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "erreur " + res.status);
+              setTaFibaPending({ matchId: m[1], rec: parseFibaPbp(await res.text()) });
+            } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
+            setTaFibaBusy(false);
+          };
+          const importCsvFiles = async (fl) => {
+            if (!fl.length) return;
+            try {
+              const texts = await Promise.all(fl.map(async f => { const buf = await f.arrayBuffer(); let x = new TextDecoder("utf-8").decode(buf); if (x.includes("�")) x = new TextDecoder("iso-8859-1").decode(buf); return x; }));
+              const isPbp = (x) => /(quart|quarter)\s*;\s*chrono/i.test(x.normalize("NFD").replace(/[̀-ͯ]/g, "")), isTeam = (x) => /^(#|n°)\s*;\s*nom\s*;\s*tps/im.test(x);
+              const pbp = texts.find(isPbp), team = texts.find(x => isTeam(x) && !isPbp(x));
+              if (!pbp) throw new Error("il me faut le fichier play-by-play (colonnes Quart/Quarter; Chrono; Equipe/Team; Joueur/Player; Action; Score). Le fichier « Team » seul ne suffit pas.");
+              const rec = parseStatsCsv(pbp, team || null);
+              addRotation(rec, "1", fl.map(f => f.name).join(" + "));
+              cpbAlert?.(`Match importé : ${rec.teams["1"].name} ${rec.final[0]}–${rec.final[1]} ${rec.teams["2"].name}${team ? "" : " (sans le tableau des joueurs : minutes et +/- calculés d'après le play-by-play)"}. Les analyses par joueur portent sur ${rec.teams["1"].name} ; l'adversaire n'a pas de joueurs nommés dans ce format.`);
+            } catch (err) { cpbAlert?.("Import impossible : " + err.message); }
+          };
+          const importLnbText = () => {
+            try {
+              const rec = parseLnbPbpText(taLnbText);
+              setTaFibaPending({ matchId: "LNB (copier-coller)", rec }); setTaLnbText(""); setTaLnbOpen(false);
+              if (rec.warn || (rec.unknown || []).length) cpbAlert?.("Match lu, avec quelques réserves : " + [rec.warn, (rec.unknown || []).length ? `${rec.unknown.length} joueur(s) dont l'équipe n'a pas pu être déduite (ignorés)` : ""].filter(Boolean).join(" ; ") + ".");
+            } catch (err) { cpbAlert?.("Import impossible : " + err.message); }
+          };
+
           if (activeTa) {
             // Aperçu = le même document que l'export (notes exclues pour ne pas recharger à chaque frappe).
             let html = "";
@@ -14341,6 +14386,54 @@ function CoachingProBoost({ session }) {
             const fitFrame = (el) => { try { el.style.height = (el.contentDocument.documentElement.scrollHeight + 16) + "px"; } catch {} };
             return (
               <div className="max-w-4xl">
+                {taWizard === activeTa.id && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(27,42,74,.45)" }}>
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+                      <div className="flex items-start justify-between gap-3 mb-1">
+                        <h3 className="text-lg font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>IMPORTER UN MATCH</h3>
+                        <button onClick={() => { setTaWizard(null); setTaFibaPending(null); }} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A]" title="Fermer"><X size={18} /></button>
+                      </div>
+                      <p className="text-xs text-[#1B2A4A]/50 mb-4">Choisis d'où viennent les statistiques du match de « {activeTa.name} ». Tu règleras ensuite les postes des joueurs.</p>
+                      <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-[#1B2A4A]/6 mb-4" style={{ background: "rgba(27,42,74,.06)" }}>
+                        {[["csv", "StatsPro (CSV)"], ["live", "LiveStats"], ["lnb", "Play-by-play LNB"]].map(([k, l]) => (
+                          <button key={k} onClick={() => { setTaWizTab(k); setTaFibaPending(null); }} className={`text-xs font-semibold py-2 rounded-md transition-colors ${taWizTab === k ? "bg-white text-[#1B2A4A] shadow-sm" : "text-[#1B2A4A]/55 hover:text-[#1B2A4A]"}`}>{l}</button>
+                        ))}
+                      </div>
+                      {taFibaPending ? (
+                        <div className="mb-2">
+                          <p className="text-sm text-[#1B2A4A] mb-3">{taFibaPending.rec.live ? "Match en cours — score actuel" : "Match lu"} : <b>{taFibaPending.rec.teams["1"].name} {taFibaPending.rec.final[0]} – {taFibaPending.rec.final[1]} {taFibaPending.rec.teams["2"].name}</b>.<br />Quelle équipe veux-tu analyser ?</p>
+                          <div className="flex gap-2 flex-wrap">
+                            {Object.entries(taFibaPending.rec.teams).map(([k, tm]) => (
+                              <button key={k} onClick={() => addRotation(taFibaPending.rec, k, taFibaPending.matchId)} className="flex-1 min-w-[140px] text-sm font-semibold px-3 py-2.5 rounded-lg border border-[#1B2A4A]/20 text-[#1B2A4A] hover:border-[#FF6B35]">{tm.name}</button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : taWizTab === "csv" ? (
+                        <div>
+                          <p className="text-sm text-[#1B2A4A]/70 mb-3">Les deux exports CSV du match : le <b>play-by-play</b> et le <b>tableau des joueurs</b> (ce dernier est facultatif).</p>
+                          <label className="inline-block text-sm font-semibold text-white px-4 py-2.5 rounded-lg cursor-pointer" style={{ backgroundColor: "var(--sport-accent)" }}>Choisir les fichiers CSV
+                            <input type="file" accept=".csv,text/csv,.txt" multiple className="hidden" onChange={e => { const fl = [...(e.target.files || [])]; e.target.value = ""; importCsvFiles(fl); }} />
+                          </label>
+                        </div>
+                      ) : taWizTab === "live" ? (
+                        <div>
+                          <p className="text-sm text-[#1B2A4A]/70 mb-3">Le lien de la page du match sur FIBA LiveStats (ex : …/u/FFBB/2875004/…) ou simplement son numéro.</p>
+                          <div className="flex gap-2">
+                            <input value={taFibaUrl} onChange={e => setTaFibaUrl(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && taFibaUrl.trim() && !taFibaBusy) importFibaLink(); }} placeholder="Lien ou numéro du match" className="flex-1 min-w-0 border border-[#1B2A4A]/20 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-[#FF6B35]" />
+                            <button disabled={taFibaBusy || !taFibaUrl.trim()} onClick={importFibaLink} className="text-sm font-semibold text-white px-4 py-2.5 rounded-lg disabled:opacity-40" style={{ backgroundColor: "var(--sport-accent)" }}>{taFibaBusy ? "Chargement…" : "Importer"}</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="text-sm text-[#1B2A4A]/70 mb-2">Sur la page du match (lnb.fr), onglet <b>Play By Play</b> : fais défiler jusqu'en bas, puis <b>Cmd + A</b>, <b>Cmd + C</b>, et colle ici.</p>
+                          <textarea value={taLnbText} onChange={e => setTaLnbText(e.target.value)} rows={5} placeholder="Colle ici le texte de la page…" className="w-full border border-[#1B2A4A]/20 rounded-lg px-3 py-2 text-xs font-mono outline-none focus:border-[#FF6B35]" />
+                          <button disabled={!taLnbText.trim()} onClick={importLnbText} className="mt-2 text-sm font-semibold text-white px-4 py-2.5 rounded-lg disabled:opacity-40" style={{ backgroundColor: "var(--sport-accent)" }}>Lire le play-by-play</button>
+                        </div>
+                      )}
+                      <div className="mt-5 text-right"><button onClick={() => { setTaWizard(null); setTaFibaPending(null); }} className="text-xs text-[#1B2A4A]/50 hover:text-[#1B2A4A] underline">Passer cette étape</button></div>
+                    </div>
+                  </div>
+                )}
                 <button onClick={() => setActiveTeamAnalysisId(null)} className="text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A] mb-3">← Mes analyses</button>
                 <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
                   <input value={activeTa.name} onChange={e => updateActiveTa({ name: e.target.value })}
@@ -14372,34 +14465,16 @@ function CoachingProBoost({ session }) {
                   )}
                 </div>
                 <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-3">
-                  <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Rotations par poste (play-by-play FIBA LiveStats)</div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold">Matchs (LiveStats, StatsPro, LNB) et rotations par poste</div>
+                    <button onClick={() => { setTaWizTab("live"); setTaWizard(activeTa.id); }} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "#7c3aed" }}>+ Importer un match</button>
+                  </div>
                   <p className="text-xs text-[#1B2A4A]/40 italic mb-2">Colle le lien de la page « pbp » du match (ex: …/u/FFBB/2875004/pbp.html) ou son numéro. L'app lit les remplacements et le score pour construire la frise des rotations, le +/- par joueur et les cinq majeurs avec leurs périodes.</p>
                   <div className="flex gap-2 flex-wrap items-center mb-2">
                     <input value={taFibaUrl} onChange={e => setTaFibaUrl(e.target.value)} placeholder="Lien ou numéro du match" className="flex-1 min-w-[220px] border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
-                    <button disabled={taFibaBusy || !taFibaUrl.trim()} onClick={async () => {
-                      const m = taFibaUrl.match(/\/(\d{4,10})(?:\/|$|\?)/) || taFibaUrl.trim().match(/^(\d{4,10})$/);
-                      if (!m) { cpbAlert?.("Je ne trouve pas le numéro du match dans ce lien."); return; }
-                      setTaFibaBusy(true);
-                      try {
-                        const res = await fetch("/api/fiba-pbp?id=" + m[1]);
-                        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "erreur " + res.status);
-                        setTaFibaPending({ matchId: m[1], rec: parseFibaPbp(await res.text()) });
-                      } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
-                      setTaFibaBusy(false);
-                    }} className="text-sm font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>{taFibaBusy ? "Chargement…" : "Importer le match"}</button>
+                    <button disabled={taFibaBusy || !taFibaUrl.trim()} onClick={importFibaLink} className="text-sm font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>{taFibaBusy ? "Chargement…" : "Importer le match"}</button>
                     <label className="text-xs font-semibold text-[#1B2A4A] bg-white border border-[#1B2A4A]/20 px-2 py-1.5 rounded-md cursor-pointer" title="Pour les matchs saisis dans une autre application de stats : play-by-play + tableau des joueurs (CSV, séparateur « ; »)">📄 Importer des CSV
-                      <input type="file" accept=".csv,text/csv,.txt" multiple className="hidden" onChange={async e => {
-                        const fl = [...(e.target.files || [])]; e.target.value = ""; if (!fl.length) return;
-                        try {
-                          const texts = await Promise.all(fl.map(async f => { const buf = await f.arrayBuffer(); let t = new TextDecoder("utf-8").decode(buf); if (t.includes("\uFFFD")) t = new TextDecoder("iso-8859-1").decode(buf); return t; }));
-                          const isPbp = (t) => /(quart|quarter)\s*;\s*chrono/i.test(t.normalize("NFD").replace(/[\u0300-\u036f]/g, "")), isTeam = (t) => /^(#|n°)\s*;\s*nom\s*;\s*tps/im.test(t);
-                          const pbp = texts.find(isPbp), team = texts.find(t => isTeam(t) && !isPbp(t));
-                          if (!pbp) throw new Error("il me faut le fichier play-by-play (colonnes Quart/Quarter; Chrono; Equipe/Team; Joueur/Player; Action; Score). Le fichier « Team » seul ne suffit pas.");
-                          const rec = parseStatsCsv(pbp, team || null);
-                          updateActiveTa({ rotations: [...(activeTa.rotations || []), { id: uid(), matchId: fl.map(f => f.name).join(" + "), tno: "1", rec, label: `${rec.teams["1"].name} vs ${rec.teams["2"].name}` }] });
-                          cpbAlert?.(`Match importé : ${rec.teams["1"].name} ${rec.final[0]}–${rec.final[1]} ${rec.teams["2"].name}${team ? "" : " (sans le tableau des joueurs : minutes et +/- calculés d'après le play-by-play)"}. Les analyses par joueur portent sur ${rec.teams["1"].name} ; l'adversaire n'a pas de joueurs nommés dans ce format.`);
-                        } catch (err) { cpbAlert?.("Import impossible : " + err.message); }
-                      }} />
+                      <input type="file" accept=".csv,text/csv,.txt" multiple className="hidden" onChange={e => { const fl = [...(e.target.files || [])]; e.target.value = ""; importCsvFiles(fl); }} />
                     </label>
                     <button onClick={() => setTaLnbOpen(o => !o)} className="text-xs font-semibold text-[#1B2A4A] bg-white border border-[#1B2A4A]/20 px-2 py-1.5 rounded-md" title="Match de la LNB : copier-coller du play-by-play de la page Match Center">📋 Coller un play-by-play LNB</button>
                     <label className="text-xs text-[#1B2A4A]/60 underline cursor-pointer">ou un fichier data.json
@@ -14413,13 +14488,7 @@ function CoachingProBoost({ session }) {
                     <div className="mb-2 p-3 rounded-lg bg-white border border-[#1B2A4A]/15">
                       <p className="text-xs text-[#1B2A4A]/60 mb-1">Sur la page du match (lnb.fr, Match Center), ouvre l'onglet <b>Play By Play</b>, fais défiler jusqu'en bas pour tout afficher, puis <b>Cmd + A</b> et <b>Cmd + C</b>, et colle ici. L'équipe de chaque joueur est déduite des points marqués.</p>
                       <textarea value={taLnbText} onChange={e => setTaLnbText(e.target.value)} rows={5} placeholder="Colle ici le texte de la page…" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white/60 font-mono" />
-                      <button disabled={!taLnbText.trim()} onClick={() => {
-                        try {
-                          const rec = parseLnbPbpText(taLnbText);
-                          setTaFibaPending({ matchId: "LNB (copier-coller)", rec }); setTaLnbText(""); setTaLnbOpen(false);
-                          if (rec.warn || (rec.unknown || []).length) cpbAlert?.("Match lu, avec quelques réserves : " + [rec.warn, (rec.unknown || []).length ? `${rec.unknown.length} joueur(s) dont l'équipe n'a pas pu être déduite (ignorés)` : ""].filter(Boolean).join(" ; ") + ".");
-                        } catch (err) { cpbAlert?.("Import impossible : " + err.message); }
-                      }} className="mt-2 text-sm font-semibold text-white px-4 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>Lire le play-by-play</button>
+                      <button disabled={!taLnbText.trim()} onClick={importLnbText} className="mt-2 text-sm font-semibold text-white px-4 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>Lire le play-by-play</button>
                     </div>
                   )}
                   {taFibaPending && (
@@ -14427,11 +14496,7 @@ function CoachingProBoost({ session }) {
                       <p className="text-xs text-[#1B2A4A] mb-2">{taFibaPending.rec.live ? "Match en cours — score actuel" : "Score final"} {taFibaPending.rec.final[0]} – {taFibaPending.rec.final[1]}. Quelle équipe veux-tu analyser ?</p>
                       <div className="flex gap-2 flex-wrap">
                         {Object.entries(taFibaPending.rec.teams).map(([k, t]) => (
-                          <button key={k} onClick={() => {
-                            const other = taFibaPending.rec.teams[k === "1" ? "2" : "1"];
-                            updateActiveTa({ rotations: [...(activeTa.rotations || []), { id: uid(), matchId: taFibaPending.matchId, tno: k, rec: taFibaPending.rec, label: `${t.name} vs ${other?.name || ""}` }] });
-                            setTaFibaPending(null); setTaFibaUrl("");
-                          }} className="text-xs font-semibold px-3 py-1.5 rounded-md bg-white border border-[#1B2A4A]/20 text-[#1B2A4A]">{t.name}</button>
+                          <button key={k} onClick={() => addRotation(taFibaPending.rec, k, taFibaPending.matchId) } className="text-xs font-semibold px-3 py-1.5 rounded-md bg-white border border-[#1B2A4A]/20 text-[#1B2A4A]">{t.name}</button>
                         ))}
                         <button onClick={() => setTaFibaPending(null)} className="text-xs text-[#1B2A4A]/50 px-2">Annuler</button>
                       </div>
@@ -14471,6 +14536,22 @@ function CoachingProBoost({ session }) {
                         if (!taOpen[r.id]) return (r.retour || (r.moments || []).length) ? <div className="text-[11px] text-[#1B2A4A]/45 mt-1 ml-1">📝 retour de match renseigné{(r.moments || []).length ? ` · ${(r.moments || []).length} moment${(r.moments || []).length > 1 ? "s" : ""}` : ""}</div> : null;
                         return (
                           <div className="mt-2 p-3 rounded-lg bg-white/70 border border-[#1B2A4A]/10">
+                            <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Équipes du match (nom et logo, à corriger si besoin)</div>
+                            <div className="grid sm:grid-cols-2 gap-2 mb-3">
+                              {["1", "2"].map(k => { const tm = r.rec.teams[k], lg = (r.logos || {})[k], isOwn = String(r.tno) === k; return (
+                                <div key={k} className="flex items-center gap-2 border border-[#1B2A4A]/12 rounded-lg p-2">
+                                  <label className="cursor-pointer shrink-0" title="Ajouter ou changer le logo">
+                                    {lg ? <img src={lg} alt="" className="w-10 h-10 rounded-md object-contain bg-white border border-[#1B2A4A]/10" /> : <span className="w-10 h-10 rounded-md bg-[#1B2A4A]/8 flex items-center justify-center text-[#1B2A4A]/40 text-lg" style={{ background: "rgba(27,42,74,.08)" }}>＋</span>}
+                                    <input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; try { const url = await readImageAsJpeg(f, 160, 0.85); setR({ logos: { ...(r.logos || {}), [k]: url } }); } catch { cpbAlert?.("Image illisible."); } }} />
+                                  </label>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-[10px] uppercase tracking-wide text-[#1B2A4A]/40">{isOwn ? "Équipe analysée" : "Adversaire"}</div>
+                                    <input value={tm.name} onChange={e => { const nm = e.target.value; const teams = { ...r.rec.teams, [k]: { ...tm, name: nm } }; setR({ rec: { ...r.rec, teams }, label: `${teams[String(r.tno)].name} vs ${teams[String(r.tno) === "1" ? "2" : "1"].name}` }); }} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white/60" />
+                                  </div>
+                                  {lg && <button onClick={() => { const l2 = { ...(r.logos || {}) }; delete l2[k]; setR({ logos: l2 }); }} className="text-[#1B2A4A]/30 hover:text-red-600" title="Retirer le logo"><X size={13} /></button>}
+                                </div>
+                              ); })}
+                            </div>
                             <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Ton retour de match</div>
                             <textarea value={r.retour || ""} onChange={e => setR({ retour: e.target.value })} rows={4} placeholder="Ce qu'il s'est passé : défense adverse (zone…), tirs ratés, changements, fatigue…" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60 mb-2" />
                             <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1">Moments du match (apparaissent sur la courbe, avec leurs stats)</div>
@@ -14498,7 +14579,13 @@ function CoachingProBoost({ session }) {
                     const pls = unionPlayers(activeTa.rotations, "own"), nM = activeTa.rotations.length;
                     const sug = suggestPostesAll(activeTa.rotations), cur = { ...sug, ...(activeTa.rotationPostes || {}) };
                     return (
-                      <div className="mt-2">
+                      <div className="mt-2" id="ta-postes">
+                        {taSetup && (
+                          <div className="flex items-start justify-between gap-2 mb-2 p-3 rounded-lg border border-[#FF6B35]/40 bg-[#FF6B35]/8 text-xs text-[#1B2A4A]" style={{ background: "rgba(255,107,53,.08)" }}>
+                            <span><b>Dernière étape :</b> règle le poste de chaque joueur (1 meneur … 5 pivot), pour ton équipe puis pour l'adversaire. Les postes proposés viennent des stats : corrige-les. Ils servent à la frise, au face-à-face et à l'analyse.</span>
+                            <button onClick={() => setTaSetup(false)} className="text-[#1B2A4A]/40 hover:text-[#1B2A4A]"><X size={14} /></button>
+                          </div>
+                        )}
                         <div className="text-xs text-[#1B2A4A]/50 mb-1">Poste de chaque joueur (1 meneur … 5 pivot), proposé d'après les stats — corrige-le. « Sinon » = le poste qu'il prend quand son poste principal est déjà occupé par un coéquipier (ex. un joueur au 1 sinon au 2 : il joue 1 en l'absence du meneur titulaire, 2 quand celui-ci est là) :</div>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                           {pls.map(p => (
@@ -14560,7 +14647,7 @@ function CoachingProBoost({ session }) {
                 <button onClick={() => {
                   const name = taNewName.trim() || "Mon équipe";
                   const a = { id: uid(), name, lineups: [], lineupsFile: "", boxScore: null, notes: "", createdAt: new Date().toISOString() };
-                  saveTeamAnalyses([...teamAnalyses, a]); setTaNewName(""); setActiveTeamAnalysisId(a.id);
+                  saveTeamAnalyses([...teamAnalyses, a]); setTaNewName(""); setActiveTeamAnalysisId(a.id); setTaWizTab("live"); setTaSetup(false); setTaWizard(a.id);
                 }} className="px-4 py-2 rounded-md text-sm font-semibold text-white flex items-center gap-1.5" style={{ backgroundColor: "var(--sport-accent)" }}>
                   <Plus size={15} /> Nouvelle analyse
                 </button>
