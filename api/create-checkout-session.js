@@ -5,7 +5,7 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
   try {
-    const { priceId, successUrl, cancelUrl, userId, userEmail, customerId: existingCustomerId } = req.body;
+    const { priceId, successUrl, cancelUrl, userId, userEmail, customerId: existingCustomerId, kind } = req.body;
     const stripeKey = process.env.STRIPE_SECRET_KEY;
 
     let customerId = existingCustomerId;
@@ -53,6 +53,7 @@ export default async function handler(req, res) {
         cancel_url: cancelUrl,
         locale: "fr",
         allow_promotion_codes: "true",
+        "subscription_data[metadata][plan]": kind === "analysis" ? "analysis" : "premium",
       }),
     });
 

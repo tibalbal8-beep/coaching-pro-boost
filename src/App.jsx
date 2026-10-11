@@ -176,11 +176,15 @@ const FREE_MAX_SESSIONS = 3;
 
 function useSubscription(userId) {
   const [isPremium, setIsPremium] = useState(false);
+  const [analysisUntil, setAnalysisUntil] = useState(null);   // accès au pack Analyse (Scouting report + Mon équipe)
   const [loadingPremium, setLoadingPremium] = useState(true);
   const [sport, setSportState] = useState(() => localStorage.getItem("cpb_sport") || DEFAULT_SPORT);
 
   useEffect(() => {
     if (!userId) return;
+    // Pack Analyse lu à part : si la colonne n'existe pas encore (SQL pas exécuté), le reste ne casse pas.
+    supabase.from("profiles").select("analysis_until").eq("id", userId).maybeSingle()
+      .then(({ data, error }) => { setAnalysisUntil(!error && data?.analysis_until ? new Date(data.analysis_until) : null); }, () => setAnalysisUntil(null));
     supabase.from("profiles").select("is_premium, premium_until, sport").eq("id", userId).maybeSingle()
       .then(({ data }) => {
         if (data) {
@@ -202,7 +206,8 @@ function useSubscription(userId) {
     if (userId) await supabase.from("profiles").update({ sport: s }).eq("id", userId);
   };
 
-  return { isPremium, loadingPremium, sport, setSport };
+  const hasAnalysis = !!analysisUntil && analysisUntil > new Date();
+  return { isPremium, loadingPremium, sport, setSport, analysisUntil, hasAnalysis };
 }
 
 // Annonce globale (bannière visible par tous les utilisateurs) + statut admin.
@@ -252,16 +257,24 @@ function useAnnouncement(userId) {
   return { announcement, dismiss, isAdmin, canManageWellness, canUseMatchmode, canUseMyteam, publish, deactivate };
 }
 
-async function startCheckout(priceId) {
+// Pack « Analyse » : abonnement ANNUEL de 200 € (Scouting report + Mon équipe). Renseigne ici l'identifiant du prix créé dans Stripe.
+const PRICE_ANALYSIS_YEARLY = "price_A_REMPLACER";
+async function startCheckout(priceId, kind = "premium") {
+  if (priceId === "price_A_REMPLACER") throw new Error("L'offre n'est pas encore ouverte : reviens très bientôt.");
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Non connecté.");
 
-  // Vérifie si déjà premium pour éviter un double abonnement
+  // Vérifie si déjà abonné (au même produit) pour éviter un double abonnement
   const { data: profile } = await supabase.from("profiles")
     .select("stripe_customer_id, is_premium, premium_until").eq("id", user.id).maybeSingle();
 
-  if (profile?.is_premium && profile?.premium_until && new Date(profile.premium_until) > new Date()) {
+  if (kind === "premium" && profile?.is_premium && profile?.premium_until && new Date(profile.premium_until) > new Date()) {
     throw new Error("Tu as déjà un abonnement actif jusqu'au " + new Date(profile.premium_until).toLocaleDateString("fr-FR") + ".");
+  }
+  if (kind === "analysis") {
+    const { data: an, error: anErr } = await supabase.from("profiles").select("analysis_until").eq("id", user.id).maybeSingle();
+    if (!anErr && an?.analysis_until && new Date(an.analysis_until) > new Date())
+      throw new Error("Tu as déjà accès aux analyses jusqu'au " + new Date(an.analysis_until).toLocaleDateString("fr-FR") + ". Tu pourras t'abonner à la fin de cette période.");
   }
 
   const res = await fetch("/api/create-checkout-session", {
@@ -269,6 +282,7 @@ async function startCheckout(priceId) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       priceId,
+      kind,
       successUrl: window.location.origin + "?premium=success",
       cancelUrl: window.location.origin + "?premium=cancel",
       userId: user.id,
@@ -309,6 +323,39 @@ async function openBillingPortal() {
   if (data.error) throw new Error(data.error);
   if (data.url) window.location.href = data.url;
   else throw new Error("Impossible d'ouvrir le portail client.");
+}
+
+function AnalysisPaywall({ what }) {
+  const [loading, setLoading] = useState(false);
+  const cpbAlert = useAlert();
+  return (
+    <div className="max-w-xl mx-auto px-4 py-10">
+      <div className="bg-white rounded-3xl shadow-lg overflow-hidden border border-[#1B2A4A]/10">
+        <div className="bg-[#1B2A4A] px-6 py-6 text-center">
+          <div className="text-white/60 text-xs uppercase tracking-widest mb-1">Pack Analyse</div>
+          <div className="text-white font-bold text-2xl" style={{ fontFamily: "Oswald, sans-serif" }}>{what.toUpperCase()}</div>
+        </div>
+        <div className="px-6 py-6">
+          <p className="text-sm text-[#1B2A4A]/70 mb-4 text-center">Cet onglet fait partie du pack Analyse, pensé pour les staffs qui préparent leurs matchs.</p>
+          <div className="space-y-2 mb-5">
+            {["Scouting report : fiches joueurs adverses (stats, close-out, zones de tir, tes notes) en PDF A4", "Mon équipe : box score, rotations par poste, +/- par joueur, face-à-face, pertes et rebonds offensifs, moyennes sur plusieurs matchs", "Imports LiveStats FIBA, StatsPro (CSV), play-by-play LNB, Excel et XML de tirs", "Exports prêts à imprimer ou à partager avec ton staff"].map(f => (
+              <div key={f} className="flex items-start gap-2 text-sm text-[#1B2A4A]"><Check size={15} className="text-[#FF6B35] flex-shrink-0 mt-0.5" />{f}</div>
+            ))}
+          </div>
+          <div className="text-center mb-4">
+            <span className="text-4xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>200 €</span>
+            <span className="text-[#1B2A4A]/50 text-sm"> / an</span>
+            <div className="text-xs text-[#1B2A4A]/50 mt-1">Engagement annuel, renouvelé chaque année — résiliable à tout moment pour l'échéance suivante.</div>
+          </div>
+          <button disabled={loading} onClick={async () => { setLoading(true); try { await startCheckout(PRICE_ANALYSIS_YEARLY, "analysis"); } catch (e) { await cpbAlert(e.message); } setLoading(false); }}
+            className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors disabled:opacity-60 flex items-center justify-center gap-2" style={{ fontFamily: "Oswald, sans-serif" }}>
+            {loading ? <><Loader2 size={16} className="animate-spin" /> Chargement...</> : "S'ABONNER — 200 € / AN"}
+          </button>
+          <p className="text-[11px] text-[#1B2A4A]/40 text-center mt-3">Paiement sécurisé par Stripe. Les abonnés Premium au lancement bénéficient d'un accès offert jusqu'au 30 juin 2027.</p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function PaywallModal({ onClose, reason }) {
@@ -9858,8 +9905,9 @@ function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAl
 }
 
 function CoachingProBoost({ session }) {
-  const { isPremium, sport, setSport } = useSubscription(session?.user?.id);
+  const { isPremium, sport, setSport, hasAnalysis, analysisUntil } = useSubscription(session?.user?.id);
   const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, canUseMatchmode, canUseMyteam, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
+  const canAnalysis = isAdmin || canUseMyteam || hasAnalysis;   // Scouting report + Mon équipe
   const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, teamAnalyses, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
@@ -11521,8 +11569,8 @@ function CoachingProBoost({ session }) {
               ...(isAdmin ? [{ key: "suivi", label: "Suivi individuel (admin)", icon: UserCheck }] : []),
               ...(isAdmin || canUseMatchmode ? [{ key: "matchmode", label: isAdmin ? "Mode match (admin)" : "Mode match", icon: Zap }] : []),
               ...(isAdmin ? [{ key: "videoscout", label: "Scouting vidéo (admin)", icon: Video }] : []),
-              ...(isAdmin ? [{ key: "scoutreport", label: "Scouting report (admin)", icon: FileText }] : []),
-              ...(isAdmin || canUseMyteam ? [{ key: "myteam", label: isAdmin ? "Mon équipe (admin)" : "Mon équipe", icon: BarChart3 }] : []),
+              { key: "scoutreport", label: isAdmin ? "Scouting report (admin)" : canAnalysis ? "Scouting report" : "Scouting report 🔒", icon: FileText },
+              { key: "myteam", label: isAdmin ? "Mon équipe (admin)" : canAnalysis ? "Mon équipe" : "Mon équipe 🔒", icon: BarChart3 },
               ...(isAdmin || canManageWellness ? [{ key: "wellness", label: "Bien-être joueurs", icon: UserCheck }] : []),
               { key: "account", label: "Mon compte", icon: Users },
             ].map(item => {
@@ -14145,7 +14193,9 @@ function CoachingProBoost({ session }) {
           );
         })()}
 
-        {view === "scoutreport" && isAdmin && (() => {
+        {view === "scoutreport" && !canAnalysis && <AnalysisPaywall what="Scouting report" />}
+        {view === "myteam" && !canAnalysis && <AnalysisPaywall what="Mon équipe" />}
+        {view === "scoutreport" && canAnalysis && (() => {
           const activeSr = scoutReports.find(r => r.id === activeScoutReportId) || null;
           const updateActiveSr = (patch) => saveScoutReports(scoutReports.map(r => r.id === activeScoutReportId ? { ...r, ...patch } : r));
           const inputCls = "w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60";
@@ -14428,7 +14478,7 @@ function CoachingProBoost({ session }) {
           );
         })()}
 
-        {view === "myteam" && (isAdmin || canUseMyteam) && (() => {
+        {view === "myteam" && canAnalysis && (() => {
           const activeTa = teamAnalyses.find(a => a.id === activeTeamAnalysisId) || null;
           const updateActiveTa = (patch) => saveTeamAnalyses(teamAnalyses.map(a => a.id === activeTeamAnalysisId ? { ...a, ...patch } : a));
           // Un seul bouton d'import : le type de fichier (cinq alignés ou box score) est reconnu

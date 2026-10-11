@@ -12,6 +12,20 @@ async function getRawBody(req) {
   });
 }
 
+// Pack « Analyse » (Scouting report + Mon équipe) : abonnement annuel distinct du Premium, reconnu à son prix Stripe.
+const ANALYSIS_PRICE = process.env.STRIPE_PRICE_ANALYSIS_YEARLY;
+const isAnalysisSub = (sub) => !!ANALYSIS_PRICE && (sub.items?.data || []).some(i => i.price?.id === ANALYSIS_PRICE);
+
+// Accorde l'accès jusqu'à `untilISO` sans jamais raccourcir un accès déjà offert (ex. gratuité des abonnés Premium jusqu'au 30 juin).
+async function grantAnalysis(supabase, customerId, untilISO, subId) {
+  const { data: p } = await supabase.from("profiles").select("analysis_until").eq("stripe_customer_id", customerId).maybeSingle();
+  const cur = p?.analysis_until ? new Date(p.analysis_until).getTime() : 0;
+  const next = Math.max(cur, new Date(untilISO).getTime());
+  await supabase.from("profiles")
+    .update({ analysis_until: new Date(next).toISOString(), analysis_subscription_id: subId })
+    .eq("stripe_customer_id", customerId);
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
@@ -40,9 +54,13 @@ export default async function handler(req, res) {
       const premiumUntil = sub.current_period_end
         ? new Date(sub.current_period_end * 1000).toISOString()
         : null;
-      await supabase.from("profiles")
-        .update({ is_premium: true, stripe_subscription_id: subId, stripe_customer_id: customerId, premium_until: premiumUntil })
-        .eq("stripe_customer_id", customerId);
+      if (isAnalysisSub(sub)) {
+        if (premiumUntil) await grantAnalysis(supabase, customerId, premiumUntil, subId);
+      } else {
+        await supabase.from("profiles")
+          .update({ is_premium: true, stripe_subscription_id: subId, stripe_customer_id: customerId, premium_until: premiumUntil })
+          .eq("stripe_customer_id", customerId);
+      }
     }
   }
 
@@ -52,16 +70,24 @@ export default async function handler(req, res) {
     const premiumUntil = sub.current_period_end
       ? new Date(sub.current_period_end * 1000).toISOString()
       : null;
-    await supabase.from("profiles")
-      .update({ is_premium: isActive, stripe_subscription_id: sub.id, premium_until: premiumUntil })
-      .eq("stripe_customer_id", sub.customer);
+    if (isAnalysisSub(sub)) {
+      if (isActive && premiumUntil) await grantAnalysis(supabase, sub.customer, premiumUntil, sub.id);
+    } else {
+      await supabase.from("profiles")
+        .update({ is_premium: isActive, stripe_subscription_id: sub.id, premium_until: premiumUntil })
+        .eq("stripe_customer_id", sub.customer);
+    }
   }
 
   if (event.type === "customer.subscription.deleted") {
     const sub = event.data.object;
     const now = Date.now();
     const periodEnd = sub.current_period_end ? sub.current_period_end * 1000 : 0;
-    if (periodEnd > now) {
+    if (isAnalysisSub(sub)) {
+      // Résiliation du pack Analyse : l'accès reste ouvert jusqu'à la fin de la période déjà payée.
+      if (periodEnd > now) await grantAnalysis(supabase, sub.customer, new Date(periodEnd).toISOString(), null);
+      else await supabase.from("profiles").update({ analysis_subscription_id: null }).eq("stripe_customer_id", sub.customer);
+    } else if (periodEnd > now) {
       await supabase.from("profiles")
         .update({ is_premium: true, premium_until: new Date(periodEnd).toISOString() })
         .eq("stripe_customer_id", sub.customer);
@@ -74,7 +100,9 @@ export default async function handler(req, res) {
 
   if (event.type === "invoice.payment_failed") {
     const obj = event.data.object;
-    await supabase.from("profiles")
+    const forAnalysis = !!ANALYSIS_PRICE && (obj.lines?.data || []).some(l => l.price?.id === ANALYSIS_PRICE);
+    // Paiement du pack Analyse refusé : l'accès n'est simplement pas prolongé (il s'arrête à la fin de la période payée).
+    if (!forAnalysis) await supabase.from("profiles")
       .update({ is_premium: false, stripe_subscription_id: null, premium_until: null })
       .eq("stripe_customer_id", obj.customer);
   }
