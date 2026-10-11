@@ -351,7 +351,7 @@ function AnalysisPaywall({ what }) {
             className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors disabled:opacity-60 flex items-center justify-center gap-2" style={{ fontFamily: "Oswald, sans-serif" }}>
             {loading ? <><Loader2 size={16} className="animate-spin" /> Chargement...</> : "S'ABONNER — 200 € / AN"}
           </button>
-          <p className="text-[11px] text-[#1B2A4A]/40 text-center mt-3">Paiement sécurisé par Stripe. Les abonnés Premium au lancement bénéficient d'un accès offert jusqu'au 30 juin 2027.</p>
+          <p className="text-[11px] text-[#1B2A4A]/40 text-center mt-3">Paiement sécurisé par Stripe.</p>
         </div>
       </div>
     </div>
