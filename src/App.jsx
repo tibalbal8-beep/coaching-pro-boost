@@ -2032,7 +2032,8 @@ function buildScoutReportHtml(r, logo = null) {
   const es = r.extraStats, extraHtml = es ? `<section class="card"><h2><i></i>Statistiques supplémentaires (par match)</h2><div class="bs-kpis">${[["Points sur seconde chance", es.secondChance], ["Points dans la raquette", es.paint], ["Points sur balles perdues", es.offTov], ["Points de contre-attaque", es.fastBreak]].filter(x => x[1] !== undefined).map(([l, v]) => `<div class="bs-kpi"><b>${f1(v)}</b><span>${l}</span></div>`).join("")}</div></section>` : "";
   const notes = (r.notes || "").trim() ? `<section class="card"><h2><i></i>Notes du coach</h2><p style="white-space:pre-wrap;font-size:14px;line-height:1.5">${esc(r.notes)}</p></section>` : "";
   const shotsAll = r.shots || [];
-  const withShots = merged.map(p => ({ ...p, shotList: shotsAll.filter(s => sameScoutName(s.n, p.name)) }));
+  const alias = r.shotAlias || {};   // nom écrit autrement dans le XML → joueur choisi à la main
+  const withShots = merged.map(p => ({ ...p, shotList: shotsAll.filter(s => alias[scoutKey({ name: s.n })] ? alias[scoutKey({ name: s.n })] === scoutKey(p) : sameScoutName(s.n, p.name)) }));
   const players = playersReportHtml({ list: withShots, photos, manual }, r.opponent);
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -14205,7 +14206,7 @@ function CoachingProBoost({ session }) {
               const id = uid(), mine = fi.shots.filter(x => x.t === team);
               mine.forEach(x => {
                 newShots.push({ f: id, n: x.n, m: x.m, th: x.th, c: x.c, u: x.u, v: x.v });
-                if (!known.some(k => sameScoutName(k.name, x.n)) && !add.some(a => sameScoutName(a.name, x.n))) add.push({ name: x.n, ...(x.num ? { num: +x.num } : {}) });
+                if (!(activeSr.shotAlias || {})[scoutKey({ name: x.n })] && !known.some(k => sameScoutName(k.name, x.n)) && !add.some(a => sameScoutName(a.name, x.n))) add.push({ name: x.n, fromXml: true, ...(x.num ? { num: +x.num } : {}) });
               });
               newFiles.push({ id, name: fi.fileName, team, count: mine.length });
             });
@@ -14365,6 +14366,20 @@ function CoachingProBoost({ session }) {
                           <button onClick={() => updateActiveSr({ extraPlayers: (activeSr.extraPlayers || []).filter(x => scoutKey(x) !== k) })} className="text-[#1B2A4A]/30 hover:text-red-600"><Trash2 size={14} /></button>
                         )}
                       </div>
+                      {(activeSr.extraPlayers || []).some(x => scoutKey(x) === k && x.fromXml) && (
+                        <div className="flex items-center gap-2 flex-wrap mb-2 p-2 rounded-md text-xs text-[#1B2A4A]" style={{ background: "rgba(255,107,53,.1)" }}>
+                          <span>Ce joueur vient du fichier de tirs (XML) et n'a pas été reconnu : c'est peut-être un joueur déjà présent, écrit autrement.</span>
+                          <select defaultValue="" onChange={e => {
+                            const target = merged.find(x => scoutKey(x) === e.target.value); if (!target) return;
+                            const x0 = (activeSr.extraPlayers || []).find(x => scoutKey(x) === k);
+                            updateActiveSr({ shotAlias: { ...(activeSr.shotAlias || {}), [scoutKey({ name: x0.name })]: scoutKey(target) }, extraPlayers: (activeSr.extraPlayers || []).filter(x => scoutKey(x) !== k) });
+                            toast?.(`✓ Tirs associés à ${target.name}`);
+                          }} className="border border-[#1B2A4A]/20 rounded px-2 py-1 bg-white">
+                            <option value="">Associer ses tirs à…</option>
+                            {merged.filter(x => scoutKey(x) !== k && !(activeSr.extraPlayers || []).some(e => scoutKey(e) === scoutKey(x) && e.fromXml)).map(x => <option key={scoutKey(x)} value={scoutKey(x)}>{x.num !== null && x.num !== undefined ? `#${x.num} ` : ""}{x.name}</option>)}
+                          </select>
+                        </div>
+                      )}
                       <div className="grid sm:grid-cols-2 gap-2">
                         <div><div className={lbl}>Poste / rôle</div><input value={m.role || ""} onChange={e => setMan(p, { role: e.target.value })} placeholder="Ex: meneur, 4 shooteur…" className={inputCls} /></div>
                         <div><div className={lbl}>Close-out</div>
