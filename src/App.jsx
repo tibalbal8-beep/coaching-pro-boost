@@ -3455,7 +3455,7 @@ function buildTeamReportHtml(a, logo = null) {
       ${logo ? `<img src="${logo}" alt="Logo" class="hero-logo" />` : ""}
       <div class="kicker">Analyse de mon équipe</div>
       <h1>${esc(a.name)}</h1>
-      <div class="meta">${[box?.fileName, a.lineupsFile].filter(Boolean).map(esc).join(" · ") || "Aucun fichier importé"}</div>
+      <div class="meta">${[ (a.date || (a.createdAt || "").slice(0, 10)) ? "Analyse du " + new Date((a.date || a.createdAt.slice(0, 10)) + "T12:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) : "", ...(a.rotations && a.rotations.length ? [] : [box?.fileName, a.lineupsFile])].filter(Boolean).map(esc).join(" · ") || "Aucun fichier importé"}</div>
       ${kpis.length ? `<div class="kpis">${kpis.map(([v, l]) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join("")}</div>` : ""}
     </header>
     ${a.notes ? `<section class="card"><h2><i></i>Notes</h2><p class="notes-text">${esc(a.notes).replace(/\n/g, "<br>")}</p></section>` : ""}
@@ -10578,6 +10578,7 @@ function CoachingProBoost({ session }) {
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
   const [taMom, setTaMom] = useState({}), [taOpen, setTaOpen] = useState({});
   const [taLnbOpen, setTaLnbOpen] = useState(false), [taLnbText, setTaLnbText] = useState("");
+  const [taRenameId, setTaRenameId] = useState(null), [taRenameText, setTaRenameText] = useState("");
   const [taWizard, setTaWizard] = useState(null), [taWizTab, setTaWizTab] = useState("live"), [taSetup, setTaSetup] = useState(false);
   const [taFibaUrl, setTaFibaUrl] = useState(""), [taFibaPending, setTaFibaPending] = useState(null), [taFibaBusy, setTaFibaBusy] = useState(false);
   // Scouting report joueurs (voir view === "scoutreport")
@@ -14600,9 +14601,14 @@ function CoachingProBoost({ session }) {
                 )}
                 <button onClick={() => setActiveTeamAnalysisId(null)} className="text-sm text-[#1B2A4A]/60 hover:text-[#1B2A4A] mb-3">← Mes analyses</button>
                 <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
-                  <input value={activeTa.name} onChange={e => updateActiveTa({ name: e.target.value })}
-                    className="text-2xl font-bold text-[#1B2A4A] bg-transparent outline-none border-b border-transparent focus:border-[#FF6B35] min-w-0 flex-1"
-                    style={{ fontFamily: "Oswald, sans-serif" }} />
+                  <div className="min-w-0 flex-1">
+                    <input value={activeTa.name} onChange={e => updateActiveTa({ name: e.target.value })} title="Clique pour renommer l'analyse"
+                      className="text-2xl font-bold text-[#1B2A4A] bg-transparent outline-none border-b border-transparent focus:border-[#FF6B35] w-full"
+                      style={{ fontFamily: "Oswald, sans-serif" }} />
+                    <label className="text-xs text-[#1B2A4A]/50 flex items-center gap-1.5 mt-1">Analyse du
+                      <input type="date" value={activeTa.date || (activeTa.createdAt || "").slice(0, 10)} onChange={e => updateActiveTa({ date: e.target.value || null })} className="border border-[#1B2A4A]/15 rounded px-1.5 py-0.5 text-xs bg-white/70 text-[#1B2A4A]" />
+                    </label>
+                  </div>
                   <div className="flex gap-2 flex-wrap">
                     <label className="text-sm font-semibold text-white px-3 py-2 rounded-md cursor-pointer" style={{ backgroundColor: "#16a34a" }}>
                       📊 Importer un Excel
@@ -14817,11 +14823,25 @@ function CoachingProBoost({ session }) {
                 </button>
               </div>
               <div className="flex flex-col gap-2">
-                {[...teamAnalyses].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)).map(a => (
-                  <div key={a.id} onClick={() => setActiveTeamAnalysisId(a.id)}
+                {[...teamAnalyses].sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0)).map(a => (
+                  <div key={a.id} onClick={() => { if (taRenameId !== a.id) setActiveTeamAnalysisId(a.id); }}
                     className="flex items-center justify-between border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 cursor-pointer hover:border-[#FF6B35] hover:shadow-md transition-all">
-                    <div>
-                      <div className="font-semibold text-[#1B2A4A]">{a.name}</div>
+                    <div className="min-w-0 flex-1">
+                      {taRenameId === a.id ? (
+                        <input autoFocus value={taRenameText} onClick={e => e.stopPropagation()} onChange={e => setTaRenameText(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") { saveTeamAnalyses(teamAnalyses.map(x => x.id === a.id ? { ...x, name: taRenameText.trim() || x.name } : x)); setTaRenameId(null); } else if (e.key === "Escape") setTaRenameId(null); }}
+                          onBlur={() => { saveTeamAnalyses(teamAnalyses.map(x => x.id === a.id ? { ...x, name: taRenameText.trim() || x.name } : x)); setTaRenameId(null); }}
+                          className="w-full font-semibold text-[#1B2A4A] border-b border-[#FF6B35] bg-transparent outline-none" />
+                      ) : (
+                        <div className="font-semibold text-[#1B2A4A] flex items-center gap-2">{a.name}
+                          <button onClick={(e) => { e.stopPropagation(); setTaRenameText(a.name); setTaRenameId(a.id); }} title="Renommer" className="text-[#1B2A4A]/30 hover:text-[#FF6B35]"><Pencil size={13} /></button>
+                        </div>
+                      )}
+                      <div className="text-xs text-[#1B2A4A]/50 flex items-center gap-1.5 flex-wrap mb-0.5" onClick={e => e.stopPropagation()}>
+                        Analyse du
+                        <input type="date" value={a.date || (a.createdAt || "").slice(0, 10)} onChange={e => saveTeamAnalyses(teamAnalyses.map(x => x.id === a.id ? { ...x, date: e.target.value || null } : x))}
+                          className="border border-[#1B2A4A]/15 rounded px-1.5 py-0.5 text-xs bg-white/70 text-[#1B2A4A]" />
+                      </div>
                       <div className="text-xs text-[#1B2A4A]/50">{[(a.lineups || []).length ? `${a.lineups.length} cinq` : "", a.boxScore ? `${(a.boxScore.games || []).length} matchs` : ""].filter(Boolean).join(" · ") || "Aucun fichier importé"}</div>
                     </div>
                     <button onClick={async (e) => {
