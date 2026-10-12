@@ -1216,6 +1216,7 @@ const SCOUT_REPORT_CSS = `
   .pl-sp{margin:6px 0}.pl-spbar{display:flex;height:9px;border-radius:5px;overflow:hidden;background:#1B2A4A12}.pl-spbar i{display:block;height:100%}
   .pl-splab{font-size:11.5px;color:#1B2A4Acc;margin-top:3px;line-height:1.35}.pl-splab em{color:#1B2A4A80}
   .shot-chart{width:100%;height:auto;display:block;border-radius:8px}.pl-chart{margin:8px 0}.pl-chartcap{font-size:10.5px;color:#1B2A4A80;margin-top:3px}
+  .pl-lowtag{font-size:11px;color:#b45309;background:#f59e0b1a;border-radius:6px;padding:4px 8px;margin:4px 0}
   .pl-role{font-size:10.5px;font-weight:600;background:#1B2A4A12;border-radius:10px;padding:1px 8px;margin-left:4px;white-space:nowrap}
   .pl-man{display:flex;flex-direction:column;gap:1px;border-left:4px solid;border-radius:8px;padding:5px 9px;margin:5px 0;font-size:12.5px;line-height:1.4}
   .pl-man b{font-size:11.5px;text-transform:uppercase;letter-spacing:.4px}.pl-man span{color:#1B2A4Acc}
@@ -1894,7 +1895,9 @@ function playersReportHtml(pl, opponent) {
   const hasMan = (m) => !!(m && (m.role || m.strengths || m.weaknesses || m.instruction || m.closeout));
   const shown = list.filter(p => !(manual[playerKey(p)] || {}).hidden);
   const sorted = [...shown].sort((a, b) => (b.min || 0) * (b.gp || 0) - (a.min || 0) * (a.gp || 0));
-  const isMain = (p) => !playerLowSample(p) || hasMan(manual[playerKey(p)]) || (p.shotList || []).length >= 5;
+  // Tous les joueurs apparaissent avec leurs stats ; les constats (et le close-out automatique) ne s'activent qu'avec un échantillon suffisant ou une validation manuelle
+  const isMain = () => true;
+  const lowEff = (p) => playerLowSample(p) && !(pl.includeAll || (manual[playerKey(p)] || {}).forceSample);
   let chartId = 0;
   const nbMatchs = new Set(list.flatMap(p => (p.shotList || []).map(s => s.f))).size;
   const main = sorted.filter(isMain), low = sorted.filter(p => !isMain(p));
@@ -1902,7 +1905,7 @@ function playersReportHtml(pl, opponent) {
   const lines = (t) => esc(t).replace(/\n/g, "<br>");
   const coBlock = (co) => `<div class="pl-co pl-co-${co.lvl}"><b>Close-out : ${co.label}</b><span>${esc(co.why)}</span></div>`;
   const card = (p) => {
-    const m = manual[playerKey(p)] || {}, lowS = playerLowSample(p);
+    const m = manual[playerKey(p)] || {}, lowS = lowEff(p), rawLow = playerLowSample(p);
     const ins = lowS ? { good: [], watch: [], how: [] } : playerInsights(p);
     const shots = p.shotList || [], si = shotInsights(shots);
     ins.good.push(...si.good); ins.watch.push(...si.watch);
@@ -1912,12 +1915,13 @@ function playersReportHtml(pl, opponent) {
     const kp = (v, l) => `<div class="pl-k"><b>${v}</b><span>${l}</span></div>`;
     const shot = (a, b) => b ? `${f1(a)}/${f1(b)} (${pc(a / b)})` : "—";
     const hasStats = p.gp !== null && p.gp !== undefined && p.pts !== null && p.pts !== undefined;
-    const sub = hasStats ? `${p.gp} match${p.gp > 1 ? "s" : ""} · ${mmss(p.min)} min / match${lowS ? " · échantillon faible" : ""}` : "";
+    const sub = hasStats ? `${p.gp} match${p.gp > 1 ? "s" : ""} · ${mmss(p.min)} min / match${lowS ? " · échantillon faible" : rawLow ? " · petit échantillon pris en compte" : ""}` : "";
     return `<div class="pl-card">
       <div class="pl-head">${avatar}<div><div class="pl-name">${p.num !== null && p.num !== undefined ? `<span class="pl-num">#${esc(p.num)}</span> ` : ""}${esc(p.name)}${m.role ? ` <span class="pl-role">${esc(m.role)}</span>` : ""}</div>
       ${sub ? `<div class="pl-sub">${sub}</div>` : ""}</div></div>
-      ${hasStats && !lowS ? `<div class="pl-kpis">${kp(f1(p.pts), "pts")}${kp(f1(p.reb), "reb")}${kp(f1(p.ast), "passes")}${kp(pc(p.ts), "TS %")}${kp(pc(p.usg), "usage")}</div>
-      <div class="pl-shots">Tirs <b>${shot(p.fgm, p.fga)}</b> · 3 pts <b>${shot(p.tpm, p.tpa)}</b> · LF <b>${shot(p.ftm, p.fta)}</b></div>` : ""}
+      ${hasStats ? `<div class="pl-kpis">${kp(f1(p.pts), "pts")}${kp(f1(p.reb), "reb")}${kp(f1(p.ast), "passes")}${kp(pc(p.ts), "TS %")}${kp(pc(p.usg), "usage")}</div>
+      <div class="pl-shots">Tirs <b>${shot(p.fgm, p.fga)}</b> · 3 pts <b>${shot(p.tpm, p.tpa)}</b> · LF <b>${shot(p.ftm, p.fta)}</b></div>
+      ${lowS ? `<div class="pl-lowtag">⚠ Échantillon faible (${p.gp} match${p.gp > 1 ? "s" : ""}, ${mmss(p.min)} min en moyenne) : stats données à titre indicatif, constats automatiques désactivés.</div>` : ""}` : ""}
       ${sp ? (() => { const w = (x) => Math.round(x * 100); const line = sp.rim < 0.15 ? "Ne va presque jamais finir près du cercle." : sp.out >= 0.55 ? "Joueur surtout extérieur." : sp.rim >= 0.4 ? "Finit surtout près du cercle." : ""; return `<div class="pl-sp"><div class="pl-spbar"><i style="width:${w(sp.rim)}%;background:#ea580c"></i><i style="width:${w(sp.mid)}%;background:#a3a3a3"></i><i style="width:${w(sp.out)}%;background:#2563EB"></i></div><div class="pl-splab">Profil de tir <em>(${spr ? `mesuré sur ${spr.n} tirs` : "estimé"})</em> : <b style="color:#ea580c">${w(sp.rim)} % près du cercle</b> · <b style="color:#737373">${w(sp.mid)} % mi-distance/autres</b> · <b style="color:#2563EB">${w(sp.out)} % à 3 pts</b>${line ? ` — ${line}` : ""}</div></div>`; })() : ""}
       ${shots.length >= 3 ? `<div class="pl-chart">${shotChartSvg(shots, { id: ++chartId })}<div class="pl-chartcap">${shots.length} tirs observés${nbMatchs > 1 ? ` sur ${nbMatchs} matchs` : ""} · ● réussi · ✕ raté · % et réussis-tentés par zone</div></div>` : ""}
       ${co ? coBlock(co) : ""}
@@ -1930,11 +1934,11 @@ function playersReportHtml(pl, opponent) {
     </div>`;
   };
   const grp = { red: [], blue: [], green: [] };
-  main.forEach(p => { const m = manual[playerKey(p)] || {}; const lvl = m.closeout || (playerLowSample(p) ? null : playerCloseout(p).lvl); if (lvl) grp[lvl].push(`${p.num !== null && p.num !== undefined ? "#" + esc(p.num) + " " : ""}${esc(p.name)}`); });
+  main.forEach(p => { const m = manual[playerKey(p)] || {}; const lvl = m.closeout || (lowEff(p) ? null : playerCloseout(p).lvl); if (lvl) grp[lvl].push(`${p.num !== null && p.num !== undefined ? "#" + esc(p.num) + " " : ""}${esc(p.name)}`); });
   const row = (k) => grp[k].length ? `<div class="pl-co pl-co-${k}"><b>${CO[k]}</b><span>${grp[k].join(" · ")}</span></div>` : "";
   const sum = (grp.red.length + grp.blue.length + grp.green.length) ? `<div class="pl-cosum"><div class="pl-cot">Intensité du close-out</div>${row("red")}${row("blue")}${row("green")}</div>` : "";
   return `<section class="card"><h2><i></i>Les joueurs${opponent ? " de " + esc(opponent) : ""}</h2>
-    <p class="muted">Moyennes par match issues des fichiers importés. Le profil de tir est mesuré quand un XML de tirs est importé, sinon estimé d'après les types d'action. Les constats ne sont donnés qu'à partir de 3 matchs et 8 minutes de moyenne, et sur un volume de tirs suffisant.</p>
+    <p class="muted">Moyennes par match issues des fichiers importés. Le profil de tir est mesuré quand un XML de tirs est importé, sinon estimé d'après les types d'action. Les constats automatiques ne sont donnés qu'à partir de 3 matchs et 8 minutes de moyenne (les autres joueurs figurent avec leurs stats, marquées « échantillon faible », sauf si tu les valides toi-même).</p>
     ${sum}
     <div class="pl-grid">${main.map(card).join("")}</div>
     ${low.length ? `<p class="muted pl-low"><b>Échantillon trop faible pour conclure :</b> ${low.map(p => `${p.num !== null && p.num !== undefined ? "#" + esc(p.num) + " " : ""}${esc(p.name)}${p.gp ? ` (${p.gp} match${p.gp > 1 ? "s" : ""}, ${mmss(p.min)} min)` : ""}`).join(" · ")}.</p>` : ""}
@@ -2081,7 +2085,7 @@ function buildScoutReportHtml(r, logo = null) {
   const shotsAll = r.shots || [];
   const alias = r.shotAlias || {};   // nom écrit autrement dans le XML → joueur choisi à la main
   const withShots = merged.map(p => ({ ...p, shotList: shotsAll.filter(s => alias[scoutKey({ name: s.n })] ? alias[scoutKey({ name: s.n })] === scoutKey(p) : sameScoutName(s.n, p.name)) }));
-  const players = playersReportHtml({ list: withShots, photos, manual }, r.opponent);
+  const players = playersReportHtml({ list: withShots, photos, manual, includeAll: r.includeAll }, r.opponent);
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -14415,7 +14419,10 @@ function CoachingProBoost({ session }) {
               </div>
 
               <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                <div className={lbl + " mb-0"}>Joueurs ({merged.length})</div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className={lbl + " mb-0"}>Joueurs ({merged.length})</div>
+                  <label className="text-xs text-[#1B2A4A]/70 flex items-center gap-1" title="Sinon, les joueurs de moins de 3 matchs ou 8 minutes figurent avec leurs stats mais sans constats automatiques"><input type="checkbox" checked={!!activeSr.includeAll} onChange={e => updateActiveSr({ includeAll: e.target.checked })} /> Valider tous les échantillons (constats pour tous)</label>
+                </div>
                 <div className="flex items-center gap-2">
                   <input value={srAddName} onChange={e => setSrAddName(e.target.value)} placeholder="Nom d'un joueur à ajouter" className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-sm bg-white/60" />
                   <button onClick={() => {
@@ -14445,6 +14452,7 @@ function CoachingProBoost({ session }) {
                           <div className="font-semibold text-[#1B2A4A] truncate">{p.num !== null && p.num !== undefined ? `#${p.num} ` : ""}{p.name}</div>
                           <div className="text-xs text-[#1B2A4A]/50">{p.gp ? `${p.gp} match${p.gp > 1 ? "s" : ""} · ${f1(p.min)} min · ${f1(p.pts)} pts · ${f1(p.reb)} reb · ${f1(p.ast)} pds` : "Pas de stats importées"}</div>
                         </div>
+                        <label className="text-xs text-[#1B2A4A]/60 flex items-center gap-1 shrink-0" title="Active les constats automatiques et le close-out pour ce joueur même avec peu de matchs"><input type="checkbox" checked={!!m.forceSample} onChange={e => setMan(p, { forceSample: e.target.checked })} /> Échantillon validé</label>
                         <label className="text-xs text-[#1B2A4A]/60 flex items-center gap-1 shrink-0"><input type="checkbox" checked={!!m.hidden} onChange={e => setMan(p, { hidden: e.target.checked })} /> Masquer</label>
                         {(activeSr.extraPlayers || []).some(x => scoutKey(x) === k) && (
                           <button onClick={() => updateActiveSr({ extraPlayers: (activeSr.extraPlayers || []).filter(x => scoutKey(x) !== k) })} className="text-[#1B2A4A]/30 hover:text-red-600"><Trash2 size={14} /></button>
