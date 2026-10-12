@@ -3643,10 +3643,12 @@ function mergeAttacksForDisplay(attacks) {
     // intention garde une clé à elle (elle est de toute façon écartée du classement).
     const key = [...byGroup.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([g, t]) => g + ":" + [...t].sort().join("+")).join("|")
       || "intention:" + ints.map(low).sort().join("+");
-    let m = merged.get(key);
+    // Regroupement manuel (plays jugés identiques par le coach) : tous les membres d'un même groupe n'en font qu'un
+    const gkey = a.manualGroup ? "manual:" + a.manualGroup : key;
+    let m = merged.get(gkey);
     if (!m) {
-      m = { ...a, key, memberKeys: [], name: "", count: 0, xmlOutcomes: [], xmlBonus: [], outcomes: [], byDefense: [], _orders: new Map(), _ints: new Map(), _others: others, _nameCount: 0 };
-      merged.set(key, m);
+      m = { ...a, key: gkey, memberKeys: [], name: "", count: 0, xmlOutcomes: [], xmlBonus: [], outcomes: [], byDefense: [], _orders: new Map(), _ints: new Map(), _others: others, _nameCount: 0 };
+      merged.set(gkey, m);
     }
     m.memberKeys.push(a.key);
     m.count += a.count;
@@ -10610,6 +10612,7 @@ function CoachingProBoost({ session }) {
   // Recherche dans les attaques importées (texte libre + libellés cliqués, ex. TOP52, Stagger)
   const [vsAtkQuery, setVsAtkQuery] = useState("");
   const [vsOrderOpen, setVsOrderOpen] = useState(false);
+  const [vsSelAtk, setVsSelAtk] = useState([]), [vsMergeName, setVsMergeName] = useState("");
   const [vsGlobalOpen, setVsGlobalOpen] = useState(false); // vue globale (récap affiché dans l'app)
   const [vsAtkFilters, setVsAtkFilters] = useState([]);
   const [vsAnnounceTfInput, setVsAnnounceTfInput] = useState("");
@@ -13328,6 +13331,20 @@ function CoachingProBoost({ session }) {
             setVsImportPreview(null);
           };
           const renameAttack = (id, name) => updateActiveVs({ attacks: (activeVs.attacks || []).map(a => a.id === id ? { ...a, name } : a) });
+          // Regrouper à la main des attaques qui sont en réalité le même play : mêmes statistiques cumulées dans le classement et le récap
+          const mergeSelectedAttacks = () => {
+            const all = activeVs.attacks || [], sel = all.filter(a => vsSelAtk.includes(a.id));
+            if (sel.length < 2) return;
+            const groups = new Set(sel.map(a => a.manualGroup).filter(Boolean)), gid = uid();
+            const members = all.filter(a => vsSelAtk.includes(a.id) || (a.manualGroup && groups.has(a.manualGroup)));
+            const biggest = [...members].sort((x, y) => y.count - x.count).find(a => a.name);
+            const nm = vsMergeName.trim() || biggest?.name || "";
+            const ids = new Set(members.map(a => a.id));
+            updateActiveVs({ attacks: all.map(a => ids.has(a.id) ? { ...a, manualGroup: gid, ...(nm ? { name: nm } : {}) } : a) });
+            toast?.(`✓ ${members.length} attaques regroupées${nm ? " en « " + nm + " »" : ""}`);
+            setVsSelAtk([]); setVsMergeName("");
+          };
+          const ungroupAttack = (a) => updateActiveVs({ attacks: (activeVs.attacks || []).map(x => x.manualGroup && x.manualGroup === a.manualGroup ? { ...x, manualGroup: null } : x) });
           // Envoie l'attaque dans le Playbook SANS l'y créer toute seule : ouvre le formulaire de play
           // pré-rempli pour que tu dessines le système puis l'enregistres (ou annules).
           const sendAttackToPlaybook = (a) => {
@@ -13815,13 +13832,23 @@ function CoachingProBoost({ session }) {
                       </div>
                       <p className="text-[11px] text-[#1B2A4A]/40 mt-1.5">{visibleAttacks.length}/{allAtks.length} attaque{allAtks.length > 1 ? "s" : ""}</p>
                     </div>
+                    {vsSelAtk.length >= 2 && (
+                      <div className="sticky top-0 z-10 mt-2 p-3 rounded-lg border border-[#2563EB]/40 bg-[#EEF3FF] flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold text-[#1B2A4A]">{vsSelAtk.length} attaques sélectionnées</span>
+                        <input value={vsMergeName} onChange={e => setVsMergeName(e.target.value)} placeholder="Nom du play regroupé (facultatif)" className="flex-1 min-w-[160px] border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white" />
+                        <button onClick={mergeSelectedAttacks} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "#2563EB" }}>🔗 Regrouper en un seul play</button>
+                        <button onClick={() => { setVsSelAtk([]); setVsMergeName(""); }} className="text-xs text-[#1B2A4A]/50 px-2">Annuler</button>
+                      </div>
+                    )}
+                    {vsSelAtk.length === 1 && <p className="text-[11px] text-[#2563EB] mt-2">Coche au moins une autre attaque pour les regrouper en un seul play.</p>}
                     <div className="flex flex-col gap-2 mt-2">
                       {visibleAttacks.length === 0 && <p className="text-xs text-[#1B2A4A]/40 italic">Aucune attaque ne correspond.</p>}
                       {visibleAttacks.map(a => {
                         const st = attackStats(a);
                         return (
-                          <div key={a.id} className="border border-[#1B2A4A]/15 rounded-xl bg-white p-3">
+                          <div key={a.id} className={`border rounded-xl bg-white p-3 ${vsSelAtk.includes(a.id) ? "border-[#2563EB] ring-1 ring-[#2563EB]/30" : "border-[#1B2A4A]/15"}`}>
                             <div className="flex items-center gap-2 mb-2">
+                              <input type="checkbox" checked={vsSelAtk.includes(a.id)} onChange={e => setVsSelAtk(s => e.target.checked ? [...s, a.id] : s.filter(x => x !== a.id))} title="Cocher pour regrouper avec d'autres attaques" className="flex-shrink-0 w-4 h-4" />
                               <input value={a.name || ""} onChange={e => renameAttack(a.id, e.target.value)}
                                 placeholder="Nom du play (si identifié)…" className="flex-1 min-w-0 text-sm font-semibold text-[#1B2A4A] border-b border-dashed border-[#1B2A4A]/25 focus:border-[#FF6B35] outline-none py-1 bg-transparent" />
                               <button onClick={() => sendAttackToPlaybook(a)} title="Ouvre le formulaire de play pré-rempli pour dessiner le système"
@@ -13829,6 +13856,12 @@ function CoachingProBoost({ session }) {
                                 {a.sent ? "✓ Envoyé · renvoyer" : "➜ Playbook"}
                               </button>
                             </div>
+                            {a.manualGroup && (
+                              <div className="flex items-center gap-2 mb-2 text-[11px] text-[#2563EB]">
+                                <span className="font-semibold">🔗 Regroupé avec {(activeVs.attacks || []).filter(x => x.manualGroup === a.manualGroup).length - 1} autre{(activeVs.attacks || []).filter(x => x.manualGroup === a.manualGroup).length - 1 > 1 ? "s" : ""} attaque{(activeVs.attacks || []).filter(x => x.manualGroup === a.manualGroup).length - 1 > 1 ? "s" : ""} (une seule ligne dans le classement et le récap)</span>
+                                <button onClick={() => ungroupAttack(a)} className="underline text-[#1B2A4A]/50 hover:text-red-600">Dégrouper</button>
+                              </div>
+                            )}
                             <div className="flex items-start justify-between gap-2 mb-2">
                               <div className="flex flex-wrap gap-1">
                                 {a.labels.map((l, i) => {
