@@ -583,6 +583,15 @@ function useStore(sport = DEFAULT_SPORT) {
   // même quand rien n'a changé, ce qui gonflait kv_store_history d'un instantané quasi identique
   // à chaque tick (320 Mo constatés). On n'écrit (et on ne snapshotte) que si ça a vraiment changé.
   const lastPersistedRef = useRef({});
+  // Historique (annulation) : une copie COMPLÈTE par clé au plus toutes les 15 min. Avant, chaque frappe dans un champ
+  // enregistré créait une copie entière (kv_store_history = 204 Mo sur 350 Mo le 13/10/2026).
+  const lastSnapAtRef = useRef({});
+  const snapshotThrottled = useCallback((key, value) => {
+    const now = Date.now();
+    if (now - (lastSnapAtRef.current[key] || 0) < 15 * 60 * 1000) return;
+    lastSnapAtRef.current[key] = now;
+    storage.snapshot(key, value).catch(() => {});
+  }, []);
   const persist = useCallback(async (key, value) => {
     if (lastPersistedRef.current[key] === value) return;
     const attempt = async () => {
@@ -610,9 +619,9 @@ function useStore(sport = DEFAULT_SPORT) {
     // retenté au prochain tick (30s) au lieu d'être oublié parce que la valeur "n'a pas changé".
     if (succeeded) {
       lastPersistedRef.current[key] = value;
-      storage.snapshot(key, value).catch(() => {});
+      snapshotThrottled(key, value);
     }
-  }, [persistAlert]);
+  }, [persistAlert, snapshotThrottled]);
 
   // Bug corrigé le 20/07/2026 : la plupart des exercices en mémoire ne portent PAS `file`/
   // `schemas` (chargés en lazy uniquement à l'affichage, jamais reversés dans l'état partagé
@@ -661,14 +670,14 @@ function useStore(sport = DEFAULT_SPORT) {
       const r = await storage.set(matchSessionsKey, JSON.stringify(data));
       if (!r) throw new Error("Storage set returned null for " + matchSessionsKey);
       setMatchSyncPending(false);
-      storage.snapshot(matchSessionsKey, JSON.stringify(data)).catch(() => {});
+      snapshotThrottled(matchSessionsKey, JSON.stringify(data));
       return true;
     } catch (e) {
       console.error("Match sync failed, will retry", e);
       setMatchSyncPending(true);
       return false;
     }
-  }, [matchSessionsKey]);
+  }, [matchSessionsKey, snapshotThrottled]);
   // Retente toutes les 10s tant qu'une écriture est en attente, et immédiatement dès que le
   // navigateur signale le retour du réseau ("online").
   useEffect(() => {
