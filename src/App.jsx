@@ -7233,6 +7233,8 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       { label: "Terrain complet", file: "/basketball-terrain-complet.png" },
       { label: "Demi-terrain ↑", file: "/basketball-demi-terrain-haut.png" },
       { label: "Demi-terrain ↓", file: "/basketball-demi-terrain-bas.png" },
+      { label: "Parquet ↑", file: "/basketball-parquet-demi-haut.jpg" },
+      { label: "Parquet ↓", file: "/basketball-parquet-demi-bas.jpg" },
     ],
   };
   const TERRAIN_DEFS = TERRAIN_DEFS_BY_SPORT[courtType] || TERRAIN_DEFS_BY_SPORT.basketball;
