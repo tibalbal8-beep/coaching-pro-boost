@@ -334,8 +334,9 @@ async function openBillingPortal() {
   else throw new Error("Impossible d'ouvrir le portail client.");
 }
 
-function PackPaywall() {
+function PackPaywall({ isPremium }) {
   const [loading, setLoading] = useState(false);
+  const [understood, setUnderstood] = useState(false);
   const cpbAlert = useAlert();
   return (
     <div className="max-w-xl mx-auto px-4 py-10">
@@ -351,11 +352,19 @@ function PackPaywall() {
               <div key={f} className="flex items-start gap-2 text-sm text-[#1B2A4A]"><Check size={15} className="text-[#FF6B35] flex-shrink-0 mt-0.5" />{f}</div>
             ))}
           </div>
+          {isPremium ? (
+            <div className="mb-4 p-3 rounded-xl text-xs text-[#1B2A4A]" style={{ background: "rgba(34,197,94,.1)" }}>✓ Ton compte <b>Premium</b> te permet d'utiliser tout le pack sans limite : modifier les plays, partager, créer tes propres exercices et séances.</div>
+          ) : (
+            <div className="mb-4 p-3 rounded-xl text-xs text-[#1B2A4A] border border-[#FF6B35]/40" style={{ background: "rgba(255,107,53,.08)" }}>
+              <b>À savoir avant d'acheter :</b> le pack s'ajoute à ta bibliothèque et à ton Playbook, mais avec un compte gratuit tu es limité à <b>10 exercices</b> et <b>3 séances</b>, et la <b>modification et le partage des plays</b>, ainsi que le partage d'exercices, sont réservés aux abonnés <b>Premium</b> (4,99 €/mois ou 39,99 €/an, vendu séparément). Pour profiter pleinement du pack, un compte Premium est donc recommandé.
+              <label className="flex items-start gap-2 mt-2 cursor-pointer"><input type="checkbox" checked={understood} onChange={e => setUnderstood(e.target.checked)} className="mt-0.5" /><span>J'ai compris ces limites de la version gratuite.</span></label>
+            </div>
+          )}
           <div className="text-center mb-4">
             <span className="text-4xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>10 €</span>
             <span className="text-[#1B2A4A]/50 text-sm"> une seule fois</span>
           </div>
-          <button disabled={loading} onClick={async () => { setLoading(true); try { await startCheckout(PRICE_PACK, "pack"); } catch (e) { await cpbAlert(e.message); } setLoading(false); }}
+          <button disabled={loading || (!isPremium && !understood)} onClick={async () => { setLoading(true); try { await startCheckout(PRICE_PACK, "pack"); } catch (e) { await cpbAlert(e.message); } setLoading(false); }}
             className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors disabled:opacity-60 flex items-center justify-center gap-2" style={{ fontFamily: "Oswald, sans-serif" }}>
             {loading ? <><Loader2 size={16} className="animate-spin" /> Chargement...</> : "ACHETER LE PACK — 10 €"}
           </button>
@@ -14406,7 +14415,7 @@ function CoachingProBoost({ session }) {
           );
         })()}
 
-        {view === "pack" && !(isAdmin || hasPack) && <PackPaywall />}
+        {view === "pack" && !(isAdmin || hasPack) && <PackPaywall isPremium={isPremium} />}
         {view === "pack" && (isAdmin || hasPack) && <PackPage onOpenExercises={(d) => setSharedExerciseCollection({ ...d, fromPack: true })} onOpenPlays={setSharedPlayCollection} />}
         {view === "scoutreport" && !canAnalysis && <AnalysisPaywall what="Scouting report" />}
         {view === "myteam" && !canAnalysis && <AnalysisPaywall what="Mon équipe" />}
