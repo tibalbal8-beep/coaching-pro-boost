@@ -10,7 +10,7 @@ export default defineConfig({
       workbox: {
         navigateFallbackDenylist: [/^\/api\//],
       },
-      includeAssets: ["favicon.png", "icon-192.png", "icon-512.png", "logo-icon.png", "logo-full.png", "basketball-terrain-complet.png", "basketball-demi-terrain-haut.png", "basketball-demi-terrain-bas.png", "basketball-parquet-demi-haut.jpg", "basketball-parquet-demi-bas.jpg"],
+      includeAssets: ["favicon.png", "icon-192.png", "icon-512.png", "logo-icon.png", "logo-full.png", "basketball-terrain-complet.png", "basketball-demi-terrain-haut.png", "basketball-demi-terrain-bas.png", "basketball-parquet-demi-haut.jpg", "basketball-parquet-demi-bas.jpg", "basketball-parquet-complet.jpg"],
       manifest: {
         id: "/app",
         name: "Coaching Pro Boost",
