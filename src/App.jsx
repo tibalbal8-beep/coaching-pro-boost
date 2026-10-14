@@ -11794,7 +11794,13 @@ function CoachingProBoost({ session }) {
 
             {libSelectMode && (
               <div className="bg-[#1B2A4A] rounded-2xl p-4 mb-4 flex flex-col gap-3">
-                <div className="text-white font-semibold text-sm">{librarySelectedIds.length} exercice{librarySelectedIds.length !== 1 ? "s" : ""} sélectionné{librarySelectedIds.length !== 1 ? "s" : ""}</div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="text-white font-semibold text-sm mr-1">{librarySelectedIds.length} exercice{librarySelectedIds.length !== 1 ? "s" : ""} sélectionné{librarySelectedIds.length !== 1 ? "s" : ""}{(() => { const hid = librarySelectedIds.filter(id => !filtered.some(e => e.id === id)).length; return hid ? <span className="text-white/60 font-normal"> (dont {hid} masqué{hid > 1 ? "s" : ""} par les filtres)</span> : null; })()}</div>
+                  <button type="button" onClick={() => setLibrarySelectedIds(ids => [...new Set([...ids, ...filtered.map(e => e.id)])])} className="text-xs text-white border border-white/30 rounded-full px-2.5 py-1 hover:bg-white/10">Tout sélectionner ({filtered.length} affichés)</button>
+                  <button type="button" onClick={() => setLibrarySelectedIds(ids => ids.filter(id => !filtered.some(e => e.id === id)))} className="text-xs text-white border border-white/30 rounded-full px-2.5 py-1 hover:bg-white/10">Désélectionner les affichés</button>
+                  <button type="button" onClick={() => setLibrarySelectedIds(ids => { const shown = filtered.map(e => e.id), keep = ids.filter(id => !shown.includes(id)), add = shown.filter(id => !ids.includes(id)); return [...keep, ...add]; })} className="text-xs text-white border border-white/30 rounded-full px-2.5 py-1 hover:bg-white/10">Inverser</button>
+                  {librarySelectedIds.length > 0 && <button type="button" onClick={() => setLibrarySelectedIds([])} className="text-xs text-white/60 underline">Tout désélectionner</button>}
+                </div>
                 <input value={libShareTitle} onChange={e => setLibShareTitle(e.target.value)} placeholder="Titre du lot (ex: Pour Julien)" className="w-full rounded-xl px-3 py-2 text-sm outline-none text-[#1B2A4A]" />
                 <div className="flex gap-2">
                   <button disabled={librarySelectedIds.length === 0 || libSharing}
