@@ -11821,6 +11821,26 @@ function CoachingProBoost({ session }) {
                     className="flex-1 bg-white text-[#1B2A4A] py-2 rounded-xl text-sm font-bold disabled:opacity-50">
                     {libSharing ? "Création du lien..." : "Créer le lien de partage"}
                   </button>
+                  <button disabled={librarySelectedIds.length === 0 || libSharing}
+                    title="Enregistre directement ces exercices comme contenu du pack payant, sans copier de lien"
+                    onClick={async () => {
+                      const ok = await cpbAlert?.(`Définir ces ${librarySelectedIds.length} exercices comme contenu du pack « 30 exercices + 15 plays » ? Ils remplacent le lot d'exercices actuel du pack.`, { confirm: true });
+                      if (!ok) return;
+                      setLibSharing(true);
+                      try {
+                        const selected = exercises.filter(e => librarySelectedIds.includes(e.id));
+                        const enriched = await enrichExercisesAssets(selected);
+                        const link = await getOrCreatePermanentCollectionLink(enriched, "Pack exercices");
+                        const { data: { session: sess } } = await supabase.auth.getSession();
+                        const res = await fetch("/api/pack", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + (sess?.access_token || "") }, body: JSON.stringify({ exercisesLink: link }) });
+                        const out = await res.json();
+                        if (!res.ok) throw new Error(out.error || "Erreur " + res.status);
+                        toast?.(`✓ ${selected.length} exercices enregistrés comme contenu du pack`);
+                        setLibSelectMode(false); setLibrarySelectedIds([]); setLibShareTitle("");
+                      } catch (e) { await cpbAlert?.("Erreur : " + e.message); }
+                      setLibSharing(false);
+                    }}
+                    className="px-3 py-2 rounded-xl text-sm font-bold border border-white/40 text-white disabled:opacity-40 whitespace-nowrap">📦 Pour le pack</button>
                   <button onClick={() => { setLibSelectMode(false); setLibrarySelectedIds([]); }} className="px-4 py-2 rounded-xl text-sm text-white/60 border border-white/20">✕</button>
                 </div>
               </div>
