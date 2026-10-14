@@ -10304,6 +10304,7 @@ function CoachingProBoost({ session }) {
     try {
       const token = crypto.randomUUID().replace(/-/g, "");
       const playData = { ...play };
+      delete playData.scoutedTeam;   // l'équipe scoutée reste privée : jamais dans ce qui est partagé
       // Charger toutes les images embarquées
       if (play.images?.length) {
         playData.images = await Promise.all(play.images.map(async (img) => {
@@ -10377,7 +10378,7 @@ function CoachingProBoost({ session }) {
         <div style="background:#fff;border-radius:10px;padding:18px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,0.08);page-break-inside:avoid;">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;">
             <div>
-              <div style="font-size:10px;color:#FF6B35;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">${play.type || ""}${play.scoutedTeam ? ` · ${play.scoutedTeam}` : ""}</div>
+              <div style="font-size:10px;color:#FF6B35;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px;">${play.type || ""}</div>
               <div style="font-size:17px;font-weight:800;color:#1B2A4A;font-family:'Oswald',sans-serif;">${play.titre || "Sans titre"}</div>
               ${play.description ? `<div style="font-size:12px;color:#666;margin-top:3px;">${play.description}</div>` : ""}
             </div>
@@ -10528,6 +10529,7 @@ function CoachingProBoost({ session }) {
       const selectedPlaysData = await Promise.all(
         selectedIds.map(id => byId.get(id)).filter(Boolean).map(async (play) => {
           const playData = { ...play };
+          delete playData.scoutedTeam;   // l'équipe scoutée reste privée : jamais dans ce qui est partagé
           if (play.images?.length) {
             playData.images = await Promise.all(play.images.map(async (img) => {
               if (img.file?.data) return img;

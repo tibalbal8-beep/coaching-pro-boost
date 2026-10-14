@@ -4,7 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 // Un admin peut aussi enregistrer ici les deux liens de partage qui composent le pack.
 const tokenOf = (link, param) => {
   const s = String(link || "").trim();
-  const m = new RegExp("[?&]" + param + "=([A-Za-z0-9_-]+)").exec(s);
+  // param peut être plusieurs noms séparés par « | » (le lien de lot de plays copié par l'app est …/api/scouting?token=…)
+  const m = new RegExp("[?&](?:" + param + ")=([A-Za-z0-9_-]+)").exec(s);
   if (m) return m[1];
   return /^[A-Za-z0-9_-]{16,}$/.test(s) ? s : null;
 };
@@ -30,7 +31,7 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       if (!isAdmin) return res.status(403).json({ error: "Réservé à l'administrateur." });
       const { exercisesLink, playsLink, title } = req.body || {};
-      const ex = tokenOf(exercisesLink, "sharecollection"), pl = tokenOf(playsLink, "scoutingtoken");
+      const ex = tokenOf(exercisesLink, "sharecollection"), pl = tokenOf(playsLink, "scoutingtoken|token");
       if (!ex && !pl) return res.status(400).json({ error: "Aucun lien reconnu : colle le lien du lot d'exercices (…?sharecollection=…) et/ou celui du lot de plays (…?scoutingtoken=…)." });
       const { data: cur } = await supabase.from("pack_config").select("*").eq("id", 1).maybeSingle();
       const row = { id: 1, title: title || cur?.title || "Pack 30 exercices + 15 plays", exercises_token: ex || cur?.exercises_token || null, plays_token: pl || cur?.plays_token || null, updated_at: new Date().toISOString() };
