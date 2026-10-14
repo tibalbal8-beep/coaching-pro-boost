@@ -11390,7 +11390,8 @@ function CoachingProBoost({ session }) {
                 ))}
               </div>
               <button onClick={() => {
-                if (!isPremium) { setSharedExerciseCollection(null); setPaywallReason("L'import d'un lot d'exercices partagés est une fonctionnalité Premium."); return; }
+                // Le pack acheté s'importe sans Premium ; les autres lots partagés restent réservés aux abonnés Premium
+                if (!isPremium && !sharedExerciseCollection.fromPack) { setSharedExerciseCollection(null); setPaywallReason("L'import d'un lot d'exercices partagés est une fonctionnalité Premium."); return; }
                 const newExs = sharedExerciseCollection.exercises.map(ex => {
                   const newEx = { ...ex, id: uid(), createdAt: new Date().toISOString() };
                   if (newEx.file?.data) {
@@ -11405,7 +11406,7 @@ function CoachingProBoost({ session }) {
                 toast?.(`${newExs.length} exercice${newExs.length > 1 ? "s" : ""} ajouté${newExs.length > 1 ? "s" : ""} à ta bibliothèque !`);
               }} className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors mb-3"
                 style={{ fontFamily: "Oswald, sans-serif" }}>
-                {isPremium ? "Tout ajouter à ma bibliothèque" : "🔒 Tout ajouter (Premium)"}
+                {isPremium || sharedExerciseCollection.fromPack ? "Tout ajouter à ma bibliothèque" : "🔒 Tout ajouter (Premium)"}
               </button>
               <button onClick={() => setSharedExerciseCollection(null)}
                 className="w-full text-sm text-[#1B2A4A]/40 hover:text-[#1B2A4A] transition-colors">
@@ -14386,7 +14387,7 @@ function CoachingProBoost({ session }) {
         })()}
 
         {view === "pack" && !(isAdmin || hasPack) && <PackPaywall />}
-        {view === "pack" && (isAdmin || hasPack) && <PackPage onOpenExercises={setSharedExerciseCollection} onOpenPlays={setSharedPlayCollection} />}
+        {view === "pack" && (isAdmin || hasPack) && <PackPage onOpenExercises={(d) => setSharedExerciseCollection({ ...d, fromPack: true })} onOpenPlays={setSharedPlayCollection} />}
         {view === "scoutreport" && !canAnalysis && <AnalysisPaywall what="Scouting report" />}
         {view === "myteam" && !canAnalysis && <AnalysisPaywall what="Mon équipe" />}
         {view === "scoutreport" && canAnalysis && (() => {
