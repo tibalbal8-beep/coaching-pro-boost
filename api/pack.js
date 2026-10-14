@@ -6,8 +6,9 @@ const tokenOf = (link, param) => {
   const s = String(link || "").trim();
   // param peut être plusieurs noms séparés par « | » (le lien de lot de plays copié par l'app est …/api/scouting?token=…)
   const m = new RegExp("[?&](?:" + param + ")=([A-Za-z0-9_-]+)").exec(s);
-  if (m) return m[1];
-  return /^[A-Za-z0-9_-]{16,}$/.test(s) ? s : null;
+  const tok = m ? m[1] : (/^[A-Za-z0-9_-]{16,}$/.test(s) ? s : null);
+  // Les liens de partage de l'app portent un identifiant de 32 caractères : un lien coupé au copier-coller est refusé
+  return tok && /^[a-f0-9]{32}$/i.test(tok) ? tok : (tok ? "TRONQUE" : null);
 };
 
 export default async function handler(req, res) {
@@ -32,6 +33,7 @@ export default async function handler(req, res) {
       if (!isAdmin) return res.status(403).json({ error: "Réservé à l'administrateur." });
       const { exercisesLink, playsLink, title } = req.body || {};
       const ex = tokenOf(exercisesLink, "sharecollection"), pl = tokenOf(playsLink, "scoutingtoken|token");
+      if (ex === "TRONQUE" || pl === "TRONQUE") return res.status(400).json({ error: "Un des liens est incomplet (il est coupé : l'identifiant doit faire 32 caractères). Recopie le lien en entier, ou recrée-le." });
       if (!ex && !pl) return res.status(400).json({ error: "Aucun lien reconnu : colle le lien du lot d'exercices (…?sharecollection=…) et/ou celui du lot de plays (…?scoutingtoken=…)." });
       const { data: cur } = await supabase.from("pack_config").select("*").eq("id", 1).maybeSingle();
       const row = { id: 1, title: title || cur?.title || "Pack 30 exercices + 15 plays", exercises_token: ex || cur?.exercises_token || null, plays_token: pl || cur?.plays_token || null, updated_at: new Date().toISOString() };
