@@ -40,7 +40,7 @@ export default async function handler(req, res) {
       headers: { "Authorization": `Bearer ${stripeKey}`, "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         customer: cust,
-        mode: "subscription",
+        mode: kind === "pack" ? "payment" : "subscription",
         "payment_method_types[0]": "card",
         "line_items[0][price]": priceId,
         "line_items[0][quantity]": "1",
@@ -48,7 +48,8 @@ export default async function handler(req, res) {
         cancel_url: cancelUrl,
         locale: "fr",
         allow_promotion_codes: "true",
-        "subscription_data[metadata][plan]": kind === "analysis" ? "analysis" : "premium",
+        "metadata[plan]": kind === "pack" ? "pack" : kind === "analysis" ? "analysis" : "premium",
+        ...(kind === "pack" ? {} : { "subscription_data[metadata][plan]": kind === "analysis" ? "analysis" : "premium" }),
       }),
     }).then(r => r.json());
 

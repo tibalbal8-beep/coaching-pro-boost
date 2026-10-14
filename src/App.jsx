@@ -177,6 +177,7 @@ const FREE_MAX_SESSIONS = 3;
 function useSubscription(userId) {
   const [isPremium, setIsPremium] = useState(false);
   const [analysisUntil, setAnalysisUntil] = useState(null);   // accès au pack Analyse (Scouting report + Mon équipe)
+  const [hasPack, setHasPack] = useState(false);               // achat unique du pack « 30 exercices + 15 plays »
   const [loadingPremium, setLoadingPremium] = useState(true);
   const [sport, setSportState] = useState(() => localStorage.getItem("cpb_sport") || DEFAULT_SPORT);
 
@@ -185,6 +186,8 @@ function useSubscription(userId) {
     // Pack Analyse lu à part : si la colonne n'existe pas encore (SQL pas exécuté), le reste ne casse pas.
     supabase.from("profiles").select("analysis_until").eq("id", userId).maybeSingle()
       .then(({ data, error }) => { setAnalysisUntil(!error && data?.analysis_until ? new Date(data.analysis_until) : null); }, () => setAnalysisUntil(null));
+    supabase.from("profiles").select("has_pack").eq("id", userId).maybeSingle()
+      .then(({ data, error }) => { setHasPack(!error && !!data?.has_pack); }, () => setHasPack(false));
     supabase.from("profiles").select("is_premium, premium_until, sport").eq("id", userId).maybeSingle()
       .then(({ data }) => {
         if (data) {
@@ -207,7 +210,7 @@ function useSubscription(userId) {
   };
 
   const hasAnalysis = !!analysisUntil && analysisUntil > new Date();
-  return { isPremium, loadingPremium, sport, setSport, analysisUntil, hasAnalysis };
+  return { isPremium, loadingPremium, sport, setSport, analysisUntil, hasAnalysis, hasPack };
 }
 
 // Annonce globale (bannière visible par tous les utilisateurs) + statut admin.
@@ -259,8 +262,10 @@ function useAnnouncement(userId) {
 
 // Pack « Analyse » : abonnement ANNUEL de 200 € (Scouting report + Mon équipe). Renseigne ici l'identifiant du prix créé dans Stripe.
 const PRICE_ANALYSIS_YEARLY = "price_1UPOYzLH4wEQmwblCEjCGsT5";
+// Pack « 30 exercices + 15 plays » : ACHAT UNIQUE de 10 € (prix à usage unique créé dans Stripe).
+const PRICE_PACK = "price_PACK_A_REMPLACER";
 async function startCheckout(priceId, kind = "premium") {
-  if (priceId === "price_A_REMPLACER") throw new Error("L'offre n'est pas encore ouverte : reviens très bientôt.");
+  if (priceId === "price_A_REMPLACER" || priceId === "price_PACK_A_REMPLACER") throw new Error("L'offre n'est pas encore ouverte : reviens très bientôt.");
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) throw new Error("Non connecté.");
 
@@ -270,6 +275,10 @@ async function startCheckout(priceId, kind = "premium") {
 
   if (kind === "premium" && profile?.is_premium && profile?.premium_until && new Date(profile.premium_until) > new Date()) {
     throw new Error("Tu as déjà un abonnement actif jusqu'au " + new Date(profile.premium_until).toLocaleDateString("fr-FR") + ".");
+  }
+  if (kind === "pack") {
+    const { data: pk, error: pkErr } = await supabase.from("profiles").select("has_pack").eq("id", user.id).maybeSingle();
+    if (!pkErr && pk?.has_pack) throw new Error("Tu as déjà le pack : il est dans l'onglet « Pack exercices & plays ».");
   }
   if (kind === "analysis") {
     const { data: an, error: anErr } = await supabase.from("profiles").select("analysis_until").eq("id", user.id).maybeSingle();
@@ -283,7 +292,7 @@ async function startCheckout(priceId, kind = "premium") {
     body: JSON.stringify({
       priceId,
       kind,
-      successUrl: window.location.origin + "?premium=success",
+      successUrl: window.location.origin + (kind === "pack" ? "?pack=success" : "?premium=success"),
       cancelUrl: window.location.origin + "?premium=cancel",
       userId: user.id,
       userEmail: user.email,
@@ -323,6 +332,97 @@ async function openBillingPortal() {
   if (data.error) throw new Error(data.error);
   if (data.url) window.location.href = data.url;
   else throw new Error("Impossible d'ouvrir le portail client.");
+}
+
+function PackPaywall() {
+  const [loading, setLoading] = useState(false);
+  const cpbAlert = useAlert();
+  return (
+    <div className="max-w-xl mx-auto px-4 py-10">
+      <div className="bg-white rounded-3xl shadow-lg overflow-hidden border border-[#1B2A4A]/10">
+        <div className="bg-[#1B2A4A] px-6 py-6 text-center">
+          <div className="text-white/60 text-xs uppercase tracking-widest mb-1">Pack prêt à l'emploi</div>
+          <div className="text-white font-bold text-2xl" style={{ fontFamily: "Oswald, sans-serif" }}>30 EXERCICES + 15 PLAYS</div>
+        </div>
+        <div className="px-6 py-6">
+          <p className="text-sm text-[#1B2A4A]/70 mb-4 text-center">Une sélection d'exercices et de systèmes de jeu, déjà dessinés, à ajouter en un clic à ta bibliothèque et à ton Playbook.</p>
+          <div className="space-y-2 mb-5">
+            {["30 exercices avec schémas, à modifier et réutiliser dans tes séances", "15 plays avec schémas, à intégrer à ton Playbook", "Ajout en un clic : ils deviennent tes exercices et tes plays", "Achat unique : le pack est à toi pour toujours"].map(f => (
+              <div key={f} className="flex items-start gap-2 text-sm text-[#1B2A4A]"><Check size={15} className="text-[#FF6B35] flex-shrink-0 mt-0.5" />{f}</div>
+            ))}
+          </div>
+          <div className="text-center mb-4">
+            <span className="text-4xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>10 €</span>
+            <span className="text-[#1B2A4A]/50 text-sm"> une seule fois</span>
+          </div>
+          <button disabled={loading} onClick={async () => { setLoading(true); try { await startCheckout(PRICE_PACK, "pack"); } catch (e) { await cpbAlert(e.message); } setLoading(false); }}
+            className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors disabled:opacity-60 flex items-center justify-center gap-2" style={{ fontFamily: "Oswald, sans-serif" }}>
+            {loading ? <><Loader2 size={16} className="animate-spin" /> Chargement...</> : "ACHETER LE PACK — 10 €"}
+          </button>
+          <p className="text-[11px] text-[#1B2A4A]/40 text-center mt-3">Paiement sécurisé par Stripe, sans abonnement.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PackPage({ onOpenExercises, onOpenPlays }) {
+  const [info, setInfo] = useState(null);
+  const [busy, setBusy] = useState("");
+  const [links, setLinks] = useState({ ex: "", pl: "" });
+  const cpbAlert = useAlert();
+  const call = async (method, body) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/pack", { method, headers: { "Content-Type": "application/json", Authorization: "Bearer " + (session?.access_token || "") }, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Erreur " + res.status);
+    return data;
+  };
+  useEffect(() => { call("GET").then(setInfo).catch(e => setInfo({ error: e.message })); }, []);
+  const open = async (kind) => {
+    setBusy(kind);
+    try {
+      const d = await call("GET"), token = kind === "ex" ? d.exercisesToken : d.playsToken;
+      if (!token) throw new Error("Cette partie du pack n'est pas encore disponible.");
+      if (kind === "ex") {
+        const { data, error } = await supabase.from("shared_exercise_collections").select("title, exercises").eq("token", token).maybeSingle();
+        if (error || !data) throw new Error("Contenu introuvable.");
+        onOpenExercises(data);
+      } else {
+        const { data, error } = await supabase.from("shared_play_collections").select("title, plays, expires_at").eq("token", token).maybeSingle();
+        if (error || !data) throw new Error("Contenu introuvable.");
+        onOpenPlays(data);
+      }
+    } catch (e) { await cpbAlert(e.message); }
+    setBusy("");
+  };
+  if (!info) return <div className="max-w-xl mx-auto px-4 py-10 text-center text-sm text-[#1B2A4A]/50">Chargement…</div>;
+  if (info.error) return <div className="max-w-xl mx-auto px-4 py-10 text-center text-sm text-red-600">{info.error}</div>;
+  return (
+    <div className="max-w-xl mx-auto px-4 py-8">
+      <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>{(info.title || "Pack").toUpperCase()}</h2>
+      <p className="text-sm text-[#1B2A4A]/60 mb-5">Ajoute le contenu du pack à ta bibliothèque et à ton Playbook. Tu peux ensuite le modifier librement.</p>
+      <div className="grid gap-3">
+        <button disabled={busy === "ex" || !info.configured.exercises} onClick={() => open("ex")} className="text-left bg-white border border-[#1B2A4A]/15 rounded-2xl p-4 hover:border-[#FF6B35] disabled:opacity-50">
+          <div className="font-bold text-[#1B2A4A]">🏀 Les 30 exercices</div>
+          <div className="text-xs text-[#1B2A4A]/50">{info.configured.exercises ? (busy === "ex" ? "Chargement…" : "Voir et ajouter à ma bibliothèque") : "Bientôt disponible"}</div>
+        </button>
+        <button disabled={busy === "pl" || !info.configured.plays} onClick={() => open("pl")} className="text-left bg-white border border-[#1B2A4A]/15 rounded-2xl p-4 hover:border-[#FF6B35] disabled:opacity-50">
+          <div className="font-bold text-[#1B2A4A]">📋 Les 15 plays</div>
+          <div className="text-xs text-[#1B2A4A]/50">{info.configured.plays ? (busy === "pl" ? "Chargement…" : "Voir et ajouter à mon Playbook") : "Bientôt disponible"}</div>
+        </button>
+      </div>
+      {info.isAdmin && (
+        <div className="mt-8 p-4 rounded-2xl border border-dashed border-[#1B2A4A]/25 bg-white/60">
+          <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Admin — composer le pack</div>
+          <p className="text-xs text-[#1B2A4A]/50 mb-3">Crée d'abord les deux liens de partage avec les outils existants (lot de 30 exercices, lot de 15 plays), puis colle-les ici. Ne diffuse jamais ces liens ailleurs : ils donneraient accès au pack sans achat.</p>
+          <input value={links.ex} onChange={e => setLinks({ ...links, ex: e.target.value })} placeholder="Lien du lot d'exercices (…?sharecollection=…)" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mb-2" />
+          <input value={links.pl} onChange={e => setLinks({ ...links, pl: e.target.value })} placeholder="Lien du lot de plays (…?scoutingtoken=…)" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mb-2" />
+          <button disabled={!links.ex.trim() && !links.pl.trim()} onClick={async () => { try { const d = await call("POST", { exercisesLink: links.ex, playsLink: links.pl }); setInfo(i => ({ ...i, configured: { exercises: d.hasExercises, plays: d.hasPlays } })); setLinks({ ex: "", pl: "" }); await cpbAlert("Pack enregistré."); } catch (e) { await cpbAlert(e.message); } }} className="text-sm font-semibold text-white px-4 py-2 rounded-md disabled:opacity-40" style={{ backgroundColor: "var(--sport-accent)" }}>Enregistrer le contenu du pack</button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AnalysisPaywall({ what }) {
@@ -9923,7 +10023,7 @@ function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAl
 }
 
 function CoachingProBoost({ session }) {
-  const { isPremium, sport, setSport, hasAnalysis, analysisUntil } = useSubscription(session?.user?.id);
+  const { isPremium, sport, setSport, hasAnalysis, analysisUntil, hasPack } = useSubscription(session?.user?.id);
   const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, canUseMatchmode, canUseMyteam, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
   const canAnalysis = isAdmin || canUseMyteam || hasAnalysis;   // Scouting report + Mon équipe
   const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, teamAnalyses, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
@@ -9979,6 +10079,29 @@ function CoachingProBoost({ session }) {
       } catch {}
     })();
   }, [premiumSuccess, session?.user?.id]);
+  // Retour du paiement du pack « 30 exercices + 15 plays » : le webhook Stripe peut avoir quelques secondes de retard
+  const [packSuccess] = useState(() => {
+    const p = new URLSearchParams(window.location.search).get("pack");
+    if (p === "success") { window.history.replaceState({}, "", "/"); return true; }
+    return false;
+  });
+  useEffect(() => {
+    if (!packSuccess) return;
+    const userId = session?.user?.id;
+    if (!userId) return;
+    let tries = 0, stop = false;
+    const check = async () => {
+      if (stop) return;
+      tries++;
+      try {
+        const { data } = await supabase.from("profiles").select("has_pack").eq("id", userId).maybeSingle();
+        if (data?.has_pack) { localStorage.setItem("cpb_view", "pack"); window.location.reload(); return; }
+      } catch {}
+      if (tries < 12) setTimeout(check, 3000);
+    };
+    check();
+    return () => { stop = true; };
+  }, [packSuccess, session?.user?.id]);
   const team = teams.find(t => t.id === activeTeamId) || teams[0] || { nom: "", niveau: "", jours: [], nbJoueurs: 0 };
   const updateTeam = (patch) => {
     if (!team.id) {
@@ -10002,7 +10125,7 @@ function CoachingProBoost({ session }) {
   const pdfReady = usePdfJs();
   const [view, setView] = useState(() => {
     const saved = localStorage.getItem("cpb_view");
-    return ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","myteam","wellness"].includes(saved) ? saved : "library";
+    return ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness"].includes(saved) ? saved : "library";
   });
   // Toujours à jour, contrairement à `view` capturé dans la closure de l'effet ci-dessous
   // (qui ne tourne qu'une fois au montage) — évite qu'un retour arrière égaré (ex: swipe
@@ -10022,7 +10145,7 @@ function CoachingProBoost({ session }) {
       const v = e.state?.view;
       if (v === "session" && activeSessionRef.current) {
         setView("session");
-      } else if (v && ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","myteam","wellness"].includes(v)) {
+      } else if (v && ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness"].includes(v)) {
         setView(v);
         localStorage.setItem("cpb_view", v);
       } else if (activeSessionRef.current) {
@@ -11589,6 +11712,7 @@ function CoachingProBoost({ session }) {
               ...(isAdmin ? [{ key: "suivi", label: "Suivi individuel (admin)", icon: UserCheck }] : []),
               ...(isAdmin || canUseMatchmode ? [{ key: "matchmode", label: isAdmin ? "Mode match (admin)" : "Mode match", icon: Zap }] : []),
               ...(isAdmin ? [{ key: "videoscout", label: "Scouting vidéo (admin)", icon: Video }] : []),
+              { key: "pack", label: isAdmin || hasPack ? "Pack exercices & plays" : "Pack exercices & plays 🔒", icon: Library },
               { key: "scoutreport", label: isAdmin ? "Scouting report (admin)" : canAnalysis ? "Scouting report" : "Scouting report 🔒", icon: FileText },
               { key: "myteam", label: isAdmin ? "Mon équipe (admin)" : canAnalysis ? "Mon équipe" : "Mon équipe 🔒", icon: BarChart3 },
               ...(isAdmin || canManageWellness ? [{ key: "wellness", label: "Bien-être joueurs", icon: UserCheck }] : []),
@@ -14243,6 +14367,8 @@ function CoachingProBoost({ session }) {
           );
         })()}
 
+        {view === "pack" && !(isAdmin || hasPack) && <PackPaywall />}
+        {view === "pack" && (isAdmin || hasPack) && <PackPage onOpenExercises={setSharedExerciseCollection} onOpenPlays={setSharedPlayCollection} />}
         {view === "scoutreport" && !canAnalysis && <AnalysisPaywall what="Scouting report" />}
         {view === "myteam" && !canAnalysis && <AnalysisPaywall what="Mon équipe" />}
         {view === "scoutreport" && canAnalysis && (() => {

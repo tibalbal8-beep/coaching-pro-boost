@@ -47,6 +47,12 @@ export default async function handler(req, res) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
+    // Achat unique du pack « 30 exercices + 15 plays » : accès à vie
+    if (session.mode === "payment" && session.payment_status === "paid" && session.metadata?.plan === "pack") {
+      await supabase.from("profiles")
+        .update({ has_pack: true, pack_purchased_at: new Date().toISOString() })
+        .eq("stripe_customer_id", session.customer);
+    }
     if (session.mode === "subscription" && session.payment_status === "paid") {
       const customerId = session.customer;
       const subId = session.subscription;
