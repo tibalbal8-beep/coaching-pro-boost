@@ -10605,6 +10605,9 @@ function CoachingProBoost({ session }) {
 
   const [editing, setEditing] = useState(null);
   const [filterTheme, setFilterTheme] = useState([]);
+  // Plusieurs thèmes cochés : « ET » (l'exercice les a tous, comportement d'origine) ou « OU » (il en a au moins un)
+  const [themeMatchAny, setThemeMatchAny] = useState(() => { try { return localStorage.getItem("cpb_theme_match") === "any"; } catch { return false; } });
+  const setThemeMatch = (any) => { setThemeMatchAny(any); try { localStorage.setItem("cpb_theme_match", any ? "any" : "all"); } catch {} };
   const [filterFormat, setFilterFormat] = useState([]);
   const [filterPhase, setFilterPhase] = useState([]);
   const [filterCategorie, setFilterCategorie] = useState([]);
@@ -10944,7 +10947,7 @@ function CoachingProBoost({ session }) {
   const [libShareTitle, setLibShareTitle] = useState("");
   const [libSharing, setLibSharing] = useState(false);
   const filtered = exercises.filter(ex =>
-    (filterTheme.length === 0 || filterTheme.every(t => ex.themes?.includes(t))) &&
+    (filterTheme.length === 0 || (themeMatchAny ? filterTheme.some(t => ex.themes?.includes(t)) : filterTheme.every(t => ex.themes?.includes(t)))) &&
     (filterFormat.length === 0 || filterFormat.includes(ex.format)) &&
     (filterPhase.length === 0 || filterPhase.every(p => ex.phases?.includes(p))) &&
     (filterCategorie.length === 0 || catList(ex).some(c => filterCategorie.includes(c))) &&
@@ -11846,6 +11849,13 @@ function CoachingProBoost({ session }) {
                           if (!themes.some(x => x.toLowerCase() === t.toLowerCase())) saveThemes([...themes, t]);
                           setNewThemeInput("");
                         }} />
+                      {filterTheme.length >= 2 && (
+                        <div className="flex items-center gap-1 mb-2 text-[11px]">
+                          <span className="text-[#1B2A4A]/50 mr-1">Afficher les exercices qui ont :</span>
+                          <button type="button" onClick={() => setThemeMatch(false)} className={`px-2.5 py-1 rounded-full border font-medium ${!themeMatchAny ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A]"}`}>tous ces thèmes</button>
+                          <button type="button" onClick={() => setThemeMatch(true)} className={`px-2.5 py-1 rounded-full border font-medium ${themeMatchAny ? "bg-[#1B2A4A] text-white border-[#1B2A4A]" : "border-[#1B2A4A]/20 text-[#1B2A4A]"}`}>au moins un</button>
+                        </div>
+                      )}
                       <div className="flex flex-wrap gap-1.5">
                         {[...themes]
                           .filter(t => t.toLowerCase().includes(newThemeInput.trim().toLowerCase()))
