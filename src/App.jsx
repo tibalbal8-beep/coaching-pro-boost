@@ -11008,7 +11008,7 @@ function CoachingProBoost({ session }) {
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
   const [taMom, setTaMom] = useState({}), [taOpen, setTaOpen] = useState({});
   const [taLnbOpen, setTaLnbOpen] = useState(false), [taLnbText, setTaLnbText] = useState("");
-  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false), [taLgGamesOpen, setTaLgGamesOpen] = useState(false), [taLgStatsOpen, setTaLgStatsOpen] = useState(false);
+  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false), [taLgGamesOpen, setTaLgGamesOpen] = useState(false), [taLgStatsOpen, setTaLgStatsOpen] = useState(false), [taLgProg, setTaLgProg] = useState("");
   // Éditeur du comparatif championnat (partagé : bloc de « Mon équipe » et onglet admin « Comparatif championnat »)
   const renderLeagueEditor = (LG, setLG, taId) => {
     const updTeam = (id, patch) => setLG({ ...LG, teams: LG.teams.map(x => x.id === id ? { ...x, ...patch } : x) });
@@ -11037,18 +11037,26 @@ function CoachingProBoost({ session }) {
       setLG(mergeLeague(base, rows, []).league);
     };
     const addGame = async () => {
-      const m = taLgUrl.match(/\/(\d{4,10})(?:\/|$|\?)/) || taLgUrl.trim().match(/^(\d{4,10})$/);
-      if (!m) { cpbAlert?.("Je ne trouve pas le numéro du match dans ce lien."); return; }
-      if (myGames.some(g => g.id === m[1])) { cpbAlert?.("Ce match est déjà dans le comparatif."); return; }
+      // Accepte un ou plusieurs liens (un par ligne) ou un texte quelconque contenant des liens LiveStats « …/u/FFBB/2875004/… »
+      let ids = [...taLgUrl.matchAll(/\/u\/[A-Za-z0-9_-]+\/(\d{4,10})/g)].map(m => m[1]);
+      if (!ids.length) ids = taLgUrl.split(/[\s,;]+/).map(x => (x.match(/\/(\d{4,10})(?:\/|$|\?)/) || x.match(/^(\d{4,10})$/) || [])[1]).filter(Boolean);
+      ids = [...new Set(ids)];
+      if (!ids.length) { cpbAlert?.("Je ne trouve aucun numéro de match dans ce texte."); return; }
+      const have = new Set(myGames.map(g => g.id)), todo = ids.filter(x => !have.has(x));
+      if (!todo.length) { cpbAlert?.("Ces matchs sont déjà dans le comparatif."); return; }
       setTaLgBusy(true);
-      try {
-        const res = await fetch("/api/fiba-pbp?id=" + m[1]);
-        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "erreur " + res.status);
-        const g = compactGame(parseFibaPbp(await res.text()), m[1], taId);
-        const next = [...leagueGames, g];
-        saveLeagueGames(next); applyGames(next.filter(x => x.ta === taId)); setTaLgUrl("");
-      } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
-      setTaLgBusy(false);
+      let all = leagueGames, ok = 0; const bad = [];
+      for (let i = 0; i < todo.length; i++) {
+        setTaLgProg(`Lecture du match ${i + 1} / ${todo.length}…`);
+        try {
+          const res = await fetch("/api/fiba-pbp?id=" + todo[i]);
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "erreur " + res.status);
+          all = [...all, compactGame(parseFibaPbp(await res.text()), todo[i], taId)]; ok++;
+        } catch (e) { bad.push(`${todo[i]} (${e.message})`); }
+      }
+      if (ok) { saveLeagueGames(all); applyGames(all.filter(x => x.ta === taId)); }
+      setTaLgUrl(""); setTaLgProg(""); setTaLgBusy(false);
+      cpbAlert?.(`${ok} match${ok > 1 ? "s" : ""} ajouté${ok > 1 ? "s" : ""}${ids.length > todo.length ? `, ${ids.length - todo.length} déjà présent${ids.length - todo.length > 1 ? "s" : ""}` : ""}.${bad.length ? ` Non lus : ${bad.join(" ; ")}.` : ""}`);
     };
     const delGame = async (g) => {
       const ok = await cpbAlert?.(`Retirer le match ${g.t[0].n} – ${g.t[1].n} ?`, { confirm: true }); if (!ok) return;
@@ -11092,11 +11100,9 @@ function CoachingProBoost({ session }) {
           </span>
         )}
         <div className="text-xs font-semibold text-[#1B2A4A] mt-5 mb-1">3. Ajouter des matchs LiveStats (chiffres exacts, adversaire compris)</div>
-        <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Colle le lien d'un match terminé, un par un. Seuls les totaux des deux équipes sont gardés (très léger). Ils donnent, pour chaque équipe, ses points encaissés, ses rebonds disponibles pris et la part de rebonds de l'adversaire sans estimation.</p>
-        <div className="flex gap-2">
-          <input value={taLgUrl} onChange={e => setTaLgUrl(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !taLgBusy) addGame(); }} placeholder="Lien du match LiveStats" className="flex-1 min-w-0 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
-          <button disabled={taLgBusy || !taLgUrl.trim()} onClick={addGame} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>{taLgBusy ? "Lecture…" : "Ajouter le match"}</button>
-        </div>
+        <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Colle un ou plusieurs liens de matchs terminés (un par ligne, ou un texte qui en contient). Seuls les totaux des deux équipes sont gardés (très léger). Ils donnent, pour chaque équipe, ses points encaissés, ses rebonds disponibles pris et la part de rebonds de l'adversaire sans estimation.</p>
+        <textarea value={taLgUrl} onChange={e => setTaLgUrl(e.target.value)} rows={3} placeholder="Colle un ou plusieurs liens de matchs LiveStats (un par ligne)" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white/60 font-mono" />
+        <button disabled={taLgBusy || !taLgUrl.trim()} onClick={addGame} className="mt-2 text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>{taLgBusy ? (taLgProg || "Lecture…") : "Ajouter le ou les matchs"}</button>
         {myGames.length > 0 && (
           <div className="mt-2 text-[11px] text-[#1B2A4A]/70">
             <button onClick={() => setTaLgGamesOpen(o => !o)} className="font-semibold text-left hover:underline">{taLgGamesOpen ? "▾" : "▸"} {myGames.length} match{myGames.length > 1 ? "s" : ""} lu{myGames.length > 1 ? "s" : ""} <span className="font-normal text-[#1B2A4A]/40">{taLgGamesOpen ? "(replier)" : "(déplier pour en supprimer un)"}</span></button>
