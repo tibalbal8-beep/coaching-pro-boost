@@ -15230,6 +15230,8 @@ function CoachingProBoost({ session }) {
                         cpbAlert?.(`${r.rows.length} équipe${r.rows.length > 1 ? "s" : ""} lue${r.rows.length > 1 ? "s" : ""} (${r.kind === "accueil" ? "page d'accueil des stats : top 5 par catégorie" : r.kind === "tableau" ? "tableau avec colonnes" : "classement d'une statistique"})${created ? ` — ${created} nouvelle${created > 1 ? "s" : ""} équipe${created > 1 ? "s" : ""} ajoutée${created > 1 ? "s" : ""} à la liste (tu peux leur mettre un logo)` : ""}.${r.kind === "accueil" ? " Une page d'accueil ne donne que les 5 premiers : pour la moyenne du championnat et le rang de ton équipe, colle les classements complets." : ""}`);
                       } catch (err) { cpbAlert?.("Lecture impossible : " + err.message); }
                     };
+                    const resetStats = async () => { const ok = await cpbAlert?.("Effacer toutes les statistiques collées ? Les équipes et leurs logos sont conservés, tu pourras recoller.", { confirm: true }); if (!ok) return; setLG({ ...LG, stats: {} }); };
+                    const resetAll = async () => { const ok = await cpbAlert?.("Tout réinitialiser : équipes, logos et statistiques du comparatif seront supprimés. Continuer ?", { confirm: true }); if (!ok) return; setLG({ teams: [], stats: {} }); setTaLgText(""); };
                     const statCounts = LEAGUE_STATS.map(S => ({ S, n: Object.keys(LG.stats[S.key] || {}).length })).filter(x => x.n > 0);
                     return (
                       <div className="mt-3">
@@ -15259,6 +15261,12 @@ function CoachingProBoost({ session }) {
                         </select>
                         <textarea value={taLgText} onChange={e => setTaLgText(e.target.value)} rows={4} placeholder="Colle ici le texte du site…" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white/60 font-mono" />
                         <button disabled={!taLgText.trim()} onClick={readText} className="mt-2 text-sm font-semibold text-white px-4 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>Lire et ajouter</button>
+                        {(Object.keys(LG.stats || {}).length > 0 || LG.teams.length > 0) && (
+                          <span className="ml-3 inline-flex gap-3 text-xs">
+                            {Object.keys(LG.stats || {}).length > 0 && <button onClick={resetStats} className="text-red-600 underline">Effacer les statistiques</button>}
+                            <button onClick={resetAll} className="text-red-600 underline">Tout réinitialiser</button>
+                          </span>
+                        )}
                         {statCounts.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mt-3">
                             {statCounts.map(({ S, n }) => (
