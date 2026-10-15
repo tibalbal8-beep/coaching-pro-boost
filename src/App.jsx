@@ -3515,6 +3515,8 @@ const LEAGUE_STATS = [
   { key: "orebShare", label: "Part des rebonds offensifs (RO / rebonds totaux)", hi: true, pct: true }, { key: "drebShare", label: "Part des rebonds défensifs (RD / rebonds totaux)", hi: true, pct: true },
   { key: "orebMiss", label: "Rebonds offensifs pris sur nos tirs manqués", hi: true, pct: true },
   { key: "orebPct", label: "% de rebonds offensifs disponibles pris (RO ÷ (RO + RD adverses))", hi: true, pct: true }, { key: "drebPct", label: "% de rebonds défensifs disponibles pris (RD ÷ (RD + RO adverses))", hi: true, pct: true },
+  { key: "pSecond", label: "Points sur rebonds offensifs (secondes chances)", hi: true }, { key: "pSecondAgainst", label: "Points encaissés sur secondes chances adverses", hi: false },
+  { key: "pToScored", label: "Points marqués sur balles perdues adverses (dont interceptions)", hi: true }, { key: "pToConceded", label: "Points encaissés sur nos balles perdues", hi: false },
   { key: "orebAgainst", label: "% de rebonds offensifs pris par l'adversaire", hi: false, pct: true },
   { key: "net", label: "Écart pour 100 possessions (estimé)", hi: true }, { key: "poss", label: "Possessions par match (rythme)", hi: true },
 ];
@@ -3602,6 +3604,10 @@ function compactGame(rec, mid, taId) {
   if (!rec.teams["1"] || !rec.teams["2"]) throw new Error("les deux équipes sont nécessaires");
   if (rec.live) throw new Error("ce match n'est pas terminé");
   const g = { id: String(mid), ta: taId, t: [side("1"), side("2")] };
+  // Points sur pertes de balle et rebonds offensifs (action qui suit) : 3 nombres par équipe, tirés du play-by-play puis le détail est jeté
+  try {
+    ["1", "2"].forEach((k, i) => { const I = computeImpact(rec, k); if (I.hasPno) g.t[i].x = [I.teamTO.opp.pts, I.teamTO.own.pts, I.team2.own.pts]; });
+  } catch {}
   if (!g.t[0].v[0] && !g.t[1].v[0]) throw new Error("aucune statistique dans ce match");
   return g;
 }
@@ -3611,6 +3617,7 @@ function leagueRowsFromGames(games) {
   games.forEach(g => [0, 1].forEach(i => {
     const A = g.t[i], B = g.t[1 - i], k = leagueNorm(A.n); let e = by.get(k); if (!e) { e = { name: A.n, ...acc() }; by.set(k, e); }
     e.gp++; A.v.forEach((x, j) => { e.own[j] += x; }); B.v.forEach((x, j) => { e.opp[j] += x; });
+    if (A.x && B.x) { e.xn = (e.xn || 0) + 1; e.xs = e.xs || [0, 0, 0, 0]; e.xs[0] += A.x[0]; e.xs[1] += A.x[1]; e.xs[2] += A.x[2]; e.xs[3] += B.x[2]; }
   }));
   const r1 = (x) => Math.round(x * 10) / 10, pc = (m, a) => a ? Math.round(m / a * 1000) / 10 : undefined;
   return [...by.values()].map(e => {
@@ -3620,6 +3627,7 @@ function leagueRowsFromGames(games) {
       fgPct: pc(o.fgm, o.fga), twoPct: pc(o.fgm - o.t3m, o.fga - o.t3a), tpPct: pc(o.t3m, o.t3a), ftPct: pc(o.ftm, o.fta),
       orebPct: pc(o.or, o.or + q.dr), drebPct: pc(o.dr, o.dr + q.or), orebAgainst: pc(q.or, q.or + o.dr),
       possOpp: r1((q.fga - q.or + 0.44 * q.fta + q.tov) / n) };
+    if (e.xn) { const xa = (x) => r1(x / e.xn); st.pToScored = xa(e.xs[0]); st.pToConceded = xa(e.xs[1]); st.pSecond = xa(e.xs[2]); st.pSecondAgainst = xa(e.xs[3]); }
     Object.keys(st).forEach(k => { if (st[k] === undefined) delete st[k]; });
     return { name: e.name, stats: st, gp: n };
   });
