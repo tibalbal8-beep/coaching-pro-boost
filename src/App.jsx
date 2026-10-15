@@ -3472,6 +3472,8 @@ const LEAGUE_STATS = [
   { key: "tpm", label: "3 pts marqués", hi: true }, { key: "pm", label: "+/-", hi: true },
   { key: "ptsAgainst", label: "Points encaissés", hi: false }, { key: "diff", label: "Écart de points (marqués − encaissés)", hi: true },
   { key: "efg", label: "eFG % (tirs pondérés)", hi: true, pct: true }, { key: "tpa", label: "3 pts tentés", hi: true },
+  { key: "ppp", label: "Points par possession (attaque)", hi: true, dec: 2 }, { key: "pppAgainst", label: "Points encaissés par possession (estimé)", hi: false, dec: 2 },
+  { key: "net", label: "Écart pour 100 possessions (estimé)", hi: true }, { key: "poss", label: "Possessions par match (rythme)", hi: true },
 ];
 // Tableau d'équipes SANS ligne d'en-têtes (cas de la page « Statistiques équipes » de la NM1 / Proballers) : 21 valeurs après le nom
 const LEAGUE_NM1_COLS = ["gp", "pts", "ptsAgainst", "_2r", "_2t", "twoPct", "_3r", "_3t", "tpPct", "_fr", "_ft", "ftPct", "reb", "oreb", "dreb", "ast", "stl", "tov", "blk", "pf", "eval"];
@@ -3566,6 +3568,19 @@ function mergeLeague(league, rows) {
   L.teams.forEach(tm => {
     const g = (k) => L.stats[k]?.[tm.id];
     if (g("pts") !== undefined && g("ptsAgainst") !== undefined) L.stats.diff = { ...(L.stats.diff || {}), [tm.id]: Math.round((g("pts") - g("ptsAgainst")) * 10) / 10 };
+    // Possessions = tirs tentés − rebonds offensifs + 0,44 × lancers francs tentés + balles perdues (même formule que dans le reste de l'app) ;
+    // les possessions de l'adversaire ne sont pas dans le tableau : on les prend égales aux nôtres (elles ne diffèrent que de quelques unités sur un match)
+    if ([g("_2t"), g("_3t"), g("_ft"), g("oreb"), g("tov"), g("pts")].every(v => v !== undefined && v !== null)) {
+      const poss = g("_2t") + g("_3t") - g("oreb") + 0.44 * g("_ft") + g("tov");
+      if (poss > 20) {
+        L.stats.poss = { ...(L.stats.poss || {}), [tm.id]: Math.round(poss * 10) / 10 };
+        L.stats.ppp = { ...(L.stats.ppp || {}), [tm.id]: Math.round(g("pts") / poss * 1000) / 1000 };
+        if (g("ptsAgainst") !== undefined && g("ptsAgainst") !== null) {
+          L.stats.pppAgainst = { ...(L.stats.pppAgainst || {}), [tm.id]: Math.round(g("ptsAgainst") / poss * 1000) / 1000 };
+          L.stats.net = { ...(L.stats.net || {}), [tm.id]: Math.round((g("pts") - g("ptsAgainst")) / poss * 1000) / 10 };
+        }
+      }
+    }
     if ([g("_2r"), g("_2t"), g("_3r"), g("_3t")].every(v => v !== undefined && v !== null) && (g("_2t") + g("_3t")) > 0) L.stats.efg = { ...(L.stats.efg || {}), [tm.id]: Math.round((g("_2r") + 1.5 * g("_3r")) / (g("_2t") + g("_3t")) * 1000) / 10 };
   });
   return { league: L, created };
@@ -3575,7 +3590,7 @@ function leagueHtml(a) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const byId = new Map(L.teams.map(t => [t.id, t]));
   const badge = (t, big = false) => t ? `<span class="lg-t">${t.logo ? `<img class="lg-logo${big ? " lg-big" : ""}" src="${t.logo}" alt="" />` : ""}${esc(t.name)}</span>` : "";
-  const fmt = (S, v) => v === null || v === undefined ? "–" : S.pct ? v.toFixed(1).replace(".", ",") + " %" : v.toFixed(1).replace(".", ",");
+  const fmt = (S, v) => v === null || v === undefined ? "–" : S.pct ? v.toFixed(1).replace(".", ",") + " %" : v.toFixed(S.dec || 1).replace(".", ",");
   const all = LEAGUE_STATS.map(S => {
     const m = L.stats[S.key] || {}, entries = Object.entries(m).filter(([id, v]) => byId.has(id) && v !== null).map(([id, v]) => ({ t: byId.get(id), v }));
     if (entries.length < 3) return null;
@@ -3594,7 +3609,7 @@ function leagueHtml(a) {
   if (!full.length) {
     out += head("Comparatif championnat", `<p class="hint">Les classements importés sont des listes partielles (top 5) : colle les classements complets ou le tableau de toutes les équipes pour obtenir la moyenne du championnat et le rang de ton équipe.</p>`) + "</section>";
   } else {
-    const diffCell = (st, e) => { if (!e) return `<td class="num">–</td>`; const d = e.v - st.avg, good = st.S.hi ? d > 0 : d < 0; const cls = Math.abs(d) < 0.05 * Math.max(1, Math.abs(st.avg)) ? "" : good ? "pm-pos" : "pm-neg"; return `<td class="num"><b class="${cls}">${d > 0 ? "+" : ""}${d.toFixed(1).replace(".", ",")}${st.S.pct ? " pt" : ""}</b></td>`; };
+    const diffCell = (st, e) => { if (!e) return `<td class="num">–</td>`; const d = e.v - st.avg, good = st.S.hi ? d > 0 : d < 0; const cls = Math.abs(d) < 0.05 * Math.max(1, Math.abs(st.avg)) ? "" : good ? "pm-pos" : "pm-neg"; return `<td class="num"><b class="${cls}">${d > 0 ? "+" : ""}${d.toFixed(st.S.dec || 1).replace(".", ",")}${st.S.pct ? " pt" : ""}</b></td>`; };
     const insights = [];
     if (mineT) {
       const ranked = full.filter(s => s.mine).map(s => ({ s, r: s.mineRank / s.n })).sort((x, y) => x.r - y.r);
