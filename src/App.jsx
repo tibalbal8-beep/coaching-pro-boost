@@ -10998,7 +10998,7 @@ function CoachingProBoost({ session }) {
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
   const [taMom, setTaMom] = useState({}), [taOpen, setTaOpen] = useState({});
   const [taLnbOpen, setTaLnbOpen] = useState(false), [taLnbText, setTaLnbText] = useState("");
-  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false), [taLgGamesOpen, setTaLgGamesOpen] = useState(false);
+  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false), [taLgGamesOpen, setTaLgGamesOpen] = useState(false), [taLgStatsOpen, setTaLgStatsOpen] = useState(false);
   // Éditeur du comparatif championnat (partagé : bloc de « Mon équipe » et onglet admin « Comparatif championnat »)
   const renderLeagueEditor = (LG, setLG, taId) => {
     const updTeam = (id, patch) => setLG({ ...LG, teams: LG.teams.map(x => x.id === id ? { ...x, ...patch } : x) });
@@ -11099,7 +11099,12 @@ function CoachingProBoost({ session }) {
           </div>
         )}
         {statCounts.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-3">
+          <div className="mt-3">
+            <button onClick={() => setTaLgStatsOpen(o => !o)} className="text-[11px] font-semibold text-[#1B2A4A]/70 hover:underline text-left">{taLgStatsOpen ? "▾" : "▸"} {statCounts.length} statistique{statCounts.length > 1 ? "s" : ""} chargée{statCounts.length > 1 ? "s" : ""} <span className="font-normal text-[#1B2A4A]/40">{taLgStatsOpen ? "(replier)" : "(déplier pour en retirer une)"}</span></button>
+          </div>
+        )}
+        {statCounts.length > 0 && taLgStatsOpen && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
             {statCounts.map(({ S, n }) => (
               <span key={S.key} className="inline-flex items-center gap-1 pl-2.5 pr-1 py-0.5 rounded-full text-[11px] bg-[#7c3aed]/10 text-[#1B2A4A]">{S.label} · {n} équipes
                 <button onClick={() => { const st = { ...LG.stats }; delete st[S.key]; setLG({ ...LG, stats: st }); }} className="w-4 h-4 rounded-full text-[#1B2A4A]/40 hover:text-red-600 flex items-center justify-center" title="Retirer cette statistique"><X size={10} /></button>
