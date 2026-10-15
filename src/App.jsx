@@ -3482,7 +3482,7 @@ const leagueNorm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "
 // Page d'accueil Stats Center de la LNB (top 5 par catégorie) : titre de catégorie → statistique
 const LEAGUE_OVERVIEW_TITLES = { "points": "pts", "rebonds": "reb", "passes decisives": "ast", "evaluation": "eval", "interceptions": "stl", "contres": "blk", "tirs": "fgPct", "3 points": "tpPct", "lancers francs": "ftPct", "3 points marques": "tpm", "fautes provoquees": "fd", "ballons perdus": "tov" };
 // En-têtes de tableau (français / anglais) → statistique
-const LEAGUE_HEADERS = { "pts": "pts", "points": "pts", "ro": "oreb", "oreb": "oreb", "rd": "dreb", "dreb": "dreb", "rt": "reb", "reb": "reb", "pd": "ast", "ast": "ast", "in": "stl", "stl": "stl", "ct": "blk", "blk": "blk", "bp": "tov", "tov": "tov", "fpr": "fd", "fte": "pf", "pf": "pf", "eval": "eval", "eva": "eval", "pir": "eval", "2p": "twoPct", "3p": "tpPct", "lf": "ftPct", "3r": "tpm", "3pm": "tpm", "mj": "gp", "gp": "gp", "min": "min", "pm": "pm", "cs": "_", "2r": "_", "2t": "_", "3t": "_", "lfr": "_", "lft": "_" };
+const LEAGUE_HEADERS = { "pts": "pts", "points": "pts", "ro": "oreb", "oreb": "oreb", "rd": "dreb", "dreb": "dreb", "rt": "reb", "reb": "reb", "pd": "ast", "ast": "ast", "in": "stl", "stl": "stl", "ct": "blk", "blk": "blk", "bp": "tov", "tov": "tov", "fpr": "fd", "fte": "pf", "pf": "pf", "eval": "eval", "eva": "eval", "pir": "eval", "2p": "twoPct", "3p": "tpPct", "lf": "ftPct", "3r": "tpm", "3pm": "tpm", "mj": "gp", "gp": "gp", "min": "min", "pm": "pm", "cs": "_", "2r": "_2r", "2t": "_2t", "3t": "_3t", "lfr": "_fr", "lft": "_ft" };
 function parseLeagueText(text, forcedKey = "") {
   const num = (v) => { if (v === undefined || v === null) return null; const s = String(v).trim().replace(",", ".").replace("%", ""); if (!s || s === "-" || s === "—") return null; const x = parseFloat(s); return isNaN(x) ? null : x; };
   const lines = String(text).split(/\r?\n/).map(l => l.replace(/ /g, " ").trim()).filter(Boolean);
@@ -3534,7 +3534,7 @@ function parseLeagueText(text, forcedKey = "") {
       else if (/[A-Za-zÀ-ÿ]/.test(lines[i]) && !/\t/.test(lines[i]) && i + 1 < lines.length && lines[i + 1].split("\t").length >= keys2.length - 1) { name = lines[i]; vals = lines[i + 1].split("\t").map(x => x.trim()); i++; }
       else continue;
       if (/^(total|moyenne|average|championnat)/i.test(name)) continue;
-      keys2.forEach((k, j) => { if (k !== "_" && k !== "gp" && k !== "min") put(name, k, num(vals[j])); });
+      keys2.forEach((k, j) => { if (k !== "_" && k !== "gp" && k !== "min") { const v = num(vals[j]); put(name, k, v); if (k === "tpm") put(name, "_3r", v); if (k === "_3t") put(name, "tpa", v); } });
     }
     if (out.size) return { rows: [...out.values()], kind: "tableau" };
   }
