@@ -882,7 +882,9 @@ function readImageAsJpeg(file, maxDim = 1200, quality = 0.72) {
         }
         const canvas = document.createElement("canvas");
         canvas.width = width; canvas.height = height;
-        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+        const ctx2 = canvas.getContext("2d");
+        ctx2.fillStyle = "#ffffff"; ctx2.fillRect(0, 0, width, height); // le JPEG n'a pas de transparence : fond blanc, pas noir
+        ctx2.drawImage(img, 0, 0, width, height);
         // Si encore trop lourd, réduire la qualité progressivement
         let result = canvas.toDataURL("image/jpeg", quality);
         if (result.length > 600000) result = canvas.toDataURL("image/jpeg", 0.6);
