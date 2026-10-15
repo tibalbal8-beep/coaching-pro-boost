@@ -3476,12 +3476,13 @@ const LEAGUE_STATS = [
   { key: "net", label: "Écart pour 100 possessions (estimé)", hi: true }, { key: "poss", label: "Possessions par match (rythme)", hi: true },
 ];
 // Tableau d'équipes SANS ligne d'en-têtes (cas de la page « Statistiques équipes » de la NM1 / Proballers) : 21 valeurs après le nom
-const LEAGUE_NM1_COLS = ["gp", "pts", "ptsAgainst", "_2r", "_2t", "twoPct", "_3r", "_3t", "tpPct", "_fr", "_ft", "ftPct", "reb", "oreb", "dreb", "ast", "stl", "tov", "blk", "pf", "eval"];
+// (en-têtes du site : MJ, PTS, EVA, 2R, 2T, 2%, 3R, 3T, 3%, LFR, LFT, LF%, RT, RO, RD, PD, IN, BP, CT, FTE, FPR — pas de points encaissés)
+const LEAGUE_NM1_COLS = ["gp", "pts", "eval", "_2r", "_2t", "twoPct", "_3r", "_3t", "tpPct", "_fr", "_ft", "ftPct", "reb", "oreb", "dreb", "ast", "stl", "tov", "blk", "pf", "fd"];
 const leagueNorm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 // Page d'accueil Stats Center de la LNB (top 5 par catégorie) : titre de catégorie → statistique
 const LEAGUE_OVERVIEW_TITLES = { "points": "pts", "rebonds": "reb", "passes decisives": "ast", "evaluation": "eval", "interceptions": "stl", "contres": "blk", "tirs": "fgPct", "3 points": "tpPct", "lancers francs": "ftPct", "3 points marques": "tpm", "fautes provoquees": "fd", "ballons perdus": "tov" };
 // En-têtes de tableau (français / anglais) → statistique
-const LEAGUE_HEADERS = { "pts": "pts", "points": "pts", "ro": "oreb", "oreb": "oreb", "rd": "dreb", "dreb": "dreb", "rt": "reb", "reb": "reb", "pd": "ast", "ast": "ast", "in": "stl", "stl": "stl", "ct": "blk", "blk": "blk", "bp": "tov", "tov": "tov", "fpr": "fd", "fte": "pf", "pf": "pf", "eval": "eval", "pir": "eval", "2p": "twoPct", "3p": "tpPct", "lf": "ftPct", "3r": "tpm", "3pm": "tpm", "mj": "gp", "gp": "gp", "min": "min", "pm": "pm", "cs": "_", "2r": "_", "2t": "_", "3t": "_", "lfr": "_", "lft": "_" };
+const LEAGUE_HEADERS = { "pts": "pts", "points": "pts", "ro": "oreb", "oreb": "oreb", "rd": "dreb", "dreb": "dreb", "rt": "reb", "reb": "reb", "pd": "ast", "ast": "ast", "in": "stl", "stl": "stl", "ct": "blk", "blk": "blk", "bp": "tov", "tov": "tov", "fpr": "fd", "fte": "pf", "pf": "pf", "eval": "eval", "eva": "eval", "pir": "eval", "2p": "twoPct", "3p": "tpPct", "lf": "ftPct", "3r": "tpm", "3pm": "tpm", "mj": "gp", "gp": "gp", "min": "min", "pm": "pm", "cs": "_", "2r": "_", "2t": "_", "3t": "_", "lfr": "_", "lft": "_" };
 function parseLeagueText(text, forcedKey = "") {
   const num = (v) => { if (v === undefined || v === null) return null; const s = String(v).trim().replace(",", ".").replace("%", ""); if (!s || s === "-" || s === "—") return null; const x = parseFloat(s); return isNaN(x) ? null : x; };
   const lines = String(text).split(/\r?\n/).map(l => l.replace(/ /g, " ").trim()).filter(Boolean);
@@ -3508,7 +3509,7 @@ function parseLeagueText(text, forcedKey = "") {
       const name = c[0], vals = c.slice(1);
       LEAGUE_NM1_COLS.forEach((k, j) => { if (k === "gp") return; const v = num(vals[j]); if (k === "_3r") { put(name, "_3r", v); put(name, "tpm", v); } else if (k === "_3t") { put(name, "_3t", v); put(name, "tpa", v); } else put(name, k, v); });
     });
-    return { rows: [...out.values()], kind: "tableau sans en-têtes" };
+    return { rows: [...out.values()], kind: "tableau sans en-têtes", reset: ["ptsAgainst", "diff", "net", "pppAgainst"] };   // ces colonnes n'existent pas dans ce tableau : on efface d'éventuelles valeurs d'un ancien collage mal lu
   }
   // 2. tableau large : une ligne d'en-têtes (PTS, RO, RD…) puis une ligne par équipe
   const cut = (l) => l.includes("\t") ? l.split("\t").map(x => x.trim()) : l.split(/\s{2,}/).map(x => x.trim());
@@ -3526,7 +3527,7 @@ function parseLeagueText(text, forcedKey = "") {
     if (/^(equipe|team|club|joueur|nom|#|rang)$/.test(leagueNorm(labels[0]))) labels = labels.slice(1);
     const keys = labels.map(c => LEAGUE_HEADERS[leagueNorm(c).replace(/ /g, "")] ?? LEAGUE_HEADERS[leagueNorm(c)] ?? "_");
     // les colonnes % : « %2P » → twoPct, « %3P » → tpPct, « %LF » → ftPct (le « % » est ignoré par leagueNorm : on regarde le libellé brut)
-    const keys2 = labels.map((c, i) => { const raw = String(c).toLowerCase(); if (/%\s*2/.test(raw)) return "twoPct"; if (/%\s*3/.test(raw)) return "tpPct"; if (/%\s*lf|%\s*ft/.test(raw)) return "ftPct"; if (/%\s*t|fg\s*%/.test(raw)) return "fgPct"; return keys[i]; });
+    const keys2 = labels.map((c, i) => { const raw = String(c).toLowerCase(); if (/%\s*2|2\s*%/.test(raw)) return "twoPct"; if (/%\s*3|3\s*%/.test(raw)) return "tpPct"; if (/%\s*lf|%\s*ft|lf\s*%|ft\s*%/.test(raw)) return "ftPct"; if (/%\s*t|fg\s*%/.test(raw)) return "fgPct"; return keys[i]; });
     for (let i = hi + 1; i < lines.length; i++) {
       let cells = cut(lines[i]), name = "", vals = [];
       if (cells.length >= keys2.length && /[A-Za-zÀ-ÿ]/.test(cells[0]) && !/^[-\d.,%]+$/.test(cells[0])) { name = cells[0]; vals = cells.slice(1); }
@@ -3551,8 +3552,9 @@ function parseLeagueText(text, forcedKey = "") {
   return { rows: [...out.values()], kind: "classement" };
 }
 // Fusionne des lignes lues dans le comparatif : les équipes déjà saisies (nom + logo) sont reconnues par leur nom, les autres sont créées
-function mergeLeague(league, rows) {
+function mergeLeague(league, rows, reset = []) {
   const L = league ? { ...league, teams: [...(league.teams || [])], stats: { ...(league.stats || {}) } } : { teams: [], stats: {} };
+  reset.forEach(k => { delete L.stats[k]; });
   let created = 0;
   // Si TOUS les noms du collage sont en majuscules (style lnb.fr) on les remet en « Saint-Quentin » ; sinon (FFBB : « SCABB » à côté de « Berck ») on garde l'écriture du site
   const allUpper = rows.length > 0 && rows.every(r => !/[a-zà-ÿ]/.test(r.name));
@@ -15223,7 +15225,7 @@ function CoachingProBoost({ session }) {
                     const readText = () => {
                       try {
                         const r = parseLeagueText(taLgText, taLgStat);
-                        const { league, created } = mergeLeague(LG, r.rows);
+                        const { league, created } = mergeLeague(LG, r.rows, r.reset || []);
                         setLG(league); setTaLgText("");
                         cpbAlert?.(`${r.rows.length} équipe${r.rows.length > 1 ? "s" : ""} lue${r.rows.length > 1 ? "s" : ""} (${r.kind === "accueil" ? "page d'accueil des stats : top 5 par catégorie" : r.kind === "tableau" ? "tableau avec colonnes" : "classement d'une statistique"})${created ? ` — ${created} nouvelle${created > 1 ? "s" : ""} équipe${created > 1 ? "s" : ""} ajoutée${created > 1 ? "s" : ""} à la liste (tu peux leur mettre un logo)` : ""}.${r.kind === "accueil" ? " Une page d'accueil ne donne que les 5 premiers : pour la moyenne du championnat et le rang de ton équipe, colle les classements complets." : ""}`);
                       } catch (err) { cpbAlert?.("Lecture impossible : " + err.message); }
