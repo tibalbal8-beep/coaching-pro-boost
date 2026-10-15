@@ -1306,6 +1306,13 @@ const SCOUT_REPORT_CSS = `
   .mh-ph{display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;font-size:28px;font-weight:700;color:#1B2A4A66;background:#1B2A4A10}
   .mh-name{font-family:'Oswald',sans-serif;font-size:15px;font-weight:600;text-align:center;line-height:1.2}
   .mh-score{font-family:'Oswald',sans-serif;font-size:40px;font-weight:700;color:#1B2A4A;white-space:nowrap;text-align:center}.mh-score span{color:#FF6B35}.mh-score small{display:block;font-family:'Inter',sans-serif;font-size:10.5px;font-weight:500;color:#1B2A4A80;text-transform:uppercase;letter-spacing:.8px}
+  .lg-t{display:inline-flex;align-items:center;gap:5px;font-weight:600}.lg-logo{height:20px;width:20px;object-fit:contain;border-radius:3px;background:#fff}.lg-logo.lg-big{height:30px;width:30px}
+  .lg td small{opacity:.6;font-size:10px}.lg-rk{display:inline-block;padding:1px 7px;border-radius:10px;background:#1B2A4A12;font-weight:700;font-size:11px}.lg-rk.lg-top{background:#22c55e26;color:#15803d}.lg-rk.lg-low{background:#ef444426;color:#b91c1c}.lg-win{background:#22c55e1f}
+  .lg-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.lg-card{border:1px solid #1B2A4A1a;border-radius:10px;padding:8px 10px;break-inside:avoid}
+  .lg-title{font-family:'Oswald',sans-serif;font-size:13px;letter-spacing:.4px;margin-bottom:5px}.lg-title small{font-family:'Inter',sans-serif;font-size:10px;color:#1B2A4A80;letter-spacing:0}
+  .lg-row{display:grid;grid-template-columns:16px 1fr 70px 42px;gap:6px;align-items:center;font-size:11.5px;padding:2px 0}.lg-row b{text-align:right}.lg-me{background:#FF6B3520;border-radius:5px;margin:0 -4px;padding:2px 4px}
+  .lg-rk2{color:#1B2A4A80;font-weight:700}.lg-name{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.lg-bar{background:#1B2A4A10;border-radius:3px;height:7px;overflow:hidden}.lg-bar i{display:block;height:100%;background:#2563EB}.lg-me .lg-bar i{background:#FF6B35}
+  @media (max-width:640px){.lg-grid{grid-template-columns:1fr}}
   .tm-logo{height:30px;width:30px;object-fit:contain;vertical-align:middle;margin-right:6px;border-radius:4px;background:#fff}
   .game-chart{width:100%;height:auto;display:block;margin:6px 0 4px}
   .rot-per{font-size:12px;color:#1B2A4A99}
@@ -3455,6 +3462,144 @@ function gameAnalysisHtml(r, teamName, oppName) {
   </section>`;
 }
 
+// ── Comparatif championnat : classements d'équipes collés depuis un site de stats (lnb.fr…) ──
+const LEAGUE_STATS = [
+  { key: "pts", label: "Points", hi: true }, { key: "oreb", label: "Rebonds offensifs", hi: true }, { key: "dreb", label: "Rebonds défensifs", hi: true },
+  { key: "reb", label: "Rebonds", hi: true }, { key: "ast", label: "Passes décisives", hi: true }, { key: "stl", label: "Interceptions", hi: true },
+  { key: "blk", label: "Contres", hi: true }, { key: "tov", label: "Balles perdues", hi: false }, { key: "fd", label: "Fautes provoquées", hi: true },
+  { key: "pf", label: "Fautes commises", hi: false }, { key: "eval", label: "Évaluation", hi: true }, { key: "fgPct", label: "% Tirs", hi: true, pct: true },
+  { key: "twoPct", label: "% 2 pts", hi: true, pct: true }, { key: "tpPct", label: "% 3 pts", hi: true, pct: true }, { key: "ftPct", label: "% Lancers francs", hi: true, pct: true },
+  { key: "tpm", label: "3 pts marqués", hi: true }, { key: "pm", label: "+/-", hi: true },
+];
+const leagueNorm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+// Page d'accueil Stats Center de la LNB (top 5 par catégorie) : titre de catégorie → statistique
+const LEAGUE_OVERVIEW_TITLES = { "points": "pts", "rebonds": "reb", "passes decisives": "ast", "evaluation": "eval", "interceptions": "stl", "contres": "blk", "tirs": "fgPct", "3 points": "tpPct", "lancers francs": "ftPct", "3 points marques": "tpm", "fautes provoquees": "fd", "ballons perdus": "tov" };
+// En-têtes de tableau (français / anglais) → statistique
+const LEAGUE_HEADERS = { "pts": "pts", "points": "pts", "ro": "oreb", "oreb": "oreb", "rd": "dreb", "dreb": "dreb", "rt": "reb", "reb": "reb", "pd": "ast", "ast": "ast", "in": "stl", "stl": "stl", "ct": "blk", "blk": "blk", "bp": "tov", "tov": "tov", "fpr": "fd", "fte": "pf", "pf": "pf", "eval": "eval", "pir": "eval", "2p": "twoPct", "3p": "tpPct", "lf": "ftPct", "3r": "tpm", "3pm": "tpm", "mj": "gp", "gp": "gp", "min": "min", "pm": "pm", "cs": "_", "2r": "_", "2t": "_", "3t": "_", "lfr": "_", "lft": "_" };
+function parseLeagueText(text, forcedKey = "") {
+  const num = (v) => { if (v === undefined || v === null) return null; const s = String(v).trim().replace(",", ".").replace("%", ""); if (!s || s === "-" || s === "—") return null; const x = parseFloat(s); return isNaN(x) ? null : x; };
+  const lines = String(text).split(/\r?\n/).map(l => l.replace(/ /g, " ").trim()).filter(Boolean);
+  if (!lines.length) throw new Error("rien à lire : colle d'abord le texte du site");
+  const out = new Map();   // nom d'équipe → { stats }
+  const put = (name, key, v) => { if (v === null || !name) return; const e = out.get(name) || { name, stats: {} }; e.stats[key] = v; out.set(name, e); };
+  // 1. page d'accueil avec les top 5 par catégorie
+  const titleIdx = lines.map((l, i) => [i, LEAGUE_OVERVIEW_TITLES[leagueNorm(l)]]).filter(x => x[1]);
+  if (titleIdx.length >= 3 && !forcedKey) {
+    titleIdx.forEach(([i, key], n) => {
+      const end = n + 1 < titleIdx.length ? titleIdx[n + 1][0] : lines.length;
+      const seg = lines.slice(i + 1, end).filter(l => !/^VOIR PLUS$/i.test(l));
+      for (let k = 0; k < seg.length; k++) {
+        if (/^\d{1,2}$/.test(seg[k]) && k + 2 < seg.length + 0 && !/^\d/.test(seg[k + 1] || "")) continue;   // numéro de rang
+        if (!/^[-\d.,%]+$/.test(seg[k]) && /^[-\d.,%]+$/.test(seg[k + 1] || "")) { put(seg[k], key, num(seg[k + 1])); k++; }
+      }
+    });
+    if (out.size) return { rows: [...out.values()], kind: "accueil" };
+  }
+  // 2. tableau large : une ligne d'en-têtes (PTS, RO, RD…) puis une ligne par équipe
+  const cut = (l) => l.includes("\t") ? l.split("\t").map(x => x.trim()) : l.split(/\s{2,}/).map(x => x.trim());
+  let hi = -1, labels = [];
+  for (let i = 0; i < lines.length && hi === -1; i++) {
+    let cells = cut(lines[i]); if (cells.length < 4) cells = lines[i].split(/\s+/);
+    const hits = cells.filter(c => LEAGUE_HEADERS[leagueNorm(c).replace(/ /g, "")] !== undefined || LEAGUE_HEADERS[leagueNorm(c)] !== undefined).length;
+    if (hits >= 4) { hi = i; labels = cells; }
+  }
+  if (hi === -1) {
+    // en-têtes écrits un par ligne (colonnes copiées en vertical)
+    const run = []; for (let i = 0; i < lines.length; i++) { const k = LEAGUE_HEADERS[leagueNorm(lines[i]).replace(/ /g, "")]; if (k !== undefined) { if (!run.length) run.push(i); } else if (run.length && run.length < 3) run.length = 0; }
+  }
+  if (hi !== -1 && !forcedKey) {
+    if (/^(equipe|team|club|joueur|nom|#|rang)$/.test(leagueNorm(labels[0]))) labels = labels.slice(1);
+    const keys = labels.map(c => LEAGUE_HEADERS[leagueNorm(c).replace(/ /g, "")] ?? LEAGUE_HEADERS[leagueNorm(c)] ?? "_");
+    // les colonnes % : « %2P » → twoPct, « %3P » → tpPct, « %LF » → ftPct (le « % » est ignoré par leagueNorm : on regarde le libellé brut)
+    const keys2 = labels.map((c, i) => { const raw = String(c).toLowerCase(); if (/%\s*2/.test(raw)) return "twoPct"; if (/%\s*3/.test(raw)) return "tpPct"; if (/%\s*lf|%\s*ft/.test(raw)) return "ftPct"; if (/%\s*t|fg\s*%/.test(raw)) return "fgPct"; return keys[i]; });
+    for (let i = hi + 1; i < lines.length; i++) {
+      let cells = cut(lines[i]), name = "", vals = [];
+      if (cells.length >= keys2.length && /[A-Za-zÀ-ÿ]/.test(cells[0]) && !/^[-\d.,%]+$/.test(cells[0])) { name = cells[0]; vals = cells.slice(1); }
+      else if (/[A-Za-zÀ-ÿ]/.test(lines[i]) && !/\t/.test(lines[i]) && i + 1 < lines.length && lines[i + 1].split("\t").length >= keys2.length - 1) { name = lines[i]; vals = lines[i + 1].split("\t").map(x => x.trim()); i++; }
+      else continue;
+      if (/^(total|moyenne|average|championnat)/i.test(name)) continue;
+      keys2.forEach((k, j) => { if (k !== "_" && k !== "gp" && k !== "min") put(name, k, num(vals[j])); });
+    }
+    if (out.size) return { rows: [...out.values()], kind: "tableau" };
+  }
+  // 3. classement d'une seule statistique (liste « équipe / valeur ») : il faut dire laquelle
+  if (!forcedKey) throw new Error("je n'ai pas reconnu le format : choisis dans la liste la statistique que ce classement représente (ex. « Rebonds offensifs »), ou colle un tableau avec ses en-têtes (PTS, RO, RD…)");
+  for (let i = 0; i < lines.length; i++) {
+    const cells = lines[i].split(/\t| {2,}/).map(x => x.trim()).filter(Boolean);
+    if (cells.length >= 2) {
+      const nameCell = cells.find(c => /[A-Za-zÀ-ÿ]/.test(c) && !/^[-\d.,%]+$/.test(c)), vals = cells.filter(c => /^[-\d.,%]+$/.test(c));
+      if (nameCell && vals.length && !/^(equipe|team|rang|rank|#)$/i.test(nameCell)) { put(nameCell, forcedKey, num(vals[vals.length - 1])); continue; }
+    }
+    if (/[A-Za-zÀ-ÿ]/.test(lines[i]) && !/^[-\d.,%]+$/.test(lines[i]) && /^[-\d.,%]+$/.test(lines[i + 1] || "") && !/^(VOIR PLUS|RETOUR)/i.test(lines[i])) { put(lines[i], forcedKey, num(lines[i + 1])); i++; }
+  }
+  if (!out.size) throw new Error("aucune équipe avec une valeur trouvée dans ce texte");
+  return { rows: [...out.values()], kind: "classement" };
+}
+// Fusionne des lignes lues dans le comparatif : les équipes déjà saisies (nom + logo) sont reconnues par leur nom, les autres sont créées
+function mergeLeague(league, rows) {
+  const L = league ? { ...league, teams: [...(league.teams || [])], stats: { ...(league.stats || {}) } } : { teams: [], stats: {} };
+  let created = 0;
+  rows.forEach(r => {
+    const k = leagueNorm(r.name);
+    let t = L.teams.find(x => leagueNorm(x.name) === k) || L.teams.find(x => k && (leagueNorm(x.name).includes(k) || k.includes(leagueNorm(x.name))));
+    if (!t) { t = { id: "t" + Math.random().toString(36).slice(2, 8), name: r.name.charAt(0) + r.name.slice(1).toLowerCase() }; L.teams.push(t); created++; }
+    Object.entries(r.stats).forEach(([key, v]) => { L.stats[key] = { ...(L.stats[key] || {}), [t.id]: v }; });
+  });
+  return { league: L, created };
+}
+function leagueHtml(a) {
+  const L = a.league; if (!L || !(L.teams || []).length) return "";
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const byId = new Map(L.teams.map(t => [t.id, t]));
+  const badge = (t, big = false) => t ? `<span class="lg-t">${t.logo ? `<img class="lg-logo${big ? " lg-big" : ""}" src="${t.logo}" alt="" />` : ""}${esc(t.name)}</span>` : "";
+  const fmt = (S, v) => v === null || v === undefined ? "–" : S.pct ? v.toFixed(1).replace(".", ",") + " %" : v.toFixed(1).replace(".", ",");
+  const all = LEAGUE_STATS.map(S => {
+    const m = L.stats[S.key] || {}, entries = Object.entries(m).filter(([id, v]) => byId.has(id) && v !== null).map(([id, v]) => ({ t: byId.get(id), v }));
+    if (entries.length < 3) return null;
+    entries.sort((x, y) => S.hi ? y.v - x.v : x.v - y.v);
+    // Liste incomplète (ex. top 5 de la page d'accueil LNB) : ni moyenne ni rang fiables ; elle ne sert qu'à nommer les meilleures équipes (si « plus » = mieux)
+    const partial = entries.length < Math.max(3, Math.ceil(L.teams.length * 0.6));
+    const avg = entries.reduce((s, e) => s + e.v, 0) / entries.length;
+    const mine = entries.find(e => e.t.id === L.mine), other = entries.find(e => e.t.id === L.other);
+    return { S, entries, avg, mine, mineRank: mine ? entries.indexOf(mine) + 1 : null, other, n: entries.length, partial };
+  }).filter(Boolean);
+  const full = all.filter(s => !s.partial), leaders = all.filter(s => !s.partial || s.S.hi);
+  const mineT = byId.get(L.mine), otherT = byId.get(L.other);
+  const head = (title, extra = "") => `<section class="card"><h2><i></i>${title}</h2>${extra}`;
+  if (!all.length) return head("Comparatif championnat", `<p class="hint">Aucune statistique avec au moins 3 équipes pour l'instant.</p>`) + "</section>";
+  let out = "";
+  if (!full.length) {
+    out += head("Comparatif championnat", `<p class="hint">Les classements importés sont des listes partielles (top 5) : colle les classements complets ou le tableau de toutes les équipes pour obtenir la moyenne du championnat et le rang de ton équipe.</p>`) + "</section>";
+  } else {
+    const diffCell = (st, e) => { if (!e) return `<td class="num">–</td>`; const d = e.v - st.avg, good = st.S.hi ? d > 0 : d < 0; const cls = Math.abs(d) < 0.05 * Math.max(1, Math.abs(st.avg)) ? "" : good ? "pm-pos" : "pm-neg"; return `<td class="num"><b class="${cls}">${d > 0 ? "+" : ""}${d.toFixed(1).replace(".", ",")}${st.S.pct ? " pt" : ""}</b></td>`; };
+    const insights = [];
+    if (mineT) {
+      const ranked = full.filter(s => s.mine).map(s => ({ s, r: s.mineRank / s.n })).sort((x, y) => x.r - y.r);
+      const cut = (x) => Math.max(2, Math.round(x.s.n * 0.2));
+      const best = ranked.filter(x => x.s.mineRank <= cut(x)).slice(0, 3), worst = [...ranked].reverse().filter(x => x.s.mineRank > x.s.n - cut(x)).slice(0, 3);
+      if (best.length) insights.push(`<b>Points forts de ${esc(mineT.name)} dans le championnat</b> : ${best.map(x => `${x.s.S.label} (${x.s.mineRank}ᵉ / ${x.s.n}, ${fmt(x.s.S, x.s.mine.v)})`).join(" · ")}.`);
+      if (worst.length) insights.push(`<b>À améliorer</b> : ${worst.map(x => `${x.s.S.label} (${x.s.mineRank}ᵉ / ${x.s.n}, ${fmt(x.s.S, x.s.mine.v)} pour ${fmt(x.s.S, x.s.avg)} de moyenne)`).join(" · ")}.`);
+    }
+    out += head("Comparatif championnat" + (mineT ? " — " + badge(mineT) : ""), `<p class="hint">Moyennes par match d'après les classements importés (${Math.max(...full.map(s => s.n))} équipes sur la statistique la plus complète). Rang 1 = meilleure équipe${full.some(s => !s.S.hi) ? " ; pour les balles perdues et les fautes commises, moins est mieux" : ""}.</p>
+      ${insights.length ? `<ul class="bs-ins">${insights.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
+      <div class="bs-table"><table class="pm-five lg"><thead><tr><th>Statistique</th>${mineT ? `<th class="num">${esc(mineT.name)}</th><th class="num">Rang</th>` : ""}<th class="num">Moyenne champ.</th>${mineT ? `<th class="num">Écart</th>` : ""}<th>Meilleure équipe</th></tr></thead><tbody>
+      ${full.map(st => `<tr><td><b>${st.S.label}</b></td>${mineT ? `<td class="num"><b>${fmt(st.S, st.mine?.v)}</b></td><td class="num">${st.mineRank ? `<span class="lg-rk ${st.mineRank <= 3 ? "lg-top" : st.mineRank > st.n - 3 ? "lg-low" : ""}">${st.mineRank}ᵉ/${st.n}</span>` : "–"}</td>` : ""}<td class="num">${fmt(st.S, st.avg)}</td>${mineT ? diffCell(st, st.mine) : ""}<td>${badge(st.entries[0].t)} <small>${fmt(st.S, st.entries[0].v)}</small></td></tr>`).join("")}
+      </tbody></table></div>`) + "</section>";
+  }
+  const tops = leaders.map(st => {
+    const max = Math.max(...st.entries.map(e => Math.abs(e.v)), 1), shown = st.entries.slice(0, 5);
+    if (!st.partial && st.mine && !shown.includes(st.mine)) shown.push(st.mine);
+    return `<div class="lg-card"><div class="lg-title">${st.S.label}<small>${st.partial ? " · top " + shown.length : " · moy. " + fmt(st.S, st.avg)}</small></div>${shown.map(e => `<div class="lg-row${e.t.id === L.mine ? " lg-me" : ""}"><span class="lg-rk2">${st.entries.indexOf(e) + 1}</span><span class="lg-name">${badge(e.t)}</span><span class="lg-bar"><i style="width:${Math.max(3, Math.abs(e.v) / max * 100).toFixed(0)}%"></i></span><b>${fmt(st.S, e.v)}</b></div>`).join("")}</div>`;
+  }).join("");
+  out += head("Les meilleures équipes par statistique", `<p class="hint">Les 5 premières de chaque classement${mineT ? `, avec ${esc(mineT.name)} en surbrillance (ajoutée en bas si elle est hors du top 5)` : ""}.</p><div class="lg-grid">${tops}</div>`) + "</section>";
+  if (mineT && otherT && mineT.id !== otherT.id) {
+    const rows = full.filter(s => s.mine && s.other);
+    if (rows.length) out += head(`${badge(mineT, true)} face à ${badge(otherT, true)}`, `<div class="bs-table"><table class="pm-five lg"><thead><tr><th>Statistique</th><th class="num">${esc(mineT.name)}</th><th class="num">${esc(otherT.name)}</th><th class="num">Moy. champ.</th><th class="num">Avantage</th></tr></thead><tbody>
+      ${rows.map(st => { const d = st.mine.v - st.other.v, mineBetter = st.S.hi ? d > 0 : d < 0, tie = Math.abs(d) < 0.05; return `<tr><td><b>${st.S.label}</b></td><td class="num ${!tie && mineBetter ? "lg-win" : ""}"><b>${fmt(st.S, st.mine.v)}</b> <small>${st.mineRank}ᵉ</small></td><td class="num ${!tie && !mineBetter ? "lg-win" : ""}"><b>${fmt(st.S, st.other.v)}</b> <small>${st.entries.indexOf(st.other) + 1}ᵉ</small></td><td class="num">${fmt(st.S, st.avg)}</td><td class="num">${tie ? "=" : esc((mineBetter ? mineT : otherT).name)}</td></tr>`; }).join("")}
+      </tbody></table></div>`) + "</section>";
+  }
+  return out;
+}
 function buildTeamReportHtml(a, logo = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const f = (x, d = 1) => x === null || x === undefined ? "—" : x.toFixed(d).replace(".", ",");
@@ -3581,6 +3726,7 @@ function buildTeamReportHtml(a, logo = null) {
       ${kpis.length ? `<div class="kpis">${kpis.map(([v, l]) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join("")}</div>` : ""}
     </header>
     ${a.notes ? `<section class="card"><h2><i></i>Notes</h2><p class="notes-text">${esc(a.notes).replace(/\n/g, "<br>")}</p></section>` : ""}
+    ${leagueHtml(a)}
     ${rotHtml}
     ${lineupsHtml}
     ${boxHtml}
@@ -10733,6 +10879,7 @@ function CoachingProBoost({ session }) {
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
   const [taMom, setTaMom] = useState({}), [taOpen, setTaOpen] = useState({});
   const [taLnbOpen, setTaLnbOpen] = useState(false), [taLnbText, setTaLnbText] = useState("");
+  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false);
   const [taRenameId, setTaRenameId] = useState(null), [taRenameText, setTaRenameText] = useState("");
   const [taWizard, setTaWizard] = useState(null), [taWizTab, setTaWizTab] = useState("live"), [taSetup, setTaSetup] = useState(false);
   const [taFibaUrl, setTaFibaUrl] = useState(""), [taFibaPending, setTaFibaPending] = useState(null), [taFibaBusy, setTaFibaBusy] = useState(false);
@@ -15020,6 +15167,78 @@ function CoachingProBoost({ session }) {
                             </div>
                           );
                         })()}
+                      </div>
+                    );
+                  })()}
+                </div>
+                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-3">
+                  <button onClick={() => setTaLgOpen(o => !o)} className="w-full flex items-center justify-between text-left">
+                    <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold">{taLgOpen ? "▾" : "▸"} Comparatif championnat{(activeTa.league?.teams || []).length ? ` · ${activeTa.league.teams.length} équipes` : ""}</span>
+                    <span className="text-[11px] text-[#1B2A4A]/40">meilleurs au rebond off., moyenne du championnat, face-à-face entre équipes</span>
+                  </button>
+                  {taLgOpen && (() => {
+                    const LG = activeTa.league || { teams: [], stats: {} };
+                    const setLG = (next) => updateActiveTa({ league: next });
+                    const updTeam = (id, patch) => setLG({ ...LG, teams: LG.teams.map(x => x.id === id ? { ...x, ...patch } : x) });
+                    const addTeam = () => { const n = taLgNew.trim(); if (!n) return; if (LG.teams.some(x => leagueNorm(x.name) === leagueNorm(n))) { cpbAlert?.("Cette équipe existe déjà."); return; } setLG({ ...LG, teams: [...LG.teams, { id: uid(), name: n }] }); setTaLgNew(""); };
+                    const delTeam = async (x) => { const ok = await cpbAlert?.(`Retirer « ${x.name} » du comparatif ?`, { confirm: true }); if (!ok) return; const stats = {}; Object.entries(LG.stats).forEach(([k, m]) => { const c = { ...m }; delete c[x.id]; stats[k] = c; }); setLG({ ...LG, teams: LG.teams.filter(t2 => t2.id !== x.id), stats, mine: LG.mine === x.id ? null : LG.mine, other: LG.other === x.id ? null : LG.other }); };
+                    const readText = () => {
+                      try {
+                        const r = parseLeagueText(taLgText, taLgStat);
+                        const { league, created } = mergeLeague(LG, r.rows);
+                        setLG(league); setTaLgText("");
+                        cpbAlert?.(`${r.rows.length} équipe${r.rows.length > 1 ? "s" : ""} lue${r.rows.length > 1 ? "s" : ""} (${r.kind === "accueil" ? "page d'accueil des stats : top 5 par catégorie" : r.kind === "tableau" ? "tableau avec colonnes" : "classement d'une statistique"})${created ? ` — ${created} nouvelle${created > 1 ? "s" : ""} équipe${created > 1 ? "s" : ""} ajoutée${created > 1 ? "s" : ""} à la liste (tu peux leur mettre un logo)` : ""}.${r.kind === "accueil" ? " Une page d'accueil ne donne que les 5 premiers : pour la moyenne du championnat et le rang de ton équipe, colle les classements complets." : ""}`);
+                      } catch (err) { cpbAlert?.("Lecture impossible : " + err.message); }
+                    };
+                    const statCounts = LEAGUE_STATS.map(S => ({ S, n: Object.keys(LG.stats[S.key] || {}).length })).filter(x => x.n > 0);
+                    return (
+                      <div className="mt-3">
+                        <div className="text-xs font-semibold text-[#1B2A4A] mb-1">1. Les équipes du championnat (nom et logo)</div>
+                        <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Prépare ta liste (facultatif) : les équipes lues dans un texte collé sont reconnues par leur nom. Clique sur le carré pour mettre un logo.</p>
+                        <div className="grid sm:grid-cols-2 gap-2 mb-2">
+                          {LG.teams.map(x => (
+                            <div key={x.id} className="flex items-center gap-2 border border-[#1B2A4A]/12 rounded-lg p-1.5">
+                              <label className="cursor-pointer shrink-0" title="Logo">
+                                {x.logo ? <img src={x.logo} alt="" className="w-8 h-8 rounded object-contain bg-white border border-[#1B2A4A]/10" /> : <span className="w-8 h-8 rounded flex items-center justify-center text-[#1B2A4A]/40" style={{ background: "rgba(27,42,74,.08)" }}>＋</span>}
+                                <input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; try { updTeam(x.id, { logo: await readImageAsJpeg(f, 120, 0.85) }); } catch { cpbAlert?.("Image illisible."); } }} />
+                              </label>
+                              <input value={x.name} onChange={e => updTeam(x.id, { name: e.target.value })} className="flex-1 min-w-0 border border-[#1B2A4A]/15 rounded px-2 py-1 text-sm bg-white/60" />
+                              <button onClick={() => delTeam(x)} className="text-[#1B2A4A]/30 hover:text-red-600" title="Retirer"><X size={13} /></button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex gap-2 mb-4">
+                          <input value={taLgNew} onChange={e => setTaLgNew(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addTeam(); }} placeholder="Ajouter une équipe (ex : Le Mans)" className="flex-1 min-w-0 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                          <button onClick={addTeam} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>+ Ajouter</button>
+                        </div>
+                        <div className="text-xs font-semibold text-[#1B2A4A] mb-1">2. Coller des statistiques</div>
+                        <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Sur le site (lnb.fr, Stats Center, onglet « Stats équipes »), fais Cmd + A puis Cmd + C et colle ici. Formats reconnus : la page d'accueil des stats (top 5 par catégorie), un tableau avec ses colonnes (PTS, RO, RD, RT, PD…), ou le classement d'une seule statistique (dans ce cas, choisis laquelle).</p>
+                        <select value={taLgStat} onChange={e => setTaLgStat(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mb-2">
+                          <option value="">Détecter automatiquement</option>
+                          {LEAGUE_STATS.map(S => <option key={S.key} value={S.key}>Classement de : {S.label}</option>)}
+                        </select>
+                        <textarea value={taLgText} onChange={e => setTaLgText(e.target.value)} rows={4} placeholder="Colle ici le texte du site…" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white/60 font-mono" />
+                        <button disabled={!taLgText.trim()} onClick={readText} className="mt-2 text-sm font-semibold text-white px-4 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>Lire et ajouter</button>
+                        {statCounts.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-3">
+                            {statCounts.map(({ S, n }) => (
+                              <span key={S.key} className="inline-flex items-center gap-1 pl-2.5 pr-1 py-0.5 rounded-full text-[11px] bg-[#7c3aed]/10 text-[#1B2A4A]">{S.label} · {n} équipes
+                                <button onClick={() => { const st = { ...LG.stats }; delete st[S.key]; setLG({ ...LG, stats: st }); }} className="w-4 h-4 rounded-full text-[#1B2A4A]/40 hover:text-red-600 flex items-center justify-center" title="Retirer cette statistique"><X size={10} /></button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {LG.teams.length > 1 && (
+                          <div className="grid sm:grid-cols-2 gap-2 mt-4">
+                            <label className="text-xs text-[#1B2A4A]/60">3. Mon équipe dans le championnat
+                              <select value={LG.mine || ""} onChange={e => setLG({ ...LG, mine: e.target.value || null })} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mt-0.5 text-[#1B2A4A]"><option value="">—</option>{LG.teams.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+                            </label>
+                            <label className="text-xs text-[#1B2A4A]/60">Comparer avec une autre équipe
+                              <select value={LG.other || ""} onChange={e => setLG({ ...LG, other: e.target.value || null })} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mt-0.5 text-[#1B2A4A]"><option value="">—</option>{LG.teams.filter(x => x.id !== LG.mine).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+                            </label>
+                          </div>
+                        )}
+                        <p className="text-[11px] text-[#1B2A4A]/40 mt-3">Le comparatif apparaît dans l'export, avant les matchs : tableau « mon équipe / moyenne du championnat / rang », meilleures équipes par statistique, et face-à-face avec l'équipe choisie.</p>
                       </div>
                     );
                   })()}
