@@ -10998,7 +10998,7 @@ function CoachingProBoost({ session }) {
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
   const [taMom, setTaMom] = useState({}), [taOpen, setTaOpen] = useState({});
   const [taLnbOpen, setTaLnbOpen] = useState(false), [taLnbText, setTaLnbText] = useState("");
-  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false);
+  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false), [taLgGamesOpen, setTaLgGamesOpen] = useState(false);
   // Éditeur du comparatif championnat (partagé : bloc de « Mon équipe » et onglet admin « Comparatif championnat »)
   const renderLeagueEditor = (LG, setLG, taId) => {
     const updTeam = (id, patch) => setLG({ ...LG, teams: LG.teams.map(x => x.id === id ? { ...x, ...patch } : x) });
@@ -11089,8 +11089,8 @@ function CoachingProBoost({ session }) {
         </div>
         {myGames.length > 0 && (
           <div className="mt-2 text-[11px] text-[#1B2A4A]/70">
-            <div className="font-semibold mb-1">{myGames.length} match{myGames.length > 1 ? "s" : ""} lu{myGames.length > 1 ? "s" : ""}</div>
-            {myGames.map(g => (
+            <button onClick={() => setTaLgGamesOpen(o => !o)} className="font-semibold text-left hover:underline">{taLgGamesOpen ? "▾" : "▸"} {myGames.length} match{myGames.length > 1 ? "s" : ""} lu{myGames.length > 1 ? "s" : ""} <span className="font-normal text-[#1B2A4A]/40">{taLgGamesOpen ? "(replier)" : "(déplier pour en supprimer un)"}</span></button>
+            {taLgGamesOpen && myGames.map(g => (
               <div key={g.id} className="flex items-center gap-2 py-0.5">
                 <span className="flex-1 min-w-0 truncate">{g.t[0].n} {g.t[0].v[0]} – {g.t[1].v[0]} {g.t[1].n}</span>
                 <button onClick={() => delGame(g)} className="text-[#1B2A4A]/30 hover:text-red-600" title="Retirer"><X size={12} /></button>
