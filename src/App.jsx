@@ -3470,7 +3470,11 @@ const LEAGUE_STATS = [
   { key: "pf", label: "Fautes commises", hi: false }, { key: "eval", label: "Évaluation", hi: true }, { key: "fgPct", label: "% Tirs", hi: true, pct: true },
   { key: "twoPct", label: "% 2 pts", hi: true, pct: true }, { key: "tpPct", label: "% 3 pts", hi: true, pct: true }, { key: "ftPct", label: "% Lancers francs", hi: true, pct: true },
   { key: "tpm", label: "3 pts marqués", hi: true }, { key: "pm", label: "+/-", hi: true },
+  { key: "ptsAgainst", label: "Points encaissés", hi: false }, { key: "diff", label: "Écart de points (marqués − encaissés)", hi: true },
+  { key: "efg", label: "eFG % (tirs pondérés)", hi: true, pct: true }, { key: "tpa", label: "3 pts tentés", hi: true },
 ];
+// Tableau d'équipes SANS ligne d'en-têtes (cas de la page « Statistiques équipes » de la NM1 / Proballers) : 21 valeurs après le nom
+const LEAGUE_NM1_COLS = ["gp", "pts", "ptsAgainst", "_2r", "_2t", "twoPct", "_3r", "_3t", "tpPct", "_fr", "_ft", "ftPct", "reb", "oreb", "dreb", "ast", "stl", "tov", "blk", "pf", "eval"];
 const leagueNorm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 // Page d'accueil Stats Center de la LNB (top 5 par catégorie) : titre de catégorie → statistique
 const LEAGUE_OVERVIEW_TITLES = { "points": "pts", "rebonds": "reb", "passes decisives": "ast", "evaluation": "eval", "interceptions": "stl", "contres": "blk", "tirs": "fgPct", "3 points": "tpPct", "lancers francs": "ftPct", "3 points marques": "tpm", "fautes provoquees": "fd", "ballons perdus": "tov" };
@@ -3494,6 +3498,15 @@ function parseLeagueText(text, forcedKey = "") {
       }
     });
     if (out.size) return { rows: [...out.values()], kind: "accueil" };
+  }
+  // 1 bis. tableau sans en-têtes : « Équipe<TAB>MJ<TAB>PTS<TAB>…» (21 valeurs) ; on le reconnaît à son nombre de colonnes
+  const wide = lines.map(l => l.split("\t").map(x => x.trim())).filter(c => c.length >= 22 && /[A-Za-zÀ-ÿ]/.test(c[0]) && c.slice(1, 6).every(x => /^-?[\d.,]+\s*%?$/.test(x)));
+  if (wide.length >= 3 && !forcedKey) {
+    wide.forEach(c => {
+      const name = c[0], vals = c.slice(1);
+      LEAGUE_NM1_COLS.forEach((k, j) => { if (k === "gp") return; const v = num(vals[j]); if (k === "_3r") { put(name, "_3r", v); put(name, "tpm", v); } else if (k === "_3t") { put(name, "_3t", v); put(name, "tpa", v); } else put(name, k, v); });
+    });
+    return { rows: [...out.values()], kind: "tableau sans en-têtes" };
   }
   // 2. tableau large : une ligne d'en-têtes (PTS, RO, RD…) puis une ligne par équipe
   const cut = (l) => l.includes("\t") ? l.split("\t").map(x => x.trim()) : l.split(/\s{2,}/).map(x => x.trim());
@@ -3539,11 +3552,21 @@ function parseLeagueText(text, forcedKey = "") {
 function mergeLeague(league, rows) {
   const L = league ? { ...league, teams: [...(league.teams || [])], stats: { ...(league.stats || {}) } } : { teams: [], stats: {} };
   let created = 0;
+  // Si TOUS les noms du collage sont en majuscules (style lnb.fr) on les remet en « Saint-Quentin » ; sinon (FFBB : « SCABB » à côté de « Berck ») on garde l'écriture du site
+  const allUpper = rows.length > 0 && rows.every(r => !/[a-zà-ÿ]/.test(r.name));
   rows.forEach(r => {
     const k = leagueNorm(r.name);
     let t = L.teams.find(x => leagueNorm(x.name) === k) || L.teams.find(x => k && (leagueNorm(x.name).includes(k) || k.includes(leagueNorm(x.name))));
-    if (!t) { t = { id: "t" + Math.random().toString(36).slice(2, 8), name: r.name.charAt(0) + r.name.slice(1).toLowerCase() }; L.teams.push(t); created++; }
+    // Nom en MAJUSCULES (style LNB) → « Saint-Quentin » ; un nom déjà mixte est gardé tel quel
+    const nice = !allUpper ? r.name : r.name.toLowerCase().replace(/(^|[\s\-/'’])([a-zà-ÿ])/g, (m, a, b) => a + b.toUpperCase());
+    if (!t) { t = { id: "t" + Math.random().toString(36).slice(2, 8), name: nice }; L.teams.push(t); created++; }
     Object.entries(r.stats).forEach(([key, v]) => { L.stats[key] = { ...(L.stats[key] || {}), [t.id]: v }; });
+  });
+  // Statistiques dérivées : écart de points et eFG % quand les colonnes nécessaires sont là
+  L.teams.forEach(tm => {
+    const g = (k) => L.stats[k]?.[tm.id];
+    if (g("pts") !== undefined && g("ptsAgainst") !== undefined) L.stats.diff = { ...(L.stats.diff || {}), [tm.id]: Math.round((g("pts") - g("ptsAgainst")) * 10) / 10 };
+    if ([g("_2r"), g("_2t"), g("_3r"), g("_3t")].every(v => v !== undefined && v !== null) && (g("_2t") + g("_3t")) > 0) L.stats.efg = { ...(L.stats.efg || {}), [tm.id]: Math.round((g("_2r") + 1.5 * g("_3r")) / (g("_2t") + g("_3t")) * 1000) / 10 };
   });
   return { league: L, created };
 }
