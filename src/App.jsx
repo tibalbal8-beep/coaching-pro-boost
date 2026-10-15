@@ -3186,7 +3186,7 @@ function fibaBoxHtml(r) {
       ${rows.map(tr).join("")}
       <tr class="bx-tot"><td>Total</td><td class="num"></td><td class="num"><b>${t.pts}</b></td><td class="num">${ma(t.fg)} <small>${pct(...t.fg)}</small></td><td class="num">${ma(t.t3)} <small>${pct(...t.t3)}</small></td><td class="num">${ma(t.ft)}</td><td class="num">${t.or}-${t.dr}</td><td class="num">${t.or + t.dr}</td><td class="num">${t.ast}</td><td class="num">${t.tov}</td><td class="num">${t.stl}</td><td class="num">${t.blk}</td><td class="num">${t.pf}</td><td class="num"></td><td class="num"></td></tr></tbody></table></div>`;
   };
-  return `<section class="card"><h2><i></i>Box score — ${tmLogo(r, T)}${esc(rec.teams[T].name)} vs ${tmLogo(r, O)}${esc(rec.teams[O].name)}</h2>${table(T)}${table(O)}</section>`;
+  return `<section class="card"><h2><i></i>Box score — ${tmLogo(r, T)}${esc(rec.teams[T].name)} vs ${tmLogo(r, O)}${esc(rec.teams[O].name)}</h2>${table(T)}${table(O)}</section>` + reboundsHtml([r]);
 }
 // ── Possessions après rebond défensif : délai avant le tir, selon le tir raté qui précède ──
 const TR_BUCKETS = [["≤ 6 s", 0, 6], ["6 – 14 s", 6, 14], ["14 – 20 s", 14, 20], ["20 – 24 s", 20, 1e9]];
@@ -3304,6 +3304,29 @@ function presenceHtml(picks, a) {
     ${ins.length ? `<ul class="bs-ins">${ins.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}${tbl}</section>`;
 }
 // ── Plusieurs matchs : moyennes et cumuls sur la sélection ──
+// ── Rebonds : parts offensif/défensif et % de rebonds disponibles pris (chiffres exacts des deux équipes) ──
+function reboundsHtml(picks) {
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const ok = picks.filter(r => r.rec.teams[String(r.tno)].tot && r.rec.teams[String(r.tno) === "1" ? "2" : "1"].tot && (r.rec.teams[String(r.tno)].tot.or + r.rec.teams[String(r.tno)].tot.dr) > 0);
+  if (!ok.length) return "";
+  const z = () => ({ or: 0, dr: 0, miss: 0 });
+  const side = (r, k) => { const t = r.rec.teams[k].tot; return { or: t.or, dr: t.dr, miss: t.fg[1] - t.fg[0] }; };
+  const add = (a, b) => { a.or += b.or; a.dr += b.dr; a.miss += b.miss; return a; };
+  const pc = (x, y) => y ? (x / y * 100).toFixed(1).replace(".", ",") + " %" : "–";
+  const f1 = (x) => x.toFixed(1).replace(".", ",");
+  const n = ok.length, line = (label, A, B, cnt) => `<tr><td class="bx-n">${label}</td><td class="num">${f1(A.or / cnt)}</td><td class="num">${f1(A.dr / cnt)}</td><td class="num">${pc(A.or, A.or + A.dr)}</td><td class="num">${pc(A.dr, A.or + A.dr)}</td><td class="num"><b>${pc(A.or, A.or + B.dr)}</b></td><td class="num"><b>${pc(A.dr, A.dr + B.or)}</b></td><td class="num">${pc(A.or, A.miss)}</td></tr>`;
+  const T = z(), O = z(), rows = [];
+  ok.forEach(r => {
+    const a = side(r, String(r.tno)), b = side(r, String(r.tno) === "1" ? "2" : "1");
+    add(T, a); add(O, b);
+    if (n > 1) rows.push(`<tr><td colspan="8" class="bx-n"><small>${esc(r.label)} (${r.rec.final[0]}–${r.rec.final[1]})</small></td></tr>` + line("&nbsp;&nbsp;" + esc(r.rec.teams[String(r.tno)].name), a, b, 1) + line("&nbsp;&nbsp;" + esc(r.rec.teams[String(r.tno) === "1" ? "2" : "1"].name), b, a, 1));
+  });
+  const tn = ok[0].rec.teams[String(ok[0].tno)].name, on = n > 1 ? "Adversaires" : ok[0].rec.teams[String(ok[0].tno) === "1" ? "2" : "1"].name;
+  const head = `<tr><th></th><th class="num">RO</th><th class="num">RD</th><th class="num">Part RO</th><th class="num">Part RD</th><th class="num">% RO pris</th><th class="num">% RD pris</th><th class="num">RO / tir raté</th></tr>`;
+  return `<section class="card"><h2><i></i>Rebonds${n > 1 ? ` — moyenne sur ${n} matchs` : ""}</h2>
+    <p class="hint">Part RO / RD : répartition des rebonds de l'équipe (ex. 40 % offensifs, 60 % défensifs). % RO pris : rebonds offensifs ÷ (nos RO + RD adverses), soit la part des rebonds disponibles sur nos tirs manqués. % RD pris : même calcul en défense. RO / tir raté : rebonds offensifs ÷ tirs manqués (hors lancers francs). Chiffres exacts des deux équipes${n > 1 ? " ; ratios calculés sur le cumul des matchs, RO et RD en moyenne par match" : ""}.</p>
+    <div class="bs-table"><table class="pm-five">${head}${line(esc(tn), T, O, n)}${line(esc(on), O, T, n)}${rows.join("")}</table></div></section>`;
+}
 function multiGameHtml(a, picks) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const f1 = (x) => x === null || x === undefined || isNaN(x) ? "–" : x.toFixed(1).replace(".", ","), f0 = (x) => Math.round(x), sg = (v) => (v > 0 ? "+" : "") + Math.round(v);
@@ -3356,7 +3379,7 @@ function multiGameHtml(a, picks) {
   const TR = { ours: perMatch.flatMap(m => m.TR.ours), theirs: perMatch.flatMap(m => m.TR.theirs) };
   const oppN = picks.length > 1 ? "les adversaires" : picks[0].rec.teams[String(picks[0].tno) === "1" ? "2" : "1"].name;
   const trH = picks.every(r => r.rec.events.some(e => e.k === "sh" && e.ty !== undefined)) ? transitionHtml(picks[0], teamName, oppN, TR).replace("vitesse et efficacité", `cumul sur ${n} match${n > 1 ? "s" : ""}`) : "";
-  return box + tiles + presenceHtml(picks, a) + fiveHtml + qHtml + impact + trH;
+  return box + reboundsHtml(picks) + tiles + presenceHtml(picks, a) + fiveHtml + qHtml + impact + trH;
 }
 // ── Lecture du match : évolution du score, séries, tirs à 3 pts, temps morts, moments notés par le coach ──
 function analyzeGame(rec, tno, moments = []) {
