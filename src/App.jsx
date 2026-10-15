@@ -579,6 +579,8 @@ function useStore(sport = DEFAULT_SPORT) {
   const teamAnalysesKey = `teamAnalyses:${sport}`;
   const leagueGamesKey = `leagueGames:${sport}`;
   const [leagueGames, setLeagueGames] = useState([]);
+  const leagueDataKey = `leagueData:${sport}`;
+  const [leagueData, setLeagueData] = useState({ teams: [], stats: {} });
   const [scoutReports, setScoutReports] = useState([]);
   const scoutReportsKey = `scoutReports:${sport}`;
   // Copie locale (localStorage, synchrone) du Mode match — seule donnée de l'app à en avoir
@@ -679,6 +681,10 @@ function useStore(sport = DEFAULT_SPORT) {
       try {
         const sr = await storage.get(scoutReportsKey);
         setScoutReports(sr ? JSON.parse(sr.value) : []);
+      } catch { hadError = true; }
+      try {
+        const ld = await storage.get(leagueDataKey);
+        setLeagueData(ld ? JSON.parse(ld.value) : { teams: [], stats: {} });
       } catch { hadError = true; }
       try {
         const lgm = await storage.get(leagueGamesKey);
@@ -810,6 +816,129 @@ function useStore(sport = DEFAULT_SPORT) {
   const saveVideoScoutSessions = (next) => { setVideoScoutSessions(next); persist(videoScoutSessionsKey, JSON.stringify(next)); };
   const saveScoutReports = (next) => { setScoutReports(next); persist(scoutReportsKey, JSON.stringify(next)); };
   const saveLeagueGames = (next) => { setLeagueGames(next); persist(leagueGamesKey, JSON.stringify(next)); };
+  const saveLeagueData = (next) => { setLeagueData(next); persist(leagueDataKey, JSON.stringify(next)); };
+  // Éditeur du comparatif championnat (partagé : bloc de « Mon équipe » et onglet admin « Comparatif championnat »)
+  const renderLeagueEditor = (LG, setLG, taId) => {
+    const updTeam = (id, patch) => setLG({ ...LG, teams: LG.teams.map(x => x.id === id ? { ...x, ...patch } : x) });
+    const addTeam = () => { const n = taLgNew.trim(); if (!n) return; if (LG.teams.some(x => leagueNorm(x.name) === leagueNorm(n))) { cpbAlert?.("Cette équipe existe déjà."); return; } setLG({ ...LG, teams: [...LG.teams, { id: uid(), name: n }] }); setTaLgNew(""); };
+    const delTeam = async (x) => { const ok = await cpbAlert?.(`Retirer « ${x.name} » du comparatif ?`, { confirm: true }); if (!ok) return; const stats = {}; Object.entries(LG.stats).forEach(([k, m]) => { const c = { ...m }; delete c[x.id]; stats[k] = c; }); setLG({ ...LG, teams: LG.teams.filter(t2 => t2.id !== x.id), stats, mine: LG.mine === x.id ? null : LG.mine, other: LG.other === x.id ? null : LG.other }); };
+    const readText = () => {
+      try {
+        const r = parseLeagueText(taLgText, taLgStat);
+        const { league, created } = mergeLeague(LG, r.rows, r.reset || []);
+        setLG(league); setTaLgText("");
+        cpbAlert?.(`${r.rows.length} équipe${r.rows.length > 1 ? "s" : ""} lue${r.rows.length > 1 ? "s" : ""} (${r.kind === "accueil" ? "page d'accueil des stats : top 5 par catégorie" : r.kind === "tableau" ? "tableau avec colonnes" : "classement d'une statistique"})${created ? ` — ${created} nouvelle${created > 1 ? "s" : ""} équipe${created > 1 ? "s" : ""} ajoutée${created > 1 ? "s" : ""} à la liste (tu peux leur mettre un logo)` : ""}.${r.kind === "accueil" ? " Une page d'accueil ne donne que les 5 premiers : pour la moyenne du championnat et le rang de ton équipe, colle les classements complets." : ""}`);
+      } catch (err) { cpbAlert?.("Lecture impossible : " + err.message); }
+    };
+    const resetStats = async () => { const ok = await cpbAlert?.("Effacer toutes les statistiques collées ? Les équipes et leurs logos sont conservés, tu pourras recoller.", { confirm: true }); if (!ok) return; setLG({ ...LG, stats: {} }); saveLeagueGames(leagueGames.filter(g => g.ta !== taId)); };
+    const resetAll = async () => { const ok = await cpbAlert?.("Tout réinitialiser : équipes, logos et statistiques du comparatif seront supprimés. Continuer ?", { confirm: true }); if (!ok) return; setLG({ teams: [], stats: {} }); setTaLgText(""); saveLeagueGames(leagueGames.filter(g => g.ta !== taId)); };
+    const myGames = leagueGames.filter(g => g.ta === taId);
+    const applyGames = (games, goneNames = []) => {
+      const rows = leagueRowsFromGames(games);
+      let base = LG;
+      if (goneNames.length) {
+        const keys = new Set(["possOpp", ...LEAGUE_STATS.map(S => S.key)]);
+        const ids = LG.teams.filter(x => goneNames.some(nm => leagueNorm(nm) === leagueNorm(x.name))).map(x => x.id);
+        const stats = {}; Object.entries(LG.stats).forEach(([k, m]) => { const c = { ...m }; if (keys.has(k)) ids.forEach(id => { delete c[id]; }); stats[k] = c; });
+        base = { ...LG, stats };
+      }
+      setLG(mergeLeague(base, rows, []).league);
+    };
+    const addGame = async () => {
+      const m = taLgUrl.match(/\/(\d{4,10})(?:\/|$|\?)/) || taLgUrl.trim().match(/^(\d{4,10})$/);
+      if (!m) { cpbAlert?.("Je ne trouve pas le numéro du match dans ce lien."); return; }
+      if (myGames.some(g => g.id === m[1])) { cpbAlert?.("Ce match est déjà dans le comparatif."); return; }
+      setTaLgBusy(true);
+      try {
+        const res = await fetch("/api/fiba-pbp?id=" + m[1]);
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "erreur " + res.status);
+        const g = compactGame(parseFibaPbp(await res.text()), m[1], taId);
+        const next = [...leagueGames, g];
+        saveLeagueGames(next); applyGames(next.filter(x => x.ta === taId)); setTaLgUrl("");
+      } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
+      setTaLgBusy(false);
+    };
+    const delGame = async (g) => {
+      const ok = await cpbAlert?.(`Retirer le match ${g.t[0].n} – ${g.t[1].n} ?`, { confirm: true }); if (!ok) return;
+      const next = leagueGames.filter(x => !(x.ta === g.ta && x.id === g.id)), mine = next.filter(x => x.ta === taId);
+      const still = new Set(mine.flatMap(x => x.t.map(y => leagueNorm(y.n))));
+      saveLeagueGames(next); applyGames(mine, g.t.map(y => y.n).filter(nm => !still.has(leagueNorm(nm))));
+    };
+    const statCounts = LEAGUE_STATS.map(S => ({ S, n: Object.keys(LG.stats[S.key] || {}).length })).filter(x => x.n > 0);
+    return (
+      <div className="mt-3">
+        <div className="text-xs font-semibold text-[#1B2A4A] mb-1">1. Les équipes du championnat (nom et logo)</div>
+        <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Prépare ta liste (facultatif) : les équipes lues dans un texte collé sont reconnues par leur nom. Clique sur le carré pour mettre un logo.</p>
+        <div className="grid sm:grid-cols-2 gap-2 mb-2">
+          {LG.teams.map(x => (
+            <div key={x.id} className="flex items-center gap-2 border border-[#1B2A4A]/12 rounded-lg p-1.5">
+              <label className="cursor-pointer shrink-0" title="Logo">
+                {x.logo ? <img src={x.logo} alt="" className="w-8 h-8 rounded object-contain bg-white border border-[#1B2A4A]/10" /> : <span className="w-8 h-8 rounded flex items-center justify-center text-[#1B2A4A]/40" style={{ background: "rgba(27,42,74,.08)" }}>＋</span>}
+                <input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; try { updTeam(x.id, { logo: await readImageAsJpeg(f, 120, 0.85) }); } catch { cpbAlert?.("Image illisible."); } }} />
+              </label>
+              <input value={x.name} onChange={e => updTeam(x.id, { name: e.target.value })} className="flex-1 min-w-0 border border-[#1B2A4A]/15 rounded px-2 py-1 text-sm bg-white/60" />
+              <button onClick={() => delTeam(x)} className="text-[#1B2A4A]/30 hover:text-red-600" title="Retirer"><X size={13} /></button>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2 mb-4">
+          <input value={taLgNew} onChange={e => setTaLgNew(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addTeam(); }} placeholder="Ajouter une équipe (ex : Le Mans)" className="flex-1 min-w-0 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+          <button onClick={addTeam} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>+ Ajouter</button>
+        </div>
+        <div className="text-xs font-semibold text-[#1B2A4A] mb-1">2. Coller des statistiques</div>
+        <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Sur le site (lnb.fr, Stats Center, onglet « Stats équipes »), fais Cmd + A puis Cmd + C et colle ici. Formats reconnus : la page d'accueil des stats (top 5 par catégorie), un tableau avec ses colonnes (PTS, RO, RD, RT, PD…), ou le classement d'une seule statistique (dans ce cas, choisis laquelle).</p>
+        <select value={taLgStat} onChange={e => setTaLgStat(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mb-2">
+          <option value="">Détecter automatiquement</option>
+          {LEAGUE_STATS.map(S => <option key={S.key} value={S.key}>Classement de : {S.label}</option>)}
+        </select>
+        <textarea value={taLgText} onChange={e => setTaLgText(e.target.value)} rows={4} placeholder="Colle ici le texte du site…" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white/60 font-mono" />
+        <button disabled={!taLgText.trim()} onClick={readText} className="mt-2 text-sm font-semibold text-white px-4 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>Lire et ajouter</button>
+        {(Object.keys(LG.stats || {}).length > 0 || LG.teams.length > 0) && (
+          <span className="ml-3 inline-flex gap-3 text-xs">
+            {Object.keys(LG.stats || {}).length > 0 && <button onClick={resetStats} className="text-red-600 underline">Effacer les statistiques</button>}
+            <button onClick={resetAll} className="text-red-600 underline">Tout réinitialiser</button>
+          </span>
+        )}
+        <div className="text-xs font-semibold text-[#1B2A4A] mt-5 mb-1">3. Ajouter des matchs LiveStats (chiffres exacts, adversaire compris)</div>
+        <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Colle le lien d'un match terminé, un par un. Seuls les totaux des deux équipes sont gardés (très léger). Ils donnent, pour chaque équipe, ses points encaissés, ses rebonds disponibles pris et la part de rebonds de l'adversaire sans estimation.</p>
+        <div className="flex gap-2">
+          <input value={taLgUrl} onChange={e => setTaLgUrl(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !taLgBusy) addGame(); }} placeholder="Lien du match LiveStats" className="flex-1 min-w-0 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+          <button disabled={taLgBusy || !taLgUrl.trim()} onClick={addGame} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>{taLgBusy ? "Lecture…" : "Ajouter le match"}</button>
+        </div>
+        {myGames.length > 0 && (
+          <div className="mt-2 text-[11px] text-[#1B2A4A]/70">
+            <div className="font-semibold mb-1">{myGames.length} match{myGames.length > 1 ? "s" : ""} lu{myGames.length > 1 ? "s" : ""}</div>
+            {myGames.map(g => (
+              <div key={g.id} className="flex items-center gap-2 py-0.5">
+                <span className="flex-1 min-w-0 truncate">{g.t[0].n} {g.t[0].v[0]} – {g.t[1].v[0]} {g.t[1].n}</span>
+                <button onClick={() => delGame(g)} className="text-[#1B2A4A]/30 hover:text-red-600" title="Retirer"><X size={12} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+        {statCounts.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {statCounts.map(({ S, n }) => (
+              <span key={S.key} className="inline-flex items-center gap-1 pl-2.5 pr-1 py-0.5 rounded-full text-[11px] bg-[#7c3aed]/10 text-[#1B2A4A]">{S.label} · {n} équipes
+                <button onClick={() => { const st = { ...LG.stats }; delete st[S.key]; setLG({ ...LG, stats: st }); }} className="w-4 h-4 rounded-full text-[#1B2A4A]/40 hover:text-red-600 flex items-center justify-center" title="Retirer cette statistique"><X size={10} /></button>
+              </span>
+            ))}
+          </div>
+        )}
+        {LG.teams.length > 1 && (
+          <div className="grid sm:grid-cols-2 gap-2 mt-4">
+            <label className="text-xs text-[#1B2A4A]/60">3. Mon équipe dans le championnat
+              <select value={LG.mine || ""} onChange={e => setLG({ ...LG, mine: e.target.value || null })} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mt-0.5 text-[#1B2A4A]"><option value="">—</option>{LG.teams.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+            </label>
+            <label className="text-xs text-[#1B2A4A]/60">Comparer avec une autre équipe
+              <select value={LG.other || ""} onChange={e => setLG({ ...LG, other: e.target.value || null })} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mt-0.5 text-[#1B2A4A]"><option value="">—</option>{LG.teams.filter(x => x.id !== LG.mine).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+            </label>
+          </div>
+        )}
+        <p className="text-[11px] text-[#1B2A4A]/40 mt-3">Le comparatif apparaît dans l'export, avant les matchs : tableau « mon équipe / moyenne du championnat / rang », meilleures équipes par statistique, et face-à-face avec l'équipe choisie.</p>
+      </div>
+    );
+  };
   const saveTeamAnalyses = (next) => { setTeamAnalyses(next); persist(teamAnalysesKey, JSON.stringify(next)); };
   const savePlays = async (next) => {
     for (const play of next) {
@@ -10392,7 +10521,7 @@ function CoachingProBoost({ session }) {
   const pdfReady = usePdfJs();
   const [view, setView] = useState(() => {
     const saved = localStorage.getItem("cpb_view");
-    return ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness"].includes(saved) ? saved : "library";
+    return ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness","league"].includes(saved) ? saved : "library";
   });
   // Toujours à jour, contrairement à `view` capturé dans la closure de l'effet ci-dessous
   // (qui ne tourne qu'une fois au montage) — évite qu'un retour arrière égaré (ex: swipe
@@ -10412,7 +10541,7 @@ function CoachingProBoost({ session }) {
       const v = e.state?.view;
       if (v === "session" && activeSessionRef.current) {
         setView("session");
-      } else if (v && ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness"].includes(v)) {
+      } else if (v && ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness","league"].includes(v)) {
         setView(v);
         localStorage.setItem("cpb_view", v);
       } else if (activeSessionRef.current) {
@@ -11988,6 +12117,7 @@ function CoachingProBoost({ session }) {
               ...(isAdmin ? [{ key: "videoscout", label: "Scouting vidéo (admin)", icon: Video }] : []),
               { key: "pack", label: isAdmin || hasPack ? "Pack exercices & plays" : "Pack exercices & plays 🔒", icon: Library },
               { key: "scoutreport", label: isAdmin ? "Scouting report (admin)" : canAnalysis ? "Scouting report" : "Scouting report 🔒", icon: FileText },
+              ...(isAdmin ? [{ key: "league", label: "Comparatif championnat (admin)", icon: BarChart3 }] : []),
               { key: "myteam", label: isAdmin ? "Mon équipe (admin)" : canAnalysis ? "Mon équipe" : "Mon équipe 🔒", icon: BarChart3 },
               ...(isAdmin || canManageWellness ? [{ key: "wellness", label: "Bien-être joueurs", icon: UserCheck }] : []),
               { key: "account", label: "Mon compte", icon: Users },
@@ -14676,6 +14806,23 @@ function CoachingProBoost({ session }) {
 
         {view === "pack" && !(isAdmin || hasPack) && <PackPaywall isPremium={isPremium} />}
         {view === "pack" && (isAdmin || hasPack) && <PackPage onOpenExercises={(d) => setSharedExerciseCollection({ ...d, fromPack: true })} onOpenPlays={setSharedPlayCollection} />}
+        {view === "league" && isAdmin && (() => {
+          const LG = leagueData;
+          let html = "";
+          try { html = buildTeamReportHtml({ id: "league", name: "Comparatif championnat", league: LG, lineups: [], lineupsFile: "", boxScore: null, notes: "" }, null); }
+          catch (e) { html = `<p style="font-family:sans-serif;color:#b91c1c;padding:16px">Erreur d'affichage : ${String(e?.message || e).replace(/</g, "&lt;")}</p>`; }
+          const fitFrame = (el) => { try { el.style.height = (el.contentDocument.documentElement.scrollHeight + 16) + "px"; } catch {} };
+          return (
+            <div className="max-w-4xl">
+              <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>COMPARATIF CHAMPIONNAT</h2>
+              <p className="text-xs text-[#1B2A4A]/40 mb-4">Les équipes du championnat, leurs statistiques collées depuis le site et les matchs LiveStats (chiffres exacts). Indépendant des analyses « Mon équipe ».</p>
+              <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-3">{renderLeagueEditor(LG, saveLeagueData, "league")}</div>
+              <iframe title="Comparatif championnat" srcDoc={html} className="w-full rounded-xl border border-[#1B2A4A]/10"
+                style={{ height: 600, background: "#F2EDE4" }}
+                onLoad={e => { const el = e.currentTarget; fitFrame(el); setTimeout(() => fitFrame(el), 800); }} />
+            </div>
+          );
+        })()}
         {view === "scoutreport" && !canAnalysis && <AnalysisPaywall what="Scouting report" />}
         {view === "myteam" && !canAnalysis && <AnalysisPaywall what="Mon équipe" />}
         {view === "scoutreport" && canAnalysis && (() => {
@@ -15288,129 +15435,7 @@ function CoachingProBoost({ session }) {
                     <span className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold">{taLgOpen ? "▾" : "▸"} Comparatif championnat{(activeTa.league?.teams || []).length ? ` · ${activeTa.league.teams.length} équipes` : ""}</span>
                     <span className="text-[11px] text-[#1B2A4A]/40">meilleurs au rebond off., moyenne du championnat, face-à-face entre équipes</span>
                   </button>
-                  {taLgOpen && (() => {
-                    const LG = activeTa.league || { teams: [], stats: {} };
-                    const setLG = (next) => updateActiveTa({ league: next });
-                    const updTeam = (id, patch) => setLG({ ...LG, teams: LG.teams.map(x => x.id === id ? { ...x, ...patch } : x) });
-                    const addTeam = () => { const n = taLgNew.trim(); if (!n) return; if (LG.teams.some(x => leagueNorm(x.name) === leagueNorm(n))) { cpbAlert?.("Cette équipe existe déjà."); return; } setLG({ ...LG, teams: [...LG.teams, { id: uid(), name: n }] }); setTaLgNew(""); };
-                    const delTeam = async (x) => { const ok = await cpbAlert?.(`Retirer « ${x.name} » du comparatif ?`, { confirm: true }); if (!ok) return; const stats = {}; Object.entries(LG.stats).forEach(([k, m]) => { const c = { ...m }; delete c[x.id]; stats[k] = c; }); setLG({ ...LG, teams: LG.teams.filter(t2 => t2.id !== x.id), stats, mine: LG.mine === x.id ? null : LG.mine, other: LG.other === x.id ? null : LG.other }); };
-                    const readText = () => {
-                      try {
-                        const r = parseLeagueText(taLgText, taLgStat);
-                        const { league, created } = mergeLeague(LG, r.rows, r.reset || []);
-                        setLG(league); setTaLgText("");
-                        cpbAlert?.(`${r.rows.length} équipe${r.rows.length > 1 ? "s" : ""} lue${r.rows.length > 1 ? "s" : ""} (${r.kind === "accueil" ? "page d'accueil des stats : top 5 par catégorie" : r.kind === "tableau" ? "tableau avec colonnes" : "classement d'une statistique"})${created ? ` — ${created} nouvelle${created > 1 ? "s" : ""} équipe${created > 1 ? "s" : ""} ajoutée${created > 1 ? "s" : ""} à la liste (tu peux leur mettre un logo)` : ""}.${r.kind === "accueil" ? " Une page d'accueil ne donne que les 5 premiers : pour la moyenne du championnat et le rang de ton équipe, colle les classements complets." : ""}`);
-                      } catch (err) { cpbAlert?.("Lecture impossible : " + err.message); }
-                    };
-                    const resetStats = async () => { const ok = await cpbAlert?.("Effacer toutes les statistiques collées ? Les équipes et leurs logos sont conservés, tu pourras recoller.", { confirm: true }); if (!ok) return; setLG({ ...LG, stats: {} }); saveLeagueGames(leagueGames.filter(g => g.ta !== activeTa.id)); };
-                    const resetAll = async () => { const ok = await cpbAlert?.("Tout réinitialiser : équipes, logos et statistiques du comparatif seront supprimés. Continuer ?", { confirm: true }); if (!ok) return; setLG({ teams: [], stats: {} }); setTaLgText(""); saveLeagueGames(leagueGames.filter(g => g.ta !== activeTa.id)); };
-                    const myGames = leagueGames.filter(g => g.ta === activeTa.id);
-                    const applyGames = (games, goneNames = []) => {
-                      const rows = leagueRowsFromGames(games);
-                      let base = LG;
-                      if (goneNames.length) {
-                        const keys = new Set(["possOpp", ...LEAGUE_STATS.map(S => S.key)]);
-                        const ids = LG.teams.filter(x => goneNames.some(nm => leagueNorm(nm) === leagueNorm(x.name))).map(x => x.id);
-                        const stats = {}; Object.entries(LG.stats).forEach(([k, m]) => { const c = { ...m }; if (keys.has(k)) ids.forEach(id => { delete c[id]; }); stats[k] = c; });
-                        base = { ...LG, stats };
-                      }
-                      setLG(mergeLeague(base, rows, []).league);
-                    };
-                    const addGame = async () => {
-                      const m = taLgUrl.match(/\/(\d{4,10})(?:\/|$|\?)/) || taLgUrl.trim().match(/^(\d{4,10})$/);
-                      if (!m) { cpbAlert?.("Je ne trouve pas le numéro du match dans ce lien."); return; }
-                      if (myGames.some(g => g.id === m[1])) { cpbAlert?.("Ce match est déjà dans le comparatif."); return; }
-                      setTaLgBusy(true);
-                      try {
-                        const res = await fetch("/api/fiba-pbp?id=" + m[1]);
-                        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "erreur " + res.status);
-                        const g = compactGame(parseFibaPbp(await res.text()), m[1], activeTa.id);
-                        const next = [...leagueGames, g];
-                        saveLeagueGames(next); applyGames(next.filter(x => x.ta === activeTa.id)); setTaLgUrl("");
-                      } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
-                      setTaLgBusy(false);
-                    };
-                    const delGame = async (g) => {
-                      const ok = await cpbAlert?.(`Retirer le match ${g.t[0].n} – ${g.t[1].n} ?`, { confirm: true }); if (!ok) return;
-                      const next = leagueGames.filter(x => !(x.ta === g.ta && x.id === g.id)), mine = next.filter(x => x.ta === activeTa.id);
-                      const still = new Set(mine.flatMap(x => x.t.map(y => leagueNorm(y.n))));
-                      saveLeagueGames(next); applyGames(mine, g.t.map(y => y.n).filter(nm => !still.has(leagueNorm(nm))));
-                    };
-                    const statCounts = LEAGUE_STATS.map(S => ({ S, n: Object.keys(LG.stats[S.key] || {}).length })).filter(x => x.n > 0);
-                    return (
-                      <div className="mt-3">
-                        <div className="text-xs font-semibold text-[#1B2A4A] mb-1">1. Les équipes du championnat (nom et logo)</div>
-                        <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Prépare ta liste (facultatif) : les équipes lues dans un texte collé sont reconnues par leur nom. Clique sur le carré pour mettre un logo.</p>
-                        <div className="grid sm:grid-cols-2 gap-2 mb-2">
-                          {LG.teams.map(x => (
-                            <div key={x.id} className="flex items-center gap-2 border border-[#1B2A4A]/12 rounded-lg p-1.5">
-                              <label className="cursor-pointer shrink-0" title="Logo">
-                                {x.logo ? <img src={x.logo} alt="" className="w-8 h-8 rounded object-contain bg-white border border-[#1B2A4A]/10" /> : <span className="w-8 h-8 rounded flex items-center justify-center text-[#1B2A4A]/40" style={{ background: "rgba(27,42,74,.08)" }}>＋</span>}
-                                <input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; try { updTeam(x.id, { logo: await readImageAsJpeg(f, 120, 0.85) }); } catch { cpbAlert?.("Image illisible."); } }} />
-                              </label>
-                              <input value={x.name} onChange={e => updTeam(x.id, { name: e.target.value })} className="flex-1 min-w-0 border border-[#1B2A4A]/15 rounded px-2 py-1 text-sm bg-white/60" />
-                              <button onClick={() => delTeam(x)} className="text-[#1B2A4A]/30 hover:text-red-600" title="Retirer"><X size={13} /></button>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex gap-2 mb-4">
-                          <input value={taLgNew} onChange={e => setTaLgNew(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addTeam(); }} placeholder="Ajouter une équipe (ex : Le Mans)" className="flex-1 min-w-0 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
-                          <button onClick={addTeam} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>+ Ajouter</button>
-                        </div>
-                        <div className="text-xs font-semibold text-[#1B2A4A] mb-1">2. Coller des statistiques</div>
-                        <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Sur le site (lnb.fr, Stats Center, onglet « Stats équipes »), fais Cmd + A puis Cmd + C et colle ici. Formats reconnus : la page d'accueil des stats (top 5 par catégorie), un tableau avec ses colonnes (PTS, RO, RD, RT, PD…), ou le classement d'une seule statistique (dans ce cas, choisis laquelle).</p>
-                        <select value={taLgStat} onChange={e => setTaLgStat(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mb-2">
-                          <option value="">Détecter automatiquement</option>
-                          {LEAGUE_STATS.map(S => <option key={S.key} value={S.key}>Classement de : {S.label}</option>)}
-                        </select>
-                        <textarea value={taLgText} onChange={e => setTaLgText(e.target.value)} rows={4} placeholder="Colle ici le texte du site…" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white/60 font-mono" />
-                        <button disabled={!taLgText.trim()} onClick={readText} className="mt-2 text-sm font-semibold text-white px-4 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>Lire et ajouter</button>
-                        {(Object.keys(LG.stats || {}).length > 0 || LG.teams.length > 0) && (
-                          <span className="ml-3 inline-flex gap-3 text-xs">
-                            {Object.keys(LG.stats || {}).length > 0 && <button onClick={resetStats} className="text-red-600 underline">Effacer les statistiques</button>}
-                            <button onClick={resetAll} className="text-red-600 underline">Tout réinitialiser</button>
-                          </span>
-                        )}
-                        <div className="text-xs font-semibold text-[#1B2A4A] mt-5 mb-1">3. Ajouter des matchs LiveStats (chiffres exacts, adversaire compris)</div>
-                        <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Colle le lien d'un match terminé, un par un. Seuls les totaux des deux équipes sont gardés (très léger). Ils donnent, pour chaque équipe, ses points encaissés, ses rebonds disponibles pris et la part de rebonds de l'adversaire sans estimation.</p>
-                        <div className="flex gap-2">
-                          <input value={taLgUrl} onChange={e => setTaLgUrl(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !taLgBusy) addGame(); }} placeholder="Lien du match LiveStats" className="flex-1 min-w-0 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
-                          <button disabled={taLgBusy || !taLgUrl.trim()} onClick={addGame} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>{taLgBusy ? "Lecture…" : "Ajouter le match"}</button>
-                        </div>
-                        {myGames.length > 0 && (
-                          <div className="mt-2 text-[11px] text-[#1B2A4A]/70">
-                            <div className="font-semibold mb-1">{myGames.length} match{myGames.length > 1 ? "s" : ""} lu{myGames.length > 1 ? "s" : ""}</div>
-                            {myGames.map(g => (
-                              <div key={g.id} className="flex items-center gap-2 py-0.5">
-                                <span className="flex-1 min-w-0 truncate">{g.t[0].n} {g.t[0].v[0]} – {g.t[1].v[0]} {g.t[1].n}</span>
-                                <button onClick={() => delGame(g)} className="text-[#1B2A4A]/30 hover:text-red-600" title="Retirer"><X size={12} /></button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {statCounts.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 mt-3">
-                            {statCounts.map(({ S, n }) => (
-                              <span key={S.key} className="inline-flex items-center gap-1 pl-2.5 pr-1 py-0.5 rounded-full text-[11px] bg-[#7c3aed]/10 text-[#1B2A4A]">{S.label} · {n} équipes
-                                <button onClick={() => { const st = { ...LG.stats }; delete st[S.key]; setLG({ ...LG, stats: st }); }} className="w-4 h-4 rounded-full text-[#1B2A4A]/40 hover:text-red-600 flex items-center justify-center" title="Retirer cette statistique"><X size={10} /></button>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        {LG.teams.length > 1 && (
-                          <div className="grid sm:grid-cols-2 gap-2 mt-4">
-                            <label className="text-xs text-[#1B2A4A]/60">3. Mon équipe dans le championnat
-                              <select value={LG.mine || ""} onChange={e => setLG({ ...LG, mine: e.target.value || null })} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mt-0.5 text-[#1B2A4A]"><option value="">—</option>{LG.teams.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
-                            </label>
-                            <label className="text-xs text-[#1B2A4A]/60">Comparer avec une autre équipe
-                              <select value={LG.other || ""} onChange={e => setLG({ ...LG, other: e.target.value || null })} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mt-0.5 text-[#1B2A4A]"><option value="">—</option>{LG.teams.filter(x => x.id !== LG.mine).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
-                            </label>
-                          </div>
-                        )}
-                        <p className="text-[11px] text-[#1B2A4A]/40 mt-3">Le comparatif apparaît dans l'export, avant les matchs : tableau « mon équipe / moyenne du championnat / rang », meilleures équipes par statistique, et face-à-face avec l'équipe choisie.</p>
-                      </div>
-                    );
-                  })()}
+                  {taLgOpen && renderLeagueEditor(activeTa.league || { teams: [], stats: {} }, (next) => updateActiveTa({ league: next }), activeTa.id)}
                 </div>
                 <textarea value={activeTa.notes || ""} onChange={e => updateActiveTa({ notes: e.target.value })}
                   placeholder="Notes (reprises dans l'export) : constats, axes de travail, rotations à tester..."
