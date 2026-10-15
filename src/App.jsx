@@ -3473,6 +3473,10 @@ const LEAGUE_STATS = [
   { key: "ptsAgainst", label: "Points encaissés", hi: false }, { key: "diff", label: "Écart de points (marqués − encaissés)", hi: true },
   { key: "efg", label: "eFG % (tirs pondérés)", hi: true, pct: true }, { key: "tpa", label: "3 pts tentés", hi: true },
   { key: "ppp", label: "Points par possession (attaque)", hi: true, dec: 2 }, { key: "pppAgainst", label: "Points encaissés par possession (estimé)", hi: false, dec: 2 },
+  { key: "orebShare", label: "Part des rebonds offensifs (RO / rebonds totaux)", hi: true, pct: true }, { key: "drebShare", label: "Part des rebonds défensifs (RD / rebonds totaux)", hi: true, pct: true },
+  { key: "orebMiss", label: "Rebonds offensifs pris sur nos tirs manqués", hi: true, pct: true },
+  { key: "orebPct", label: "% de rebonds offensifs disponibles pris (estimé)", hi: true, pct: true }, { key: "drebPct", label: "% de rebonds défensifs disponibles pris (estimé)", hi: true, pct: true },
+  { key: "orebAgainst", label: "% de rebonds offensifs pris par l'adversaire (estimé)", hi: false, pct: true },
   { key: "net", label: "Écart pour 100 possessions (estimé)", hi: true }, { key: "poss", label: "Possessions par match (rythme)", hi: true },
 ];
 // Tableau d'équipes SANS ligne d'en-têtes (cas de la page « Statistiques équipes » de la NM1 / Proballers) : 21 valeurs après le nom
@@ -3584,6 +3588,18 @@ function mergeLeague(league, rows, reset = []) {
       }
     }
     if ([g("_2r"), g("_2t"), g("_3r"), g("_3t")].every(v => v !== undefined && v !== null) && (g("_2t") + g("_3t")) > 0) L.stats.efg = { ...(L.stats.efg || {}), [tm.id]: Math.round((g("_2r") + 1.5 * g("_3r")) / (g("_2t") + g("_3t")) * 1000) / 10 };
+  });
+  // Ratios de rebonds. Les moyennes du championnat servent d'adversaire moyen (RO adverse = RO moyen, RD adverse = RD moyen) : estimation, pas le détail match par match
+  const setS = (key, id, v) => { L.stats[key] = { ...(L.stats[key] || {}), [id]: Math.round(v * 1000) / 10 }; };
+  const avgOf = (k) => { const vs = L.teams.map(x => L.stats[k]?.[x.id]).filter(v => typeof v === "number"); return vs.length >= 3 ? vs.reduce((x, y) => x + y, 0) / vs.length : null; };
+  const avgO = avgOf("oreb"), avgD = avgOf("dreb");
+  L.teams.forEach(tm => {
+    const g = (k) => L.stats[k]?.[tm.id], ok = (...ks) => ks.every(k => typeof g(k) === "number");
+    const tot = ok("oreb", "dreb") ? g("oreb") + g("dreb") : (ok("reb") ? g("reb") : 0);
+    if (ok("oreb") && tot > 0) { setS("orebShare", tm.id, g("oreb") / tot); if (ok("dreb")) setS("drebShare", tm.id, g("dreb") / tot); }
+    if (ok("oreb", "_2r", "_2t", "_3r", "_3t")) { const miss = g("_2t") + g("_3t") - g("_2r") - g("_3r"); if (miss > 0) setS("orebMiss", tm.id, g("oreb") / miss); }
+    if (ok("oreb") && avgD) setS("orebPct", tm.id, g("oreb") / (g("oreb") + avgD));
+    if (ok("dreb") && avgO) { setS("drebPct", tm.id, g("dreb") / (g("dreb") + avgO)); setS("orebAgainst", tm.id, avgO / (g("dreb") + avgO)); }
   });
   return { league: L, created };
 }
