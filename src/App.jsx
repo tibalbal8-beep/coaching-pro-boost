@@ -577,6 +577,8 @@ function useStore(sport = DEFAULT_SPORT) {
   // Analyse de mon équipe (admin) : imports Excel (cinq alignés, box score par match).
   const [teamAnalyses, setTeamAnalyses] = useState([]);
   const teamAnalysesKey = `teamAnalyses:${sport}`;
+  const leagueGamesKey = `leagueGames:${sport}`;
+  const [leagueGames, setLeagueGames] = useState([]);
   const [scoutReports, setScoutReports] = useState([]);
   const scoutReportsKey = `scoutReports:${sport}`;
   // Copie locale (localStorage, synchrone) du Mode match — seule donnée de l'app à en avoir
@@ -677,6 +679,10 @@ function useStore(sport = DEFAULT_SPORT) {
       try {
         const sr = await storage.get(scoutReportsKey);
         setScoutReports(sr ? JSON.parse(sr.value) : []);
+      } catch { hadError = true; }
+      try {
+        const lgm = await storage.get(leagueGamesKey);
+        setLeagueGames(lgm ? JSON.parse(lgm.value) : []);
       } catch { hadError = true; }
       try {
         const ta = await storage.get(teamAnalysesKey);
@@ -803,6 +809,7 @@ function useStore(sport = DEFAULT_SPORT) {
   };
   const saveVideoScoutSessions = (next) => { setVideoScoutSessions(next); persist(videoScoutSessionsKey, JSON.stringify(next)); };
   const saveScoutReports = (next) => { setScoutReports(next); persist(scoutReportsKey, JSON.stringify(next)); };
+  const saveLeagueGames = (next) => { setLeagueGames(next); persist(leagueGamesKey, JSON.stringify(next)); };
   const saveTeamAnalyses = (next) => { setTeamAnalyses(next); persist(teamAnalysesKey, JSON.stringify(next)); };
   const savePlays = async (next) => {
     for (const play of next) {
@@ -3498,6 +3505,8 @@ const LEAGUE_STATS = [
   { key: "ppp", label: "Points par possession (attaque)", hi: true, dec: 2 }, { key: "pppAgainst", label: "Points encaissés par possession (estimé)", hi: false, dec: 2 },
   { key: "orebShare", label: "Part des rebonds offensifs (RO / rebonds totaux)", hi: true, pct: true }, { key: "drebShare", label: "Part des rebonds défensifs (RD / rebonds totaux)", hi: true, pct: true },
   { key: "orebMiss", label: "Rebonds offensifs pris sur nos tirs manqués", hi: true, pct: true },
+  { key: "orebPct", label: "% de rebonds offensifs disponibles pris (RO ÷ (RO + RD adverses))", hi: true, pct: true }, { key: "drebPct", label: "% de rebonds défensifs disponibles pris (RD ÷ (RD + RO adverses))", hi: true, pct: true },
+  { key: "orebAgainst", label: "% de rebonds offensifs pris par l'adversaire", hi: false, pct: true },
   { key: "net", label: "Écart pour 100 possessions (estimé)", hi: true }, { key: "poss", label: "Possessions par match (rythme)", hi: true },
 ];
 // Tableau d'équipes SANS ligne d'en-têtes (cas de la page « Statistiques équipes » de la NM1 / Proballers) : 21 valeurs après le nom
@@ -3577,6 +3586,35 @@ function parseLeagueText(text, forcedKey = "") {
   return { rows: [...out.values()], kind: "classement" };
 }
 // Fusionne des lignes lues dans le comparatif : les équipes déjà saisies (nom + logo) sont reconnues par leur nom, les autres sont créées
+// ── Matchs LiveStats du comparatif : on ne garde QUE les totaux des deux équipes (≈ 0,5 Ko par match) ──
+const GAME_KEYS = ["pts", "fgm", "fga", "t3m", "t3a", "ftm", "fta", "or", "dr", "ast", "tov", "stl", "blk", "pf"];
+function compactGame(rec, mid, taId) {
+  const side = (k) => { const t = rec.teams[k].tot; return { n: rec.teams[k].name, v: [t.pts, t.fg[0], t.fg[1], t.t3[0], t.t3[1], t.ft[0], t.ft[1], t.or, t.dr, t.ast, t.tov, t.stl, t.blk, t.pf] }; };
+  if (!rec.teams["1"] || !rec.teams["2"]) throw new Error("les deux équipes sont nécessaires");
+  if (rec.live) throw new Error("ce match n'est pas terminé");
+  const g = { id: String(mid), ta: taId, t: [side("1"), side("2")] };
+  if (!g.t[0].v[0] && !g.t[1].v[0]) throw new Error("aucune statistique dans ce match");
+  return g;
+}
+function leagueRowsFromGames(games) {
+  const by = new Map();
+  const acc = () => ({ gp: 0, own: Array(14).fill(0), opp: Array(14).fill(0) });
+  games.forEach(g => [0, 1].forEach(i => {
+    const A = g.t[i], B = g.t[1 - i], k = leagueNorm(A.n); let e = by.get(k); if (!e) { e = { name: A.n, ...acc() }; by.set(k, e); }
+    e.gp++; A.v.forEach((x, j) => { e.own[j] += x; }); B.v.forEach((x, j) => { e.opp[j] += x; });
+  }));
+  const r1 = (x) => Math.round(x * 10) / 10, pc = (m, a) => a ? Math.round(m / a * 1000) / 10 : undefined;
+  return [...by.values()].map(e => {
+    const o = Object.fromEntries(GAME_KEYS.map((k, j) => [k, e.own[j]])), q = Object.fromEntries(GAME_KEYS.map((k, j) => [k, e.opp[j]])), n = e.gp, av = (x) => r1(x / n);
+    const st = { pts: av(o.pts), ptsAgainst: av(q.pts), oreb: av(o.or), dreb: av(o.dr), reb: av(o.or + o.dr), ast: av(o.ast), stl: av(o.stl), blk: av(o.blk), tov: av(o.tov), pf: av(o.pf),
+      _2r: av(o.fgm - o.t3m), _2t: av(o.fga - o.t3a), _3r: av(o.t3m), _3t: av(o.t3a), tpm: av(o.t3m), tpa: av(o.t3a), _ft: av(o.fta),
+      fgPct: pc(o.fgm, o.fga), twoPct: pc(o.fgm - o.t3m, o.fga - o.t3a), tpPct: pc(o.t3m, o.t3a), ftPct: pc(o.ftm, o.fta),
+      orebPct: pc(o.or, o.or + q.dr), drebPct: pc(o.dr, o.dr + q.or), orebAgainst: pc(q.or, q.or + o.dr),
+      possOpp: r1((q.fga - q.or + 0.44 * q.fta + q.tov) / n) };
+    Object.keys(st).forEach(k => { if (st[k] === undefined) delete st[k]; });
+    return { name: e.name, stats: st, gp: n };
+  });
+}
 function mergeLeague(league, rows, reset = []) {
   const L = league ? { ...league, teams: [...(league.teams || [])], stats: { ...(league.stats || {}) } } : { teams: [], stats: {} };
   reset.forEach(k => { delete L.stats[k]; });
@@ -3603,8 +3641,9 @@ function mergeLeague(league, rows, reset = []) {
         L.stats.poss = { ...(L.stats.poss || {}), [tm.id]: Math.round(poss * 10) / 10 };
         L.stats.ppp = { ...(L.stats.ppp || {}), [tm.id]: Math.round(g("pts") / poss * 1000) / 1000 };
         if (g("ptsAgainst") !== undefined && g("ptsAgainst") !== null) {
-          L.stats.pppAgainst = { ...(L.stats.pppAgainst || {}), [tm.id]: Math.round(g("ptsAgainst") / poss * 1000) / 1000 };
-          L.stats.net = { ...(L.stats.net || {}), [tm.id]: Math.round((g("pts") - g("ptsAgainst")) / poss * 1000) / 10 };
+          const possO = typeof g("possOpp") === "number" && g("possOpp") > 20 ? g("possOpp") : poss;
+          L.stats.pppAgainst = { ...(L.stats.pppAgainst || {}), [tm.id]: Math.round(g("ptsAgainst") / possO * 1000) / 1000 };
+          L.stats.net = { ...(L.stats.net || {}), [tm.id]: Math.round((g("pts") / poss - g("ptsAgainst") / possO) * 1000) / 10 };
         }
       }
     }
@@ -10952,7 +10991,7 @@ function CoachingProBoost({ session }) {
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
   const [taMom, setTaMom] = useState({}), [taOpen, setTaOpen] = useState({});
   const [taLnbOpen, setTaLnbOpen] = useState(false), [taLnbText, setTaLnbText] = useState("");
-  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false);
+  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false);
   const [taRenameId, setTaRenameId] = useState(null), [taRenameText, setTaRenameText] = useState("");
   const [taWizard, setTaWizard] = useState(null), [taWizTab, setTaWizTab] = useState("live"), [taSetup, setTaSetup] = useState(false);
   const [taFibaUrl, setTaFibaUrl] = useState(""), [taFibaPending, setTaFibaPending] = useState(null), [taFibaBusy, setTaFibaBusy] = useState(false);
@@ -15263,8 +15302,40 @@ function CoachingProBoost({ session }) {
                         cpbAlert?.(`${r.rows.length} équipe${r.rows.length > 1 ? "s" : ""} lue${r.rows.length > 1 ? "s" : ""} (${r.kind === "accueil" ? "page d'accueil des stats : top 5 par catégorie" : r.kind === "tableau" ? "tableau avec colonnes" : "classement d'une statistique"})${created ? ` — ${created} nouvelle${created > 1 ? "s" : ""} équipe${created > 1 ? "s" : ""} ajoutée${created > 1 ? "s" : ""} à la liste (tu peux leur mettre un logo)` : ""}.${r.kind === "accueil" ? " Une page d'accueil ne donne que les 5 premiers : pour la moyenne du championnat et le rang de ton équipe, colle les classements complets." : ""}`);
                       } catch (err) { cpbAlert?.("Lecture impossible : " + err.message); }
                     };
-                    const resetStats = async () => { const ok = await cpbAlert?.("Effacer toutes les statistiques collées ? Les équipes et leurs logos sont conservés, tu pourras recoller.", { confirm: true }); if (!ok) return; setLG({ ...LG, stats: {} }); };
-                    const resetAll = async () => { const ok = await cpbAlert?.("Tout réinitialiser : équipes, logos et statistiques du comparatif seront supprimés. Continuer ?", { confirm: true }); if (!ok) return; setLG({ teams: [], stats: {} }); setTaLgText(""); };
+                    const resetStats = async () => { const ok = await cpbAlert?.("Effacer toutes les statistiques collées ? Les équipes et leurs logos sont conservés, tu pourras recoller.", { confirm: true }); if (!ok) return; setLG({ ...LG, stats: {} }); saveLeagueGames(leagueGames.filter(g => g.ta !== activeTa.id)); };
+                    const resetAll = async () => { const ok = await cpbAlert?.("Tout réinitialiser : équipes, logos et statistiques du comparatif seront supprimés. Continuer ?", { confirm: true }); if (!ok) return; setLG({ teams: [], stats: {} }); setTaLgText(""); saveLeagueGames(leagueGames.filter(g => g.ta !== activeTa.id)); };
+                    const myGames = leagueGames.filter(g => g.ta === activeTa.id);
+                    const applyGames = (games, goneNames = []) => {
+                      const rows = leagueRowsFromGames(games);
+                      let base = LG;
+                      if (goneNames.length) {
+                        const keys = new Set(["possOpp", ...LEAGUE_STATS.map(S => S.key)]);
+                        const ids = LG.teams.filter(x => goneNames.some(nm => leagueNorm(nm) === leagueNorm(x.name))).map(x => x.id);
+                        const stats = {}; Object.entries(LG.stats).forEach(([k, m]) => { const c = { ...m }; if (keys.has(k)) ids.forEach(id => { delete c[id]; }); stats[k] = c; });
+                        base = { ...LG, stats };
+                      }
+                      setLG(mergeLeague(base, rows, []).league);
+                    };
+                    const addGame = async () => {
+                      const m = taLgUrl.match(/\/(\d{4,10})(?:\/|$|\?)/) || taLgUrl.trim().match(/^(\d{4,10})$/);
+                      if (!m) { cpbAlert?.("Je ne trouve pas le numéro du match dans ce lien."); return; }
+                      if (myGames.some(g => g.id === m[1])) { cpbAlert?.("Ce match est déjà dans le comparatif."); return; }
+                      setTaLgBusy(true);
+                      try {
+                        const res = await fetch("/api/fiba-pbp?id=" + m[1]);
+                        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "erreur " + res.status);
+                        const g = compactGame(parseFibaPbp(await res.text()), m[1], activeTa.id);
+                        const next = [...leagueGames, g];
+                        saveLeagueGames(next); applyGames(next.filter(x => x.ta === activeTa.id)); setTaLgUrl("");
+                      } catch (e) { cpbAlert?.("Import impossible : " + e.message); }
+                      setTaLgBusy(false);
+                    };
+                    const delGame = async (g) => {
+                      const ok = await cpbAlert?.(`Retirer le match ${g.t[0].n} – ${g.t[1].n} ?`, { confirm: true }); if (!ok) return;
+                      const next = leagueGames.filter(x => !(x.ta === g.ta && x.id === g.id)), mine = next.filter(x => x.ta === activeTa.id);
+                      const still = new Set(mine.flatMap(x => x.t.map(y => leagueNorm(y.n))));
+                      saveLeagueGames(next); applyGames(mine, g.t.map(y => y.n).filter(nm => !still.has(leagueNorm(nm))));
+                    };
                     const statCounts = LEAGUE_STATS.map(S => ({ S, n: Object.keys(LG.stats[S.key] || {}).length })).filter(x => x.n > 0);
                     return (
                       <div className="mt-3">
@@ -15299,6 +15370,23 @@ function CoachingProBoost({ session }) {
                             {Object.keys(LG.stats || {}).length > 0 && <button onClick={resetStats} className="text-red-600 underline">Effacer les statistiques</button>}
                             <button onClick={resetAll} className="text-red-600 underline">Tout réinitialiser</button>
                           </span>
+                        )}
+                        <div className="text-xs font-semibold text-[#1B2A4A] mt-5 mb-1">3. Ajouter des matchs LiveStats (chiffres exacts, adversaire compris)</div>
+                        <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Colle le lien d'un match terminé, un par un. Seuls les totaux des deux équipes sont gardés (très léger). Ils donnent, pour chaque équipe, ses points encaissés, ses rebonds disponibles pris et la part de rebonds de l'adversaire sans estimation.</p>
+                        <div className="flex gap-2">
+                          <input value={taLgUrl} onChange={e => setTaLgUrl(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !taLgBusy) addGame(); }} placeholder="Lien du match LiveStats" className="flex-1 min-w-0 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
+                          <button disabled={taLgBusy || !taLgUrl.trim()} onClick={addGame} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>{taLgBusy ? "Lecture…" : "Ajouter le match"}</button>
+                        </div>
+                        {myGames.length > 0 && (
+                          <div className="mt-2 text-[11px] text-[#1B2A4A]/70">
+                            <div className="font-semibold mb-1">{myGames.length} match{myGames.length > 1 ? "s" : ""} lu{myGames.length > 1 ? "s" : ""}</div>
+                            {myGames.map(g => (
+                              <div key={g.id} className="flex items-center gap-2 py-0.5">
+                                <span className="flex-1 min-w-0 truncate">{g.t[0].n} {g.t[0].v[0]} – {g.t[1].v[0]} {g.t[1].n}</span>
+                                <button onClick={() => delGame(g)} className="text-[#1B2A4A]/30 hover:text-red-600" title="Retirer"><X size={12} /></button>
+                              </div>
+                            ))}
+                          </div>
                         )}
                         {statCounts.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 mt-3">
