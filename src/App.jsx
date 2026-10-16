@@ -14835,7 +14835,11 @@ function CoachingProBoost({ session }) {
           const fitFrame = (el) => { try { el.style.height = (el.contentDocument.documentElement.scrollHeight + 16) + "px"; } catch {} };
           return (
             <div className="max-w-4xl">
-              <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>COMPARATIF CHAMPIONNAT</h2>
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>COMPARATIF CHAMPIONNAT</h2>
+                <button onClick={() => setLogoExportPrompt({ analysis: { id: "league", name: "Comparatif championnat", league: LG, lineups: [], lineupsFile: "", boxScore: null, notes: "" }, kind: "myteam" })}
+                  className="text-sm font-semibold text-white px-3 py-2 rounded-md" style={{ backgroundColor: "#2563EB" }}>📤 Exporter le comparatif</button>
+              </div>
               <p className="text-xs text-[#1B2A4A]/40 mb-4">Les équipes du championnat, leurs statistiques collées depuis le site et les matchs LiveStats (chiffres exacts). Indépendant des analyses « Mon équipe ».</p>
               <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-3">{renderLeagueEditor(LG, saveLeagueData, "league")}</div>
               <iframe title="Comparatif championnat" srcDoc={html} className="w-full rounded-xl border border-[#1B2A4A]/10"
