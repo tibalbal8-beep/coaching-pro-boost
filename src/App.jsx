@@ -4072,7 +4072,22 @@ function mergeAttacksForDisplay(attacks) {
   const low = (l) => attackLabelText(l).toLowerCase();
   const copyDef = (d) => ({ ...d, outcomes: [...(d.outcomes || [])], bonus: [...(d.bonus || [])] });
   const merged = new Map();
-  attacks.forEach(a => {
+  // Regroupement automatique (demande de Thibaud le 17/10) : deux attaques qui ont au moins TROIS libellés d'attaque en commun
+  // (ex. E_Horn + E_Downpick + TOP52) sont le même play, pour une rentabilité unifiée. L'intention, la défense, les joueurs et les
+  // montages ne comptent pas. Un regroupement manuel garde la priorité.
+  const labelSet = (a) => new Set((a.labels || []).filter(l => typeof l === "string" || (!hidden.test(l.group || "") && !isInt(l))).map(low));
+  const parent = attacks.map((_, i) => i), find = (i) => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+  const sets = attacks.map(labelSet);
+  for (let i = 0; i < attacks.length; i++) {
+    if (attacks[i].manualGroup) continue;
+    for (let j = i + 1; j < attacks.length; j++) {
+      if (attacks[j].manualGroup) continue;
+      let c = 0; sets[i].forEach(x => { if (sets[j].has(x)) c++; });
+      if (c >= 3) parent[find(j)] = find(i);
+    }
+  }
+  const compSize = new Map(); attacks.forEach((a, i) => { if (!a.manualGroup) compSize.set(find(i), (compSize.get(find(i)) || 0) + 1); });
+  attacks.forEach((a, idx) => {
     const labels = (a.labels || []).filter(l => typeof l === "string" || !hidden.test(l.group || ""));
     if (labels.length === 0) return;
     const entries = labels.filter(isEntry), ints = labels.filter(isInt), others = labels.filter(l => !isEntry(l) && !isInt(l));
@@ -4083,13 +4098,15 @@ function mergeAttacksForDisplay(attacks) {
     const key = [...byGroup.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([g, t]) => g + ":" + [...t].sort().join("+")).join("|")
       || "intention:" + ints.map(low).sort().join("+");
     // Regroupement manuel (plays jugés identiques par le coach) : tous les membres d'un même groupe n'en font qu'un
-    const gkey = a.manualGroup ? "manual:" + a.manualGroup : key;
+    const auto = !a.manualGroup && compSize.get(find(idx)) > 1;
+    const gkey = a.manualGroup ? "manual:" + a.manualGroup : auto ? "auto:" + find(idx) : key;
     let m = merged.get(gkey);
     if (!m) {
-      m = { ...a, key: gkey, memberKeys: [], name: "", count: 0, xmlOutcomes: [], xmlBonus: [], outcomes: [], byDefense: [], _orders: new Map(), _ints: new Map(), _others: others, _nameCount: 0 };
+      m = { ...a, key: gkey, memberKeys: [], name: "", count: 0, xmlOutcomes: [], xmlBonus: [], outcomes: [], byDefense: [], _orders: new Map(), _ints: new Map(), _others: others, _nameCount: 0, _top: null };
       merged.set(gkey, m);
     }
     m.memberKeys.push(a.key);
+    if (auto && (!m._top || a.count > m._top.count)) m._top = { count: a.count, entries, others };
     m.count += a.count;
     if (a.name && a.count > m._nameCount) { m.name = a.name; m._nameCount = a.count; }
     const orderKey = entries.map(low).join(">");
@@ -4104,12 +4121,12 @@ function mergeAttacksForDisplay(attacks) {
     });
   });
   return [...merged.values()].map(m => {
-    const { _orders, _ints, _others, _nameCount, ...rest } = m;
+    const { _orders, _ints, _others, _nameCount, _top, ...rest } = m;
     const order = [..._orders.values()].sort((x, y) => y.count - x.count)[0];
     const ints = [..._ints.values()].sort((x, y) => y.count - x.count);
     return {
       ...rest,
-      labels: [...(order ? order.labels : []), ...(ints[0] ? [ints[0].label] : []), ..._others],
+      labels: _top ? [..._top.entries, ...(ints[0] ? [ints[0].label] : []), ..._top.others] : [...(order ? order.labels : []), ...(ints[0] ? [ints[0].label] : []), ..._others],
       mainIntention: ints[0] ? { text: attackLabelText(ints[0].label), count: ints[0].count } : null,
       otherIntentions: ints.slice(1).map(e => ({ text: attackLabelText(e.label), count: e.count })),
       orderVariants: _orders.size,
