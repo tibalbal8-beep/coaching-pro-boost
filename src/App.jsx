@@ -3202,7 +3202,7 @@ function fibaBoxHtml(r) {
       ${rows.map(tr).join("")}
       <tr class="bx-tot"><td>Total</td><td class="num"></td><td class="num"><b>${t.pts}</b></td><td class="num">${ma(t.fg)} <small>${pct(...t.fg)}</small></td><td class="num">${ma(t.t3)} <small>${pct(...t.t3)}</small></td><td class="num">${ma(t.ft)}</td><td class="num">${t.or}-${t.dr}</td><td class="num">${t.or + t.dr}</td><td class="num">${t.ast}</td><td class="num">${t.tov}</td><td class="num">${t.stl}</td><td class="num">${t.blk}</td><td class="num">${t.pf}</td><td class="num"></td><td class="num"></td></tr></tbody></table></div>`;
   };
-  return `<section class="card"><h2><i></i>Box score — ${tmLogo(r, T)}${esc(rec.teams[T].name)} vs ${tmLogo(r, O)}${esc(rec.teams[O].name)}</h2>${table(T)}${table(O)}</section>` + reboundsHtml([r]);
+  return `<section class="card"><h2><i></i>Box score — ${tmLogo(r, T)}${esc(rec.teams[T].name)} vs ${tmLogo(r, O)}${esc(rec.teams[O].name)}</h2>${table(T)}${table(O)}</section>` + reboundsHtml([r]) + shotChainsHtml([r]);
 }
 // ── Possessions après rebond défensif : délai avant le tir, selon le tir raté qui précède ──
 const TR_BUCKETS = [["≤ 6 s", 0, 6], ["6 – 14 s", 6, 14], ["14 – 20 s", 14, 20], ["20 – 24 s", 20, 1e9]];
@@ -3320,6 +3320,44 @@ function presenceHtml(picks, a) {
     ${ins.length ? `<ul class="bs-ins">${ins.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}${tbl}</section>`;
 }
 // ── Plusieurs matchs : moyennes et cumuls sur la sélection ──
+// ── Adresse « par possession » : les tirs ratés suivis d'un rebond offensif dans la même action sont annulés si l'action finit par un panier ──
+// Tirs de champ seulement (2 et 3 pts). Une action = tirs d'une équipe enchaînés par des rebonds offensifs ; si elle se termine par un panier,
+// les ratés qui la précèdent sont retirés du compte des tirs tentés. Une action qui finit sur un raté (rebond défensif, perte…) n'est pas modifiée.
+function computeShotChains(rec) {
+  const z = () => ({ fgm: 0, fga: 0, t3m: 0, t3a: 0, c2: 0, c3: 0, multi: 0 });
+  const out = { "1": z(), "2": z() };
+  let ch = null;
+  rec.events.forEach(e => {
+    if (e.k === "sh") {
+      const T = String(e.tno);
+      if (!out[T]) return;
+      if (e.pt === 1) { if (ch && ch.team !== T) ch = null; return; }
+      const O = out[T];
+      O.fga++; if (e.pt === 3) O.t3a++;
+      if (e.m) { O.fgm++; if (e.pt === 3) O.t3m++; }
+      if (!(ch && ch.team === T && ch.reb)) ch = { team: T, misses: [], reb: false };
+      if (e.m) { ch.misses.forEach(pt => { if (pt === 3) O.c3++; else O.c2++; }); if (ch.misses.length) O.multi++; ch = null; }
+      else { ch.misses.push(e.pt); ch.reb = false; }
+    } else if (e.k === "rb") {
+      if (ch && e.off && String(e.tno) === ch.team) ch.reb = true; else ch = null;
+    } else if (e.k === "to") ch = null;
+  });
+  return out;
+}
+function shotChainsHtml(picks) {
+  const ok = picks.filter(r => r.rec.events.some(e => e.k === "sh" && e.pt !== 1));
+  if (!ok.length) return "";
+  const z = () => ({ fgm: 0, fga: 0, t3m: 0, t3a: 0, c2: 0, c3: 0, multi: 0 });
+  const A = z(), B = z();
+  ok.forEach(r => { const C = computeShotChains(r.rec), a = C[String(r.tno)], b = C[String(r.tno) === "1" ? "2" : "1"]; Object.keys(A).forEach(k => { A[k] += a[k]; B[k] += b[k]; }); });
+  const pc = (m, a) => a ? (m / a * 100).toFixed(1).replace(".", ",") + " %" : "–";
+  const n = ok.length, tn = ok[0].rec.teams[String(ok[0].tno)].name, on = n > 1 ? "Adversaires" : ok[0].rec.teams[String(ok[0].tno) === "1" ? "2" : "1"].name;
+  const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const row = (name, X) => { const c = X.c2 + X.c3, adj = X.fga - c; return `<tr><td class="bx-n">${esc(name)}</td><td class="num">${X.fgm}/${X.fga}</td><td class="num">${pc(X.fgm, X.fga)}</td><td class="num">${c}</td><td class="num"><b>${pc(X.fgm, adj)}</b></td><td class="num">${pc(X.fgm + 0.5 * X.t3m, X.fga)}</td><td class="num"><b>${pc(X.fgm + 0.5 * X.t3m, adj)}</b></td></tr>`; };
+  return `<section class="card"><h2><i></i>Adresse en comptant le rebond offensif${n > 1 ? ` — cumul sur ${n} matchs` : ""}</h2>
+    <p class="hint">Quand une équipe rate puis marque après un ou plusieurs rebonds offensifs dans la même action, les tirs ratés de cette action sont retirés : on regarde si l'équipe est aussi adroite qu'une équipe qui marque du premier coup. Tirs de champ seulement (lancers francs exclus). Une action qui finit sur un raté n'est pas modifiée.</p>
+    <div class="bs-table"><table class="pm-five"><thead><tr><th></th><th class="num">Tirs réussis/tentés</th><th class="num">% au tir</th><th class="num">Ratés annulés</th><th class="num">% au tir ajusté</th><th class="num">eFG %</th><th class="num">eFG % ajusté</th></tr></thead><tbody>${row(tn, A)}${row(on, B)}</tbody></table></div></section>`;
+}
 // ── Rebonds : parts offensif/défensif et % de rebonds disponibles pris (chiffres exacts des deux équipes) ──
 function reboundsHtml(picks) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
@@ -3395,7 +3433,7 @@ function multiGameHtml(a, picks) {
   const TR = { ours: perMatch.flatMap(m => m.TR.ours), theirs: perMatch.flatMap(m => m.TR.theirs) };
   const oppN = picks.length > 1 ? "les adversaires" : picks[0].rec.teams[String(picks[0].tno) === "1" ? "2" : "1"].name;
   const trH = picks.every(r => r.rec.events.some(e => e.k === "sh" && e.ty !== undefined)) ? transitionHtml(picks[0], teamName, oppN, TR).replace("vitesse et efficacité", `cumul sur ${n} match${n > 1 ? "s" : ""}`) : "";
-  return box + reboundsHtml(picks) + tiles + presenceHtml(picks, a) + fiveHtml + qHtml + impact + trH;
+  return box + reboundsHtml(picks) + shotChainsHtml(picks) + tiles + presenceHtml(picks, a) + fiveHtml + qHtml + impact + trH;
 }
 // ── Lecture du match : évolution du score, séries, tirs à 3 pts, temps morts, moments notés par le coach ──
 function analyzeGame(rec, tno, moments = []) {
@@ -3515,6 +3553,7 @@ const LEAGUE_STATS = [
   { key: "orebShare", label: "Part des rebonds offensifs (RO / rebonds totaux)", hi: true, pct: true }, { key: "drebShare", label: "Part des rebonds défensifs (RD / rebonds totaux)", hi: true, pct: true },
   { key: "orebMiss", label: "Rebonds offensifs pris sur nos tirs manqués", hi: true, pct: true },
   { key: "orebPct", label: "% de rebonds offensifs disponibles pris (RO ÷ (RO + RD adverses))", hi: true, pct: true }, { key: "drebPct", label: "% de rebonds défensifs disponibles pris (RD ÷ (RD + RO adverses))", hi: true, pct: true },
+  { key: "fgAdj", label: "% au tir ajusté (ratés avant un rebond offensif suivi d'un panier annulés)", hi: true, pct: true }, { key: "efgAdj", label: "eFG % ajusté (même principe)", hi: true, pct: true },
   { key: "pSecond", label: "Points sur rebonds offensifs (secondes chances)", hi: true }, { key: "pSecondAgainst", label: "Points encaissés sur secondes chances adverses", hi: false },
   { key: "pToScored", label: "Points marqués sur balles perdues adverses (dont interceptions)", hi: true }, { key: "pToConceded", label: "Points encaissés sur nos balles perdues", hi: false },
   { key: "orebAgainst", label: "% de rebonds offensifs pris par l'adversaire", hi: false, pct: true },
@@ -3605,6 +3644,7 @@ function compactGame(rec, mid, taId) {
   if (rec.live) throw new Error("ce match n'est pas terminé");
   const g = { id: String(mid), ta: taId, t: [side("1"), side("2")] };
   // Points sur pertes de balle et rebonds offensifs (action qui suit) : 3 nombres par équipe, tirés du play-by-play puis le détail est jeté
+  try { const C = computeShotChains(rec); ["1", "2"].forEach((k, i) => { if (C[k].fga) g.t[i].c = [C[k].c2, C[k].c3]; }); } catch {}
   try {
     ["1", "2"].forEach((k, i) => { const I = computeImpact(rec, k); if (I.hasPno) g.t[i].x = [I.teamTO.opp.pts, I.teamTO.own.pts, I.team2.own.pts]; });
   } catch {}
@@ -3617,6 +3657,7 @@ function leagueRowsFromGames(games) {
   games.forEach(g => [0, 1].forEach(i => {
     const A = g.t[i], B = g.t[1 - i], k = leagueNorm(A.n); let e = by.get(k); if (!e) { e = { name: A.n, ...acc() }; by.set(k, e); }
     e.gp++; A.v.forEach((x, j) => { e.own[j] += x; }); B.v.forEach((x, j) => { e.opp[j] += x; });
+    if (A.c) { e.cn = (e.cn || 0) + 1; e.cs = e.cs || [0, 0, 0, 0, 0]; e.cs[0] += A.c[0] + A.c[1]; e.cs[1] += A.v[1]; e.cs[2] += A.v[2]; e.cs[3] += A.v[3]; }
     if (A.x && B.x) { e.xn = (e.xn || 0) + 1; e.xs = e.xs || [0, 0, 0, 0]; e.xs[0] += A.x[0]; e.xs[1] += A.x[1]; e.xs[2] += A.x[2]; e.xs[3] += B.x[2]; }
   }));
   const r1 = (x) => Math.round(x * 10) / 10, pc = (m, a) => a ? Math.round(m / a * 1000) / 10 : undefined;
@@ -3627,6 +3668,7 @@ function leagueRowsFromGames(games) {
       fgPct: pc(o.fgm, o.fga), twoPct: pc(o.fgm - o.t3m, o.fga - o.t3a), tpPct: pc(o.t3m, o.t3a), ftPct: pc(o.ftm, o.fta),
       orebPct: pc(o.or, o.or + q.dr), drebPct: pc(o.dr, o.dr + q.or), orebAgainst: pc(q.or, q.or + o.dr),
       possOpp: r1((q.fga - q.or + 0.44 * q.fta + q.tov) / n) };
+    if (e.cn && e.cs[2] - e.cs[0] > 0) { st.fgAdj = pc(e.cs[1], e.cs[2] - e.cs[0]); st.efgAdj = pc(e.cs[1] + 0.5 * e.cs[3], e.cs[2] - e.cs[0]); }
     if (e.xn) { const xa = (x) => r1(x / e.xn); st.pToScored = xa(e.xs[0]); st.pToConceded = xa(e.xs[1]); st.pSecond = xa(e.xs[2]); st.pSecondAgainst = xa(e.xs[3]); }
     Object.keys(st).forEach(k => { if (st[k] === undefined) delete st[k]; });
     return { name: e.name, stats: st, gp: n };
