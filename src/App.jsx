@@ -14095,7 +14095,11 @@ function CoachingProBoost({ session }) {
 
             // Recherche dans les attaques importées : libellés cliqués (ET) + texte libre sur le nom
             // du play et les libellés (entrées, intentions...), défenses/joueurs/montage exclus.
-            const atkLabels = (a) => a.labels.filter(l => typeof l === "string" || !ATTACK_HIDDEN_GROUP_RE.test(l.group || "")).map(attackLabelText);
+            // La catégorie (BLOB, SLOB, Transition) se cherche aussi, même si elle ne figure pas dans les libellés visibles de l'attaque
+            const atkLabels = (a) => {
+              const t = a.labels.filter(l => typeof l === "string" || !ATTACK_HIDDEN_GROUP_RE.test(l.group || "")).map(attackLabelText), cat = attackCategoryOf(a);
+              return cat !== "Attaque placée" && !t.some(x => x.toLowerCase() === cat.toLowerCase()) ? [cat, ...t] : t;
+            };
             const atkQ = vsAtkQuery.trim().toLowerCase();
             const allAtks = [...(activeVs.attacks || [])].sort((a, b) => b.count - a.count);
             const visibleAttacks = allAtks.filter(a =>
