@@ -2061,7 +2061,7 @@ function playersReportHtml(pl, opponent) {
       <div class="pl-head">${avatar}<div><div class="pl-name">${p.num !== null && p.num !== undefined ? `<span class="pl-num">#${esc(p.num)}</span> ` : ""}${esc(p.name)}${m.role ? ` <span class="pl-role">${esc(m.role)}</span>` : ""}</div>
       ${(() => { const bits = [m.hand === "D" ? "Droitier" : m.hand === "G" ? "Gaucher" : m.hand === "A" ? "Ambidextre" : "", m.height ? esc(String(m.height).replace(/^(\d)[.,](\d{2})$/, "$1m$2").replace(/^(\d{3})$/, "$1 cm")) : "", m.age ? `${esc(m.age)} ans` : ""].filter(Boolean); return bits.length ? `<div class="pl-sub"><b>${bits.join(" · ")}</b></div>` : ""; })()}
       ${sub ? `<div class="pl-sub">${sub}</div>` : ""}</div></div>
-      ${hasStats ? `<div class="pl-kpis">${kp(f1(p.pts), "pts")}${kp(f1(p.reb), "reb")}${kp(f1(p.ast), "passes")}${kp(pc(p.ts), "TS %")}${kp(pc(p.usg), "usage")}</div>
+      ${hasStats ? `<div class="pl-kpis">${kp(f1(p.pts), "pts")}${kp(f1(p.reb), "reb")}${kp(f1(p.ast), "passes")}${kp(pc(p.ts), "TS %")}${kp(pc(p.usg), p.usgCalc ? "usage (calculé)" : "usage")}</div>
       <div class="pl-shots">Tirs <b>${shot(p.fgm, p.fga)}</b> · 3 pts <b>${shot(p.tpm, p.tpa)}</b> · LF <b>${shot(p.ftm, p.fta)}</b></div>
       ${lowS ? `<div class="pl-lowtag">⚠ Échantillon faible (${p.gp} match${p.gp > 1 ? "s" : ""}, ${mmss(p.min)} min en moyenne) : stats données à titre indicatif, constats automatiques désactivés.</div>` : ""}` : ""}
       ${sp ? (() => { const w = (x) => Math.round(x * 100); const line = sp.rim < 0.15 ? "Ne va presque jamais finir près du cercle." : sp.out >= 0.55 ? "Joueur surtout extérieur." : sp.rim >= 0.4 ? "Finit surtout près du cercle." : ""; return `<div class="pl-sp"><div class="pl-spbar"><i style="width:${w(sp.rim)}%;background:#ea580c"></i><i style="width:${w(sp.mid)}%;background:#a3a3a3"></i><i style="width:${w(sp.out)}%;background:#2563EB"></i></div><div class="pl-splab">Profil de tir <em>(${spr ? `mesuré sur ${spr.n} tirs` : "estimé"})</em> : <b style="color:#ea580c">${w(sp.rim)} % près du cercle</b> · <b style="color:#737373">${w(sp.mid)} % mi-distance/autres</b> · <b style="color:#2563EB">${w(sp.out)} % à 3 pts</b>${line ? ` — ${line}` : ""}</div></div>`; })() : ""}
@@ -2195,7 +2195,17 @@ function mergeScoutPlayers(r) {
     if (n.fgm !== undefined && n.tpm !== undefined && n.fga) n.efg = (n.fgm + 0.5 * n.tpm) / n.fga;
     map.set(k, n);
   });
-  return order.map(k => map.get(k));
+  // Usage % absent des fichiers (seul l'Excel détaillé le donne) : calculé avec la formule classique à partir des totaux de l'équipe
+  // (tirs + 0,44 × LF + balles perdues) et des minutes du joueur, sur un match de 40 minutes.
+  const T = r.teamTotals, tp = T && T.fga !== null && T.fga !== undefined ? T.fga + 0.44 * (T.fta || 0) + (T.tov || 0) : 0;
+  return order.map(k => {
+    const p = map.get(k);
+    if ((p.usg === null || p.usg === undefined) && tp > 0 && p.min > 0 && p.fga !== null && p.fga !== undefined) {
+      const u = ((p.fga + 0.44 * (p.fta || 0) + (p.tov || 0)) * 40) / (p.min * tp);
+      if (u >= 0 && u < 0.7) return { ...p, usg: u, usgCalc: true };
+    }
+    return p;
+  });
 }
 function buildScoutReportHtml(r, logo = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
