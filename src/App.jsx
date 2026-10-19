@@ -11244,10 +11244,10 @@ function CoachingProBoost({ session }) {
         {LG.teams.length > 1 && (
           <div className="grid sm:grid-cols-2 gap-2 mt-4">
             <label className="text-xs text-[#1B2A4A]/60">3. Mon équipe dans le championnat
-              <select value={LG.mine || ""} onChange={e => setLG({ ...LG, mine: e.target.value || null })} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mt-0.5 text-[#1B2A4A]"><option value="">—</option>{LG.teams.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+              <select value={LG.mine || ""} onChange={e => setLG({ ...LG, mine: e.target.value || null })} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mt-0.5 text-[#1B2A4A]"><option value="">—</option>{[...LG.teams].sort((x, y) => x.name.localeCompare(y.name, "fr")).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
             </label>
             <label className="text-xs text-[#1B2A4A]/60">Comparer avec une autre équipe
-              <select value={LG.other || ""} onChange={e => setLG({ ...LG, other: e.target.value || null })} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mt-0.5 text-[#1B2A4A]"><option value="">—</option>{LG.teams.filter(x => x.id !== LG.mine).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+              <select value={LG.other || ""} onChange={e => setLG({ ...LG, other: e.target.value || null })} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mt-0.5 text-[#1B2A4A]"><option value="">—</option>{[...LG.teams].filter(x => x.id !== LG.mine).sort((x, y) => x.name.localeCompare(y.name, "fr")).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
             </label>
           </div>
         )}
