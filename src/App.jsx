@@ -3685,6 +3685,32 @@ function leagueRowsFromGames(games) {
     return { name: e.name, stats: st, gp: n };
   });
 }
+// Match saisi en collant les DEUX tableaux de box score du site (ligne « Totaux Équipe » de chacun) : pas besoin du LiveStats
+function parseBoxGameText(text) {
+  const lines = String(text || "").split(/\r?\n/);
+  const cut = (l) => l.includes("\t") ? l.split("\t").map(x => x.trim()) : l.trim().split(/\s{2,}|\s(?=[-\d])/).map(x => x.trim());
+  const num = (t) => { const x = parseFloat(String(t ?? "").replace(",", ".").replace("%", "")); return isNaN(x) ? null : x; };
+  const rng = (t) => { const m = /^(\d+)\s*[-–]\s*(\d+)$/.exec(String(t || "").trim()); return m ? [+m[1], +m[2]] : null; };
+  const heads = []; lines.forEach((l, i) => { if (/\bJoueurs\b/i.test(l) && /\bPts\b/i.test(l)) heads.push(i); });
+  if (heads.length < 2) throw new Error("il faut les deux tableaux (chacun avec sa ligne d'en-têtes « Joueurs … Pts … » et sa ligne « Totaux Équipe »)");
+  const teams = heads.slice(0, 2).map((hi, k) => {
+    let j = hi - 1; while (j >= 0 && !lines[j].trim()) j--;
+    let name = (lines[j] || "").trim(); if (!name || /\t|\d/.test(name)) throw new Error("je ne trouve pas le nom de l'équipe au-dessus d'un tableau");
+    if (!/[a-zà-ÿ]/.test(name)) name = name.toLowerCase().replace(/(^|[\s\-/'’])([a-zà-ÿ])/g, (m, a, b) => a + b.toUpperCase());
+    const labs = cut(lines[hi]).map(x => x.toUpperCase()), from = labs.indexOf("MIN");
+    if (from === -1) throw new Error("colonne « Min » introuvable dans l'en-tête");
+    const L = labs.slice(from);
+    const end = k === 0 ? heads[1] : lines.length;
+    let ti = -1; for (let i = hi + 1; i < end; i++) if (/^\s*totaux?\b/i.test(lines[i])) { ti = i; break; }
+    if (ti === -1) throw new Error(`ligne « Totaux Équipe » introuvable pour ${name}`);
+    let cells = cut(lines[ti]); cells = cells.slice(1);
+    const g = (lab) => { const i = L.indexOf(lab); return i === -1 ? undefined : cells[i]; };
+    const two = rng(g("2R-2T")), three = rng(g("3R-3T")), ft = rng(g("LFR-LFT"));
+    if (!two || !three || !ft || num(g("PTS")) === null) throw new Error(`totaux illisibles pour ${name} (colonnes attendues : Pts, 2R-2T, 3R-3T, LFR-LFT, RO, RD…)`);
+    return { n: name, v: [num(g("PTS")), two[0] + three[0], two[1] + three[1], three[0], three[1], ft[0], ft[1], num(g("RO")) ?? 0, num(g("RD")) ?? 0, num(g("PD")) ?? 0, num(g("BP")) ?? 0, num(g("IN")) ?? 0, num(g("CT")) ?? 0, num(g("FTE")) ?? 0] };
+  });
+  return { id: "box-" + teams.map(t => t.n.replace(/\s+/g, "") + t.v[0]).join("-"), t: teams };
+}
 function mergeLeague(league, rows, reset = []) {
   const L = league ? { ...league, teams: [...(league.teams || [])], stats: { ...(league.stats || {}) } } : { teams: [], stats: {} };
   reset.forEach(k => { delete L.stats[k]; });
@@ -11078,7 +11104,7 @@ function CoachingProBoost({ session }) {
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
   const [taMom, setTaMom] = useState({}), [taOpen, setTaOpen] = useState({});
   const [taLnbOpen, setTaLnbOpen] = useState(false), [taLnbText, setTaLnbText] = useState("");
-  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false), [taLgGamesOpen, setTaLgGamesOpen] = useState(false), [taLgStatsOpen, setTaLgStatsOpen] = useState(false), [taLgProg, setTaLgProg] = useState("");
+  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false), [taLgGamesOpen, setTaLgGamesOpen] = useState(false), [taLgStatsOpen, setTaLgStatsOpen] = useState(false), [taLgProg, setTaLgProg] = useState(""), [taLgBoxText, setTaLgBoxText] = useState(""), [taLgBoxOpen, setTaLgBoxOpen] = useState(false);
   // Éditeur du comparatif championnat (partagé : bloc de « Mon équipe » et onglet admin « Comparatif championnat »)
   const renderLeagueEditor = (LG, setLG, taId) => {
     const updTeam = (id, patch) => setLG({ ...LG, teams: LG.teams.map(x => x.id === id ? { ...x, ...patch } : x) });
@@ -11128,6 +11154,15 @@ function CoachingProBoost({ session }) {
       setTaLgUrl(""); setTaLgProg(""); setTaLgBusy(false);
       cpbAlert?.(`${ok} match${ok > 1 ? "s" : ""} ajouté${ok > 1 ? "s" : ""}${ids.length > todo.length ? `, ${ids.length - todo.length} déjà présent${ids.length - todo.length > 1 ? "s" : ""}` : ""}.${bad.length ? ` Non lus : ${bad.join(" ; ")}.` : ""}`);
     };
+    const addBoxGame = () => {
+      try {
+        const g = parseBoxGameText(taLgBoxText); g.ta = taId;
+        if (myGames.some(x => x.id === g.id)) { cpbAlert?.("Ce match est déjà dans le comparatif."); return; }
+        const next = [...leagueGames, g];
+        saveLeagueGames(next); applyGames(next.filter(x => x.ta === taId)); setTaLgBoxText(""); setTaLgBoxOpen(false);
+        cpbAlert?.(`Match ajouté : ${g.t[0].n} ${g.t[0].v[0]} – ${g.t[1].v[0]} ${g.t[1].n}.`);
+      } catch (e) { cpbAlert?.("Lecture impossible : " + e.message); }
+    };
     const delGame = async (g) => {
       const ok = await cpbAlert?.(`Retirer le match ${g.t[0].n} – ${g.t[1].n} ?`, { confirm: true }); if (!ok) return;
       const next = leagueGames.filter(x => !(x.ta === g.ta && x.id === g.id)), mine = next.filter(x => x.ta === taId);
@@ -11173,6 +11208,14 @@ function CoachingProBoost({ session }) {
         <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Colle un ou plusieurs liens de matchs terminés (un par ligne, ou un texte qui en contient). Seuls les totaux des deux équipes sont gardés (très léger). Ils donnent, pour chaque équipe, ses points encaissés, ses rebonds disponibles pris et la part de rebonds de l'adversaire sans estimation.</p>
         <textarea value={taLgUrl} onChange={e => setTaLgUrl(e.target.value)} rows={3} placeholder="Colle un ou plusieurs liens de matchs LiveStats (un par ligne)" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white/60 font-mono" />
         <button disabled={taLgBusy || !taLgUrl.trim()} onClick={addGame} className="mt-2 text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>{taLgBusy ? (taLgProg || "Lecture…") : "Ajouter le ou les matchs"}</button>
+        <button onClick={() => setTaLgBoxOpen(o => !o)} className="mt-3 text-[11px] font-semibold text-[#1B2A4A]/70 hover:underline text-left block">{taLgBoxOpen ? "▾" : "▸"} Pas de LiveStats ? Coller les deux tableaux de stats du match</button>
+        {taLgBoxOpen && (
+          <div className="mt-2">
+            <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Sur le site du match, copie le tableau de chaque équipe (avec le nom de l'équipe au-dessus, l'en-tête « Joueurs … » et la ligne « Totaux Équipe ») et colle les deux ensemble. Seuls les totaux de chaque équipe sont lus.</p>
+            <textarea value={taLgBoxText} onChange={e => setTaLgBoxText(e.target.value)} rows={4} placeholder="Colle ici les deux tableaux…" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white/60 font-mono" />
+            <button disabled={!taLgBoxText.trim()} onClick={addBoxGame} className="mt-2 text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>Ajouter ce match</button>
+          </div>
+        )}
         {myGames.length > 0 && (
           <div className="mt-2 text-[11px] text-[#1B2A4A]/70">
             <button onClick={() => setTaLgGamesOpen(o => !o)} className="font-semibold text-left hover:underline">{taLgGamesOpen ? "▾" : "▸"} {myGames.length} match{myGames.length > 1 ? "s" : ""} lu{myGames.length > 1 ? "s" : ""} <span className="font-normal text-[#1B2A4A]/40">{taLgGamesOpen ? "(replier)" : "(déplier pour en supprimer un)"}</span></button>
