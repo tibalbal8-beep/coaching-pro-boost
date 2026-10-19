@@ -3602,7 +3602,7 @@ function parseLeagueText(text, forcedKey = "") {
   if (wide.length >= 3 && !forcedKey) {
     wide.forEach(c => {
       const name = c[0], vals = c.slice(1);
-      LEAGUE_NM1_COLS.forEach((k, j) => { if (k === "gp") return; const v = num(vals[j]); if (k === "_3r") { put(name, "_3r", v); put(name, "tpm", v); } else if (k === "_3t") { put(name, "_3t", v); put(name, "tpa", v); } else put(name, k, v); });
+      LEAGUE_NM1_COLS.forEach((k, j) => { const v = num(vals[j]); if (k === "gp") { put(name, "gp", v); return; } if (k === "_3r") { put(name, "_3r", v); put(name, "tpm", v); } else if (k === "_3t") { put(name, "_3t", v); put(name, "tpa", v); } else put(name, k, v); });
     });
     return { rows: [...out.values()], kind: "tableau sans en-têtes", reset: ["ptsAgainst", "diff", "net", "pppAgainst"] };   // ces colonnes n'existent pas dans ce tableau : on efface d'éventuelles valeurs d'un ancien collage mal lu
   }
@@ -3629,7 +3629,7 @@ function parseLeagueText(text, forcedKey = "") {
       else if (/[A-Za-zÀ-ÿ]/.test(lines[i]) && !/\t/.test(lines[i]) && i + 1 < lines.length && lines[i + 1].split("\t").length >= keys2.length - 1) { name = lines[i]; vals = lines[i + 1].split("\t").map(x => x.trim()); i++; }
       else continue;
       if (/^(total|moyenne|average|championnat)/i.test(name)) continue;
-      keys2.forEach((k, j) => { if (k !== "_" && k !== "gp" && k !== "min") { const v = num(vals[j]); put(name, k, v); if (k === "tpm") put(name, "_3r", v); if (k === "_3t") put(name, "tpa", v); } });
+      keys2.forEach((k, j) => { if (k !== "_" && k !== "min") { const v = num(vals[j]); put(name, k, v); if (k === "tpm") put(name, "_3r", v); if (k === "_3t") put(name, "tpa", v); } });
     }
     if (out.size) return { rows: [...out.values()], kind: "tableau" };
   }
@@ -3674,7 +3674,7 @@ function leagueRowsFromGames(games) {
   const r1 = (x) => Math.round(x * 10) / 10, pc = (m, a) => a ? Math.round(m / a * 1000) / 10 : undefined;
   return [...by.values()].map(e => {
     const o = Object.fromEntries(GAME_KEYS.map((k, j) => [k, e.own[j]])), q = Object.fromEntries(GAME_KEYS.map((k, j) => [k, e.opp[j]])), n = e.gp, av = (x) => r1(x / n);
-    const st = { pts: av(o.pts), ptsAgainst: av(q.pts), oreb: av(o.or), dreb: av(o.dr), reb: av(o.or + o.dr), ast: av(o.ast), stl: av(o.stl), blk: av(o.blk), tov: av(o.tov), pf: av(o.pf),
+    const st = { gp: n, pts: av(o.pts), ptsAgainst: av(q.pts), oreb: av(o.or), dreb: av(o.dr), reb: av(o.or + o.dr), ast: av(o.ast), stl: av(o.stl), blk: av(o.blk), tov: av(o.tov), pf: av(o.pf),
       _2r: av(o.fgm - o.t3m), _2t: av(o.fga - o.t3a), _3r: av(o.t3m), _3t: av(o.t3a), tpm: av(o.t3m), tpa: av(o.t3a), _ft: av(o.fta),
       fgPct: pc(o.fgm, o.fga), twoPct: pc(o.fgm - o.t3m, o.fga - o.t3a), tpPct: pc(o.t3m, o.t3a), ftPct: pc(o.ftm, o.fta),
       orebPct: pc(o.or, o.or + q.dr), drebPct: pc(o.dr, o.dr + q.or), orebAgainst: pc(q.or, q.or + o.dr),
@@ -3733,7 +3733,7 @@ function leagueHtml(a) {
   const L = a.league; if (!L || !(L.teams || []).length) return "";
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const byId = new Map(L.teams.map(t => [t.id, t]));
-  const badge = (t, big = false) => t ? `<span class="lg-t">${t.logo ? `<img class="lg-logo${big ? " lg-big" : ""}" src="${t.logo}" alt="" />` : ""}${esc(t.name)}</span>` : "";
+  const badge = (t, big = false) => t ? `<span class="lg-t">${t.logo ? `<img class="lg-logo${big ? " lg-big" : ""}" src="${t.logo}" alt="" />` : ""}${esc(t.name)}${typeof L.stats?.gp?.[t.id] === "number" ? ` <small style="font-weight:400;opacity:.6">(${L.stats.gp[t.id]} match${L.stats.gp[t.id] > 1 ? "s" : ""})</small>` : ""}</span>` : "";
   const fmt = (S, v) => v === null || v === undefined ? "–" : S.pct ? v.toFixed(1).replace(".", ",") + " %" : v.toFixed(S.dec || 1).replace(".", ",");
   const all = LEAGUE_STATS.map(S => {
     const m = L.stats[S.key] || {}, entries = Object.entries(m).filter(([id, v]) => byId.has(id) && v !== null).map(([id, v]) => ({ t: byId.get(id), v }));
