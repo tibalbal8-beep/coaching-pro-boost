@@ -11067,9 +11067,14 @@ function CoachingProBoost({ session }) {
   // échoué (loadError) : exercises/sessions seraient alors des tableaux vides par défaut
   // (pas encore récupérés du serveur), et cet autosave les aurait réécrits par-dessus les
   // vraies données au bout de 30 secondes, sans aucune action de l'utilisateur.
+  // Ne sauvegarde que ce que CET appareil a modifié depuis son chargement : sinon un appareil resté ouvert avec une ancienne liste
+  // la réécrit toutes les 30 s par-dessus les modifications faites ailleurs (historique du 19/10/2026 : plusieurs appareils s'écrasaient).
+  const autosaveBase = useRef(null);
   useEffect(() => {
     if (loadError || !loaded) return;
+    if (!autosaveBase.current) autosaveBase.current = { ex: exercises, se: sessions };
     const interval = setInterval(async () => {
+      if (autosaveBase.current.ex === exercises && autosaveBase.current.se === sessions) return;
       // Jamais de sauvegarde automatique d'une bibliothèque ET de séances vides : c'est le signe d'un chargement qui n'a rien renvoyé
       // (session expirée, mauvais compte, réseau), pas d'un vrai vidage. Une suppression volontaire passe par saveExercises/saveSessions.
       if (exercises.length === 0 && sessions.length === 0) return;
@@ -11078,6 +11083,7 @@ function CoachingProBoost({ session }) {
           persist(`exercises:${sport}`, JSON.stringify(exercises.map(({ file, ...rest }) => ({ ...rest, hasFile: !!file, fileName: file?.name, fileType: file?.type })))),
           persist(`sessions:${sport}`, JSON.stringify(sessions)),
         ]);
+        autosaveBase.current = { ex: exercises, se: sessions };
         setLastSaved(new Date());
       } catch {}
     }, 30000);
