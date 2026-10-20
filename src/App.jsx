@@ -11068,8 +11068,11 @@ function CoachingProBoost({ session }) {
   // (pas encore récupérés du serveur), et cet autosave les aurait réécrits par-dessus les
   // vraies données au bout de 30 secondes, sans aucune action de l'utilisateur.
   useEffect(() => {
-    if (loadError) return;
+    if (loadError || !loaded) return;
     const interval = setInterval(async () => {
+      // Jamais de sauvegarde automatique d'une bibliothèque ET de séances vides : c'est le signe d'un chargement qui n'a rien renvoyé
+      // (session expirée, mauvais compte, réseau), pas d'un vrai vidage. Une suppression volontaire passe par saveExercises/saveSessions.
+      if (exercises.length === 0 && sessions.length === 0) return;
       try {
         await Promise.all([
           persist(`exercises:${sport}`, JSON.stringify(exercises.map(({ file, ...rest }) => ({ ...rest, hasFile: !!file, fileName: file?.name, fileType: file?.type })))),
@@ -11079,7 +11082,7 @@ function CoachingProBoost({ session }) {
       } catch {}
     }, 30000);
     return () => clearInterval(interval);
-  }, [exercises, sessions, sport, loadError]);
+  }, [exercises, sessions, sport, loadError, loaded]);
   const [newThemeInput, setNewThemeInput] = useState("");
   const [lastSaved, setLastSaved] = useState(null);
   const [repairingVisuals, setRepairingVisuals] = useState(false);
