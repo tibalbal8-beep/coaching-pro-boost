@@ -593,6 +593,9 @@ function useStore(sport = DEFAULT_SPORT) {
   const [playTags, setPlayTags] = useState([]);
   const [clubLogo, setClubLogo] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  // « loaded » passe à vrai dès que les équipes/joueurs sont lus, AVANT les exercices et les séances (chargés ensuite, par sport) :
+  // coreLoaded ne passe à vrai qu'une fois exercices, séances et plays lus. Tant qu'il est faux, rien n'est sauvegardé automatiquement.
+  const [coreLoaded, setCoreLoaded] = useState(false);
   // Une coupure réseau (partage de connexion, etc.) PENDANT le chargement initial faisait
   // échouer chaque storage.get() silencieusement (try/catch vide) : l'app affichait alors un
   // catalogue vide comme si tout avait été perdu, alors que les données étaient toujours là
@@ -620,6 +623,7 @@ function useStore(sport = DEFAULT_SPORT) {
   // destructif, l'ancienne clé n'est jamais supprimée, seulement lue en fallback.
   useEffect(() => {
     (async () => {
+      setCoreLoaded(false);
       let hadError = false;
       try {
         const th = await storage.get(themesKey);
@@ -657,6 +661,7 @@ function useStore(sport = DEFAULT_SPORT) {
         if (!pb) { const legacy = await storage.get("plays"); if (legacy) pb = legacy; }
         setPlays(pb ? JSON.parse(pb.value) : []);
       } catch { hadError = true; }
+      setCoreLoaded(true);
       try {
         const is = await storage.get(individualSessionsKey);
         setIndividualSessions(is ? JSON.parse(is.value) : []);
@@ -850,7 +855,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
+  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
 }
 
 function usePdfJs() {
@@ -10406,7 +10411,7 @@ function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport, hasAnalysis, analysisUntil, hasPack } = useSubscription(session?.user?.id);
   const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, canUseMatchmode, canUseMyteam, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
   const canAnalysis = isAdmin || canUseMyteam || hasAnalysis;   // Scouting report + Mon équipe
-  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
+  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
   const SPORT_FORMATS = formats;
@@ -11071,7 +11076,7 @@ function CoachingProBoost({ session }) {
   // la réécrit toutes les 30 s par-dessus les modifications faites ailleurs (historique du 19/10/2026 : plusieurs appareils s'écrasaient).
   const autosaveBase = useRef(null);
   useEffect(() => {
-    if (loadError || !loaded) return;
+    if (loadError || !loaded || !coreLoaded) return;
     if (!autosaveBase.current) autosaveBase.current = { ex: exercises, se: sessions };
     const interval = setInterval(async () => {
       if (autosaveBase.current.ex === exercises && autosaveBase.current.se === sessions) return;
@@ -11088,7 +11093,7 @@ function CoachingProBoost({ session }) {
       } catch {}
     }, 30000);
     return () => clearInterval(interval);
-  }, [exercises, sessions, sport, loadError, loaded]);
+  }, [exercises, sessions, sport, loadError, loaded, coreLoaded]);
   const [newThemeInput, setNewThemeInput] = useState("");
   const [lastSaved, setLastSaved] = useState(null);
   const [repairingVisuals, setRepairingVisuals] = useState(false);
@@ -11820,7 +11825,7 @@ function CoachingProBoost({ session }) {
     setViewPersist("library");
   };
 
-  if (!loaded) return <div className="p-8 text-[#1B2A4A]/50 text-sm">Chargement...</div>;
+  if (!loaded || !coreLoaded) return <div className="p-8 text-[#1B2A4A]/50 text-sm">Chargement...</div>;
 
   // Une partie des données n'a pas pu être récupérée (coupure réseau pendant le chargement,
   // souvent un partage de connexion instable) : on bloque plutôt que d'afficher un catalogue
