@@ -3667,11 +3667,18 @@ function compactGame(rec, mid, taId) {
   if (!g.t[0].v[0] && !g.t[1].v[0]) throw new Error("aucune statistique dans ce match");
   return g;
 }
-function leagueRowsFromGames(games) {
+function leagueRowsFromGames(games, teams = []) {
   const by = new Map();
   const acc = () => ({ gp: 0, own: Array(14).fill(0), opp: Array(14).fill(0) });
+  // Une même équipe porte parfois des noms différents selon la source (« Besançon » dans un tableau collé, « Besançon Doubs Basket »
+  // dans le LiveStats) : les noms dont l'un contient l'autre (mots entiers) sont regroupés, sinon la dernière ligne écraserait les autres.
+  const names = [...new Set([...games.flatMap(g => g.t.map(x => leagueNorm(x.n))), ...teams.map(t => leagueNorm(t.name))])].filter(Boolean);
+  const parent = new Map(names.map(n => [n, n])), find = (n) => { while (parent.get(n) !== n) n = parent.get(n); return n; };
+  const has = (a, b) => (" " + a + " ").includes(" " + b + " ");
+  names.forEach(a => names.forEach(b => { if (a !== b && b.length >= 4 && has(a, b)) parent.set(find(a), find(b)); }));
+  const display = new Map(); teams.forEach(t => { const r = find(leagueNorm(t.name)); if (!display.has(r)) display.set(r, t.name); });
   games.forEach(g => [0, 1].forEach(i => {
-    const A = g.t[i], B = g.t[1 - i], k = leagueNorm(A.n); let e = by.get(k); if (!e) { e = { name: A.n, ...acc() }; by.set(k, e); }
+    const A = g.t[i], B = g.t[1 - i], k = find(leagueNorm(A.n)); let e = by.get(k); if (!e) { e = { name: display.get(k) || A.n, ...acc() }; by.set(k, e); }
     e.gp++; A.v.forEach((x, j) => { e.own[j] += x; }); B.v.forEach((x, j) => { e.opp[j] += x; });
     if (A.c) { e.cn = (e.cn || 0) + 1; e.cs = e.cs || [0, 0, 0, 0, 0]; e.cs[0] += A.c[0] + A.c[1]; e.cs[1] += A.v[1]; e.cs[2] += A.v[2]; e.cs[3] += A.v[3]; }
     if (A.x && B.x) { e.xn = (e.xn || 0) + 1; e.xs = e.xs || [0, 0, 0, 0]; e.xs[0] += A.x[0]; e.xs[1] += A.x[1]; e.xs[2] += A.x[2]; e.xs[3] += B.x[2]; }
@@ -11136,7 +11143,7 @@ function CoachingProBoost({ session }) {
     const resetAll = async () => { const ok = await cpbAlert?.("Tout réinitialiser : équipes, logos et statistiques du comparatif seront supprimés. Continuer ?", { confirm: true }); if (!ok) return; setLG({ teams: [], stats: {} }); setTaLgText(""); saveLeagueGames(leagueGames.filter(g => g.ta !== taId)); };
     const myGames = leagueGames.filter(g => g.ta === taId);
     const applyGames = (games, goneNames = []) => {
-      const rows = leagueRowsFromGames(games);
+      const rows = leagueRowsFromGames(games, LG.teams);
       let base = LG;
       if (goneNames.length) {
         const keys = new Set(["possOpp", ...LEAGUE_STATS.map(S => S.key)]);
