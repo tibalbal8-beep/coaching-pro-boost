@@ -11401,7 +11401,7 @@ function CoachingProBoost({ session }) {
           const births = LG.births || {};
           const apply = () => {
             const team = taLgBirthTeam || tms[0]; if (!team) { cpbAlert?.("Ajoute d'abord des matchs LiveStats : la liste des joueurs en vient."); return; }
-            const mine = pls.filter(p => p.team === team), nb = { ...births }; let ok = 0; const bad = [];
+            const mine = pls.filter(p => p.team === team), nb = { ...births }; let ok = 0; const bad = [], later = [];
             const raw = taLgBirthText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
             // Page « Effectif » collée (BeBasket…) : « Prénom Nom / 193 cm / 25 ans » → année = année en cours − âge
             const lines = raw.some(l => /^\d{2} ans$/i.test(l)) ? (() => {
@@ -11413,11 +11413,12 @@ function CoachingProBoost({ session }) {
               const m = line.match(/((?:19|20)\d{2})\D*$/); if (!m) { bad.push(line); return; }
               const nm = leagueNorm(line.slice(0, m.index).replace(/[;:,\t(\-–]+\s*$/, "").replace(/\d{1,2}[\/.]\d{1,2}[\/.]?$/, ""));
               const hit = mine.find(p => leagueNorm(p.name) === nm) || mine.find(p => nm && (leagueNorm(p.name).includes(nm) || nm.includes(leagueNorm(p.name))));
-              if (!hit) { bad.push(line); return; }
+              // Joueur absent des matchs ajoutés (n'a pas joué, ou nom écrit autrement) : l'année est gardée quand même, elle servira dès qu'il apparaîtra
+              if (!hit) { if (nm) { nb[leagueNorm(team) + "|" + nm] = +m[1]; later.push(line.slice(0, m.index).replace(/[;:,\t(\-–\s]+$/, "")); } else bad.push(line); return; }
               nb[leagueNorm(hit.team) + "|" + leagueNorm(hit.name)] = +m[1]; ok++;
             });
             setLG({ ...LG, births: nb }); setTaLgBirthText("");
-            cpbAlert?.(`${ok} année${ok > 1 ? "s" : ""} de naissance enregistrée${ok > 1 ? "s" : ""}${bad.length ? ` — non reconnue${bad.length > 1 ? "s" : ""} : ${bad.join(" | ")}` : ""}.`);
+            cpbAlert?.(`${ok} année${ok > 1 ? "s" : ""} de naissance enregistrée${ok > 1 ? "s" : ""}${later.length ? ` — ${later.length} gardée${later.length > 1 ? "s" : ""} en attente (joueur absent des matchs ajoutés, ou nom écrit autrement) : ${later.join(", ")}` : ""}${bad.length ? ` — non reconnue${bad.length > 1 ? "s" : ""} : ${bad.join(" | ")}` : ""}.`);
           };
           const cur = taLgBirthTeam || tms[0] || "", mine = pls.filter(p => p.team === cur), have = mine.filter(p => births[leagueNorm(p.team) + "|" + leagueNorm(p.name)]).length;
           return (
