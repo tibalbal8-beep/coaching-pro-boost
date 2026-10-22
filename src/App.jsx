@@ -3853,7 +3853,8 @@ function leaguePlayersHtml(a) {
   const esc = (str) => String(str ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const f = (x, d = 1, suf = "") => x === null || x === undefined ? "–" : x.toFixed(d).replace(".", ",") + suf;
   const logos = {}; ((a.league || {}).teams || []).forEach(t => { if (t.logo) logos[leagueNorm(t.name)] = t.logo; });
-  const rows = P.map(p => ({ ...p, logo: logos[leagueNorm(p.team)] || "" }));
+  const births = (a.league || {}).births || {}, yr = new Date().getFullYear();
+  const rows = P.map(p => { const b = births[leagueNorm(p.team) + "|" + leagueNorm(p.name)]; return { ...p, logo: logos[leagueNorm(p.team)] || "", age: b ? yr - b : null, birth: b || null }; });
   const teams = [...new Set(P.map(p => p.team))].sort((x, y) => x.localeCompare(y, "fr"));
   // [étiquette, clé, décimales, suffixe, explication, plus = mieux]
   const ADV = [["% rebonds déf. pris", "drPct", 1, " %", "Ses rebonds défensifs ÷ tous les rebonds défensifs disponibles pendant sa présence (les siens + les rebonds offensifs adverses).", 1],
@@ -3866,10 +3867,11 @@ function leaguePlayersHtml(a) {
     ["Pts équipe après son reb. déf.", "drPts", 2, " pts", "Points marqués par son équipe dans la possession qui suit chacun de ses rebonds défensifs.", 1]];
   const CLA = [["Points", "pts", 1, "", "", 1], ["Rebonds", "reb", 1, "", "", 1], ["Reb. offensifs", "or", 1, "", "", 1], ["Reb. défensifs", "dr", 1, "", "", 1], ["Passes", "ast", 1, "", "", 1], ["Interceptions", "stl", 1, "", "", 1], ["Contres", "blk", 1, "", "", 1],
     ["% tirs", "fg", 1, " %", "", 1], ["% 3 pts", "t3", 1, " %", "", 1], ["% lancers francs", "ft", 1, " %", "", 1], ["TS %", "ts", 1, " %", "True shooting : points ÷ (2 × (tirs + 0,44 × lancers francs)).", 1], ["+/-", "pm", 1, "", "", 1],
-    ["Balles perdues", "tov", 1, "", "Moins = mieux.", 0], ["Fautes", "pf", 1, "", "Moins = mieux.", 0], ["Minutes", "min", 1, "", "", 1]];
+    ["Balles perdues", "tov", 1, "", "Moins = mieux.", 0], ["Fautes", "pf", 1, "", "Moins = mieux.", 0], ["Minutes", "min", 1, "", "", 1],
+    ["Âge (plus jeunes d'abord)", "age", 0, " ans", "Âge calculé d'après l'année de naissance saisie (à un an près). Seuls les joueurs dont l'année est renseignée apparaissent.", 0]];
   const mk = (arr) => arr.map(([lab, key, d, suf, tip, hi]) => ({ lab, key, d, suf, tip, hi }));
   const advM = mk(ADV), claM = mk(CLA);
-  const data = JSON.stringify({ P: rows.map(r => ({ n: r.name, t: r.team, l: r.logo, g: r.gp, m: r.min, ...Object.fromEntries([...ADV, ...CLA].map(x => [x[1], r[x[1]]])) })), A: advM, C: claM }).replace(/</g, "\\u003c");
+  const data = JSON.stringify({ P: rows.map(r => ({ n: r.name, t: r.team, l: r.logo, g: r.gp, m: r.min, ag: r.age, ...Object.fromEntries([...ADV, ...CLA].map(x => [x[1], r[x[1]]])) })), A: advM, C: claM }).replace(/</g, "\\u003c");
   const fullTable = (defs) => `<div class="bs-table"><table class="pm-five lg"><thead><tr><th>Joueur</th><th>Équipe</th><th class="num">MJ</th><th class="num">Min</th>${defs.map(c => `<th class="num">${esc(c.lab)}</th>`).join("")}</tr></thead><tbody>${[...rows].sort((x, y) => (y[defs[0].key] ?? -1e9) - (x[defs[0].key] ?? -1e9)).map(p => `<tr><td><b>${esc(p.name)}</b></td><td>${esc(p.team)}</td><td class="num">${p.gp}</td><td class="num">${f(p.min)}</td>${defs.map(c => `<td class="num">${f(p[c.key], c.d, c.suf)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
   const css = `<style>#lgpl .pk-g{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#1B2A4A99;margin:12px 0 6px}#lgpl .pk-b{display:flex;flex-wrap:wrap;gap:6px}#lgpl .pk-btn{border:1px solid #1B2A4A26;background:#fff;color:#1B2A4A;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}#lgpl .pk-btn:hover{border-color:#FF6B35}#lgpl .pk-btn.on{background:#1B2A4A;color:#fff;border-color:#1B2A4A}#lgpl .pk-btn.adv.on{background:#FF6B35;border-color:#FF6B35}#lgpl .pk-flt{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0;font-size:12px;color:#1B2A4A99}#lgpl .pk-flt select,#lgpl .pk-flt input{padding:5px 8px;border:1px solid #1B2A4A26;border-radius:8px;font-family:inherit;background:#fff}#lgpl .pk-card{border:1px solid #1B2A4A1a;border-radius:14px;padding:14px 16px;background:#fff}#lgpl .pk-t{font-family:'Oswald',sans-serif;font-size:18px;letter-spacing:.4px;margin:0 0 2px}#lgpl .pk-d{font-size:11.5px;color:#1B2A4A99;margin:0 0 10px;line-height:1.4}#lgpl .pk-r{display:grid;grid-template-columns:26px minmax(0,1.3fr) minmax(40px,1fr) 78px;gap:10px;align-items:center;padding:6px 0;border-top:1px solid #1B2A4A0d}#lgpl .pk-r:first-of-type{border-top:0}#lgpl .pk-rk{font-family:'Oswald',sans-serif;font-size:15px;color:#1B2A4A80;text-align:center}#lgpl .pk-r.top .pk-rk{color:#FF6B35;font-size:18px}#lgpl .pk-n{min-width:0}#lgpl .pk-n b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-n small{display:flex;align-items:center;gap:4px;font-size:10.5px;color:#1B2A4A99;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-n img{height:14px;width:14px;object-fit:contain;border-radius:3px;background:#fff}#lgpl .pk-bar{background:#1B2A4A10;border-radius:6px;height:9px;overflow:hidden}#lgpl .pk-bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#FF6B35,#ff9a6b)}#lgpl .pk-v{font-family:'Oswald',sans-serif;font-size:16px;text-align:right}#lgpl .pk-more{margin-top:10px;font-size:12px;color:#2563EB;cursor:pointer;background:none;border:0;padding:0;font-family:inherit}@media (max-width:560px){#lgpl .pk-r{grid-template-columns:22px minmax(0,1fr) 64px}#lgpl .pk-bar{display:none}}</style>`;
   const script = `<script>(function(){var D=JSON.parse(document.getElementById('lgpl-data').textContent),sec=document.getElementById('lgpl'),cur=D.A[0],all=D.A.concat(D.C),shown=12;
@@ -3882,7 +3884,7 @@ var mx=0;L.forEach(function(p){mx=Math.max(mx,Math.abs(p[cur.key]))});mx=mx||1;
 var h='<div class="pk-t">'+esc(cur.lab)+'</div><div class="pk-d">'+esc(cur.tip||'')+(cur.tip?' ':'')+(cur.hi?'':'(le plus bas est le meilleur) ')+L.length+' joueur'+(L.length>1?'s':'')+'</div>';
 if(!L.length)h+='<div class="pk-d">Aucun joueur avec ces filtres.</div>';
 L.slice(0,shown).forEach(function(p,i){var w=Math.max(3,Math.round(Math.abs(p[cur.key])/mx*100));
-h+='<div class="pk-r'+(i<3?' top':'')+'"><div class="pk-rk">'+(i+1)+'</div><div class="pk-n"><b>'+esc(p.n)+'</b><small>'+(p.l?'<img src="'+esc(p.l)+'" alt="">':'')+esc(p.t)+' · '+p.g+' match'+(p.g>1?'s':'')+' · '+p.m.toFixed(0)+' min</small></div><div class="pk-bar"><i style="width:'+w+'%"></i></div><div class="pk-v">'+fmt(p[cur.key],cur)+'</div></div>'});
+h+='<div class="pk-r'+(i<3?' top':'')+'"><div class="pk-rk">'+(i+1)+'</div><div class="pk-n"><b>'+esc(p.n)+'</b><small>'+(p.l?'<img src="'+esc(p.l)+'" alt="">':'')+esc(p.t)+' · '+p.g+' match'+(p.g>1?'s':'')+' · '+p.m.toFixed(0)+' min'+(p.ag?' · '+p.ag+' ans':'')+'</small></div><div class="pk-bar"><i style="width:'+w+'%"></i></div><div class="pk-v">'+fmt(p[cur.key],cur)+'</div></div>'});
 if(L.length>shown)h+='<button class="pk-more" data-more="1">Voir les '+(L.length-shown)+' autres</button>';
 var box=sec.querySelector('.pk-card');box.innerHTML=h;var mb=box.querySelector('[data-more]');if(mb)mb.onclick=function(){shown=999;render()};
 sec.querySelectorAll('.pk-btn').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-k')===cur.key)})}
@@ -11257,7 +11259,7 @@ function CoachingProBoost({ session }) {
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
   const [taMom, setTaMom] = useState({}), [taOpen, setTaOpen] = useState({});
   const [taLnbOpen, setTaLnbOpen] = useState(false), [taLnbText, setTaLnbText] = useState("");
-  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false), [taLgGamesOpen, setTaLgGamesOpen] = useState(false), [taLgStatsOpen, setTaLgStatsOpen] = useState(false), [taLgProg, setTaLgProg] = useState(""), [taLgTeamsOpen, setTaLgTeamsOpen] = useState(false), [taLgBoxText, setTaLgBoxText] = useState(""), [taLgBoxOpen, setTaLgBoxOpen] = useState(false);
+  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false), [taLgGamesOpen, setTaLgGamesOpen] = useState(false), [taLgStatsOpen, setTaLgStatsOpen] = useState(false), [taLgProg, setTaLgProg] = useState(""), [taLgTeamsOpen, setTaLgTeamsOpen] = useState(false), [taLgBirthTeam, setTaLgBirthTeam] = useState(""), [taLgBirthText, setTaLgBirthText] = useState(""), [taLgBoxText, setTaLgBoxText] = useState(""), [taLgBoxOpen, setTaLgBoxOpen] = useState(false);
   // Éditeur du comparatif championnat (partagé : bloc de « Mon équipe » et onglet admin « Comparatif championnat »)
   const lgPlayers = (taId, teams) => { try { return leaguePlayersFromGames(leagueGames.filter(g => g.ta === taId), teams); } catch { return []; } };
   const renderLeagueEditor = (LG, setLG, taId) => {
@@ -11393,6 +11395,40 @@ function CoachingProBoost({ session }) {
             ))}
           </div>
         )}
+        <div id="lg-ed-births" className="text-xs font-semibold text-[#1B2A4A] mt-5 mb-1">4. Années de naissance des joueurs</div>
+        {(() => {
+          const pls = lgPlayers(taId, LG.teams), tms = [...new Set(pls.map(p => p.team))].sort((x, y) => x.localeCompare(y, "fr"));
+          const births = LG.births || {};
+          const apply = () => {
+            const team = taLgBirthTeam || tms[0]; if (!team) { cpbAlert?.("Ajoute d'abord des matchs LiveStats : la liste des joueurs en vient."); return; }
+            const mine = pls.filter(p => p.team === team), nb = { ...births }; let ok = 0; const bad = [];
+            taLgBirthText.split(/\r?\n/).map(l => l.trim()).filter(Boolean).forEach(line => {
+              const m = line.match(/((?:19|20)\d{2})\D*$/); if (!m) { bad.push(line); return; }
+              const nm = leagueNorm(line.slice(0, m.index).replace(/[;:,\t(\-–]+\s*$/, "").replace(/\d{1,2}[\/.]\d{1,2}[\/.]?$/, ""));
+              const hit = mine.find(p => leagueNorm(p.name) === nm) || mine.find(p => nm && (leagueNorm(p.name).includes(nm) || nm.includes(leagueNorm(p.name))));
+              if (!hit) { bad.push(line); return; }
+              nb[leagueNorm(hit.team) + "|" + leagueNorm(hit.name)] = +m[1]; ok++;
+            });
+            setLG({ ...LG, births: nb }); setTaLgBirthText("");
+            cpbAlert?.(`${ok} année${ok > 1 ? "s" : ""} de naissance enregistrée${ok > 1 ? "s" : ""}${bad.length ? ` — non reconnue${bad.length > 1 ? "s" : ""} : ${bad.join(" | ")}` : ""}.`);
+          };
+          const cur = taLgBirthTeam || tms[0] || "", mine = pls.filter(p => p.team === cur), have = mine.filter(p => births[leagueNorm(p.team) + "|" + leagueNorm(p.name)]).length;
+          return (
+            <div>
+              <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Choisis l'équipe, puis colle une ligne par joueur : « Nom ; année » (ex. « Marius Balanca ; 2004 »). L'âge apparaît dans le classement des joueurs, avec un bouton « Âge ». Seule l'année de naissance est gardée.</p>
+              {tms.length === 0 ? <p className="text-[11px] text-[#1B2A4A]/40 italic">Aucun joueur pour l'instant : ajoute des matchs LiveStats.</p> : (
+                <>
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <select value={cur} onChange={e => setTaLgBirthTeam(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white">{tms.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                    <span className="text-[11px] text-[#1B2A4A]/50">{have} / {mine.length} joueur{mine.length > 1 ? "s" : ""} avec une année</span>
+                  </div>
+                  <textarea value={taLgBirthText} onChange={e => setTaLgBirthText(e.target.value)} rows={4} placeholder={"Marius Balanca ; 2004\nLucas Veraghe ; 2001"} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white/60 font-mono" />
+                  <button disabled={!taLgBirthText.trim()} onClick={apply} className="mt-2 text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>Enregistrer les années</button>
+                </>
+              )}
+            </div>
+          );
+        })()}
         {statCounts.length > 0 && (
           <div className="mt-3">
             <button onClick={() => setTaLgStatsOpen(o => !o)} className="text-[11px] font-semibold text-[#1B2A4A]/70 hover:underline text-left">{taLgStatsOpen ? "▾" : "▸"} {statCounts.length} statistique{statCounts.length > 1 ? "s" : ""} chargée{statCounts.length > 1 ? "s" : ""} <span className="font-normal text-[#1B2A4A]/40">{taLgStatsOpen ? "(replier)" : "(déplier pour en retirer une)"}</span></button>
