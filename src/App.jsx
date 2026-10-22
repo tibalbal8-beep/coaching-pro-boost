@@ -3845,7 +3845,7 @@ function leaguePlayersFromGames(games, teams = []) {
     const nm = e.name.split(" "), pretty = nm.map(w => w.length > 1 && w === w.toUpperCase() ? w.charAt(0) + w.slice(1).toLowerCase() : w).join(" ");
     return { team: e.team, name: pretty, gp: n, min: r1(e.min / n), pts: av(pts), or: av(or), dr: av(dr), reb: av(or + dr), ast: av(ast), stl: av(stl), blk: av(blk), tov: av(tov), pf: av(pf), pm: r1(e.pm / n),
       fg: pc(fgm, fga), t3: pc(t3m, t3a), ft: pc(ftm, fta), ts: fga + fta ? pc(pts, 2 * (fga + 0.44 * fta)) : null,
-      drPct: pc(dr, avD), orPct: pc(or, avO), fbPG: av(fbP), fbPer: per(fbP, fbN), tdPG: av(tdP), tdPer: per(tdP, tdN), orPts: per(orP, orN), drPts: per(drP, drN), orN: orN, drN: drN };
+      drPct: pc(dr, avD), orPct: pc(or, avO), fbPG: av(fbP), fbPer: per(fbP, fbN), tdPG: av(tdP), tdPer: per(tdP, tdN), orPts: per(orP, n), drPts: per(drP, n), orN: orN, drN: drN };
   });
 }
 function leaguePlayersHtml(a) {
@@ -3863,8 +3863,8 @@ function leaguePlayersHtml(a) {
     ["Jeu rapide / rebond déf.", "fbPer", 2, " pts", "Même chose, par rebond défensif de l'équipe pendant sa présence.", 1],
     ["Pts encaissés au repli / match", "tdPG", 1, " pts", "Points encaissés dans les 8 secondes après un rebond défensif ou une interception adverses, pendant sa présence, par match. Moins = mieux.", 0],
     ["Pts encaissés au repli / situation", "tdPer", 2, " pts", "Même chose, par rebond défensif ou interception adverses. Moins = mieux.", 0],
-    ["Pts équipe après son reb. off.", "orPts", 2, " pts", "Points marqués par son équipe dans l'action qui suit chacun de ses rebonds offensifs.", 1],
-    ["Pts équipe après son reb. déf.", "drPts", 2, " pts", "Points marqués par son équipe dans la possession qui suit chacun de ses rebonds défensifs.", 1]];
+    ["Pts équipe après son reb. off. / match", "orPts", 1, " pts", "Points marqués par son équipe dans l'action qui suit ses rebonds offensifs, en moyenne par match.", 1],
+    ["Pts équipe après son reb. déf. / match", "drPts", 1, " pts", "Points marqués par son équipe dans la possession qui suit ses rebonds défensifs, en moyenne par match.", 1]];
   const CLA = [["Points", "pts", 1, "", "", 1], ["Rebonds", "reb", 1, "", "", 1], ["Reb. offensifs", "or", 1, "", "", 1], ["Reb. défensifs", "dr", 1, "", "", 1], ["Passes", "ast", 1, "", "", 1], ["Interceptions", "stl", 1, "", "", 1], ["Contres", "blk", 1, "", "", 1],
     ["% tirs", "fg", 1, " %", "", 1], ["% 3 pts", "t3", 1, " %", "", 1], ["% lancers francs", "ft", 1, " %", "", 1], ["TS %", "ts", 1, " %", "True shooting : points ÷ (2 × (tirs + 0,44 × lancers francs)).", 1], ["+/-", "pm", 1, "", "", 1],
     ["Balles perdues", "tov", 1, "", "Moins = mieux.", 0], ["Fautes", "pf", 1, "", "Moins = mieux.", 0], ["Minutes", "min", 1, "", "", 1],
