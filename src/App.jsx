@@ -11402,7 +11402,14 @@ function CoachingProBoost({ session }) {
           const apply = () => {
             const team = taLgBirthTeam || tms[0]; if (!team) { cpbAlert?.("Ajoute d'abord des matchs LiveStats : la liste des joueurs en vient."); return; }
             const mine = pls.filter(p => p.team === team), nb = { ...births }; let ok = 0; const bad = [];
-            taLgBirthText.split(/\r?\n/).map(l => l.trim()).filter(Boolean).forEach(line => {
+            const raw = taLgBirthText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+            // Page « Effectif » collée (BeBasket…) : « Prénom Nom / 193 cm / 25 ans » → année = année en cours − âge
+            const lines = raw.some(l => /^\d{2} ans$/i.test(l)) ? (() => {
+              const out = []; let last = "";
+              raw.forEach(l => { const am = /^(\d{2}) ans$/i.exec(l); if (am) { if (last) out.push(`${last} ; ${new Date().getFullYear() - +am[1]}`); last = ""; } else if (/[a-zà-ÿ]/.test(l) && !/\d/.test(l) && !/^(France|Etats-Unis|États-Unis|BeBasket)$/i.test(l)) last = l; });
+              return out;
+            })() : raw;
+            lines.forEach(line => {
               const m = line.match(/((?:19|20)\d{2})\D*$/); if (!m) { bad.push(line); return; }
               const nm = leagueNorm(line.slice(0, m.index).replace(/[;:,\t(\-–]+\s*$/, "").replace(/\d{1,2}[\/.]\d{1,2}[\/.]?$/, ""));
               const hit = mine.find(p => leagueNorm(p.name) === nm) || mine.find(p => nm && (leagueNorm(p.name).includes(nm) || nm.includes(leagueNorm(p.name))));
@@ -11415,7 +11422,7 @@ function CoachingProBoost({ session }) {
           const cur = taLgBirthTeam || tms[0] || "", mine = pls.filter(p => p.team === cur), have = mine.filter(p => births[leagueNorm(p.team) + "|" + leagueNorm(p.name)]).length;
           return (
             <div>
-              <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Choisis l'équipe, puis colle une ligne par joueur : « Nom ; année » (ex. « Marius Balanca ; 2004 »). L'âge apparaît dans le classement des joueurs, avec un bouton « Âge ». Seule l'année de naissance est gardée.</p>
+              <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Choisis l'équipe, puis colle une ligne par joueur : « Nom ; année » (ex. « Marius Balanca ; 2004 »), ou directement la page « Effectif » du site (nom, taille, âge) : l'année est alors déduite de l'âge. L'âge apparaît dans le classement des joueurs, avec un bouton « Âge ». Seule l'année de naissance est gardée.</p>
               {tms.length === 0 ? <p className="text-[11px] text-[#1B2A4A]/40 italic">Aucun joueur pour l'instant : ajoute des matchs LiveStats.</p> : (
                 <>
                   <div className="flex flex-wrap items-center gap-2 mb-2">
