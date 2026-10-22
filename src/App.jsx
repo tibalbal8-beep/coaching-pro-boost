@@ -2038,7 +2038,7 @@ function playersReportHtml(pl, opponent) {
   const pc = (x) => x === null || x === undefined ? "—" : Math.round(x * 100) + " %";
   const photos = pl.photos || {}, manual = pl.manual || {};
   const CO = { red: "Très agressif", blue: "Moyen", green: "Faible" };
-  const hasMan = (m) => !!(m && (m.role || m.strengths || m.weaknesses || m.instruction || m.closeout || m.hand || m.height || m.age));
+  const hasMan = (m) => !!(m && (m.role || m.strengths || m.weaknesses || m.instruction || m.closeout || m.hand || m.height || m.age || m.birth));
   const shown = list.filter(p => !(manual[playerKey(p)] || {}).hidden);
   const sorted = [...shown].sort((a, b) => (b.min || 0) * (b.gp || 0) - (a.min || 0) * (a.gp || 0));
   // Tous les joueurs apparaissent avec leurs stats ; les constats (et le close-out automatique) ne s'activent qu'avec un échantillon suffisant ou une validation manuelle
@@ -2064,7 +2064,7 @@ function playersReportHtml(pl, opponent) {
     const sub = hasStats ? `${p.gp} match${p.gp > 1 ? "s" : ""} · ${mmss(p.min)} min / match${lowS ? " · échantillon faible" : rawLow ? " · petit échantillon pris en compte" : ""}` : "";
     return `<div class="pl-card">
       <div class="pl-head">${avatar}<div><div class="pl-name">${p.num !== null && p.num !== undefined ? `<span class="pl-num">#${esc(p.num)}</span> ` : ""}${esc(p.name)}${m.role ? ` <span class="pl-role">${esc(m.role)}</span>` : ""}</div>
-      ${(() => { const bits = [m.hand === "D" ? "Droitier" : m.hand === "G" ? "Gaucher" : m.hand === "A" ? "Ambidextre" : "", m.height ? esc(String(m.height).replace(/^(\d)[.,](\d{2})$/, "$1m$2").replace(/^(\d{3})$/, "$1 cm")) : "", m.age ? `${esc(m.age)} ans` : ""].filter(Boolean); return bits.length ? `<div class="pl-sub"><b>${bits.join(" · ")}</b></div>` : ""; })()}
+      ${(() => { const bits = [m.hand === "D" ? "Droitier" : m.hand === "G" ? "Gaucher" : m.hand === "A" ? "Ambidextre" : "", m.height ? esc(String(m.height).replace(/^(\d)[.,](\d{2})$/, "$1m$2").replace(/^(\d{3})$/, "$1 cm")) : "", /^(19|20)\d{2}$/.test(String(m.birth || "").trim()) ? `né en ${esc(String(m.birth).trim())} (${new Date().getFullYear() - +String(m.birth).trim()} ans)` : m.age ? `${esc(m.age)} ans` : ""].filter(Boolean); return bits.length ? `<div class="pl-sub"><b>${bits.join(" · ")}</b></div>` : ""; })()}
       ${sub ? `<div class="pl-sub">${sub}</div>` : ""}</div></div>
       ${hasStats ? `<div class="pl-kpis">${kp(f1(p.pts), "pts")}${kp(f1(p.reb), "reb")}${kp(f1(p.ast), "passes")}${kp(pc(p.ts), "TS %")}${kp(pc(p.usg), p.usgCalc ? "usage (calculé)" : "usage")}</div>
       <div class="pl-shots">Tirs <b>${shot(p.fgm, p.fga)}</b> · 3 pts <b>${shot(p.tpm, p.tpa)}</b> · LF <b>${shot(p.ftm, p.fta)}</b></div>
@@ -15403,7 +15403,7 @@ function CoachingProBoost({ session }) {
                           </select></div>
                         <div className="grid grid-cols-2 gap-2">
                           <div><div className={lbl}>Taille</div><input value={m.height || ""} onChange={e => setMan(p, { height: e.target.value })} placeholder="Ex: 195 ou 1,95" className={inputCls} /></div>
-                          <div><div className={lbl}>Âge</div><input value={m.age || ""} onChange={e => setMan(p, { age: e.target.value })} inputMode="numeric" placeholder="Ex: 24" className={inputCls} /></div>
+                          <div><div className={lbl}>Année de naissance</div><input value={m.birth || ""} onChange={e => setMan(p, { birth: e.target.value.replace(/[^0-9]/g, "").slice(0, 4) })} inputMode="numeric" placeholder="Ex: 2001" className={inputCls} /></div>
                         </div>
                         {field("strengths", "Points forts", 2, "Ce que tu as vu…")}
                         {field("weaknesses", "Points faibles", 2)}
