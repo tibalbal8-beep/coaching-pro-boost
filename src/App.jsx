@@ -2722,6 +2722,7 @@ function parseFibaPbp(raw) {
     else if ((a.actionType === "2pt" || a.actionType === "3pt" || a.actionType === "freethrow") && a.tno) events.push({ t, p: ep(a), k: "sh", tno: a.tno, pno: a.pno, pt: a.actionType === "3pt" ? 3 : a.actionType === "2pt" ? 2 : 1, m: a.success ? 1 : 0, ty: a.actionType === "freethrow" ? "" : String(a.subType || "") });
     else if (a.actionType === "turnover" && a.tno) events.push({ t, p: ep(a), k: "to", tno: a.tno, pno: a.pno });
     else if (a.actionType === "rebound" && a.tno) events.push({ t, p: ep(a), k: "rb", tno: a.tno, pno: a.pno, off: /^offensive$/.test(a.subType) ? 1 : 0, df: /^defensive$/.test(a.subType) ? 1 : 0 });
+    else if (a.actionType === "steal" && a.tno) events.push({ t, p: ep(a), k: "st", tno: a.tno, pno: a.pno });
     else if (a.actionType === "timeout" && a.tno) events.push({ t, p: ep(a), k: "tm", tno: a.tno });
     if (a.s1 !== undefined && a.s2 !== undefined && (+a.s1 + +a.s2) > s1 + s2) { s1 = +a.s1; s2 = +a.s2; events.push({ t, k: "p", s1, s2 }); }
     if (a.actionType === "period" && a.subType === "end") end = Math.max(end, start(ep(a)) + plen(ep(a)));
@@ -3137,7 +3138,7 @@ function matchupHtml(r, a = {}) {
 function computeImpact(rec, tno) {
   const T = String(tno), O = T === "1" ? "2" : "1";
   const nameOf = (side, pno) => rec.teams[side]?.players.find(p => p.pno === pno)?.name || "Équipe (violation)";
-  const out = { to: new Map(), or: new Map(), teamTO: { own: { n: 0, pts: 0 }, opp: { n: 0, pts: 0 } }, team2: { own: { n: 0, pts: 0 }, opp: { n: 0, pts: 0 } }, hasPno: false };
+  const out = { to: new Map(), or: new Map(), dr: new Map(), teamTO: { own: { n: 0, pts: 0 }, opp: { n: 0, pts: 0 } }, team2: { own: { n: 0, pts: 0 }, opp: { n: 0, pts: 0 } }, hasPno: false };
   const bump = (m, key, name, pts) => { const x = m.get(key) || { name, n: 0, pts: 0 }; x.n++; x.pts += pts; m.set(key, x); };
   let ch = null;
   const close = () => {
@@ -3146,6 +3147,7 @@ function computeImpact(rec, tno) {
     else if (ch.kind === "oto") { out.teamTO.opp.n++; out.teamTO.opp.pts += ch.pts; }
     else if (ch.kind === "or") { bump(out.or, ch.pno, nameOf(T, ch.pno), ch.pts); out.team2.own.n++; out.team2.own.pts += ch.pts; }
     else if (ch.kind === "oor") { out.team2.opp.n++; out.team2.opp.pts += ch.pts; }
+    else if (ch.kind === "dr") { bump(out.dr, ch.pno, nameOf(T, ch.pno), ch.pts); }
     ch = null;
   };
   const start = (kind, scoring, e) => { close(); ch = { kind, scoring, pno: e.pno, pts: 0, p: e.p, ended: false, endT: 0 }; };
@@ -3153,6 +3155,7 @@ function computeImpact(rec, tno) {
     if (e.k === "to") { if (e.pno) out.hasPno = true; start(String(e.tno) === T ? "to" : "oto", String(e.tno) === T ? O : T, e); return; }
     if (e.k === "rb") {
       if (e.off && (e.pno || String(e.tno) !== T)) { if (e.pno) out.hasPno = true; start(String(e.tno) === T ? "or" : "oor", String(e.tno), e); return; }
+      if (e.df && e.pno && String(e.tno) === T) { out.hasPno = true; start("dr", T, e); return; }   // notre rebond défensif : points de la possession qui suit
       if (ch && !(String(e.tno) === ch.scoring)) close();            // rebond défensif adverse : la possession change
       return;
     }
@@ -3166,7 +3169,7 @@ function computeImpact(rec, tno) {
   });
   close();
   const list = (m) => [...m.entries()].map(([pno, v]) => ({ pno, ...v })).sort((a, b) => b.n - a.n || b.pts - a.pts);
-  return { to: list(out.to), or: list(out.or), teamTO: out.teamTO, team2: out.team2, hasPno: out.hasPno };
+  return { to: list(out.to), or: list(out.or), dr: list(out.dr), teamTO: out.teamTO, team2: out.team2, hasPno: out.hasPno };
 }
 function impactHtml(r, over = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
@@ -3652,6 +3655,44 @@ function parseLeagueText(text, forcedKey = "") {
   return { rows: [...out.values()], kind: "classement" };
 }
 // Fusionne des lignes lues dans le comparatif : les équipes déjà saisies (nom + logo) sont reconnues par leur nom, les autres sont créées
+// ── Statistiques poussées par joueur (LiveStats) : rebonds disponibles pendant sa présence, jeu rapide et repli (fenêtre de 8 s) ──
+// Pour chaque joueur : [rebonds défensifs disponibles, rebonds offensifs disponibles, pts marqués par son équipe dans les 8 s après un rebond
+// défensif de son équipe, nombre de ces rebonds, pts encaissés dans les 8 s après un rebond défensif ou une interception adverses, nombre d'occasions]
+// — le tout pendant sa présence sur le terrain (remplacements du play-by-play).
+const ADV_WINDOW = 8 / 60;
+function computePlayerAdv(rec) {
+  const ev = rec.events, on = { "1": new Set(), "2": new Set() }, out = { "1": new Map(), "2": new Map() };
+  ["1", "2"].forEach(k => (rec.teams[k]?.players || []).forEach(p => { if (p.starter) on[k].add(p.pno); }));
+  const slot = (k, pno) => { let a = out[k].get(pno); if (!a) { a = [0, 0, 0, 0, 0, 0]; out[k].set(pno, a); } return a; };
+  const ptsAfter = (i, team) => {
+    let pts = 0; const t0 = ev[i].t, p0 = ev[i].p;
+    for (let j = i + 1; j < ev.length; j++) {
+      const e = ev[j]; if (e.t > t0 + ADV_WINDOW + 1e-9) break;
+      if (e.p && p0 && e.p !== p0) break;
+      if (e.k === "sh" && e.m && String(e.tno) === team) pts += e.pt;
+    }
+    return pts;
+  };
+  for (let i = 0; i < ev.length; i++) {
+    const e = ev[i], X = String(e.tno), Y = X === "1" ? "2" : "1";
+    if (e.k === "s") { const set = on[X]; if (!set) continue; if (e.io === "in") set.add(e.pno); else set.delete(e.pno); continue; }
+    if (e.k === "rb") {
+      const def = !!e.df, off = !!e.off; if (!def && !off) continue;
+      // disponibles : un rebond défensif de X est un rebond offensif manqué par Y (et inversement)
+      on[X].forEach(pno => { slot(X, pno)[def ? 0 : 1]++; });
+      on[Y].forEach(pno => { slot(Y, pno)[def ? 1 : 0]++; });
+      if (def) {
+        const pts = ptsAfter(i, X);
+        on[X].forEach(pno => { const a = slot(X, pno); a[2] += pts; a[3]++; });
+        on[Y].forEach(pno => { const a = slot(Y, pno); a[4] += pts; a[5]++; });
+      }
+    } else if (e.k === "st") {
+      const pts = ptsAfter(i, X);
+      on[Y].forEach(pno => { const a = slot(Y, pno); a[4] += pts; a[5]++; });
+    }
+  }
+  return out;
+}
 // ── Matchs LiveStats du comparatif : on ne garde QUE les totaux des deux équipes (≈ 0,5 Ko par match) ──
 const GAME_KEYS = ["pts", "fgm", "fga", "t3m", "t3a", "ftm", "fta", "or", "dr", "ast", "tov", "stl", "blk", "pf"];
 function compactGame(rec, mid, taId) {
@@ -3664,19 +3705,41 @@ function compactGame(rec, mid, taId) {
   try {
     ["1", "2"].forEach((k, i) => { const I = computeImpact(rec, k); if (I.hasPno) g.t[i].x = [I.teamTO.opp.pts, I.teamTO.own.pts, I.team2.own.pts]; });
   } catch {}
+  // Joueurs : statistiques classiques + poussées, en tableaux de nombres (≈ 2 Ko par match). L'ancien détail est jeté.
+  try {
+    const mm = (v) => { const [a, b] = String(v || "0:00").split(":").map(Number); return Math.round(((a || 0) + (b || 0) / 60) * 100) / 100; };
+    const A = computePlayerAdv(rec), hasSt = rec.events.some(e => e.k === "st");
+    ["1", "2"].forEach((k, i) => {
+      const I = computeImpact(rec, k), orM = new Map(I.or.map(x => [x.pno, x])), drM = new Map(I.dr.map(x => [x.pno, x]));
+      const list = [];
+      rec.teams[k].players.forEach(p => {
+        if (!p.st || !p.min || p.min === "0:00") return;
+        const a = A[k].get(p.pno) || [0, 0, 0, 0, 0, 0], o = orM.get(p.pno) || { n: 0, pts: 0 }, d = drM.get(p.pno) || { n: 0, pts: 0 }, t = p.st;
+        list.push({ n: ((p.first ? p.first + " " : "") + (p.name || "")).trim(), m: mm(p.min), pm: p.pm ?? 0,
+          v: [t.pts, t.fg[0], t.fg[1], t.t3[0], t.t3[1], t.ft[0], t.ft[1], t.or, t.dr, t.ast, t.tov, t.stl, t.blk, t.pf],
+          a: [...a, o.n, o.pts, d.n, d.pts] });
+      });
+      if (list.length) g.t[i].pl = list;
+    });
+    if (!hasSt) g.ns = 1;
+  } catch {}
   if (!g.t[0].v[0] && !g.t[1].v[0]) throw new Error("aucune statistique dans ce match");
   return g;
+}
+function leagueTeamClusters(games, teams = []) {
+  const names = [...new Set([...games.flatMap(g => g.t.map(x => leagueNorm(x.n))), ...teams.map(t => leagueNorm(t.name))])].filter(Boolean);
+  const parent = new Map(names.map(n => [n, n])), find = (n) => { while (parent.get(n) !== n) n = parent.get(n); return n; };
+  const has = (a, b) => (" " + a + " ").includes(" " + b + " ");
+  names.forEach(a => names.forEach(b => { if (a !== b && b.length >= 4 && has(a, b)) parent.set(find(a), find(b)); }));
+  const display = new Map(); teams.forEach(t => { const r = find(leagueNorm(t.name)); if (!display.has(r)) display.set(r, t.name); });
+  return { find, display };
 }
 function leagueRowsFromGames(games, teams = []) {
   const by = new Map();
   const acc = () => ({ gp: 0, own: Array(14).fill(0), opp: Array(14).fill(0) });
   // Une même équipe porte parfois des noms différents selon la source (« Besançon » dans un tableau collé, « Besançon Doubs Basket »
   // dans le LiveStats) : les noms dont l'un contient l'autre (mots entiers) sont regroupés, sinon la dernière ligne écraserait les autres.
-  const names = [...new Set([...games.flatMap(g => g.t.map(x => leagueNorm(x.n))), ...teams.map(t => leagueNorm(t.name))])].filter(Boolean);
-  const parent = new Map(names.map(n => [n, n])), find = (n) => { while (parent.get(n) !== n) n = parent.get(n); return n; };
-  const has = (a, b) => (" " + a + " ").includes(" " + b + " ");
-  names.forEach(a => names.forEach(b => { if (a !== b && b.length >= 4 && has(a, b)) parent.set(find(a), find(b)); }));
-  const display = new Map(); teams.forEach(t => { const r = find(leagueNorm(t.name)); if (!display.has(r)) display.set(r, t.name); });
+  const { find, display } = leagueTeamClusters(games, teams);
   games.forEach(g => [0, 1].forEach(i => {
     const A = g.t[i], B = g.t[1 - i], k = find(leagueNorm(A.n)); let e = by.get(k); if (!e) { e = { name: display.get(k) || A.n, ...acc() }; by.set(k, e); }
     e.gp++; A.v.forEach((x, j) => { e.own[j] += x; }); B.v.forEach((x, j) => { e.opp[j] += x; });
@@ -3767,6 +3830,46 @@ function mergeLeague(league, rows, reset = []) {
   });
   return { league: L, created };
 }
+// Joueurs du championnat : agrégation des fiches joueur de chaque match LiveStats (moyennes par match + pourcentages sur les cumuls)
+function leaguePlayersFromGames(games, teams = []) {
+  const { find, display } = leagueTeamClusters(games, teams);
+  const by = new Map();
+  games.forEach(g => [0, 1].forEach(i => (g.t[i].pl || []).forEach(p => {
+    const tk = find(leagueNorm(g.t[i].n)), key = tk + "|" + leagueNorm(p.n);
+    let e = by.get(key); if (!e) { e = { team: display.get(tk) || g.t[i].n, name: p.n, gp: 0, min: 0, pm: 0, v: Array(14).fill(0), a: Array(10).fill(0) }; by.set(key, e); }
+    e.gp++; e.min += p.m; e.pm += p.pm || 0; p.v.forEach((x, j) => { e.v[j] += x; }); p.a.forEach((x, j) => { e.a[j] += x; });
+  })));
+  const r1 = (x) => Math.round(x * 10) / 10, pc = (m, a) => a ? Math.round(m / a * 1000) / 10 : null, per = (x, n) => n ? Math.round(x / n * 100) / 100 : null;
+  return [...by.values()].map(e => {
+    const [pts, fgm, fga, t3m, t3a, ftm, fta, or, dr, ast, tov, stl, blk, pf] = e.v, [avD, avO, fbP, fbN, tdP, tdN, orN, orP, drN, drP] = e.a, n = e.gp, av = (x) => r1(x / n);
+    const nm = e.name.split(" "), pretty = nm.map(w => w.length > 1 && w === w.toUpperCase() ? w.charAt(0) + w.slice(1).toLowerCase() : w).join(" ");
+    return { team: e.team, name: pretty, gp: n, min: r1(e.min / n), pts: av(pts), or: av(or), dr: av(dr), reb: av(or + dr), ast: av(ast), stl: av(stl), blk: av(blk), tov: av(tov), pf: av(pf), pm: r1(e.pm / n),
+      fg: pc(fgm, fga), t3: pc(t3m, t3a), ft: pc(ftm, fta), ts: fga + fta ? pc(pts, 2 * (fga + 0.44 * fta)) : null,
+      drPct: pc(dr, avD), orPct: pc(or, avO), fbPG: av(fbP), fbPer: per(fbP, fbN), tdPG: av(tdP), tdPer: per(tdP, tdN), orPts: per(orP, orN), drPts: per(drP, drN), orN: orN, drN: drN };
+  });
+}
+function leaguePlayersHtml(a) {
+  const P = a.leaguePlayers; if (!P || !P.length) return "";
+  const esc = (str) => String(str ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const f = (x, d = 1, suf = "") => x === null || x === undefined ? "–" : x.toFixed(d).replace(".", ",") + suf;
+  const teams = [...new Set(P.map(p => p.team))].sort((x, y) => x.localeCompare(y, "fr"));
+  const cols = (defs) => defs.map(([lab, key, d, suf, title]) => ({ lab, key, d, suf, title }));
+  const classic = cols([["MJ", "gp", 0], ["Min", "min", 1], ["Pts", "pts", 1], ["RO", "or", 1], ["RD", "dr", 1], ["Reb", "reb", 1], ["Pds", "ast", 1], ["Int", "stl", 1], ["Ct", "blk", 1], ["BP", "tov", 1], ["Fautes", "pf", 1], ["T %", "fg", 1, " %"], ["3 pts %", "t3", 1, " %"], ["LF %", "ft", 1, " %"], ["TS %", "ts", 1, " %"], ["+/-", "pm", 1]]);
+  const adv = cols([["MJ", "gp", 0], ["Min", "min", 1], ["% RD dispo", "drPct", 1, " %", "Rebonds défensifs pris ÷ rebonds défensifs disponibles pendant sa présence (les siens + les rebonds offensifs adverses)"], ["% RO dispo", "orPct", 1, " %", "Rebonds offensifs pris ÷ rebonds offensifs disponibles pendant sa présence"],
+    ["Pts JR / match", "fbPG", 1, "", "Points marqués par son équipe dans les 8 s après un rebond défensif d'équipe, pendant sa présence, par match"], ["Pts JR / RD", "fbPer", 2, "", "Même chose, par rebond défensif de l'équipe pendant sa présence"],
+    ["Pts enc. repli / match", "tdPG", 1, "", "Points encaissés dans les 8 s après un rebond défensif ou une interception adverses, pendant sa présence, par match"], ["Pts enc. / situation", "tdPer", 2, "", "Même chose, par rebond défensif ou interception adverses"],
+    ["Pts éq. après son RO", "orPts", 2, "", "Points marqués par son équipe dans l'action qui suit chacun de ses rebonds offensifs"], ["Pts éq. après son RD", "drPts", 2, "", "Points marqués par son équipe dans la possession qui suit chacun de ses rebonds défensifs"]]);
+  const table = (id, defs, sortKey) => `<div class="bs-table"><table class="pm-five lg plt" id="${id}"><thead><tr><th data-k="name">Joueur</th><th data-k="team">Équipe</th>${defs.map(c => `<th class="num" data-k="${c.key}"${c.title ? ` title="${esc(c.title)}"` : ""}>${c.lab}</th>`).join("")}</tr></thead><tbody>
+    ${[...P].sort((x, y) => (y[sortKey] ?? -1e9) - (x[sortKey] ?? -1e9)).map(p => `<tr data-team="${esc(p.team)}" data-gp="${p.gp}"><td data-v="${esc(p.name.toLowerCase())}"><b>${esc(p.name)}</b></td><td data-v="${esc(p.team.toLowerCase())}">${esc(p.team)}</td>${defs.map(c => `<td class="num" data-v="${p[c.key] ?? ""}">${f(p[c.key], c.d, c.suf)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+  const script = `<script>(function(){var sec=document.getElementById('lgpl');if(!sec)return;var tb=sec.querySelectorAll('table.plt');function filt(){var t=sec.querySelector('select').value,m=parseFloat(sec.querySelector('input').value)||0;tb.forEach(function(T){T.querySelectorAll('tbody tr').forEach(function(r){r.style.display=((!t||r.getAttribute('data-team')===t)&&(+r.getAttribute('data-gp')>=m))?'':'none'})})}
+sec.querySelector('select').onchange=filt;sec.querySelector('input').oninput=filt;
+tb.forEach(function(T){T.querySelectorAll('th').forEach(function(th,ci){th.style.cursor='pointer';th.onclick=function(){var asc=th.getAttribute('data-asc')!=='1';T.querySelectorAll('th').forEach(function(x){x.removeAttribute('data-asc')});th.setAttribute('data-asc',asc?'1':'0');var rows=[].slice.call(T.tBodies[0].rows);rows.sort(function(a,b){var x=a.cells[ci].getAttribute('data-v'),y=b.cells[ci].getAttribute('data-v');var nx=parseFloat(x),ny=parseFloat(y);var num=ci>1;if(num){if(isNaN(nx))nx=-1e9;if(isNaN(ny))ny=-1e9;return asc?nx-ny:ny-nx}return asc?x.localeCompare(y):y.localeCompare(x)});rows.forEach(function(r){T.tBodies[0].appendChild(r)})}})});})();</script>`;
+  return `<section class="card" id="lgpl"><h2><i></i>Joueurs du championnat (${P.length})</h2>
+    <p class="hint">Statistiques par match d'après les matchs LiveStats ajoutés. Clique sur un titre de colonne pour trier. JR = jeu rapide (8 premières secondes). Les statistiques poussées sont calculées pendant la présence du joueur sur le terrain.</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 10px;font-size:12px"><label>Équipe <select style="padding:3px 6px"><option value="">Toutes</option>${teams.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("")}</select></label><label>Matchs minimum <input type="number" min="0" value="0" style="width:56px;padding:3px 6px" /></label></div>
+    <div class="sub-title">Statistiques classiques</div>${table("lgpl-c", classic, "pts")}
+    <div class="sub-title">Statistiques poussées</div>${table("lgpl-a", adv, "drPct")}${script}</section>`;
+}
 function leagueHtml(a) {
   const L = a.league; if (!L || !(L.teams || []).length) return "";
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
@@ -3786,7 +3889,7 @@ function leagueHtml(a) {
   const full = all.filter(s => !s.partial), leaders = all.filter(s => !s.partial || s.S.hi);
   const mineT = byId.get(L.mine), otherT = byId.get(L.other);
   const head = (title, extra = "") => `<section class="card"><h2><i></i>${title}</h2>${extra}`;
-  if (!all.length) return head("Comparatif championnat", `<p class="hint">Aucune statistique avec au moins 3 équipes pour l'instant.</p>`) + "</section>";
+  if (!all.length) return head("Comparatif championnat", `<p class="hint">Aucune statistique avec au moins 3 équipes pour l'instant.</p>`) + "</section>" + leaguePlayersHtml(a);
   let out = "";
   if (!full.length) {
     out += head("Comparatif championnat", `<p class="hint">Les classements importés sont des listes partielles (top 5) : colle les classements complets ou le tableau de toutes les équipes pour obtenir la moyenne du championnat et le rang de ton équipe.</p>`) + "</section>";
@@ -3818,7 +3921,7 @@ function leagueHtml(a) {
       ${rows.map(st => { const d = st.mine.v - st.other.v, mineBetter = st.S.hi ? d > 0 : d < 0, tie = Math.abs(d) < 0.05; return `<tr><td><b>${st.S.label}</b></td><td class="num ${!tie && mineBetter ? "lg-win" : ""}"><b>${fmt(st.S, st.mine.v)}</b> <small>${st.mineRank}ᵉ</small></td><td class="num ${!tie && !mineBetter ? "lg-win" : ""}"><b>${fmt(st.S, st.other.v)}</b> <small>${st.entries.indexOf(st.other) + 1}ᵉ</small></td><td class="num">${fmt(st.S, st.avg)}</td><td class="num">${tie ? "=" : esc((mineBetter ? mineT : otherT).name)}</td></tr>`; }).join("")}
       </tbody></table></div>`) + "</section>";
   }
-  return out;
+  return out + leaguePlayersHtml(a);
 }
 function buildTeamReportHtml(a, logo = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
@@ -11127,6 +11230,7 @@ function CoachingProBoost({ session }) {
   const [taLnbOpen, setTaLnbOpen] = useState(false), [taLnbText, setTaLnbText] = useState("");
   const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false), [taLgGamesOpen, setTaLgGamesOpen] = useState(false), [taLgStatsOpen, setTaLgStatsOpen] = useState(false), [taLgProg, setTaLgProg] = useState(""), [taLgBoxText, setTaLgBoxText] = useState(""), [taLgBoxOpen, setTaLgBoxOpen] = useState(false);
   // Éditeur du comparatif championnat (partagé : bloc de « Mon équipe » et onglet admin « Comparatif championnat »)
+  const lgPlayers = (taId, teams) => { try { return leaguePlayersFromGames(leagueGames.filter(g => g.ta === taId), teams); } catch { return []; } };
   const renderLeagueEditor = (LG, setLG, taId) => {
     const updTeam = (id, patch) => setLG({ ...LG, teams: LG.teams.map(x => x.id === id ? { ...x, ...patch } : x) });
     const addTeam = () => { const n = taLgNew.trim(); if (!n) return; if (LG.teams.some(x => leagueNorm(x.name) === leagueNorm(n))) { cpbAlert?.("Cette équipe existe déjà."); return; } setLG({ ...LG, teams: [...LG.teams, { id: uid(), name: n }] }); setTaLgNew(""); };
@@ -11226,7 +11330,7 @@ function CoachingProBoost({ session }) {
           </span>
         )}
         <div className="text-xs font-semibold text-[#1B2A4A] mt-5 mb-1">3. Ajouter des matchs LiveStats (chiffres exacts, adversaire compris)</div>
-        <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Colle un ou plusieurs liens de matchs terminés (un par ligne, ou un texte qui en contient). Seuls les totaux des deux équipes sont gardés (très léger). Ils donnent, pour chaque équipe, ses points encaissés, ses rebonds disponibles pris et la part de rebonds de l'adversaire sans estimation.</p>
+        <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Colle un ou plusieurs liens de matchs terminés (un par ligne, ou un texte qui en contient). Seuls les totaux des équipes et les chiffres de chaque joueur sont gardés (≈ 2 Ko par match). Ils donnent, pour chaque équipe, ses points encaissés, ses rebonds disponibles pris et la part de rebonds de l'adversaire sans estimation.</p>
         <textarea value={taLgUrl} onChange={e => setTaLgUrl(e.target.value)} rows={3} placeholder="Colle un ou plusieurs liens de matchs LiveStats (un par ligne)" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white/60 font-mono" />
         <button disabled={taLgBusy || !taLgUrl.trim()} onClick={addGame} className="mt-2 text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>{taLgBusy ? (taLgProg || "Lecture…") : "Ajouter le ou les matchs"}</button>
         <button onClick={() => setTaLgBoxOpen(o => !o)} className="mt-3 text-[11px] font-semibold text-[#1B2A4A]/70 hover:underline text-left block">{taLgBoxOpen ? "▾" : "▸"} Pas de LiveStats ? Coller les deux tableaux de stats du match</button>
@@ -14968,14 +15072,14 @@ function CoachingProBoost({ session }) {
         {view === "league" && isAdmin && (() => {
           const LG = leagueData;
           let html = "";
-          try { html = buildTeamReportHtml({ id: "league", name: "Comparatif championnat", league: LG, lineups: [], lineupsFile: "", boxScore: null, notes: "" }, null); }
+          try { html = buildTeamReportHtml({ id: "league", name: "Comparatif championnat", league: LG, leaguePlayers: lgPlayers("league", LG.teams), lineups: [], lineupsFile: "", boxScore: null, notes: "" }, null); }
           catch (e) { html = `<p style="font-family:sans-serif;color:#b91c1c;padding:16px">Erreur d'affichage : ${String(e?.message || e).replace(/</g, "&lt;")}</p>`; }
           const fitFrame = (el) => { try { el.style.height = (el.contentDocument.documentElement.scrollHeight + 16) + "px"; } catch {} };
           return (
             <div className="max-w-4xl">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>COMPARATIF CHAMPIONNAT</h2>
-                <button onClick={() => setLogoExportPrompt({ analysis: { id: "league", name: "Comparatif championnat", league: LG, lineups: [], lineupsFile: "", boxScore: null, notes: "" }, kind: "myteam" })}
+                <button onClick={() => setLogoExportPrompt({ analysis: { id: "league", name: "Comparatif championnat", league: LG, leaguePlayers: lgPlayers("league", LG.teams), lineups: [], lineupsFile: "", boxScore: null, notes: "" }, kind: "myteam" })}
                   className="text-sm font-semibold text-white px-3 py-2 rounded-md" style={{ backgroundColor: "#2563EB" }}>📤 Exporter le comparatif</button>
               </div>
               <p className="text-xs text-[#1B2A4A]/40 mb-4">Les équipes du championnat, leurs statistiques collées depuis le site et les matchs LiveStats (chiffres exacts). Indépendant des analyses « Mon équipe ».</p>
@@ -15350,7 +15454,7 @@ function CoachingProBoost({ session }) {
           if (activeTa) {
             // Aperçu = le même document que l'export (notes exclues pour ne pas recharger à chaque frappe).
             let html = "";
-            try { html = buildTeamReportHtml({ ...activeTa, notes: "" }, null); }
+            try { html = buildTeamReportHtml({ ...activeTa, notes: "", leaguePlayers: lgPlayers(activeTa.id, (activeTa.league || {}).teams || []) }, null); }
             catch (e) { html = `<p style="font-family:sans-serif;color:#b91c1c;padding:16px">Erreur d'affichage : ${String(e?.message || e).replace(/</g, "&lt;")}</p>`; }
             const fitFrame = (el) => { try { el.style.height = (el.contentDocument.documentElement.scrollHeight + 16) + "px"; } catch {} };
             return (
@@ -15419,7 +15523,7 @@ function CoachingProBoost({ session }) {
                       <input type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" className="hidden"
                         onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; handleTeamFile(f); }} />
                     </label>
-                    <button onClick={() => setLogoExportPrompt({ analysis: activeTa, kind: "myteam" })}
+                    <button onClick={() => setLogoExportPrompt({ analysis: { ...activeTa, leaguePlayers: lgPlayers(activeTa.id, (activeTa.league || {}).teams || []) }, kind: "myteam" })}
                       className="text-sm font-semibold text-white px-3 py-2 rounded-md" style={{ backgroundColor: "#2563EB" }}>📤 Exporter l'analyse</button>
                   </div>
                 </div>
