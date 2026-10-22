@@ -11341,6 +11341,14 @@ function CoachingProBoost({ session }) {
             <button disabled={!taLgBoxText.trim()} onClick={addBoxGame} className="mt-2 text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>Ajouter ce match</button>
           </div>
         )}
+        {myGames.length > 0 && (() => {
+          const withPl = myGames.filter(g => g.t.some(x => x.pl && x.pl.length)).length;
+          return withPl < myGames.length ? (
+            <div className="mt-2 text-[11px] rounded-md px-2 py-1.5" style={{ background: "#FFF4E5", color: "#9a5b00" }}>
+              {withPl === 0 ? "Aucun de ces matchs ne contient les joueurs : les statistiques joueurs n'apparaissent pas." : `${myGames.length - withPl} match${myGames.length - withPl > 1 ? "s" : ""} sans joueurs (ajouté${myGames.length - withPl > 1 ? "s" : ""} en tableau collé ou avant la mise à jour).`} Pour les voir : déplie la liste, retire les matchs LiveStats concernés puis colle de nouveau leurs liens. Les matchs en tableau collé ne peuvent pas donner de joueurs.
+            </div>
+          ) : <div className="mt-2 text-[11px] text-[#1B2A4A]/50">Statistiques joueurs disponibles ({myGames.length} match{myGames.length > 1 ? "s" : ""}) : section « Joueurs du championnat » sous l'aperçu.</div>;
+        })()}
         {myGames.length > 0 && (
           <div className="mt-2 text-[11px] text-[#1B2A4A]/70">
             <button onClick={() => setTaLgGamesOpen(o => !o)} className="font-semibold text-left hover:underline">{taLgGamesOpen ? "▾" : "▸"} {myGames.length} match{myGames.length > 1 ? "s" : ""} lu{myGames.length > 1 ? "s" : ""} <span className="font-normal text-[#1B2A4A]/40">{taLgGamesOpen ? "(replier)" : "(déplier pour en supprimer un)"}</span></button>
