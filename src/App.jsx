@@ -3917,11 +3917,11 @@ function leagueHtml(a) {
   }).filter(Boolean);
   const full = all.filter(s => !s.partial), leaders = all.filter(s => !s.partial || s.S.hi);
   const mineT = byId.get(L.mine), otherT = byId.get(L.other);
-  const head = (title, extra = "") => `<section class="card"><h2><i></i>${title}</h2>${extra}`;
-  if (!all.length) return head("Comparatif championnat", `<p class="hint">Aucune statistique avec au moins 3 équipes pour l'instant.</p>`) + "</section>" + leaguePlayersHtml(a);
+  const head = (title, extra = "", id = "") => `<section class="card"${id ? ` id="${id}"` : ""}><h2><i></i>${title}</h2>${extra}`;
+  if (!all.length) return head("Comparatif championnat", `<p class="hint">Aucune statistique avec au moins 3 équipes pour l'instant.</p>`, "lg-compare") + "</section>" + leaguePlayersHtml(a);
   let out = "";
   if (!full.length) {
-    out += head("Comparatif championnat", `<p class="hint">Les classements importés sont des listes partielles (top 5) : colle les classements complets ou le tableau de toutes les équipes pour obtenir la moyenne du championnat et le rang de ton équipe.</p>`) + "</section>";
+    out += head("Comparatif championnat", `<p class="hint">Les classements importés sont des listes partielles (top 5) : colle les classements complets ou le tableau de toutes les équipes pour obtenir la moyenne du championnat et le rang de ton équipe.</p>`, "lg-compare") + "</section>";
   } else {
     const diffCell = (st, e) => { if (!e) return `<td class="num">–</td>`; const d = e.v - st.avg, good = st.S.hi ? d > 0 : d < 0; const cls = Math.abs(d) < 0.05 * Math.max(1, Math.abs(st.avg)) ? "" : good ? "pm-pos" : "pm-neg"; return `<td class="num"><b class="${cls}">${d > 0 ? "+" : ""}${d.toFixed(st.S.dec || 1).replace(".", ",")}${st.S.pct ? " pt" : ""}</b></td>`; };
     const insights = [];
@@ -3936,19 +3936,19 @@ function leagueHtml(a) {
       ${insights.length ? `<ul class="bs-ins">${insights.map(x => `<li>${x}</li>`).join("")}</ul>` : ""}
       <div class="bs-table"><table class="pm-five lg"><thead><tr><th>Statistique</th>${mineT ? `<th class="num">${esc(mineT.name)}</th><th class="num">Rang</th>` : ""}<th class="num">Moyenne champ.</th>${mineT ? `<th class="num">Écart</th>` : ""}<th>Meilleure équipe</th></tr></thead><tbody>
       ${full.map(st => `<tr><td><b>${st.S.label}</b></td>${mineT ? `<td class="num"><b>${fmt(st.S, st.mine?.v)}</b></td><td class="num">${st.mineRank ? `<span class="lg-rk ${st.mineRank <= 3 ? "lg-top" : st.mineRank > st.n - 3 ? "lg-low" : ""}">${st.mineRank}ᵉ/${st.n}</span>` : "–"}</td>` : ""}<td class="num">${fmt(st.S, st.avg)}</td>${mineT ? diffCell(st, st.mine) : ""}<td>${badge(st.entries[0].t)} <small>${fmt(st.S, st.entries[0].v)}</small></td></tr>`).join("")}
-      </tbody></table></div>`) + "</section>";
+      </tbody></table></div>`, "lg-compare") + "</section>";
   }
   const tops = leaders.map(st => {
     const max = Math.max(...st.entries.map(e => Math.abs(e.v)), 1), shown = st.entries.slice(0, 5);
     if (!st.partial && st.mine && !shown.includes(st.mine)) shown.push(st.mine);
     return `<div class="lg-card"><div class="lg-title">${st.S.label}<small>${st.partial ? " · top " + shown.length : " · moy. " + fmt(st.S, st.avg)}</small></div>${shown.map(e => `<div class="lg-row${e.t.id === L.mine ? " lg-me" : ""}"><span class="lg-rk2">${st.entries.indexOf(e) + 1}</span><span class="lg-name">${badge(e.t)}</span><span class="lg-bar"><i style="width:${Math.max(3, Math.abs(e.v) / max * 100).toFixed(0)}%"></i></span><b>${fmt(st.S, e.v)}</b></div>`).join("")}</div>`;
   }).join("");
-  out += head("Les meilleures équipes par statistique", `<p class="hint">Les 5 premières de chaque classement${mineT ? `, avec ${esc(mineT.name)} en surbrillance (ajoutée en bas si elle est hors du top 5)` : ""}.</p><div class="lg-grid">${tops}</div>`) + "</section>";
+  out += head("Les meilleures équipes par statistique", `<p class="hint">Les 5 premières de chaque classement${mineT ? `, avec ${esc(mineT.name)} en surbrillance (ajoutée en bas si elle est hors du top 5)` : ""}.</p><div class="lg-grid">${tops}</div>`, "lg-tops") + "</section>";
   if (mineT && otherT && mineT.id !== otherT.id) {
     const rows = full.filter(s => s.mine && s.other);
     if (rows.length) out += head(`${badge(mineT, true)} face à ${badge(otherT, true)}`, `<div class="bs-table"><table class="pm-five lg"><thead><tr><th>Statistique</th><th class="num">${esc(mineT.name)}</th><th class="num">${esc(otherT.name)}</th><th class="num">Moy. champ.</th><th class="num">Avantage</th></tr></thead><tbody>
       ${rows.map(st => { const d = st.mine.v - st.other.v, mineBetter = st.S.hi ? d > 0 : d < 0, tie = Math.abs(d) < 0.05; return `<tr><td><b>${st.S.label}</b></td><td class="num ${!tie && mineBetter ? "lg-win" : ""}"><b>${fmt(st.S, st.mine.v)}</b> <small>${st.mineRank}ᵉ</small></td><td class="num ${!tie && !mineBetter ? "lg-win" : ""}"><b>${fmt(st.S, st.other.v)}</b> <small>${st.entries.indexOf(st.other) + 1}ᵉ</small></td><td class="num">${fmt(st.S, st.avg)}</td><td class="num">${tie ? "=" : esc((mineBetter ? mineT : otherT).name)}</td></tr>`; }).join("")}
-      </tbody></table></div>`) + "</section>";
+      </tbody></table></div>`, "lg-face") + "</section>";
   }
   return out + leaguePlayersHtml(a);
 }
@@ -11257,7 +11257,7 @@ function CoachingProBoost({ session }) {
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
   const [taMom, setTaMom] = useState({}), [taOpen, setTaOpen] = useState({});
   const [taLnbOpen, setTaLnbOpen] = useState(false), [taLnbText, setTaLnbText] = useState("");
-  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false), [taLgGamesOpen, setTaLgGamesOpen] = useState(false), [taLgStatsOpen, setTaLgStatsOpen] = useState(false), [taLgProg, setTaLgProg] = useState(""), [taLgBoxText, setTaLgBoxText] = useState(""), [taLgBoxOpen, setTaLgBoxOpen] = useState(false);
+  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false), [taLgGamesOpen, setTaLgGamesOpen] = useState(false), [taLgStatsOpen, setTaLgStatsOpen] = useState(false), [taLgProg, setTaLgProg] = useState(""), [taLgTeamsOpen, setTaLgTeamsOpen] = useState(false), [taLgBoxText, setTaLgBoxText] = useState(""), [taLgBoxOpen, setTaLgBoxOpen] = useState(false);
   // Éditeur du comparatif championnat (partagé : bloc de « Mon équipe » et onglet admin « Comparatif championnat »)
   const lgPlayers = (taId, teams) => { try { return leaguePlayersFromGames(leagueGames.filter(g => g.ta === taId), teams); } catch { return []; } };
   const renderLeagueEditor = (LG, setLG, taId) => {
@@ -11326,7 +11326,9 @@ function CoachingProBoost({ session }) {
     const statCounts = LEAGUE_STATS.map(S => ({ S, n: Object.keys(LG.stats[S.key] || {}).length })).filter(x => x.n > 0);
     return (
       <div className="mt-3">
-        <div className="text-xs font-semibold text-[#1B2A4A] mb-1">1. Les équipes du championnat (nom et logo)</div>
+        <button id="lg-ed-teams" onClick={() => setTaLgTeamsOpen(o => !o)} className="text-xs font-semibold text-[#1B2A4A] mb-2 text-left hover:underline">{taLgTeamsOpen ? "▾" : "▸"} 1. Les équipes du championnat · {LG.teams.length} équipe{LG.teams.length > 1 ? "s" : ""} (nom et logo) <span className="font-normal text-[#1B2A4A]/40">{taLgTeamsOpen ? "(replier)" : "(déplier)"}</span></button>
+        {taLgTeamsOpen ? (
+          <div>
         <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Prépare ta liste (facultatif) : les équipes lues dans un texte collé sont reconnues par leur nom. Clique sur le carré pour mettre un logo.</p>
         <div className="grid sm:grid-cols-2 gap-2 mb-2">
           {LG.teams.map(x => (
@@ -11344,7 +11346,9 @@ function CoachingProBoost({ session }) {
           <input value={taLgNew} onChange={e => setTaLgNew(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addTeam(); }} placeholder="Ajouter une équipe (ex : Le Mans)" className="flex-1 min-w-0 border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60" />
           <button onClick={addTeam} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>+ Ajouter</button>
         </div>
-        <div className="text-xs font-semibold text-[#1B2A4A] mb-1">2. Coller des statistiques</div>
+          </div>
+        ) : <div className="mb-3" />}
+        <div id="lg-ed-paste" className="text-xs font-semibold text-[#1B2A4A] mb-1">2. Coller des statistiques</div>
         <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Sur le site (lnb.fr, Stats Center, onglet « Stats équipes »), fais Cmd + A puis Cmd + C et colle ici. Formats reconnus : la page d'accueil des stats (top 5 par catégorie), un tableau avec ses colonnes (PTS, RO, RD, RT, PD…), ou le classement d'une seule statistique (dans ce cas, choisis laquelle).</p>
         <select value={taLgStat} onChange={e => setTaLgStat(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mb-2">
           <option value="">Détecter automatiquement</option>
@@ -11358,7 +11362,7 @@ function CoachingProBoost({ session }) {
             <button onClick={resetAll} className="text-red-600 underline">Tout réinitialiser</button>
           </span>
         )}
-        <div className="text-xs font-semibold text-[#1B2A4A] mt-5 mb-1">3. Ajouter des matchs LiveStats (chiffres exacts, adversaire compris)</div>
+        <div id="lg-ed-games" className="text-xs font-semibold text-[#1B2A4A] mt-5 mb-1">3. Ajouter des matchs LiveStats (chiffres exacts, adversaire compris)</div>
         <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Colle un ou plusieurs liens de matchs terminés (un par ligne, ou un texte qui en contient). Seuls les totaux des équipes et les chiffres de chaque joueur sont gardés (≈ 2 Ko par match). Ils donnent, pour chaque équipe, ses points encaissés, ses rebonds disponibles pris et la part de rebonds de l'adversaire sans estimation.</p>
         <textarea value={taLgUrl} onChange={e => setTaLgUrl(e.target.value)} rows={3} placeholder="Colle un ou plusieurs liens de matchs LiveStats (un par ligne)" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white/60 font-mono" />
         <button disabled={taLgBusy || !taLgUrl.trim()} onClick={addGame} className="mt-2 text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>{taLgBusy ? (taLgProg || "Lecture…") : "Ajouter le ou les matchs"}</button>
@@ -15119,9 +15123,27 @@ function CoachingProBoost({ session }) {
                 <button onClick={() => setLogoExportPrompt({ analysis: { id: "league", name: "Comparatif championnat", league: LG, leaguePlayers: lgPlayers("league", LG.teams), lineups: [], lineupsFile: "", boxScore: null, notes: "" }, kind: "myteam" })}
                   className="text-sm font-semibold text-white px-3 py-2 rounded-md" style={{ backgroundColor: "#2563EB" }}>📤 Exporter le comparatif</button>
               </div>
+              {(() => {
+                const goEd = (id) => { try { document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch {} };
+                const goRep = (id) => { try { document.getElementById("lg-frame")?.contentDocument?.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch {} };
+                const items = [
+                  ["Équipes", () => { setTaLgTeamsOpen(true); setTimeout(() => goEd("lg-ed-teams"), 50); }, true],
+                  ["Statistiques collées", () => goEd("lg-ed-paste"), true],
+                  ["Matchs", () => goEd("lg-ed-games"), true],
+                  ["Comparatif", () => goRep("lg-compare"), html.includes('id="lg-compare"')],
+                  ["Meilleures équipes", () => goRep("lg-tops"), html.includes('id="lg-tops"')],
+                  ["Face-à-face", () => goRep("lg-face"), html.includes('id="lg-face"')],
+                  ["Joueurs", () => goRep("lgpl"), html.includes('id="lgpl"')],
+                ].filter(x => x[2]);
+                return (
+                  <div className="sticky top-0 z-10 py-2 mb-3 bg-[#F2EDE4]/95 backdrop-blur flex flex-wrap gap-1.5">
+                    {items.map(([lab, fn]) => <button key={lab} onClick={fn} className="px-3 py-1 rounded-full text-xs font-semibold border border-[#1B2A4A]/20 bg-white text-[#1B2A4A] hover:border-[#FF6B35]">{lab}</button>)}
+                  </div>
+                );
+              })()}
               <p className="text-xs text-[#1B2A4A]/40 mb-4">Les équipes du championnat, leurs statistiques collées depuis le site et les matchs LiveStats (chiffres exacts). Indépendant des analyses « Mon équipe ».</p>
               <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-3">{renderLeagueEditor(LG, saveLeagueData, "league")}</div>
-              <iframe title="Comparatif championnat" srcDoc={html} className="w-full rounded-xl border border-[#1B2A4A]/10"
+              <iframe id="lg-frame" title="Comparatif championnat" srcDoc={html} className="w-full rounded-xl border border-[#1B2A4A]/10"
                 style={{ height: 600, background: "#F2EDE4" }}
                 onLoad={e => { const el = e.currentTarget; fitFrame(el); setTimeout(() => fitFrame(el), 800); }} />
             </div>
