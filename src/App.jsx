@@ -1192,22 +1192,84 @@ function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
 // que buildMatchReportHtml, sans le tableau de score qui n'a pas de sens hors match réel).
 // Repère de version affiché en bas de l'export (à faire évoluer à chaque refonte du rapport).
 // Barre d'impression des exports HTML (masquée à l'impression) : A4, avec option « une section par page ».
-const PRINT_BAR_HTML = `<div class="print-bar"><label><input type="checkbox" onchange="document.body.classList.toggle('sec-page',this.checked)"> Une section par page</label><button class="pb-sec" onclick="pbToggle()">⚙️ Organiser</button><button onclick="window.print()">🖨️ Imprimer / PDF (A4)</button></div><div id="pb-panel" class="print-panel" hidden><div class="pb-h"><b>Organiser le document</b><span>Coche ce qui s'imprime, change l'ordre avec les flèches, et « page » pour commencer une section sur une nouvelle feuille.</span></div><div id="pb-list"></div><div class="pb-f"><button class="pb-sec" onclick="pbAll()">Tout afficher</button><button class="pb-sec" onclick="pbReset()">Réinitialiser</button></div></div><script>document.addEventListener('DOMContentLoaded',function(){var KEY='cpbprint:'+document.title,P=document.querySelector('.page');if(!P)return;
+// Règles d'impression partagées : appliquées par @media print ET, dans l'export, par la « Vue A4 » (feuille de style activée à l'écran)
+const PRINT_RULES = `
+    html,body{width:auto}
+    body{background:#fff;padding:0;font-size:12px}
+    [data-pb="1"]{break-before:page;page-break-before:always}
+    .page{display:block;max-width:none}
+    .page>*{margin-bottom:6mm}
+    .card{overflow:visible}
+    .pb-row,.detail,.def-block{-webkit-column-break-inside:avoid;break-inside:avoid-page}
+    .pb-row .rank-row{break-after:avoid;page-break-after:avoid}
+    .pb-imgs{break-before:avoid;page-break-before:avoid}
+    .card{box-shadow:none;border:1px solid #1B2A4A22;border-radius:10px;padding:14px 16px}
+    .hero{border-radius:12px;padding:18px 20px;break-inside:avoid}
+    .hero h1{font-size:30px}
+    .card h2,.cat-title,.sub{break-after:avoid;page-break-after:avoid}
+    .rank-row,.mini-row,.pl-card,.bs-kpi,.detail,.def-block,.pb-row,.pl-co,.pl-man,tr,.cmp,.shot-chart,img{break-inside:avoid;page-break-inside:avoid}
+    .pl-grid{grid-template-columns:repeat(2,1fr);gap:8px}
+    .pl-card{padding:9px}
+    .shot-chart{max-height:62mm}
+    /* Comparatif championnat : tableaux et classements compacts pour tenir sur peu de feuilles */
+    .lg th,.lg td{padding:3px 6px;font-size:9.5px;line-height:1.2}
+    .lg td .lg-t,.lg td:last-child{white-space:nowrap}.lg td:last-child{max-width:52mm;overflow:hidden;text-overflow:ellipsis}
+    .lg td small{font-size:8px}.lg-logo{height:13px;width:13px}.lg-logo.lg-big{height:22px;width:22px}
+    .lg-grid{gap:5px}.lg-card{padding:5px 8px}.lg-title{font-size:11px;margin-bottom:3px}.lg-row{font-size:9.5px;padding:1px 0}
+    /* Joueurs : 4 fiches par feuille A4 (2 × 2), chacune avec sa zone de tir */
+    .pl-pages .pl-page{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:5mm;height:252mm;break-after:page;page-break-after:always;margin-top:0}
+    .pl-pages .pl-page:last-child{break-after:auto;page-break-after:auto;height:auto;grid-auto-rows:123.5mm}
+    .pl-pages .pl-page.pl-newpage{break-before:page;page-break-before:always}
+    .pl-pages .pl-page.pl-first{height:230mm}
+    .pl-page .pl-card{padding:5px 7px;font-size:10px;overflow:hidden;min-height:0}
+    .pl-page .pl-head{margin-bottom:3px;gap:7px}
+    .pl-page .pl-photo{width:34px;height:34px}
+    .pl-page .pl-name{font-size:12px}.pl-page .pl-sub{font-size:9.5px}
+    .pl-page .pl-kpis{margin-bottom:3px;gap:3px}.pl-page .pl-k{padding:3px 1px}.pl-page .pl-k b{font-size:12px}.pl-page .pl-k span{font-size:8px}
+    .pl-page .pl-shots{font-size:10px;margin-bottom:2px}
+    .pl-page .pl-sp{margin:3px 0}.pl-page .pl-splab{font-size:9.5px;line-height:1.25}
+    .pl-page .pl-chart{margin:2px auto;max-width:50mm}.pl-page .shot-chart{max-height:none}.pl-page .pl-chartcap{font-size:8.5px;margin-top:1px;text-align:center}
+    .pl-page .pl-co,.pl-page .pl-man{font-size:9.5px;padding:3px 6px;margin:3px 0;line-height:1.25}.pl-page .pl-co b,.pl-page .pl-man b{font-size:9.5px}
+    .pl-page .pl-ins{font-size:9.5px;margin:2px 0;padding-left:13px;line-height:1.25}.pl-page .pl-ins li:nth-child(n+2){display:none}.pl-page .pl-card.pl-hasman .pl-ins,.pl-page .pl-card.pl-hasman .pl-how{display:none}.pl-page .pl-how{display:none}.pl-page .pl-co span,.pl-page .pl-man span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.pl-page .pl-splab{font-size:9px}
+    .pl-page .pl-how{font-size:9.5px;padding:3px 6px;margin-top:3px}.pl-page .pl-lowtag{font-size:9px;padding:2px 6px;margin:2px 0}
+    body.sec-page .card{break-before:page;page-break-before:always}
+    body.sec-page .card:first-of-type{break-before:auto;page-break-before:auto}
+    .stamp{margin-top:4mm}
+    /* Lecture plus dense à l'impression (analyse de mon équipe, comparatif) : moins de feuilles, aucun tableau coupé à droite */
+    body{font-size:11px}
+    .card{padding:10px 12px}.card h2{font-size:15px;margin-bottom:6px}
+    .hint,.more{font-size:9.5px;line-height:1.3;margin:2px 0 6px}
+    .bs-ins{margin:4px 0;padding-left:15px;font-size:10.5px;line-height:1.3}.bs-ins li{margin:2px 0}
+    .bs-table table{font-size:10px}.bs-table th,.bs-table td{padding:3px 5px}
+    .pm-five.bx{font-size:8.5px}.pm-five.bx th,.pm-five.bx td{padding:2px 2.5px}
+    .sub-title{margin:8px 0 4px}
+    .rank-row,.mini-row{padding-top:4px;padding-bottom:4px}
+`;
+const PRINT_BAR_HTML = `<div class="print-bar"><label><input type="checkbox" onchange="document.body.classList.toggle('sec-page',this.checked)"> Une section par page</label><button class="pb-sec" onclick="pbToggle()">⚙️ Organiser</button><button onclick="window.print()">🖨️ Imprimer / PDF (A4)</button></div><div id="pb-panel" class="print-panel" hidden><div class="pb-h"><b>Organiser le document</b><span>Coche ce qui s'imprime, règle la taille de chaque section, change l'ordre avec les flèches, et « page » pour commencer une section sur une nouvelle feuille.</span><label class="pb-v"><input id="pb-sheet" type="checkbox" onchange="pbSheet(this.checked)"> Vue feuilles A4</label><div id="pb-info"></div></div><div id="pb-list"></div><div class="pb-f"><button class="pb-sec" onclick="pbAll()">Tout afficher</button><button class="pb-sec" onclick="pbReset()">Réinitialiser</button></div></div><style media="not all" data-sheet>${PRINT_RULES}</style><script>document.addEventListener('DOMContentLoaded',function(){var KEY='cpbprint:'+document.title,P=document.querySelector('.page');if(!P)return;var SHEET=false,H=275;
 function secs(){return [].slice.call(P.children).filter(function(e){return e.classList.contains('card')})}
 secs().forEach(function(s,i){s.setAttribute('data-pid',i)});
 function title(s){var h=s.querySelector('h2');return (h?h.textContent:s.textContent).replace(/\\s+/g,' ').trim().slice(0,70)||'Section'}
-function save(){try{localStorage.setItem(KEY,JSON.stringify({o:secs().map(function(s){return s.getAttribute('data-pid')}),h:secs().filter(function(s){return s.style.display==='none'}).map(function(s){return s.getAttribute('data-pid')}),b:secs().filter(function(s){return s.getAttribute('data-pb')==='1'}).map(function(s){return s.getAttribute('data-pid')})}))}catch(e){}}
-function load(){try{var d=JSON.parse(localStorage.getItem(KEY)||'null');if(!d)return;var by={};secs().forEach(function(s){by[s.getAttribute('data-pid')]=s});var st=P.querySelector('.stamp');(d.o||[]).forEach(function(id){if(by[id])P.insertBefore(by[id],st)});(d.h||[]).forEach(function(id){if(by[id])by[id].style.display='none'});(d.b||[]).forEach(function(id){if(by[id])by[id].setAttribute('data-pb','1')})}catch(e){}}
-function render(){var box=document.getElementById('pb-list');if(!box)return;box.innerHTML='';secs().forEach(function(s,i,all){var r=document.createElement('div');r.className='pb-r';var hid=s.style.display==='none';
-var c=document.createElement('input');c.type='checkbox';c.checked=!hid;c.title='Afficher dans l\\'impression';c.onchange=function(){s.style.display=c.checked?'':'none';save();render()};
-var t=document.createElement('span');t.className='pb-t'+(hid?' pb-off':'');t.textContent=title(s);
-var up=document.createElement('button');up.textContent='↑';up.disabled=i===0;up.onclick=function(){P.insertBefore(s,all[i-1]);save();render()};
-var dn=document.createElement('button');dn.textContent='↓';dn.disabled=i===all.length-1;dn.onclick=function(){P.insertBefore(all[i+1],s);save();render()};
-var pb=document.createElement('label');pb.className='pb-pg';pb.title='Commencer cette section sur une nouvelle feuille';var pc=document.createElement('input');pc.type='checkbox';pc.checked=s.getAttribute('data-pb')==='1';pc.onchange=function(){if(pc.checked)s.setAttribute('data-pb','1');else s.removeAttribute('data-pb');save()};pb.appendChild(pc);pb.appendChild(document.createTextNode(' page'));
-r.appendChild(c);r.appendChild(t);r.appendChild(up);r.appendChild(dn);r.appendChild(pb);box.appendChild(r)})}
-window.pbToggle=function(){var p=document.getElementById('pb-panel');p.hidden=!p.hidden;if(!p.hidden)render()};
+function vis(s){return s.style.display!=='none'}
+function mmh(el){return el.getBoundingClientRect().height/3.7795}
+function save(){try{localStorage.setItem(KEY,JSON.stringify({o:secs().map(function(s){return s.getAttribute('data-pid')}),h:secs().filter(function(s){return !vis(s)}).map(function(s){return s.getAttribute('data-pid')}),b:secs().filter(function(s){return s.getAttribute('data-pb')==='1'}).map(function(s){return s.getAttribute('data-pid')}),z:secs().filter(function(s){return s.style.zoom}).map(function(s){return [s.getAttribute('data-pid'),s.style.zoom]})}))}catch(e){}}
+function load(){try{var d=JSON.parse(localStorage.getItem(KEY)||'null');if(!d)return;var by={};secs().forEach(function(s){by[s.getAttribute('data-pid')]=s});var st=P.querySelector('.stamp');(d.o||[]).forEach(function(id){if(by[id])P.insertBefore(by[id],st)});(d.h||[]).forEach(function(id){if(by[id])by[id].style.display='none'});(d.b||[]).forEach(function(id){if(by[id])by[id].setAttribute('data-pb','1')});(d.z||[]).forEach(function(z){if(by[z[0]])by[z[0]].style.zoom=z[1]})}catch(e){}}
+function layout(){[].slice.call(P.querySelectorAll('.pb-sp,.pb-gl')).forEach(function(e){e.parentNode.removeChild(e)});document.body.classList.toggle('pb-sheet',SHEET);[].slice.call(document.querySelectorAll('style[data-sheet]')).forEach(function(st){st.media=SHEET?'all':'not all'});var info=document.getElementById('pb-info');if(!SHEET){if(info)info.textContent='Active la « Vue A4 » pour voir les feuilles.';return}
+var force=document.body.classList.contains('sec-page');secs().filter(vis).forEach(function(s,i){if(!(s.getAttribute('data-pb')==='1'||(force&&i>0)))return;var top=(s.getBoundingClientRect().top-P.getBoundingClientRect().top)/3.7795,rem=H-(top%H);if(rem>0.5&&rem<H-0.5){var sp=document.createElement('div');sp.className='pb-sp';sp.style.height=rem+'mm';P.insertBefore(sp,s)}});
+var total=mmh(P),n=Math.max(1,Math.ceil(total/H-0.001));for(var k=1;k<=n;k++){var g=document.createElement('div');g.className='pb-gl';g.style.top=(k*H)+'mm';g.innerHTML='<span>fin de la feuille '+k+'</span>';P.appendChild(g)}
+if(info)info.textContent='Environ '+n+' feuille'+(n>1?'s':'')+' A4 (estimation).';[].slice.call(document.querySelectorAll('#pb-list .pb-t')).forEach(function(t){var s=secs()[+t.getAttribute('data-i')];if(s&&vis(s))t.title='≈ '+(mmh(s)/H).toFixed(2).replace('.',',')+' feuille'})}
+function render(){var box=document.getElementById('pb-list');if(!box)return;box.innerHTML='';secs().forEach(function(s,i,all){var r=document.createElement('div');r.className='pb-r';var hid=!vis(s);
+var c=document.createElement('input');c.type='checkbox';c.checked=!hid;c.title='Afficher dans l\\'impression';c.onchange=function(){s.style.display=c.checked?'':'none';save();render();layout()};
+var t=document.createElement('span');t.className='pb-t'+(hid?' pb-off':'');t.textContent=title(s);t.setAttribute('data-i',i);t.onclick=function(){s.scrollIntoView({behavior:'smooth',block:'start'})};
+var zs=document.createElement('select');zs.className='pb-z';zs.title='Taille de la section';[['0.6','60 %'],['0.7','70 %'],['0.8','80 %'],['0.9','90 %'],['1','100 %'],['1.1','110 %']].forEach(function(o){var op=document.createElement('option');op.value=o[0];op.textContent=o[1];zs.appendChild(op)});zs.value=s.style.zoom||'1';zs.onchange=function(){if(zs.value==='1')s.style.zoom='';else s.style.zoom=zs.value;save();layout()};
+var up=document.createElement('button');up.textContent='↑';up.disabled=i===0;up.onclick=function(){P.insertBefore(s,all[i-1]);save();render();layout()};
+var dn=document.createElement('button');dn.textContent='↓';dn.disabled=i===all.length-1;dn.onclick=function(){P.insertBefore(all[i+1],s);save();render();layout()};
+var pb=document.createElement('label');pb.className='pb-pg';pb.title='Commencer cette section sur une nouvelle feuille';var pc=document.createElement('input');pc.type='checkbox';pc.checked=s.getAttribute('data-pb')==='1';pc.onchange=function(){if(pc.checked)s.setAttribute('data-pb','1');else s.removeAttribute('data-pb');save();layout()};pb.appendChild(pc);pb.appendChild(document.createTextNode(' page'));
+r.appendChild(c);r.appendChild(t);r.appendChild(zs);r.appendChild(up);r.appendChild(dn);r.appendChild(pb);box.appendChild(r)});layout()}
+window.pbToggle=function(){var p=document.getElementById('pb-panel');p.hidden=!p.hidden;if(!p.hidden){SHEET=true;document.getElementById('pb-sheet').checked=true;render()}};
+window.pbSheet=function(on){SHEET=on;layout()};
 window.pbReset=function(){try{localStorage.removeItem(KEY)}catch(e){}location.reload()};
 window.pbAll=function(){secs().forEach(function(s){s.style.display=''});save();render()};
+document.querySelector('.print-bar input').addEventListener('change',function(){setTimeout(layout,0)});
 load();});</script>`;
 const VIDEO_SCOUT_REPORT_VERSION = "2026-10-07-a";
 // Feuille de style commune aux récaps (scouting vidéo, analyse de mon équipe).
@@ -1393,6 +1455,13 @@ const SCOUT_REPORT_CSS = `
   .brand{position:relative;display:inline-flex;align-items:center;gap:6px;font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:rgba(255,255,255,.75);margin-bottom:10px}
   .brand b{color:#FF6B35}
   .print-bar .pb-sec{background:#1B2A4A;color:#fff}
+  .print-panel{width:380px}.pb-v{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;margin:2px 0}#pb-info{font-size:11px;color:#1B2A4A99;margin:2px 0 8px}
+  .pb-z{border:1px solid #1B2A4A22;border-radius:6px;font-size:11px;padding:2px;background:#fff}.pb-t{cursor:pointer}
+  body.pb-sheet{background:#cfd4dc!important;padding:16px 0 60px!important}
+  body.pb-sheet .page{width:192mm;max-width:192mm!important;margin:0 auto;background:#fff;box-shadow:0 0 0 9mm #fff,0 3px 18px rgba(0,0,0,.3);position:relative}
+  .pb-sp{display:block;width:100%}
+  .pb-gl{position:absolute;left:-9mm;right:-9mm;height:0;border-top:2px dashed #e11d48;z-index:20;pointer-events:none}
+  .pb-gl span{position:absolute;right:4px;top:3px;font:700 10px Inter,sans-serif;color:#e11d48;background:#fff;padding:1px 6px;border-radius:6px}
   .print-panel{position:fixed;top:64px;right:12px;z-index:49;width:340px;max-height:72vh;overflow:auto;background:#fff;border:1px solid #1B2A4A22;border-radius:12px;padding:12px;box-shadow:0 8px 28px rgba(27,42,74,.2);font-size:12px}
   .print-panel[hidden]{display:none}
   .pb-h b{display:block;font-size:13px;margin-bottom:3px}.pb-h span{display:block;color:#1B2A4A99;font-size:11px;line-height:1.35;margin-bottom:8px}
@@ -1405,58 +1474,8 @@ const SCOUT_REPORT_CSS = `
   .print-bar button{background:#FF6B35;color:#fff;border:0;border-radius:8px;padding:7px 14px;font-weight:700;font-size:13px;cursor:pointer}
   .print-bar label{display:flex;align-items:center;gap:5px;cursor:pointer}
   @page{size:A4 portrait;margin:10mm 9mm 12mm}
-  @media print{
-    html,body{width:auto}
-    body{background:#fff;padding:0;font-size:12px}
-    .print-bar,.print-panel{display:none!important}
-    [data-pb="1"]{break-before:page;page-break-before:always}
-    .page{display:block;max-width:none}
-    .page>*{margin-bottom:6mm}
-    .card{overflow:visible}
-    .pb-row,.detail,.def-block{-webkit-column-break-inside:avoid;break-inside:avoid-page}
-    .pb-row .rank-row{break-after:avoid;page-break-after:avoid}
-    .pb-imgs{break-before:avoid;page-break-before:avoid}
-    .card{box-shadow:none;border:1px solid #1B2A4A22;border-radius:10px;padding:14px 16px}
-    .hero{border-radius:12px;padding:18px 20px;break-inside:avoid}
-    .hero h1{font-size:30px}
-    .card h2,.cat-title,.sub{break-after:avoid;page-break-after:avoid}
-    .rank-row,.mini-row,.pl-card,.bs-kpi,.detail,.def-block,.pb-row,.pl-co,.pl-man,tr,.cmp,.shot-chart,img{break-inside:avoid;page-break-inside:avoid}
-    .pl-grid{grid-template-columns:repeat(2,1fr);gap:8px}
-    .pl-card{padding:9px}
-    .shot-chart{max-height:62mm}
-    /* Comparatif championnat : tableaux et classements compacts pour tenir sur peu de feuilles */
-    .lg th,.lg td{padding:3px 6px;font-size:9.5px;line-height:1.2}
-    .lg td .lg-t,.lg td:last-child{white-space:nowrap}.lg td:last-child{max-width:52mm;overflow:hidden;text-overflow:ellipsis}
-    .lg td small{font-size:8px}.lg-logo{height:13px;width:13px}.lg-logo.lg-big{height:22px;width:22px}
-    .lg-grid{gap:5px}.lg-card{padding:5px 8px}.lg-title{font-size:11px;margin-bottom:3px}.lg-row{font-size:9.5px;padding:1px 0}
-    /* Joueurs : 4 fiches par feuille A4 (2 × 2), chacune avec sa zone de tir */
-    .pl-pages .pl-page{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:5mm;height:252mm;break-after:page;page-break-after:always;margin-top:0}
-    .pl-pages .pl-page:last-child{break-after:auto;page-break-after:auto;height:auto;grid-auto-rows:123.5mm}
-    .pl-pages .pl-page.pl-newpage{break-before:page;page-break-before:always}
-    .pl-pages .pl-page.pl-first{height:230mm}
-    .pl-page .pl-card{padding:5px 7px;font-size:10px;overflow:hidden;min-height:0}
-    .pl-page .pl-head{margin-bottom:3px;gap:7px}
-    .pl-page .pl-photo{width:34px;height:34px}
-    .pl-page .pl-name{font-size:12px}.pl-page .pl-sub{font-size:9.5px}
-    .pl-page .pl-kpis{margin-bottom:3px;gap:3px}.pl-page .pl-k{padding:3px 1px}.pl-page .pl-k b{font-size:12px}.pl-page .pl-k span{font-size:8px}
-    .pl-page .pl-shots{font-size:10px;margin-bottom:2px}
-    .pl-page .pl-sp{margin:3px 0}.pl-page .pl-splab{font-size:9.5px;line-height:1.25}
-    .pl-page .pl-chart{margin:2px auto;max-width:50mm}.pl-page .shot-chart{max-height:none}.pl-page .pl-chartcap{font-size:8.5px;margin-top:1px;text-align:center}
-    .pl-page .pl-co,.pl-page .pl-man{font-size:9.5px;padding:3px 6px;margin:3px 0;line-height:1.25}.pl-page .pl-co b,.pl-page .pl-man b{font-size:9.5px}
-    .pl-page .pl-ins{font-size:9.5px;margin:2px 0;padding-left:13px;line-height:1.25}.pl-page .pl-ins li:nth-child(n+2){display:none}.pl-page .pl-card.pl-hasman .pl-ins,.pl-page .pl-card.pl-hasman .pl-how{display:none}.pl-page .pl-how{display:none}.pl-page .pl-co span,.pl-page .pl-man span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.pl-page .pl-splab{font-size:9px}
-    .pl-page .pl-how{font-size:9.5px;padding:3px 6px;margin-top:3px}.pl-page .pl-lowtag{font-size:9px;padding:2px 6px;margin:2px 0}
-    body.sec-page .card{break-before:page;page-break-before:always}
-    body.sec-page .card:first-of-type{break-before:auto;page-break-before:auto}
-    .stamp{margin-top:4mm}
-    /* Lecture plus dense à l'impression (analyse de mon équipe, comparatif) : moins de feuilles, aucun tableau coupé à droite */
-    body{font-size:11px}
-    .card{padding:10px 12px}.card h2{font-size:15px;margin-bottom:6px}
-    .hint,.more{font-size:9.5px;line-height:1.3;margin:2px 0 6px}
-    .bs-ins{margin:4px 0;padding-left:15px;font-size:10.5px;line-height:1.3}.bs-ins li{margin:2px 0}
-    .bs-table table{font-size:10px}.bs-table th,.bs-table td{padding:3px 5px}
-    .pm-five.bx{font-size:8.5px}.pm-five.bx th,.pm-five.bx td{padding:2px 2.5px}
-    .sub-title{margin:8px 0 4px}
-    .rank-row,.mini-row{padding-top:4px;padding-bottom:4px}
+  @media print{${PRINT_RULES}
+    .print-bar,.print-panel,.pb-sp,.pb-gl{display:none!important}
   }
 `;
 // Sections du récap vidéo : ordre par défaut ; chaque session peut en masquer (exportHidden) ou les réordonner (exportOrder).
@@ -3904,6 +3923,7 @@ function leaguePlayersFromGames(games, teams = []) {
       drPct: pc(dr, avD), orPct: pc(or, avO), fbPG: av(fbP), fbPer: per(fbP, fbN), tdPG: av(tdP), tdPer: per(tdP, tdN), orPts: per(orP, n), drPts: per(drP, n), orN: orN, drN: drN };
   });
 }
+const LGPL_PRINT = `#lgpl .pk-live{display:none!important}#lgpl .pk-print{display:block}#lgpl .pk-pp{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);gap:4mm 6mm;height:238mm;break-after:page;page-break-after:always}#lgpl .pk-pp:last-child{break-after:auto;page-break-after:auto}#lgpl .pk-pp1{height:218mm}#lgpl .pk-pc{border:1px solid #1B2A4A1f;border-radius:8px;padding:6px 8px;overflow:hidden;min-height:0}#lgpl .pk-pt{font-family:'Oswald',sans-serif;font-size:12px;letter-spacing:.3px;margin-bottom:3px;color:#1B2A4A}#lgpl .pk-pt small{font-family:'Inter',sans-serif;font-size:8px;color:#1B2A4A80;letter-spacing:0}#lgpl .pk-pr{display:grid;grid-template-columns:5mm 1fr auto;gap:5px;align-items:center;padding:1.2px 0;border-top:1px solid #1B2A4A0d}#lgpl .pk-pr:first-of-type{border-top:0}#lgpl .pk-prk{font-size:9px;color:#1B2A4A80;text-align:center}#lgpl .pk-pn{min-width:0;line-height:1.1}#lgpl .pk-pn b{display:block;font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-pn small{display:block;font-size:7.5px;color:#1B2A4A80;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-pr em{font-style:normal;font-family:'Oswald',sans-serif;font-size:11px;color:#1B2A4A}`;
 function leaguePlayersHtml(a) {
   const P = a.leaguePlayers; if (!P || !P.length) return "";
   const esc = (str) => String(str ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -3929,7 +3949,7 @@ function leaguePlayersHtml(a) {
   const advM = mk(ADV), claM = mk(CLA);
   const data = JSON.stringify({ P: rows.map(r => ({ n: r.name, t: r.team, l: r.logo, g: r.gp, m: r.min, ag: r.age, ...Object.fromEntries([...ADV, ...CLA].map(x => [x[1], r[x[1]]])) })), A: advM, C: claM }).replace(/</g, "\\u003c");
   const fullTable = (defs) => `<div class="bs-table"><table class="pm-five lg"><thead><tr><th>Joueur</th><th>Équipe</th><th class="num">MJ</th><th class="num">Min</th>${defs.map(c => `<th class="num">${esc(c.lab)}</th>`).join("")}</tr></thead><tbody>${[...rows].sort((x, y) => (y[defs[0].key] ?? -1e9) - (x[defs[0].key] ?? -1e9)).map(p => `<tr><td><b>${esc(p.name)}</b></td><td>${esc(p.team)}</td><td class="num">${p.gp}</td><td class="num">${f(p.min)}</td>${defs.map(c => `<td class="num">${f(p[c.key], c.d, c.suf)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
-  const css = `<style>#lgpl .pk-g{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#1B2A4A99;margin:12px 0 6px}#lgpl .pk-b{display:flex;flex-wrap:wrap;gap:6px}#lgpl .pk-btn{border:1px solid #1B2A4A26;background:#fff;color:#1B2A4A;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}#lgpl .pk-btn:hover{border-color:#FF6B35}#lgpl .pk-btn.on{background:#1B2A4A;color:#fff;border-color:#1B2A4A}#lgpl .pk-btn.adv.on{background:#FF6B35;border-color:#FF6B35}#lgpl .pk-flt{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0;font-size:12px;color:#1B2A4A99}#lgpl .pk-flt select,#lgpl .pk-flt input{padding:5px 8px;border:1px solid #1B2A4A26;border-radius:8px;font-family:inherit;background:#fff}#lgpl .pk-card{border:1px solid #1B2A4A1a;border-radius:14px;padding:14px 16px;background:#fff}#lgpl .pk-t{font-family:'Oswald',sans-serif;font-size:18px;letter-spacing:.4px;margin:0 0 2px}#lgpl .pk-d{font-size:11.5px;color:#1B2A4A99;margin:0 0 10px;line-height:1.4}#lgpl .pk-r{display:grid;grid-template-columns:26px minmax(0,1.3fr) minmax(40px,1fr) 78px;gap:10px;align-items:center;padding:6px 0;border-top:1px solid #1B2A4A0d}#lgpl .pk-r:first-of-type{border-top:0}#lgpl .pk-rk{font-family:'Oswald',sans-serif;font-size:15px;color:#1B2A4A80;text-align:center}#lgpl .pk-r.top .pk-rk{color:#FF6B35;font-size:18px}#lgpl .pk-n{min-width:0}#lgpl .pk-n b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-n small{display:flex;align-items:center;gap:4px;font-size:10.5px;color:#1B2A4A99;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-n img{height:14px;width:14px;object-fit:contain;border-radius:3px;background:#fff}#lgpl .pk-bar{background:#1B2A4A10;border-radius:6px;height:9px;overflow:hidden}#lgpl .pk-bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#FF6B35,#ff9a6b)}#lgpl .pk-v{font-family:'Oswald',sans-serif;font-size:16px;text-align:right}#lgpl .pk-print{display:none}#lgpl .pk-more{margin-top:10px;font-size:12px;color:#2563EB;cursor:pointer;background:none;border:0;padding:0;font-family:inherit}@media (max-width:560px){#lgpl .pk-r{grid-template-columns:22px minmax(0,1fr) 64px}#lgpl .pk-bar{display:none}}@media print{#lgpl .pk-live{display:none!important}#lgpl .pk-print{display:block}#lgpl .pk-pp{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);gap:4mm 6mm;height:238mm;break-after:page;page-break-after:always}#lgpl .pk-pp:last-child{break-after:auto;page-break-after:auto}#lgpl .pk-pp1{height:218mm}#lgpl .pk-pc{border:1px solid #1B2A4A1f;border-radius:8px;padding:6px 8px;overflow:hidden;min-height:0}#lgpl .pk-pt{font-family:'Oswald',sans-serif;font-size:12px;letter-spacing:.3px;margin-bottom:3px;color:#1B2A4A}#lgpl .pk-pt small{font-family:'Inter',sans-serif;font-size:8px;color:#1B2A4A80;letter-spacing:0}#lgpl .pk-pr{display:grid;grid-template-columns:5mm 1fr auto;gap:5px;align-items:center;padding:1.2px 0;border-top:1px solid #1B2A4A0d}#lgpl .pk-pr:first-of-type{border-top:0}#lgpl .pk-prk{font-size:9px;color:#1B2A4A80;text-align:center}#lgpl .pk-pn{min-width:0;line-height:1.1}#lgpl .pk-pn b{display:block;font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-pn small{display:block;font-size:7.5px;color:#1B2A4A80;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-pr em{font-style:normal;font-family:'Oswald',sans-serif;font-size:11px;color:#1B2A4A}}</style>`;
+  const css = `<style>#lgpl .pk-g{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#1B2A4A99;margin:12px 0 6px}#lgpl .pk-b{display:flex;flex-wrap:wrap;gap:6px}#lgpl .pk-btn{border:1px solid #1B2A4A26;background:#fff;color:#1B2A4A;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}#lgpl .pk-btn:hover{border-color:#FF6B35}#lgpl .pk-btn.on{background:#1B2A4A;color:#fff;border-color:#1B2A4A}#lgpl .pk-btn.adv.on{background:#FF6B35;border-color:#FF6B35}#lgpl .pk-flt{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0;font-size:12px;color:#1B2A4A99}#lgpl .pk-flt select,#lgpl .pk-flt input{padding:5px 8px;border:1px solid #1B2A4A26;border-radius:8px;font-family:inherit;background:#fff}#lgpl .pk-card{border:1px solid #1B2A4A1a;border-radius:14px;padding:14px 16px;background:#fff}#lgpl .pk-t{font-family:'Oswald',sans-serif;font-size:18px;letter-spacing:.4px;margin:0 0 2px}#lgpl .pk-d{font-size:11.5px;color:#1B2A4A99;margin:0 0 10px;line-height:1.4}#lgpl .pk-r{display:grid;grid-template-columns:26px minmax(0,1.3fr) minmax(40px,1fr) 78px;gap:10px;align-items:center;padding:6px 0;border-top:1px solid #1B2A4A0d}#lgpl .pk-r:first-of-type{border-top:0}#lgpl .pk-rk{font-family:'Oswald',sans-serif;font-size:15px;color:#1B2A4A80;text-align:center}#lgpl .pk-r.top .pk-rk{color:#FF6B35;font-size:18px}#lgpl .pk-n{min-width:0}#lgpl .pk-n b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-n small{display:flex;align-items:center;gap:4px;font-size:10.5px;color:#1B2A4A99;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-n img{height:14px;width:14px;object-fit:contain;border-radius:3px;background:#fff}#lgpl .pk-bar{background:#1B2A4A10;border-radius:6px;height:9px;overflow:hidden}#lgpl .pk-bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#FF6B35,#ff9a6b)}#lgpl .pk-v{font-family:'Oswald',sans-serif;font-size:16px;text-align:right}#lgpl .pk-print{display:none}#lgpl .pk-more{margin-top:10px;font-size:12px;color:#2563EB;cursor:pointer;background:none;border:0;padding:0;font-family:inherit}@media (max-width:560px){#lgpl .pk-r{grid-template-columns:22px minmax(0,1fr) 64px}#lgpl .pk-bar{display:none}}@media print{${LGPL_PRINT}}</style><style media="not all" data-sheet>${LGPL_PRINT}</style>`;
   const script = `<script>(function(){var D=JSON.parse(document.getElementById('lgpl-data').textContent),sec=document.getElementById('lgpl'),cur=D.A[0],all=D.A.concat(D.C),shown=12;
 function fmt(v,m){if(v===null||v===undefined||v==='')return '–';return Number(v).toFixed(m.d).replace('.',',')+m.suf}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
