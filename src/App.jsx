@@ -1422,6 +1422,15 @@ const SCOUT_REPORT_CSS = `
     body.sec-page .card{break-before:page;page-break-before:always}
     body.sec-page .card:first-of-type{break-before:auto;page-break-before:auto}
     .stamp{margin-top:4mm}
+    /* Lecture plus dense à l'impression (analyse de mon équipe, comparatif) : moins de feuilles, aucun tableau coupé à droite */
+    body{font-size:11px}
+    .card{padding:10px 12px}.card h2{font-size:15px;margin-bottom:6px}
+    .hint,.more{font-size:9.5px;line-height:1.3;margin:2px 0 6px}
+    .bs-ins{margin:4px 0;padding-left:15px;font-size:10.5px;line-height:1.3}.bs-ins li{margin:2px 0}
+    .bs-table table{font-size:10px}.bs-table th,.bs-table td{padding:3px 5px}
+    .pm-five.bx{font-size:8.5px}.pm-five.bx th,.pm-five.bx td{padding:2px 2.5px}
+    .sub-title{margin:8px 0 4px}
+    .rank-row,.mini-row{padding-top:4px;padding-bottom:4px}
   }
 `;
 // Sections du récap vidéo : ordre par défaut ; chaque session peut en masquer (exportHidden) ou les réordonner (exportOrder).
