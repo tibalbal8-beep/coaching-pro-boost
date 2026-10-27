@@ -1192,7 +1192,23 @@ function buildMatchReportHtml(match, rows, scoreInfo, fourFactorsHtml) {
 // que buildMatchReportHtml, sans le tableau de score qui n'a pas de sens hors match réel).
 // Repère de version affiché en bas de l'export (à faire évoluer à chaque refonte du rapport).
 // Barre d'impression des exports HTML (masquée à l'impression) : A4, avec option « une section par page ».
-const PRINT_BAR_HTML = `<div class="print-bar"><label><input type="checkbox" onchange="document.body.classList.toggle('sec-page',this.checked)"> Une section par page</label><button onclick="window.print()">🖨️ Imprimer / PDF (A4)</button></div>`;
+const PRINT_BAR_HTML = `<div class="print-bar"><label><input type="checkbox" onchange="document.body.classList.toggle('sec-page',this.checked)"> Une section par page</label><button class="pb-sec" onclick="pbToggle()">⚙️ Organiser</button><button onclick="window.print()">🖨️ Imprimer / PDF (A4)</button></div><div id="pb-panel" class="print-panel" hidden><div class="pb-h"><b>Organiser le document</b><span>Coche ce qui s'imprime, change l'ordre avec les flèches, et « page » pour commencer une section sur une nouvelle feuille.</span></div><div id="pb-list"></div><div class="pb-f"><button class="pb-sec" onclick="pbAll()">Tout afficher</button><button class="pb-sec" onclick="pbReset()">Réinitialiser</button></div></div><script>document.addEventListener('DOMContentLoaded',function(){var KEY='cpbprint:'+document.title,P=document.querySelector('.page');if(!P)return;
+function secs(){return [].slice.call(P.children).filter(function(e){return e.classList.contains('card')})}
+secs().forEach(function(s,i){s.setAttribute('data-pid',i)});
+function title(s){var h=s.querySelector('h2');return (h?h.textContent:s.textContent).replace(/\\s+/g,' ').trim().slice(0,70)||'Section'}
+function save(){try{localStorage.setItem(KEY,JSON.stringify({o:secs().map(function(s){return s.getAttribute('data-pid')}),h:secs().filter(function(s){return s.style.display==='none'}).map(function(s){return s.getAttribute('data-pid')}),b:secs().filter(function(s){return s.getAttribute('data-pb')==='1'}).map(function(s){return s.getAttribute('data-pid')})}))}catch(e){}}
+function load(){try{var d=JSON.parse(localStorage.getItem(KEY)||'null');if(!d)return;var by={};secs().forEach(function(s){by[s.getAttribute('data-pid')]=s});var st=P.querySelector('.stamp');(d.o||[]).forEach(function(id){if(by[id])P.insertBefore(by[id],st)});(d.h||[]).forEach(function(id){if(by[id])by[id].style.display='none'});(d.b||[]).forEach(function(id){if(by[id])by[id].setAttribute('data-pb','1')})}catch(e){}}
+function render(){var box=document.getElementById('pb-list');if(!box)return;box.innerHTML='';secs().forEach(function(s,i,all){var r=document.createElement('div');r.className='pb-r';var hid=s.style.display==='none';
+var c=document.createElement('input');c.type='checkbox';c.checked=!hid;c.title='Afficher dans l\\'impression';c.onchange=function(){s.style.display=c.checked?'':'none';save();render()};
+var t=document.createElement('span');t.className='pb-t'+(hid?' pb-off':'');t.textContent=title(s);
+var up=document.createElement('button');up.textContent='↑';up.disabled=i===0;up.onclick=function(){P.insertBefore(s,all[i-1]);save();render()};
+var dn=document.createElement('button');dn.textContent='↓';dn.disabled=i===all.length-1;dn.onclick=function(){P.insertBefore(all[i+1],s);save();render()};
+var pb=document.createElement('label');pb.className='pb-pg';pb.title='Commencer cette section sur une nouvelle feuille';var pc=document.createElement('input');pc.type='checkbox';pc.checked=s.getAttribute('data-pb')==='1';pc.onchange=function(){if(pc.checked)s.setAttribute('data-pb','1');else s.removeAttribute('data-pb');save()};pb.appendChild(pc);pb.appendChild(document.createTextNode(' page'));
+r.appendChild(c);r.appendChild(t);r.appendChild(up);r.appendChild(dn);r.appendChild(pb);box.appendChild(r)})}
+window.pbToggle=function(){var p=document.getElementById('pb-panel');p.hidden=!p.hidden;if(!p.hidden)render()};
+window.pbReset=function(){try{localStorage.removeItem(KEY)}catch(e){}location.reload()};
+window.pbAll=function(){secs().forEach(function(s){s.style.display=''});save();render()};
+load();});</script>`;
 const VIDEO_SCOUT_REPORT_VERSION = "2026-10-07-a";
 // Feuille de style commune aux récaps (scouting vidéo, analyse de mon équipe).
 const SCOUT_REPORT_CSS = `
@@ -1376,6 +1392,15 @@ const SCOUT_REPORT_CSS = `
   @media (max-width:600px){.bs-kpis{grid-template-columns:repeat(2,1fr)}.bs-act{grid-template-columns:110px 1fr 46px 96px}}
   .brand{position:relative;display:inline-flex;align-items:center;gap:6px;font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:rgba(255,255,255,.75);margin-bottom:10px}
   .brand b{color:#FF6B35}
+  .print-bar .pb-sec{background:#1B2A4A;color:#fff}
+  .print-panel{position:fixed;top:64px;right:12px;z-index:49;width:340px;max-height:72vh;overflow:auto;background:#fff;border:1px solid #1B2A4A22;border-radius:12px;padding:12px;box-shadow:0 8px 28px rgba(27,42,74,.2);font-size:12px}
+  .print-panel[hidden]{display:none}
+  .pb-h b{display:block;font-size:13px;margin-bottom:3px}.pb-h span{display:block;color:#1B2A4A99;font-size:11px;line-height:1.35;margin-bottom:8px}
+  .pb-r{display:flex;align-items:center;gap:6px;padding:4px 0;border-top:1px solid #1B2A4A12}
+  .pb-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pb-t.pb-off{text-decoration:line-through;color:#1B2A4A66}
+  .pb-r button{border:1px solid #1B2A4A22;background:#fff;border-radius:6px;width:24px;height:24px;cursor:pointer;padding:0;font-size:12px}.pb-r button:disabled{opacity:.3;cursor:default}
+  .pb-pg{font-size:11px;color:#1B2A4A99;white-space:nowrap;cursor:pointer}
+  .pb-f{display:flex;gap:8px;margin-top:10px}.pb-f button{background:#1B2A4A;color:#fff;border:0;border-radius:8px;padding:6px 10px;font-weight:600;cursor:pointer;font-size:12px}
   .print-bar{position:fixed;top:12px;right:12px;z-index:50;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #1B2A4A22;border-radius:10px;padding:8px 12px;box-shadow:0 4px 16px rgba(27,42,74,.15);font-size:12px;color:#1B2A4A}
   .print-bar button{background:#FF6B35;color:#fff;border:0;border-radius:8px;padding:7px 14px;font-weight:700;font-size:13px;cursor:pointer}
   .print-bar label{display:flex;align-items:center;gap:5px;cursor:pointer}
@@ -1383,7 +1408,8 @@ const SCOUT_REPORT_CSS = `
   @media print{
     html,body{width:auto}
     body{background:#fff;padding:0;font-size:12px}
-    .print-bar{display:none!important}
+    .print-bar,.print-panel{display:none!important}
+    [data-pb="1"]{break-before:page;page-break-before:always}
     .page{display:block;max-width:none}
     .page>*{margin-bottom:6mm}
     .card{overflow:visible}
