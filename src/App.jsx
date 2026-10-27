@@ -1398,6 +1398,11 @@ const SCOUT_REPORT_CSS = `
     .pl-grid{grid-template-columns:repeat(2,1fr);gap:8px}
     .pl-card{padding:9px}
     .shot-chart{max-height:62mm}
+    /* Comparatif championnat : tableaux et classements compacts pour tenir sur peu de feuilles */
+    .lg th,.lg td{padding:3px 6px;font-size:9.5px;line-height:1.2}
+    .lg td .lg-t,.lg td:last-child{white-space:nowrap}.lg td:last-child{max-width:52mm;overflow:hidden;text-overflow:ellipsis}
+    .lg td small{font-size:8px}.lg-logo{height:13px;width:13px}.lg-logo.lg-big{height:22px;width:22px}
+    .lg-grid{gap:5px}.lg-card{padding:5px 8px}.lg-title{font-size:11px;margin-bottom:3px}.lg-row{font-size:9.5px;padding:1px 0}
     /* Joueurs : 4 fiches par feuille A4 (2 × 2), chacune avec sa zone de tir */
     .pl-pages .pl-page{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:5mm;height:252mm;break-after:page;page-break-after:always;margin-top:0}
     .pl-pages .pl-page:last-child{break-after:auto;page-break-after:auto;height:auto;grid-auto-rows:123.5mm}
@@ -3889,7 +3894,7 @@ function leaguePlayersHtml(a) {
   const advM = mk(ADV), claM = mk(CLA);
   const data = JSON.stringify({ P: rows.map(r => ({ n: r.name, t: r.team, l: r.logo, g: r.gp, m: r.min, ag: r.age, ...Object.fromEntries([...ADV, ...CLA].map(x => [x[1], r[x[1]]])) })), A: advM, C: claM }).replace(/</g, "\\u003c");
   const fullTable = (defs) => `<div class="bs-table"><table class="pm-five lg"><thead><tr><th>Joueur</th><th>Équipe</th><th class="num">MJ</th><th class="num">Min</th>${defs.map(c => `<th class="num">${esc(c.lab)}</th>`).join("")}</tr></thead><tbody>${[...rows].sort((x, y) => (y[defs[0].key] ?? -1e9) - (x[defs[0].key] ?? -1e9)).map(p => `<tr><td><b>${esc(p.name)}</b></td><td>${esc(p.team)}</td><td class="num">${p.gp}</td><td class="num">${f(p.min)}</td>${defs.map(c => `<td class="num">${f(p[c.key], c.d, c.suf)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
-  const css = `<style>#lgpl .pk-g{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#1B2A4A99;margin:12px 0 6px}#lgpl .pk-b{display:flex;flex-wrap:wrap;gap:6px}#lgpl .pk-btn{border:1px solid #1B2A4A26;background:#fff;color:#1B2A4A;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}#lgpl .pk-btn:hover{border-color:#FF6B35}#lgpl .pk-btn.on{background:#1B2A4A;color:#fff;border-color:#1B2A4A}#lgpl .pk-btn.adv.on{background:#FF6B35;border-color:#FF6B35}#lgpl .pk-flt{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0;font-size:12px;color:#1B2A4A99}#lgpl .pk-flt select,#lgpl .pk-flt input{padding:5px 8px;border:1px solid #1B2A4A26;border-radius:8px;font-family:inherit;background:#fff}#lgpl .pk-card{border:1px solid #1B2A4A1a;border-radius:14px;padding:14px 16px;background:#fff}#lgpl .pk-t{font-family:'Oswald',sans-serif;font-size:18px;letter-spacing:.4px;margin:0 0 2px}#lgpl .pk-d{font-size:11.5px;color:#1B2A4A99;margin:0 0 10px;line-height:1.4}#lgpl .pk-r{display:grid;grid-template-columns:26px minmax(0,1.3fr) minmax(40px,1fr) 78px;gap:10px;align-items:center;padding:6px 0;border-top:1px solid #1B2A4A0d}#lgpl .pk-r:first-of-type{border-top:0}#lgpl .pk-rk{font-family:'Oswald',sans-serif;font-size:15px;color:#1B2A4A80;text-align:center}#lgpl .pk-r.top .pk-rk{color:#FF6B35;font-size:18px}#lgpl .pk-n{min-width:0}#lgpl .pk-n b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-n small{display:flex;align-items:center;gap:4px;font-size:10.5px;color:#1B2A4A99;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-n img{height:14px;width:14px;object-fit:contain;border-radius:3px;background:#fff}#lgpl .pk-bar{background:#1B2A4A10;border-radius:6px;height:9px;overflow:hidden}#lgpl .pk-bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#FF6B35,#ff9a6b)}#lgpl .pk-v{font-family:'Oswald',sans-serif;font-size:16px;text-align:right}#lgpl .pk-more{margin-top:10px;font-size:12px;color:#2563EB;cursor:pointer;background:none;border:0;padding:0;font-family:inherit}@media (max-width:560px){#lgpl .pk-r{grid-template-columns:22px minmax(0,1fr) 64px}#lgpl .pk-bar{display:none}}</style>`;
+  const css = `<style>#lgpl .pk-g{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#1B2A4A99;margin:12px 0 6px}#lgpl .pk-b{display:flex;flex-wrap:wrap;gap:6px}#lgpl .pk-btn{border:1px solid #1B2A4A26;background:#fff;color:#1B2A4A;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}#lgpl .pk-btn:hover{border-color:#FF6B35}#lgpl .pk-btn.on{background:#1B2A4A;color:#fff;border-color:#1B2A4A}#lgpl .pk-btn.adv.on{background:#FF6B35;border-color:#FF6B35}#lgpl .pk-flt{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0;font-size:12px;color:#1B2A4A99}#lgpl .pk-flt select,#lgpl .pk-flt input{padding:5px 8px;border:1px solid #1B2A4A26;border-radius:8px;font-family:inherit;background:#fff}#lgpl .pk-card{border:1px solid #1B2A4A1a;border-radius:14px;padding:14px 16px;background:#fff}#lgpl .pk-t{font-family:'Oswald',sans-serif;font-size:18px;letter-spacing:.4px;margin:0 0 2px}#lgpl .pk-d{font-size:11.5px;color:#1B2A4A99;margin:0 0 10px;line-height:1.4}#lgpl .pk-r{display:grid;grid-template-columns:26px minmax(0,1.3fr) minmax(40px,1fr) 78px;gap:10px;align-items:center;padding:6px 0;border-top:1px solid #1B2A4A0d}#lgpl .pk-r:first-of-type{border-top:0}#lgpl .pk-rk{font-family:'Oswald',sans-serif;font-size:15px;color:#1B2A4A80;text-align:center}#lgpl .pk-r.top .pk-rk{color:#FF6B35;font-size:18px}#lgpl .pk-n{min-width:0}#lgpl .pk-n b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-n small{display:flex;align-items:center;gap:4px;font-size:10.5px;color:#1B2A4A99;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-n img{height:14px;width:14px;object-fit:contain;border-radius:3px;background:#fff}#lgpl .pk-bar{background:#1B2A4A10;border-radius:6px;height:9px;overflow:hidden}#lgpl .pk-bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#FF6B35,#ff9a6b)}#lgpl .pk-v{font-family:'Oswald',sans-serif;font-size:16px;text-align:right}#lgpl .pk-print{display:none}#lgpl .pk-more{margin-top:10px;font-size:12px;color:#2563EB;cursor:pointer;background:none;border:0;padding:0;font-family:inherit}@media (max-width:560px){#lgpl .pk-r{grid-template-columns:22px minmax(0,1fr) 64px}#lgpl .pk-bar{display:none}}@media print{#lgpl .pk-live{display:none!important}#lgpl .pk-print{display:block}#lgpl .pk-pp{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);gap:4mm 6mm;height:238mm;break-after:page;page-break-after:always}#lgpl .pk-pp:last-child{break-after:auto;page-break-after:auto}#lgpl .pk-pp1{height:218mm}#lgpl .pk-pc{border:1px solid #1B2A4A1f;border-radius:8px;padding:6px 8px;overflow:hidden;min-height:0}#lgpl .pk-pt{font-family:'Oswald',sans-serif;font-size:12px;letter-spacing:.3px;margin-bottom:3px;color:#1B2A4A}#lgpl .pk-pt small{font-family:'Inter',sans-serif;font-size:8px;color:#1B2A4A80;letter-spacing:0}#lgpl .pk-pr{display:grid;grid-template-columns:5mm 1fr auto;gap:5px;align-items:center;padding:1.2px 0;border-top:1px solid #1B2A4A0d}#lgpl .pk-pr:first-of-type{border-top:0}#lgpl .pk-prk{font-size:9px;color:#1B2A4A80;text-align:center}#lgpl .pk-pn{min-width:0;line-height:1.1}#lgpl .pk-pn b{display:block;font-size:9.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-pn small{display:block;font-size:7.5px;color:#1B2A4A80;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lgpl .pk-pr em{font-style:normal;font-family:'Oswald',sans-serif;font-size:11px;color:#1B2A4A}}</style>`;
   const script = `<script>(function(){var D=JSON.parse(document.getElementById('lgpl-data').textContent),sec=document.getElementById('lgpl'),cur=D.A[0],all=D.A.concat(D.C),shown=12;
 function fmt(v,m){if(v===null||v===undefined||v==='')return '–';return Number(v).toFixed(m.d).replace('.',',')+m.suf}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
@@ -3906,15 +3911,24 @@ var box=sec.querySelector('.pk-card');box.innerHTML=h;var mb=box.querySelector('
 sec.querySelectorAll('.pk-btn').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-k')===cur.key)})}
 sec.querySelectorAll('.pk-btn').forEach(function(b){b.onclick=function(){cur=all.filter(function(m){return m.key===b.getAttribute('data-k')})[0];shown=12;render()}});
 sec.querySelector('.pk-flt select').onchange=function(){shown=12;render()};sec.querySelector('.pk-flt input').oninput=function(){shown=12;render()};render();})();</script>`;
+  // Version imprimée : le classement de chaque statistique (10 premiers), 6 par feuille A4 ; joueurs avec assez de matchs et de minutes
+  const maxGp = Math.max(...rows.map(r => r.gp)), minGp = maxGp >= 6 ? 3 : maxGp >= 3 ? 2 : 1, minMin = 10;
+  const prCards = [...advM, ...claM.filter(m => m.key !== "min")].map(m => {
+    const L = rows.filter(r => r[m.key] !== null && r[m.key] !== undefined && r.gp >= minGp && r.min >= minMin).sort((x, y) => m.hi ? y[m.key] - x[m.key] : x[m.key] - y[m.key]).slice(0, 10);
+    if (!L.length) return "";
+    return `<div class="pk-pc"><div class="pk-pt">${esc(m.lab)}${m.hi ? "" : " <small>(le plus bas = le mieux)</small>"}</div>${L.map((p, i) => `<div class="pk-pr"><span class="pk-prk">${i + 1}</span><span class="pk-pn"><b>${esc(p.name)}</b><small>${esc(p.team)} · ${p.gp} m.</small></span><em>${f(p[m.key], m.d, m.suf)}</em></div>`).join("")}</div>`;
+  }).filter(Boolean);
+  const prPages = []; for (let i = 0; i < prCards.length; i += 6) prPages.push(prCards.slice(i, i + 6));
+  const printHtml = `<div class="pk-print"><p class="hint">Classements des joueurs (10 premiers) : au moins ${minGp} match${minGp > 1 ? "s" : ""} et ${minMin} minutes par match. Statistiques par match, d'après les matchs LiveStats.</p>${prPages.map((pg, k) => `<div class="pk-pp${k === 0 ? " pk-pp1" : ""}">${pg.join("")}</div>`).join("")}</div>`;
   const btns = (arr, cls) => arr.map(m => `<button type="button" class="pk-btn ${cls}${m.key === advM[0].key ? " on" : ""}" data-k="${m.key}">${esc(m.lab)}</button>`).join("");
   return `<section class="card" id="lgpl">${css}<h2><i></i>Joueurs du championnat (${P.length})</h2>
-    <p class="hint">Choisis une statistique : le classement s'affiche. Statistiques par match d'après les matchs LiveStats ajoutés ; les statistiques poussées sont calculées pendant la présence du joueur sur le terrain (jeu rapide = 8 premières secondes).</p>
-    <div class="pk-g">Statistiques poussées</div><div class="pk-b">${btns(advM, "adv")}</div>
+    <p class="hint pk-live">Choisis une statistique : le classement s'affiche. Statistiques par match d'après les matchs LiveStats ajoutés ; les statistiques poussées sont calculées pendant la présence du joueur sur le terrain (jeu rapide = 8 premières secondes).</p>
+    <div class="pk-live"><div class="pk-g">Statistiques poussées</div><div class="pk-b">${btns(advM, "adv")}</div>
     <div class="pk-g">Statistiques classiques</div><div class="pk-b">${btns(claM, "cla")}</div>
     <div class="pk-flt"><label>Équipe <select><option value="">Toutes</option>${teams.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("")}</select></label><label>Matchs minimum <input type="number" min="0" value="0" style="width:60px" /></label></div>
     <div class="pk-card"></div>
     <details style="margin-top:14px"><summary style="cursor:pointer;font-size:12px;font-weight:600;color:#1B2A4A99">Voir les tableaux complets</summary>
-      <div class="sub-title">Statistiques poussées</div>${fullTable(advM)}<div class="sub-title">Statistiques classiques</div>${fullTable(claM)}</details>
+      <div class="sub-title">Statistiques poussées</div>${fullTable(advM)}<div class="sub-title">Statistiques classiques</div>${fullTable(claM)}</details></div>${printHtml}
     <script type="application/json" id="lgpl-data">${data}</script>${script}</section>`;
 }
 function leagueHtml(a) {
@@ -3970,7 +3984,7 @@ function leagueHtml(a) {
   }
   return out + leaguePlayersHtml(a);
 }
-function buildTeamReportHtml(a, logo = null) {
+function buildTeamReportHtml(a, logo = null, opts = {}) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const f = (x, d = 1) => x === null || x === undefined ? "—" : x.toFixed(d).replace(".", ",");
   const sg = (x, d = 1) => x === null || x === undefined ? "—" : (x > 0 ? "+" : "") + f(x, d);
@@ -4087,6 +4101,7 @@ function buildTeamReportHtml(a, logo = null) {
 </style>
 </head>
 <body>
+  ${opts.printBar ? PRINT_BAR_HTML : ""}
   <div class="page">
     <header class="hero">
       ${logo ? `<img src="${logo}" alt="Logo" class="hero-logo" />` : ""}
@@ -11029,7 +11044,7 @@ function CoachingProBoost({ session }) {
     }
     else if (p.kind === "myteam") {
       try {
-        const html = buildTeamReportHtml(p.analysis, logo);
+        const html = buildTeamReportHtml(p.analysis, logo, { printBar: true });
         downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `analyse-${slugifyForFile(p.analysis.name)}.html`);
         toast?.("✓ Analyse exportée");
       } catch (e) {
