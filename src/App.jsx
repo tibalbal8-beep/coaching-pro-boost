@@ -1398,6 +1398,22 @@ const SCOUT_REPORT_CSS = `
     .pl-grid{grid-template-columns:repeat(2,1fr);gap:8px}
     .pl-card{padding:9px}
     .shot-chart{max-height:62mm}
+    /* Joueurs : 4 fiches par feuille A4 (2 × 2), chacune avec sa zone de tir */
+    .pl-pages .pl-page{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:5mm;height:252mm;break-after:page;page-break-after:always;margin-top:0}
+    .pl-pages .pl-page:last-child{break-after:auto;page-break-after:auto;height:auto;grid-auto-rows:123.5mm}
+    .pl-pages .pl-page.pl-newpage{break-before:page;page-break-before:always}
+    .pl-pages .pl-page.pl-first{height:230mm}
+    .pl-page .pl-card{padding:5px 7px;font-size:10px;overflow:hidden;min-height:0}
+    .pl-page .pl-head{margin-bottom:3px;gap:7px}
+    .pl-page .pl-photo{width:34px;height:34px}
+    .pl-page .pl-name{font-size:12px}.pl-page .pl-sub{font-size:9.5px}
+    .pl-page .pl-kpis{margin-bottom:3px;gap:3px}.pl-page .pl-k{padding:3px 1px}.pl-page .pl-k b{font-size:12px}.pl-page .pl-k span{font-size:8px}
+    .pl-page .pl-shots{font-size:10px;margin-bottom:2px}
+    .pl-page .pl-sp{margin:3px 0}.pl-page .pl-splab{font-size:9.5px;line-height:1.25}
+    .pl-page .pl-chart{margin:2px auto;max-width:50mm}.pl-page .shot-chart{max-height:none}.pl-page .pl-chartcap{font-size:8.5px;margin-top:1px;text-align:center}
+    .pl-page .pl-co,.pl-page .pl-man{font-size:9.5px;padding:3px 6px;margin:3px 0;line-height:1.25}.pl-page .pl-co b,.pl-page .pl-man b{font-size:9.5px}
+    .pl-page .pl-ins{font-size:9.5px;margin:2px 0;padding-left:13px;line-height:1.25}.pl-page .pl-ins li:nth-child(n+2){display:none}.pl-page .pl-card.pl-hasman .pl-ins,.pl-page .pl-card.pl-hasman .pl-how{display:none}.pl-page .pl-how{display:none}.pl-page .pl-co span,.pl-page .pl-man span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.pl-page .pl-splab{font-size:9px}
+    .pl-page .pl-how{font-size:9.5px;padding:3px 6px;margin-top:3px}.pl-page .pl-lowtag{font-size:9px;padding:2px 6px;margin:2px 0}
     body.sec-page .card{break-before:page;page-break-before:always}
     body.sec-page .card:first-of-type{break-before:auto;page-break-before:auto}
     .stamp{margin-top:4mm}
@@ -2062,7 +2078,7 @@ function playersReportHtml(pl, opponent) {
     const shot = (a, b) => b ? `${f1(a)}/${f1(b)} (${pc(a / b)})` : "—";
     const hasStats = p.gp !== null && p.gp !== undefined && p.pts !== null && p.pts !== undefined;
     const sub = hasStats ? `${p.gp} match${p.gp > 1 ? "s" : ""} · ${mmss(p.min)} min / match${lowS ? " · échantillon faible" : rawLow ? " · petit échantillon pris en compte" : ""}` : "";
-    return `<div class="pl-card">
+    return `<div class="pl-card${m.strengths || m.weaknesses || m.instruction ? " pl-hasman" : ""}">
       <div class="pl-head">${avatar}<div><div class="pl-name">${p.num !== null && p.num !== undefined ? `<span class="pl-num">#${esc(p.num)}</span> ` : ""}${esc(p.name)}${m.role ? ` <span class="pl-role">${esc(m.role)}</span>` : ""}</div>
       ${(() => { const bits = [m.hand === "D" ? "Droitier" : m.hand === "G" ? "Gaucher" : m.hand === "A" ? "Ambidextre" : "", m.height ? esc(String(m.height).replace(/^(\d)[.,](\d{2})$/, "$1m$2").replace(/^(\d{3})$/, "$1 cm")) : "", m.age ? `${esc(m.age)} ans` : ""].filter(Boolean); return bits.length ? `<div class="pl-sub"><b>${bits.join(" · ")}</b></div>` : ""; })()}
       ${sub ? `<div class="pl-sub">${sub}</div>` : ""}</div></div>
@@ -2087,7 +2103,7 @@ function playersReportHtml(pl, opponent) {
   return `<section class="card"><h2><i></i>Les joueurs${opponent ? " de " + esc(opponent) : ""}</h2>
     <p class="muted">Moyennes par match issues des fichiers importés. Le profil de tir est mesuré quand un XML de tirs est importé, sinon estimé d'après les types d'action. Les constats automatiques ne sont donnés qu'à partir de 3 matchs et 8 minutes de moyenne (les autres joueurs figurent avec leurs stats, marquées « échantillon faible », sauf si tu les valides toi-même).</p>
     ${sum}
-    <div class="pl-grid">${main.map(card).join("")}</div>
+    <div class="pl-pages">${(() => { const pg = []; for (let i = 0; i < main.length; i += 4) pg.push(main.slice(i, i + 4)); return pg.map((g, k) => `<div class="pl-grid pl-page${k === 0 ? (sum ? " pl-newpage" : " pl-first") : ""}">${g.map(card).join("")}</div>`).join(""); })()}</div>
     ${low.length ? `<p class="muted pl-low"><b>Échantillon trop faible pour conclure :</b> ${low.map(p => `${p.num !== null && p.num !== undefined ? "#" + esc(p.num) + " " : ""}${esc(p.name)}${p.gp ? ` (${p.gp} match${p.gp > 1 ? "s" : ""}, ${mmss(p.min)} min)` : ""}`).join(" · ")}.</p>` : ""}
   </section>`;
 }
