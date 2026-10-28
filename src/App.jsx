@@ -1478,12 +1478,12 @@ const SCOUT_REPORT_CSS = `
     .print-bar,.print-panel,.pb-sp,.pb-gl{display:none!important}
   }
 `;
-// Situations retenues dans le Scouting vidéo : une entrée ET une finalité (intention), ou une transition pick / post up / passe.
+// Situations retenues dans le Scouting vidéo : une entrée ET une finalité (intention), ou une transition pick / post up / passe / drive.
 // Les attaques à un seul élément (ex. « Jeu rapide », « TOP51 ») sont masquées par défaut ; un regroupement ou un nom donnés à la main les gardent.
 const vsAttackComplete = (a) => {
   if (a.manualGroup || a.name) return true;
   const L = (a.labels || []).filter(l => typeof l !== "string"), g = (re) => L.some(l => re.test(l.group || ""));
-  return (g(/entr[ée]e/i) && g(/intention/i)) || L.some(l => /^transi(tion)?\s*(pick|post\s*up|passe)\b/i.test(l.text || ""));
+  return (g(/entr[ée]e/i) && g(/intention/i)) || L.some(l => /^transi(tion)?\s*(pick|post\s*up|passe|drive)\b/i.test(l.text || ""));
 };
 const vsFilterAttacks = (session) => session.showIncomplete ? (session.attacks || []) : (session.attacks || []).filter(vsAttackComplete);
 // Sections du récap vidéo : ordre par défaut ; chaque session peut en masquer (exportHidden) ou les réordonner (exportOrder).
@@ -14837,7 +14837,7 @@ function CoachingProBoost({ session }) {
                     <>
                     <label className="mt-2 flex items-start gap-2 text-xs text-[#1B2A4A]/70 cursor-pointer">
                       <input type="checkbox" className="mt-0.5" checked={!activeVs.showIncomplete} onChange={e => updateActiveVs({ showIncomplete: !e.target.checked })} />
-                      <span><b>Masquer les situations incomplètes</b> : il faut une entrée et une finalité (intention), sauf les transitions pick, post up ou passe. Décoche pour tout voir{hiddenIncomplete > 0 && !activeVs.showIncomplete ? ` (${hiddenIncomplete} masquée${hiddenIncomplete > 1 ? "s" : ""})` : ""}.</span>
+                      <span><b>Masquer les situations incomplètes</b> : il faut une entrée et une finalité (intention), sauf les transitions pick, post up, passe ou drive. Décoche pour tout voir{hiddenIncomplete > 0 && !activeVs.showIncomplete ? ` (${hiddenIncomplete} masquée${hiddenIncomplete > 1 ? "s" : ""})` : ""}.</span>
                     </label>
                     <div className="mt-2 mb-1">
                       <input value={vsAtkQuery} onChange={e => setVsAtkQuery(e.target.value)}
