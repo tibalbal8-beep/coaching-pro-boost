@@ -11582,7 +11582,7 @@ function CoachingProBoost({ session }) {
   // (choisir des temps forts pour filtrer une liste existante).
   const [vsAnnounceName, setVsAnnounceName] = useState("");
   // Tag par entrées (iPad) : entrées tapées dans l'ordre, play choisi, nom du nouveau play, entrée ajoutée à la main
-  const [vsEntrySel, setVsEntrySel] = useState([]), [vsEntryPlayId, setVsEntryPlayId] = useState(null), [vsEntryNew, setVsEntryNew] = useState(""), [vsEntryCustom, setVsEntryCustom] = useState(""), [vsEntryGroupsOpen, setVsEntryGroupsOpen] = useState(false);
+  const [vsEntrySel, setVsEntrySel] = useState([]), [vsEntryPlayId, setVsEntryPlayId] = useState(null), [vsEntryNew, setVsEntryNew] = useState(""), [vsEntryCustom, setVsEntryCustom] = useState(""), [vsEntryGroupsOpen, setVsEntryGroupsOpen] = useState(false), [vsEntryCat, setVsEntryCat] = useState(null);
   const [vsAnnounceTf, setVsAnnounceTf] = useState([]);
   const [vsAnnounceType, setVsAnnounceType] = useState("");
   // Système remonté en haut de la liste (et surligné) après un clic sur une suggestion, pour
@@ -14554,11 +14554,11 @@ function CoachingProBoost({ session }) {
                   const selKeys = vsEntrySel.map(norm), selSet = new Set(selKeys);
                   const toggle = (t) => setVsEntrySel(arr => arr.some(x => norm(x) === norm(t)) ? arr.filter(x => norm(x) !== norm(t)) : [...arr, asEntry(t)]);
                   const pretty = (t) => String(t).replace(/^e_/i, "");
-                  const sugg = selKeys.length ? teamPlays.map(p => {
-                    const pe = playEntries(p).map(norm), inter = pe.filter(k => selSet.has(k)).length;
-                    const exact = inter > 0 && inter === pe.length && inter === selKeys.length;
-                    return { p, inter, nPe: pe.length, exact, j: inter / Math.max(1, new Set([...pe, ...selKeys]).size) };
-                  }).filter(x => x.inter > 0).sort((a, b) => (b.exact - a.exact) || (b.j - a.j) || (playedOf(activeVs.tally?.[b.p.id]) - playedOf(activeVs.tally?.[a.p.id]))).slice(0, 6) : [];
+                  // Le play doit COMMENCER par les entrées touchées, dans l'ordre : plus j'ajoute d'entrées, plus la liste se réduit.
+                  const byNum = (x, y) => { const nx = parseInt(String(x.titre).replace(/\D+/g, ""), 10), ny = parseInt(String(y.titre).replace(/\D+/g, ""), 10); return (isNaN(nx) ? 1e9 : nx) - (isNaN(ny) ? 1e9 : ny) || String(x.titre).localeCompare(String(y.titre), "fr"); };
+                  const withSeq = teamPlays.map(p => ({ p, seq: playEntries(p).map(norm) })).filter(x => x.seq.length > 0);
+                  const sugg = selKeys.length ? withSeq.filter(x => selKeys.every((k, i) => x.seq[i] === k)).map(x => ({ p: x.p, nPe: x.seq.length, exact: x.seq.length === selKeys.length, inter: selKeys.length })).sort((a, b) => (b.exact - a.exact) || byNum(a.p, b.p)) : [];
+                  const suggOther = selKeys.length ? withSeq.filter(x => !sugg.some(y => y.p.id === x.p.id) && selKeys.every(k => x.seq.includes(k))).map(x => ({ p: x.p, nPe: x.seq.length, exact: false, inter: selKeys.length })).sort((a, b) => byNum(a.p, b.p)) : [];
                   const nextNum = teamPlays.reduce((m, p) => { const x = /^play\s*(\d+)$/i.exec(String(p.titre || "").trim()); return x ? Math.max(m, +x[1]) : m; }, 0) + 1;
                   const defaultName = `Play ${nextNum}`;
                   const chosen = vsEntryPlayId ? teamPlays.find(p => p.id === vsEntryPlayId) : null;
@@ -14571,13 +14571,7 @@ function CoachingProBoost({ session }) {
                     const np = makePlay(name, playTypes.includes("Système offensif") ? "Système offensif" : playTypes[0], vsEntrySel.map(asEntry));
                     savePlays([...plays, np]); pick(np); setVsEntryNew(""); toast?.(`✓ ${name} créé (${vsEntrySel.map(pretty).join(" + ")})`);
                   };
-                  const pickCategory = (kind) => {
-                    const existing = teamPlays.find(p => p.titre?.trim().toLowerCase() === kind.toLowerCase());
-                    if (existing) { pick(existing); return; }
-                    const np = makePlay(kind, playTypes.includes(kind) ? kind : playTypes[0], []);
-                    savePlays([...plays, np]); pick(np);
-                  };
-                  const done = () => { setVsEntrySel([]); setVsEntryPlayId(null); setVsEntryNew(""); };
+                  const done = () => { setVsEntrySel([]); setVsEntryPlayId(null); setVsEntryNew(""); setVsEntryCat(null); };
                   const outcome = (v, ctx) => { const id = vsEntryPlayId; done(); if (ctx) requestVsMissContext(id, v); else recordVsOutcome(id, v); };
                   const groups = (() => { const m = new Map(); teamPlays.forEach(p => { const f = playEntries(p)[0]; const k = f ? norm(f) : "—"; if (!m.has(k)) m.set(k, { label: f ? pretty(f) : "Sans entrée", plays: [] }); m.get(k).plays.push(p); }); return [...m.values()].sort((a, b) => b.plays.length - a.plays.length); })();
                   return (
@@ -14598,13 +14592,24 @@ function CoachingProBoost({ session }) {
                       )}
                       {!chosen && (
                         <>
-                          {sugg.length > 0 && (
+                          {vsEntrySel.length > 0 && (
                             <div className="mb-2">
-                              <div className="text-[11px] text-[#1B2A4A]/50 mb-1">{sugg[0].exact ? "Play existant :" : "Plays qui ressemblent :"}</div>
+                              <div className="text-[11px] text-[#1B2A4A]/50 mb-1">{sugg.length ? `Plays qui commencent par « ${vsEntrySel.map(pretty).join(" → ")} » (${sugg.length}) :` : `Aucun play ne commence par « ${vsEntrySel.map(pretty).join(" → ")} ».`}</div>
                               <div className="flex flex-wrap gap-2">{sugg.map(x => (
-                                <button key={x.p.id} onClick={() => pick(x.p)} className={`px-3 py-2.5 rounded-lg text-sm font-semibold border-2 ${x.exact ? "border-green-500 bg-green-50 text-green-800" : "border-[#1B2A4A]/25 text-[#1B2A4A]"}`}>
-                                  {x.p.titre}<span className="text-[10px] font-normal text-[#1B2A4A]/50 ml-1">{x.inter}/{x.nPe} entrée{x.nPe > 1 ? "s" : ""}{playedOf(activeVs.tally?.[x.p.id]) ? ` · ×${playedOf(activeVs.tally?.[x.p.id])}` : ""}</span>
+                                <button key={x.p.id} onClick={() => pick(x.p)} className={`px-3 py-2 rounded-lg text-left border-2 ${x.exact ? "border-green-500 bg-green-50 text-green-800" : "border-[#1B2A4A]/25 text-[#1B2A4A] bg-white"}`}>
+                                  <div className="text-sm font-semibold">{x.p.titre}{playedOf(activeVs.tally?.[x.p.id]) ? <span className="text-[10px] font-normal text-[#1B2A4A]/50"> · ×{playedOf(activeVs.tally?.[x.p.id])}</span> : null}</div>
+                                  <div className="text-[10px] text-[#1B2A4A]/60">{playEntries(x.p).map(pretty).join(" → ")}</div>
                                 </button>))}</div>
+                              {suggOther.length > 0 && (
+                                <div className="mt-2">
+                                  <div className="text-[11px] text-[#1B2A4A]/40 mb-1">Mêmes entrées, dans un autre ordre :</div>
+                                  <div className="flex flex-wrap gap-2">{suggOther.map(x => (
+                                    <button key={x.p.id} onClick={() => pick(x.p)} className="px-3 py-2 rounded-lg text-left border border-dashed border-[#1B2A4A]/30 text-[#1B2A4A] bg-white">
+                                      <div className="text-sm font-semibold">{x.p.titre}</div>
+                                      <div className="text-[10px] text-[#1B2A4A]/60">{playEntries(x.p).map(pretty).join(" → ")}</div>
+                                    </button>))}</div>
+                                </div>
+                              )}
                             </div>
                           )}
                           {vsEntrySel.length > 0 && !(sugg[0] && sugg[0].exact) && (
@@ -14615,9 +14620,27 @@ function CoachingProBoost({ session }) {
                           )}
                           <div className="flex flex-wrap gap-2">
                             {["SLOB", "BLOB", "Zone"].map(k => (
-                              <button key={k} onClick={() => pickCategory(k)} className="px-4 py-2.5 rounded-lg text-sm font-semibold border border-[#1B2A4A]/25 text-[#1B2A4A] bg-[#F1ECE0] hover:border-[#1B2A4A]">{k}</button>
+                              <button key={k} onClick={() => setVsEntryCat(c => c === k ? null : k)} className={`px-4 py-2.5 rounded-lg text-sm font-semibold border ${vsEntryCat === k ? "" : "border-[#1B2A4A]/25 text-[#1B2A4A] bg-[#F1ECE0] hover:border-[#1B2A4A]"}`}
+                                style={vsEntryCat === k ? { backgroundColor: "#1B2A4A", color: "#fff", borderColor: "#1B2A4A" } : undefined}>{k}</button>
                             ))}
                           </div>
+                          {vsEntryCat && (() => {
+                            const kind = vsEntryCat, re = new RegExp("^" + kind + "\\s*(\\d+)$", "i");
+                            const list = teamPlays.filter(p => re.test(String(p.titre || "").trim())).sort(byNum);
+                            const nextK = list.reduce((m, p) => Math.max(m, +re.exec(String(p.titre).trim())[1]), 0) + 1;
+                            return (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {list.map(p => (
+                                  <button key={p.id} onClick={() => { pick(p); setVsEntryCat(null); }} className="px-3 py-2 rounded-lg text-left border-2 border-[#1B2A4A]/25 text-[#1B2A4A] bg-white">
+                                    <div className="text-sm font-semibold">{p.titre}{playedOf(activeVs.tally?.[p.id]) ? <span className="text-[10px] font-normal text-[#1B2A4A]/50"> · ×{playedOf(activeVs.tally?.[p.id])}</span> : null}</div>
+                                    {playEntries(p).length > 0 && <div className="text-[10px] text-[#1B2A4A]/60">{playEntries(p).map(pretty).join(" → ")}</div>}
+                                  </button>
+                                ))}
+                                <button onClick={() => { const np = makePlay(`${kind} ${nextK}`, playTypes.includes(kind) ? kind : playTypes[0], vsEntrySel.map(asEntry)); savePlays([...plays, np]); pick(np); setVsEntryCat(null); toast?.(`✓ ${np.titre} créé`); }}
+                                  className="px-3 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "#FF6B35" }}>+ Nouveau {kind} {nextK}</button>
+                              </div>
+                            );
+                          })()}
                         </>
                       )}
                       {chosen && (
