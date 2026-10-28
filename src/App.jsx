@@ -14548,6 +14548,8 @@ function CoachingProBoost({ session }) {
                   (activeVs.attacks || []).forEach(a => (a.labels || []).forEach(l => { if (typeof l !== "string" && /entr[ée]e/i.test(l.group || "")) addE(l.text); }));
                   teamPlays.forEach(p => (p.tags || []).forEach(t => { if (/^e_/i.test(t)) addE(t); }));
                   vsEntrySel.forEach(addE);
+                  const cmpAlpha = (a, b) => String(a).replace(/^e_/i, "").localeCompare(String(b).replace(/^e_/i, ""), "fr", { sensitivity: "base", numeric: true });
+                  entryList.sort(cmpAlpha);
                   // Finalités du play (intentions Sportscode : TOP52, SIDE51, STEPUP, POSTUP…), facultatives, plusieurs possibles
                   const DEFAULT_FINS = ["SIDE40", "SIDE41", "SIDE42", "SIDE50", "SIDE51", "SIDE52", "TOP41", "TOP42", "TOP51", "TOP52", "TOPSPAIN", "SIDESPAIN", "STEPUP42", "STEPUP43", "STEPUP52", "STEPUP53", "POSTUP", "DRIVE", "ELBOWIN", "ELBOWOUT"];
                   const finSeen = new Set(), finList = [];
@@ -14556,6 +14558,7 @@ function CoachingProBoost({ session }) {
                   (activeVs.attacks || []).forEach(a => (a.labels || []).forEach(l => { if (typeof l !== "string" && /intention/i.test(l.group || "")) addF(l.text); }));
                   teamPlays.forEach(p => (p.finalites || []).forEach(addF));
                   vsFinNew.forEach(addF);
+                  finList.sort(cmpAlpha);
                   const entryKeys = new Set(entryList.map(norm));
                   const isEntryTag = (t) => /^e_/i.test(t) || entryKeys.has(norm(t));
                   const playEntries = (p) => (p.tags || []).filter(isEntryTag);
