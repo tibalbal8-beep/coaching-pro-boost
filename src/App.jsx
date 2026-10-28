@@ -11582,7 +11582,7 @@ function CoachingProBoost({ session }) {
   // (choisir des temps forts pour filtrer une liste existante).
   const [vsAnnounceName, setVsAnnounceName] = useState("");
   // Tag par entrées (iPad) : entrées tapées dans l'ordre, play choisi, nom du nouveau play, entrée ajoutée à la main
-  const [vsEntrySel, setVsEntrySel] = useState([]), [vsEntryPlayId, setVsEntryPlayId] = useState(null), [vsEntryNew, setVsEntryNew] = useState(""), [vsEntryCustom, setVsEntryCustom] = useState(""), [vsEntryGroupsOpen, setVsEntryGroupsOpen] = useState(false), [vsEntryCat, setVsEntryCat] = useState(null);
+  const [vsEntrySel, setVsEntrySel] = useState([]), [vsEntryPlayId, setVsEntryPlayId] = useState(null), [vsEntryNew, setVsEntryNew] = useState(""), [vsEntryCustom, setVsEntryCustom] = useState(""), [vsEntryGroupsOpen, setVsEntryGroupsOpen] = useState(false), [vsEntryCat, setVsEntryCat] = useState(null), [vsFinNew, setVsFinNew] = useState([]);
   const [vsAnnounceTf, setVsAnnounceTf] = useState([]);
   const [vsAnnounceType, setVsAnnounceType] = useState("");
   // Système remonté en haut de la liste (et surligné) après un clic sur une suggestion, pour
@@ -14548,6 +14548,14 @@ function CoachingProBoost({ session }) {
                   (activeVs.attacks || []).forEach(a => (a.labels || []).forEach(l => { if (typeof l !== "string" && /entr[ée]e/i.test(l.group || "")) addE(l.text); }));
                   teamPlays.forEach(p => (p.tags || []).forEach(t => { if (/^e_/i.test(t)) addE(t); }));
                   vsEntrySel.forEach(addE);
+                  // Finalités du play (intentions Sportscode : TOP52, SIDE51, STEPUP, POSTUP…), facultatives, plusieurs possibles
+                  const DEFAULT_FINS = ["SIDE40", "SIDE41", "SIDE42", "SIDE50", "SIDE51", "SIDE52", "TOP41", "TOP42", "TOP51", "TOP52", "TOPSPAIN", "SIDESPAIN", "STEPUP42", "STEPUP43", "STEPUP52", "STEPUP53", "POSTUP", "DRIVE", "ELBOWIN", "ELBOWOUT"];
+                  const finSeen = new Set(), finList = [];
+                  const addF = (t) => { const k = String(t || "").trim().toLowerCase(); if (!k || finSeen.has(k)) return; finSeen.add(k); finList.push(String(t).trim()); };
+                  DEFAULT_FINS.forEach(addF);
+                  (activeVs.attacks || []).forEach(a => (a.labels || []).forEach(l => { if (typeof l !== "string" && /intention/i.test(l.group || "")) addF(l.text); }));
+                  teamPlays.forEach(p => (p.finalites || []).forEach(addF));
+                  vsFinNew.forEach(addF);
                   const entryKeys = new Set(entryList.map(norm));
                   const isEntryTag = (t) => /^e_/i.test(t) || entryKeys.has(norm(t));
                   const playEntries = (p) => (p.tags || []).filter(isEntryTag);
@@ -14562,16 +14570,19 @@ function CoachingProBoost({ session }) {
                   const nextNum = teamPlays.reduce((m, p) => { const x = /^play\s*(\d+)$/i.exec(String(p.titre || "").trim()); return x ? Math.max(m, +x[1]) : m; }, 0) + 1;
                   const defaultName = `Play ${nextNum}`;
                   const chosen = vsEntryPlayId ? teamPlays.find(p => p.id === vsEntryPlayId) : null;
-                  const makePlay = (titre, type, tags) => ({ id: uid(), titre, type, scoutedTeam: activeVs.opponent, tempsFort: [], intention: "", description: "", notes: "", tags, images: [], schemas: [], createdAt: new Date().toISOString() });
+                  const makePlay = (titre, type, tags, finalites = []) => ({ id: uid(), titre, type, scoutedTeam: activeVs.opponent, tempsFort: [], intention: "", description: "", notes: "", tags, finalites, images: [], schemas: [], createdAt: new Date().toISOString() });
+                  const toggleFin = (t) => setVsFinNew(arr => arr.some(x => x.toLowerCase() === t.toLowerCase()) ? arr.filter(x => x.toLowerCase() !== t.toLowerCase()) : [...arr, t]);
+                  const toggleFinOf = (p, t) => { const cur = p.finalites || [], has = cur.some(x => x.toLowerCase() === t.toLowerCase()); savePlays(plays.map(x => x.id === p.id ? { ...x, finalites: has ? cur.filter(y => y.toLowerCase() !== t.toLowerCase()) : [...cur, t] } : x)); };
+                  const finChips = (selected, onToggle) => (<div className="flex flex-wrap gap-1.5">{finList.map(t => { const on = selected.some(x => x.toLowerCase() === t.toLowerCase()); return (<button key={t} onClick={() => onToggle(t)} className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${on ? "" : "border-[#1B2A4A]/25 text-[#1B2A4A] bg-[#E6F6DD] hover:border-[#1B2A4A]"}`} style={on ? { backgroundColor: "#16a34a", color: "#fff", borderColor: "#16a34a" } : undefined}>{t}</button>); })}</div>);
                   const pick = (p) => { setVsEntryPlayId(p.id); setVsHighlightPlayId(p.id); };
                   const createFromEntries = () => {
                     const name = (vsEntryNew.trim() || defaultName);
                     const existing = teamPlays.find(p => p.titre?.trim().toLowerCase() === name.toLowerCase());
                     if (existing) { pick(existing); toast?.(`✓ ${existing.titre} existe déjà — choisi`); return; }
-                    const np = makePlay(name, playTypes.includes("Système offensif") ? "Système offensif" : playTypes[0], vsEntrySel.map(asEntry));
+                    const np = makePlay(name, playTypes.includes("Système offensif") ? "Système offensif" : playTypes[0], vsEntrySel.map(asEntry), vsFinNew);
                     savePlays([...plays, np]); pick(np); setVsEntryNew(""); toast?.(`✓ ${name} créé (${vsEntrySel.map(pretty).join(" + ")})`);
                   };
-                  const done = () => { setVsEntrySel([]); setVsEntryPlayId(null); setVsEntryNew(""); setVsEntryCat(null); };
+                  const done = () => { setVsEntrySel([]); setVsEntryPlayId(null); setVsEntryNew(""); setVsEntryCat(null); setVsFinNew([]); };
                   const outcome = (v, ctx) => { const id = vsEntryPlayId; done(); if (ctx) requestVsMissContext(id, v); else recordVsOutcome(id, v); };
                   const groups = (() => { const m = new Map(); teamPlays.forEach(p => { const f = playEntries(p)[0]; const k = f ? norm(f) : "—"; if (!m.has(k)) m.set(k, { label: f ? pretty(f) : "Sans entrée", plays: [] }); m.get(k).plays.push(p); }); return [...m.values()].sort((a, b) => b.plays.length - a.plays.length); })();
                   return (
@@ -14613,6 +14624,12 @@ function CoachingProBoost({ session }) {
                             </div>
                           )}
                           {vsEntrySel.length > 0 && !(sugg[0] && sugg[0].exact) && (
+                            <div className="mb-2">
+                              <div className="text-[11px] text-[#1B2A4A]/50 mb-1">Finalités du nouveau play (facultatif) :</div>
+                              {finChips(vsFinNew, toggleFin)}
+                            </div>
+                          )}
+                          {vsEntrySel.length > 0 && !(sugg[0] && sugg[0].exact) && (
                             <div className="flex flex-wrap gap-2 items-center mb-2">
                               <input value={vsEntryNew} onChange={e => setVsEntryNew(e.target.value)} placeholder={defaultName} className="w-40 border border-[#1B2A4A]/20 rounded-lg px-3 py-2.5 text-sm bg-white" />
                               <button onClick={createFromEntries} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "#FF6B35" }}>Nouveau play « {vsEntryNew.trim() || defaultName} »</button>
@@ -14636,7 +14653,7 @@ function CoachingProBoost({ session }) {
                                     {playEntries(p).length > 0 && <div className="text-[10px] text-[#1B2A4A]/60">{playEntries(p).map(pretty).join(" → ")}</div>}
                                   </button>
                                 ))}
-                                <button onClick={() => { const np = makePlay(`${kind} ${nextK}`, playTypes.includes(kind) ? kind : playTypes[0], vsEntrySel.map(asEntry)); savePlays([...plays, np]); pick(np); setVsEntryCat(null); toast?.(`✓ ${np.titre} créé`); }}
+                                <button onClick={() => { const np = makePlay(`${kind} ${nextK}`, playTypes.includes(kind) ? kind : playTypes[0], vsEntrySel.map(asEntry), vsFinNew); savePlays([...plays, np]); pick(np); setVsEntryCat(null); toast?.(`✓ ${np.titre} créé`); }}
                                   className="px-3 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "#FF6B35" }}>+ Nouveau {kind} {nextK}</button>
                               </div>
                             );
@@ -14648,6 +14665,10 @@ function CoachingProBoost({ session }) {
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <div><b className="text-[#1B2A4A]">{chosen.titre}</b> <span className="text-[11px] text-[#1B2A4A]/50">{playEntries(chosen).map(pretty).join(" + ")}</span></div>
                             <button onClick={done} className="text-xs text-[#1B2A4A]/50 hover:text-red-500">✕ Changer</button>
+                          </div>
+                          <div className="mb-3">
+                            <div className="text-[11px] text-[#1B2A4A]/50 mb-1">Finalités de ce play (touche pour ajouter ou retirer) :</div>
+                            {finChips(chosen.finalites || [], (t) => toggleFinOf(chosen, t))}
                           </div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <button onClick={() => outcome(null)} className="px-4 py-3 rounded-lg text-sm font-semibold border border-[#1B2A4A]/20 text-[#1B2A4A]/70 hover:bg-[#1B2A4A]/5">Compter (sans tir)</button>
@@ -15281,7 +15302,11 @@ function CoachingProBoost({ session }) {
                                 // Entrées du play, écrites comme dans Sportscode (E_Spanish → E_Diamand…), pour les retrouver dans la vidéo
                                 const known = new Set((activeVs.attacks || []).flatMap(x => (x.labels || []).filter(l => typeof l !== "string" && /entr[ée]e/i.test(l.group || "")).map(l => String(l.text).toLowerCase().replace(/^e_/, "").trim())));
                                 const ent = (p.tags || []).filter(t => /^e_/i.test(t) || known.has(String(t).toLowerCase().replace(/^e_/, "").trim()));
-                                return ent.length ? <div className="mt-1.5 text-[13px] font-semibold text-[#1B2A4A]">{ent.map((t, i) => <span key={i}>{i > 0 ? <span className="text-[#1B2A4A]/40"> → </span> : null}{/^e_/i.test(t) ? t : "E_" + t}</span>)}</div> : null;
+                                const fins = p.finalites || [];
+                                return (ent.length || fins.length) ? <div className="mt-1.5">
+                                  {ent.length > 0 && <div className="text-[13px] font-semibold text-[#1B2A4A]">{ent.map((t, i) => <span key={i}>{i > 0 ? <span className="text-[#1B2A4A]/40"> → </span> : null}{/^e_/i.test(t) ? t : "E_" + t}</span>)}</div>}
+                                  {fins.length > 0 && <div className="text-[12px] font-semibold text-green-700">Finalité : {fins.join(" · ")}</div>}
+                                </div> : null;
                               })()}
                             </div>
                             <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
