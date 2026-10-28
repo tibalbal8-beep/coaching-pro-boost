@@ -15277,6 +15277,12 @@ function CoachingProBoost({ session }) {
                                 {p.type && <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35]">{p.type}</span>}
                                 {tfOf(p).map((t, i) => <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-[#1B2A4A]/10 text-[#1B2A4A]/70">{t}</span>)}
                               </div>
+                              {(() => {
+                                // Entrées du play, écrites comme dans Sportscode (E_Spanish → E_Diamand…), pour les retrouver dans la vidéo
+                                const known = new Set((activeVs.attacks || []).flatMap(x => (x.labels || []).filter(l => typeof l !== "string" && /entr[ée]e/i.test(l.group || "")).map(l => String(l.text).toLowerCase().replace(/^e_/, "").trim())));
+                                const ent = (p.tags || []).filter(t => /^e_/i.test(t) || known.has(String(t).toLowerCase().replace(/^e_/, "").trim()));
+                                return ent.length ? <div className="mt-1.5 text-[13px] font-semibold text-[#1B2A4A]">{ent.map((t, i) => <span key={i}>{i > 0 ? <span className="text-[#1B2A4A]/40"> → </span> : null}{/^e_/i.test(t) ? t : "E_" + t}</span>)}</div> : null;
+                              })()}
                             </div>
                             <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
                               <div className="text-xl font-bold" style={{ color: "var(--sport-accent)" }}>{played}</div>
