@@ -1478,6 +1478,14 @@ const SCOUT_REPORT_CSS = `
     .print-bar,.print-panel,.pb-sp,.pb-gl{display:none!important}
   }
 `;
+// Situations retenues dans le Scouting vidéo : une entrée ET une finalité (intention), ou une transition pick / post up / passe.
+// Les attaques à un seul élément (ex. « Jeu rapide », « TOP51 ») sont masquées par défaut ; un regroupement ou un nom donnés à la main les gardent.
+const vsAttackComplete = (a) => {
+  if (a.manualGroup || a.name) return true;
+  const L = (a.labels || []).filter(l => typeof l !== "string"), g = (re) => L.some(l => re.test(l.group || ""));
+  return (g(/entr[ée]e/i) && g(/intention/i)) || L.some(l => /^transi(tion)?\s*(pick|post\s*up|passe)\b/i.test(l.text || ""));
+};
+const vsFilterAttacks = (session) => session.showIncomplete ? (session.attacks || []) : (session.attacks || []).filter(vsAttackComplete);
 // Sections du récap vidéo : ordre par défaut ; chaque session peut en masquer (exportHidden) ou les réordonner (exportOrder).
 const VS_SECTIONS = [
   ["notes", "Notes"], ["comparison", "Face à face"], ["box", "Profil statistique (box score)"], ["players", "Les joueurs (Excel)"],
@@ -1522,7 +1530,7 @@ function buildVideoScoutReportHtml(session, rows, typeOrder = [], logo = null, t
   }).join("");
 
   // ── Attaques importées de Sportscode ───────────────────────────────────────
-  const allMerged = mergeAttacksForDisplay(session.attacks || []);
+  const allMerged = mergeAttacksForDisplay(vsFilterAttacks(session));
   // Une attaque décrite uniquement par une intention (ex. SIDE41) n'est pas un système : écartée.
   // Idem pour une simple remise en jeu (SLOB / BLOB seul, éventuellement avec une intention) :
   // sans entrée taguée, ce n'est pas un système à classer.
@@ -14451,7 +14459,8 @@ function CoachingProBoost({ session }) {
               return cat !== "Attaque placée" && !t.some(x => x.toLowerCase() === cat.toLowerCase()) ? [cat, ...t] : t;
             };
             const atkQ = vsAtkQuery.trim().toLowerCase();
-            const allAtks = [...(activeVs.attacks || [])].sort((a, b) => b.count - a.count);
+            const allAtks = [...vsFilterAttacks(activeVs)].sort((a, b) => b.count - a.count);
+            const hiddenIncomplete = (activeVs.attacks || []).length - allAtks.length;
             const visibleAttacks = allAtks.filter(a =>
               vsAtkFilters.every(f => atkLabels(a).some(t => t.toLowerCase() === f.toLowerCase())) &&
               (!atkQ || (a.name || "").toLowerCase().includes(atkQ) || atkLabels(a).some(t => t.toLowerCase().includes(atkQ))));
@@ -14685,7 +14694,7 @@ function CoachingProBoost({ session }) {
                   {teamPlays.length === 0 ? (
                     <p className="text-xs text-[#1B2A4A]/40 italic">Aucun play dans le Playbook pour {activeVs.opponent} (champ « Équipe scoutée »).</p>
                   ) : (() => {
-                    const ranked = matchPlaysToAttacks(teamPlays, mergeAttacksForDisplay(activeVs.attacks || []), activeVs.tally || {});
+                    const ranked = matchPlaysToAttacks(teamPlays, mergeAttacksForDisplay(vsFilterAttacks(activeVs)), activeVs.tally || {});
                     const seenTotal = ranked.reduce((n, r) => n + r.count, 0);
                     return (
                       <div className="flex flex-col">
@@ -14826,6 +14835,10 @@ function CoachingProBoost({ session }) {
                     <p className="text-xs text-[#1B2A4A]/40 italic">Aucune pour l'instant — importe l'export XML de Sportscode : les possessions qui ont les mêmes libellés sont regroupées en une attaque.</p>
                   ) : (
                     <>
+                    <label className="mt-2 flex items-start gap-2 text-xs text-[#1B2A4A]/70 cursor-pointer">
+                      <input type="checkbox" className="mt-0.5" checked={!activeVs.showIncomplete} onChange={e => updateActiveVs({ showIncomplete: !e.target.checked })} />
+                      <span><b>Masquer les situations incomplètes</b> : il faut une entrée et une finalité (intention), sauf les transitions pick, post up ou passe. Décoche pour tout voir{hiddenIncomplete > 0 && !activeVs.showIncomplete ? ` (${hiddenIncomplete} masquée${hiddenIncomplete > 1 ? "s" : ""})` : ""}.</span>
+                    </label>
                     <div className="mt-2 mb-1">
                       <input value={vsAtkQuery} onChange={e => setVsAtkQuery(e.target.value)}
                         placeholder="🔍 Chercher un temps fort, une entrée, un nom de play…"
