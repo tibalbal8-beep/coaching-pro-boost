@@ -580,6 +580,8 @@ function useStore(sport = DEFAULT_SPORT) {
   const leagueGamesKey = `leagueGames:${sport}`;
   const [leagueGames, setLeagueGames] = useState([]);
   const leagueDataKey = `leagueData:${sport}`;
+  const espoirsKey = `espoirs:${sport}`;
+  const [espoirs, setEspoirs] = useState([]);
   const [leagueData, setLeagueData] = useState({ teams: [], stats: {} });
   const [scoutReports, setScoutReports] = useState([]);
   const scoutReportsKey = `scoutReports:${sport}`;
@@ -686,6 +688,10 @@ function useStore(sport = DEFAULT_SPORT) {
       try {
         const sr = await storage.get(scoutReportsKey);
         setScoutReports(sr ? JSON.parse(sr.value) : []);
+      } catch { hadError = true; }
+      try {
+        const es = await storage.get(espoirsKey);
+        setEspoirs(es ? JSON.parse(es.value) : []);
       } catch { hadError = true; }
       try {
         const ld = await storage.get(leagueDataKey);
@@ -821,6 +827,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const saveVideoScoutSessions = (next) => { setVideoScoutSessions(next); persist(videoScoutSessionsKey, JSON.stringify(next)); };
   const saveScoutReports = (next) => { setScoutReports(next); persist(scoutReportsKey, JSON.stringify(next)); };
   const saveLeagueGames = (next) => { setLeagueGames(next); persist(leagueGamesKey, JSON.stringify(next)); };
+  const saveEspoirs = (next) => { setEspoirs(next); persist(espoirsKey, JSON.stringify(next)); };
   const saveLeagueData = (next) => { setLeagueData(next); persist(leagueDataKey, JSON.stringify(next)); };
   const saveTeamAnalyses = (next) => { setTeamAnalyses(next); persist(teamAnalysesKey, JSON.stringify(next)); };
   const savePlays = async (next) => {
@@ -855,7 +862,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
+  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
 }
 
 function usePdfJs() {
@@ -3664,6 +3671,29 @@ const LEAGUE_STATS = [
 // Tableau d'équipes SANS ligne d'en-têtes (cas de la page « Statistiques équipes » de la NM1 / Proballers) : 21 valeurs après le nom
 // (en-têtes du site : MJ, PTS, EVA, 2R, 2T, 2%, 3R, 3T, 3%, LFR, LFT, LF%, RT, RO, RD, PD, IN, BP, CT, FTE, FPR — pas de points encaissés)
 const LEAGUE_NM1_COLS = ["gp", "pts", "eval", "_2r", "_2t", "twoPct", "_3r", "_3t", "tpPct", "_fr", "_ft", "ftPct", "reb", "oreb", "dreb", "ast", "stl", "tov", "blk", "pf", "fd"];
+// ── Espoirs LNB : page « Effectif » d'une équipe sur lnb.fr (copier-coller) : poste, taille, âge, points / rebonds / passes par match ──
+function parseLnbEspoirsRoster(text) {
+  const lines = String(text || "").split(/\r?\n/).map(l => l.replace(/ /g, " ").trim()).filter(Boolean);
+  const title = (x) => String(x).toLowerCase().replace(/(^|[\s\-/'’])([a-zà-ÿ])/g, (m, a, b) => a + b.toUpperCase());
+  const POS = { "1": "Meneur", "2": "Arrière", "3": "Ailier", "4": "Ailier fort", "5": "Pivot" };
+  let team = "";
+  const ti = lines.findIndex(l => /^ESPOIRS\s+[A-ZÀ-Ý0-9'’.\-\/ ]+$/.test(l));
+  if (ti !== -1) team = title(lines[ti]);
+  else { const m = lines.map(l => /Accueil\]\([^)]*\)\s*(Espoirs\s+.+)$/i.exec(l)).find(Boolean); if (m) team = title(m[1]); }
+  const num = (v) => { const x = parseFloat(String(v).replace(",", ".")); return isNaN(x) ? null : x; };
+  const players = [];
+  for (let i = 0; i < lines.length; i++) {
+    const tm = /^Taille\s*-\s*(\d{3})?\s*$/.exec(lines[i]); if (!tm) continue;
+    const pm = /^([1-5](?:\/[1-5])*)\s*-\s*(.+)$/.exec(lines[i - 1] || ""), name = lines[i - 2];
+    if (!pm || !name || /^\d+$/.test(name)) continue;
+    const am = /^[ÂA]ge\s*-\s*(\d{1,2})?\s*$/.exec(lines[i + 1] || "");
+    const st = {}; for (let k = i + 2; k < Math.min(lines.length, i + 7); k++) { const m = /^(PPM|RPM|PdPM|EFF)\s*(-?[\d.,]+)$/.exec(lines[k]); if (m) st[m[1]] = num(m[2]); }
+    const jersey = /^\d{1,2}$/.test(lines[i - 3] || "") && lines[i - 3] !== "00" ? lines[i - 3] : null;
+    players.push({ name: title(name), num: jersey, pos: pm[1], posLabel: pm[2].trim(), height: tm[1] ? +tm[1] : null, age: am && am[1] ? +am[1] : null, ppm: st.PPM ?? null, rpm: st.RPM ?? null, pdpm: st.PdPM ?? null, eff: st.EFF ?? null });
+  }
+  if (!players.length) throw new Error("je ne reconnais pas la page Effectif d'une équipe Espoirs sur lnb.fr (il faut les lignes « Taille », « Âge », « PPM »…)");
+  return { team, players, posLabels: POS };
+}
 const leagueNorm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 // Page d'accueil Stats Center de la LNB (top 5 par catégorie) : titre de catégorie → statistique
 const LEAGUE_OVERVIEW_TITLES = { "points": "pts", "rebonds": "reb", "passes decisives": "ast", "evaluation": "eval", "interceptions": "stl", "contres": "blk", "tirs": "fgPct", "3 points": "tpPct", "lancers francs": "ftPct", "3 points marques": "tpm", "fautes provoquees": "fd", "ballons perdus": "tov" };
@@ -10646,7 +10676,7 @@ function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport, hasAnalysis, analysisUntil, hasPack } = useSubscription(session?.user?.id);
   const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, canUseMatchmode, canUseMyteam, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
   const canAnalysis = isAdmin || canUseMyteam || hasAnalysis;   // Scouting report + Mon équipe
-  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
+  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
   const SPORT_FORMATS = formats;
@@ -10745,7 +10775,7 @@ function CoachingProBoost({ session }) {
   const pdfReady = usePdfJs();
   const [view, setView] = useState(() => {
     const saved = localStorage.getItem("cpb_view");
-    return ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness","league"].includes(saved) ? saved : "library";
+    return ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness","league","espoirs"].includes(saved) ? saved : "library";
   });
   // Toujours à jour, contrairement à `view` capturé dans la closure de l'effet ci-dessous
   // (qui ne tourne qu'une fois au montage) — évite qu'un retour arrière égaré (ex: swipe
@@ -10765,7 +10795,7 @@ function CoachingProBoost({ session }) {
       const v = e.state?.view;
       if (v === "session" && activeSessionRef.current) {
         setView("session");
-      } else if (v && ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness","league"].includes(v)) {
+      } else if (v && ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness","league","espoirs"].includes(v)) {
         setView(v);
         localStorage.setItem("cpb_view", v);
       } else if (activeSessionRef.current) {
@@ -11582,6 +11612,7 @@ function CoachingProBoost({ session }) {
   // (choisir des temps forts pour filtrer une liste existante).
   const [vsAnnounceName, setVsAnnounceName] = useState("");
   // Tag par entrées (iPad) : entrées tapées dans l'ordre, play choisi, nom du nouveau play, entrée ajoutée à la main
+  const [esText, setEsText] = useState(""), [esTeam, setEsTeam] = useState(""), [esPos, setEsPos] = useState(""), [esQuery, setEsQuery] = useState(""), [esAgeMin, setEsAgeMin] = useState(""), [esAgeMax, setEsAgeMax] = useState(""), [esSort, setEsSort] = useState({ k: "eff", d: -1 });
   const [vsEntrySel, setVsEntrySel] = useState([]), [vsEntryPlayId, setVsEntryPlayId] = useState(null), [vsEntryNew, setVsEntryNew] = useState(""), [vsEntryCustom, setVsEntryCustom] = useState(""), [vsEntryGroupsOpen, setVsEntryGroupsOpen] = useState(false), [vsEntryCat, setVsEntryCat] = useState(null), [vsFinNew, setVsFinNew] = useState([]);
   const [vsAnnounceTf, setVsAnnounceTf] = useState([]);
   const [vsAnnounceType, setVsAnnounceType] = useState("");
@@ -12558,6 +12589,7 @@ function CoachingProBoost({ session }) {
               ...(isAdmin ? [{ key: "videoscout", label: "Scouting vidéo (admin)", icon: Video }] : []),
               { key: "scoutreport", label: isAdmin ? "Scouting report (admin)" : canAnalysis ? "Scouting report" : "Scouting report 🔒", icon: FileText },
               ...(isAdmin ? [{ key: "league", label: "Comparatif championnat (admin)", icon: BarChart3 }] : []),
+              ...(isAdmin ? [{ key: "espoirs", label: "Espoirs LNB (admin)", icon: Users }] : []),
               { key: "myteam", label: isAdmin ? "Mon équipe (admin)" : canAnalysis ? "Mon équipe" : "Mon équipe 🔒", icon: BarChart3 },
               ...(isAdmin || canManageWellness ? [{ key: "wellness", label: "Bien-être joueurs", icon: UserCheck }] : []),
               { key: "account", label: "Mon compte", icon: Users },
@@ -15425,6 +15457,70 @@ function CoachingProBoost({ session }) {
 
         {view === "pack" && !(isAdmin || hasPack) && <PackPaywall isPremium={isPremium} />}
         {view === "pack" && (isAdmin || hasPack) && <PackPage onOpenExercises={(d) => setSharedExerciseCollection({ ...d, fromPack: true })} onOpenPlays={setSharedPlayCollection} />}
+        {view === "espoirs" && isAdmin && (() => {
+          const ES = espoirs || [];
+          const teams = [...new Set(ES.map(p => p.team))].sort((a, b) => a.localeCompare(b, "fr"));
+          const read = () => {
+            try {
+              const r = parseLnbEspoirsRoster(esText);
+              const team = r.team || "Équipe inconnue", now = new Date().toISOString().slice(0, 10);
+              const rest = ES.filter(p => p.team.toLowerCase() !== team.toLowerCase());
+              saveEspoirs([...rest, ...r.players.map(p => ({ ...p, team, id: uid(), updated: now }))]);
+              setEsText("");
+              cpbAlert?.(`${r.players.length} joueurs lus pour ${team}${ES.some(p => p.team.toLowerCase() === team.toLowerCase()) ? " (remplace la version précédente de cette équipe)" : ""}.`);
+            } catch (e) { cpbAlert?.("Lecture impossible : " + e.message); }
+          };
+          const q = esQuery.trim().toLowerCase(), amin = parseInt(esAgeMin, 10), amax = parseInt(esAgeMax, 10);
+          const rows = ES.filter(p => (!esTeam || p.team === esTeam) && (!esPos || String(p.pos).split("/").includes(esPos)) && (!q || p.name.toLowerCase().includes(q)) && (isNaN(amin) || (p.age !== null && p.age >= amin)) && (isNaN(amax) || (p.age !== null && p.age <= amax)))
+            .sort((a, b) => { const x = a[esSort.k], y = b[esSort.k]; if (typeof x === "string" || typeof y === "string") return String(x ?? "").localeCompare(String(y ?? ""), "fr") * esSort.d; return ((x ?? -1e9) - (y ?? -1e9)) * esSort.d; });
+          const f1 = (x) => x === null || x === undefined ? "–" : String(Math.round(x * 10) / 10).replace(".", ",");
+          const th = (k, lab, w) => <th key={k} onClick={() => setEsSort(s2 => ({ k, d: s2.k === k ? -s2.d : (k === "name" || k === "team" ? 1 : -1) }))} className={`px-2 py-1.5 text-left cursor-pointer select-none whitespace-nowrap ${w || ""}`}>{lab}{esSort.k === k ? (esSort.d > 0 ? " ▲" : " ▼") : ""}</th>;
+          const POSBTN = [["1", "Meneur"], ["2", "Arrière"], ["3", "Ailier"], ["4", "Ailier fort"], ["5", "Pivot"]];
+          return (
+            <div className="max-w-5xl">
+              <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>ESPOIRS LNB</h2>
+              <p className="text-xs text-[#1B2A4A]/40 mb-4">Sur lnb.fr, ouvre la page d'une équipe Espoirs, onglet « Effectif », fais Cmd + A puis Cmd + C et colle ici. Chaque équipe collée remplace sa version précédente : recolle pour mettre à jour.</p>
+              <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
+                <textarea value={esText} onChange={e => setEsText(e.target.value)} rows={4} placeholder="Colle ici la page Effectif d'une équipe Espoirs…" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white/60 font-mono" />
+                <button disabled={!esText.trim()} onClick={read} className="mt-2 text-sm font-semibold text-white px-4 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>Lire la page</button>
+                <span className="ml-3 text-xs text-[#1B2A4A]/50">{ES.length} joueur{ES.length > 1 ? "s" : ""} · {teams.length} équipe{teams.length > 1 ? "s" : ""}</span>
+                {ES.length > 0 && <button onClick={async () => { const ok = await cpbAlert?.("Supprimer tous les joueurs Espoirs enregistrés ?", { confirm: true }); if (ok) saveEspoirs([]); }} className="ml-3 text-xs text-red-600 underline">Tout effacer</button>}
+              </div>
+              {ES.length > 0 && (
+                <>
+                  <div className="flex flex-wrap gap-2 items-center mb-2">
+                    <select value={esTeam} onChange={e => setEsTeam(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white"><option value="">Toutes les équipes</option>{teams.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                    <input value={esQuery} onChange={e => setEsQuery(e.target.value)} placeholder="Chercher un joueur" className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white w-40" />
+                    <span className="text-xs text-[#1B2A4A]/60">Âge</span>
+                    <input value={esAgeMin} onChange={e => setEsAgeMin(e.target.value)} inputMode="numeric" placeholder="min" className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white w-16" />
+                    <input value={esAgeMax} onChange={e => setEsAgeMax(e.target.value)} inputMode="numeric" placeholder="max" className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white w-16" />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    {POSBTN.map(([k, lab]) => <button key={k} onClick={() => setEsPos(v => v === k ? "" : k)} className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${esPos === k ? "" : "border-[#1B2A4A]/25 text-[#1B2A4A] bg-white"}`} style={esPos === k ? { backgroundColor: "#1B2A4A", color: "#fff", borderColor: "#1B2A4A" } : undefined}>{k} · {lab}</button>)}
+                  </div>
+                  <p className="text-[11px] text-[#1B2A4A]/40 mb-1">{rows.length} joueur{rows.length > 1 ? "s" : ""}. Clique sur un titre de colonne pour trier.</p>
+                  <div className="overflow-x-auto border border-[#1B2A4A]/12 rounded-xl bg-white">
+                    <table className="w-full text-sm">
+                      <thead className="bg-[#1B2A4A]/6 text-[11px] uppercase tracking-wide text-[#1B2A4A]/70"><tr>{th("name", "Joueur")}{th("team", "Équipe")}{th("pos", "Poste")}{th("age", "Âge")}{th("height", "Taille")}{th("ppm", "Pts")}{th("rpm", "Reb")}{th("pdpm", "Pds")}{th("eff", "EFF")}</tr></thead>
+                      <tbody>
+                        {rows.map(p => (
+                          <tr key={p.id} className="border-t border-[#1B2A4A]/8">
+                            <td className="px-2 py-1.5 font-semibold text-[#1B2A4A] whitespace-nowrap">{p.num ? <span className="text-[#1B2A4A]/40 mr-1">#{p.num}</span> : null}{p.name}</td>
+                            <td className="px-2 py-1.5 text-[#1B2A4A]/70 whitespace-nowrap">{p.team}</td>
+                            <td className="px-2 py-1.5 whitespace-nowrap">{p.posLabel}</td>
+                            <td className="px-2 py-1.5">{p.age ?? "–"}</td>
+                            <td className="px-2 py-1.5">{p.height ? p.height + " cm" : "–"}</td>
+                            <td className="px-2 py-1.5">{f1(p.ppm)}</td><td className="px-2 py-1.5">{f1(p.rpm)}</td><td className="px-2 py-1.5">{f1(p.pdpm)}</td><td className="px-2 py-1.5 font-semibold">{f1(p.eff)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
         {view === "league" && isAdmin && (() => {
           const LG = leagueData;
           let html = "";
