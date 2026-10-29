@@ -15467,7 +15467,12 @@ function CoachingProBoost({ session }) {
               const r = parseLnbEspoirsRoster(esText);
               const team = r.team || "Équipe inconnue", now = new Date().toISOString().slice(0, 10);
               const rest = ES.filter(p => p.team.toLowerCase() !== team.toLowerCase());
-              saveEspoirs([...rest, ...r.players.map(p => ({ ...p, team, id: uid(), updated: now }))]);
+              const old = new Map(ES.filter(p => p.team.toLowerCase() === team.toLowerCase()).map(p => [leagueNorm(p.name), p]));
+              saveEspoirs([...rest, ...r.players.map(p => {
+                const o = old.get(leagueNorm(p.name)), man = { ...((o && o.man) || {}) }, n = { ...p, team, id: o ? o.id : uid(), updated: now };
+                if (o) { ["age", "height"].forEach(k => { if (man[k] || (n[k] === null && o[k] !== null && o[k] !== undefined)) n[k] = o[k]; }); if (man.pos) { n.pos = o.pos; n.posLabel = o.posLabel; } }
+                n.man = man; return n;
+              })]);
               setEsText("");
               cpbAlert?.(`${r.players.length} joueurs lus pour ${team}${ES.some(p => p.team.toLowerCase() === team.toLowerCase()) ? " (remplace la version précédente de cette équipe)" : ""}.`);
             } catch (e) { cpbAlert?.("Lecture impossible : " + e.message); }
@@ -15476,6 +15481,17 @@ function CoachingProBoost({ session }) {
           const rows = ES.filter(p => (!esTeam || p.team === esTeam) && (!esPos || String(p.pos).split("/").includes(esPos)) && (!q || p.name.toLowerCase().includes(q)) && (isNaN(amin) || (p.age !== null && p.age >= amin)) && (isNaN(amax) || (p.age !== null && p.age <= amax)))
             .sort((a, b) => { const x = a[esSort.k], y = b[esSort.k]; if (typeof x === "string" || typeof y === "string") return String(x ?? "").localeCompare(String(y ?? ""), "fr") * esSort.d; return ((x ?? -1e9) - (y ?? -1e9)) * esSort.d; });
           const f1 = (x) => x === null || x === undefined ? "–" : String(Math.round(x * 10) / 10).replace(".", ",");
+          const POSNAME = { "1": "Meneur", "2": "Arrière", "3": "Ailier", "4": "Ailier fort", "5": "Pivot" };
+          const POSCODES = ["1", "1/2", "2", "2/3", "3", "3/4", "4", "4/5", "5"];
+          const setField = (id, k, v) => {
+            let val = null;
+            if (k === "age" || k === "height") { const x = parseInt(String(v).replace(/\D/g, ""), 10); val = isNaN(x) ? null : x; if (k === "age" && val !== null && (val < 10 || val > 60)) val = null; if (k === "height" && val !== null && val < 100) val = val >= 1 && val <= 2.5 ? val : null; }
+            saveEspoirs(ES.map(p => p.id !== id ? p : (k === "pos"
+              ? { ...p, pos: v, posLabel: v ? v.split("/").map(c => POSNAME[c]).join("/") : "", man: { ...(p.man || {}), pos: true } }
+              : { ...p, [k]: val, man: { ...(p.man || {}), [k]: val !== null } })));
+          };
+          const cellIn = (p, k, ph) => <input key={p.id + k + (p[k] ?? "")} defaultValue={p[k] ?? ""} inputMode="numeric" placeholder={ph} onBlur={e => { if (String(e.target.value) !== String(p[k] ?? "")) setField(p.id, k, e.target.value); }} onKeyDown={e => { if (e.key === "Enter") e.target.blur(); }}
+            className={`w-14 border-b ${p.man?.[k] ? "border-[#FF6B35] font-semibold" : "border-transparent hover:border-[#1B2A4A]/30"} focus:border-[#2563EB] bg-transparent outline-none py-0.5 ${p[k] ? "" : "bg-[#FFF4E5]"}`} />;
           const th = (k, lab, w) => <th key={k} onClick={() => setEsSort(s2 => ({ k, d: s2.k === k ? -s2.d : (k === "name" || k === "team" ? 1 : -1) }))} className={`px-2 py-1.5 text-left cursor-pointer select-none whitespace-nowrap ${w || ""}`}>{lab}{esSort.k === k ? (esSort.d > 0 ? " ▲" : " ▼") : ""}</th>;
           const POSBTN = [["1", "Meneur"], ["2", "Arrière"], ["3", "Ailier"], ["4", "Ailier fort"], ["5", "Pivot"]];
           return (
@@ -15500,7 +15516,7 @@ function CoachingProBoost({ session }) {
                   <div className="flex flex-wrap gap-1.5 mb-3">
                     {POSBTN.map(([k, lab]) => <button key={k} onClick={() => setEsPos(v => v === k ? "" : k)} className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${esPos === k ? "" : "border-[#1B2A4A]/25 text-[#1B2A4A] bg-white"}`} style={esPos === k ? { backgroundColor: "#1B2A4A", color: "#fff", borderColor: "#1B2A4A" } : undefined}>{k} · {lab}</button>)}
                   </div>
-                  <p className="text-[11px] text-[#1B2A4A]/40 mb-1">{rows.length} joueur{rows.length > 1 ? "s" : ""}. Clique sur un titre de colonne pour trier.</p>
+                  <p className="text-[11px] text-[#1B2A4A]/40 mb-1">{rows.length} joueur{rows.length > 1 ? "s" : ""}. Clique sur un titre de colonne pour trier. Les cases d'âge et de taille vides (fond orangé) se remplissent à la main : tape la valeur puis Entrée. Les valeurs saisies à la main sont en orange et sont gardées quand tu recolles la page de l'équipe ({ES.filter(p => !p.age).length} âge{ES.filter(p => !p.age).length > 1 ? "s" : ""} et {ES.filter(p => !p.height).length} taille{ES.filter(p => !p.height).length > 1 ? "s" : ""} manquant{ES.filter(p => !p.height).length > 1 ? "s" : ""}).</p>
                   <div className="overflow-x-auto border border-[#1B2A4A]/12 rounded-xl bg-white">
                     <table className="w-full text-sm">
                       <thead className="bg-[#1B2A4A]/6 text-[11px] uppercase tracking-wide text-[#1B2A4A]/70"><tr>{th("name", "Joueur")}{th("team", "Équipe")}{th("pos", "Poste")}{th("age", "Âge")}{th("height", "Taille")}{th("ppm", "Pts")}{th("rpm", "Reb")}{th("pdpm", "Pds")}{th("eff", "EFF")}</tr></thead>
@@ -15509,9 +15525,9 @@ function CoachingProBoost({ session }) {
                           <tr key={p.id} className="border-t border-[#1B2A4A]/8">
                             <td className="px-2 py-1.5 font-semibold text-[#1B2A4A] whitespace-nowrap">{p.num ? <span className="text-[#1B2A4A]/40 mr-1">#{p.num}</span> : null}{p.name}</td>
                             <td className="px-2 py-1.5 text-[#1B2A4A]/70 whitespace-nowrap">{p.team}</td>
-                            <td className="px-2 py-1.5 whitespace-nowrap">{p.posLabel}</td>
-                            <td className="px-2 py-1.5">{p.age ?? "–"}</td>
-                            <td className="px-2 py-1.5">{p.height ? p.height + " cm" : "–"}</td>
+                            <td className="px-2 py-1.5 whitespace-nowrap"><select value={p.pos || ""} onChange={e => setField(p.id, "pos", e.target.value)} className={`bg-transparent text-sm ${p.man?.pos ? "font-semibold text-[#FF6B35]" : ""}`}>{!POSCODES.includes(p.pos) && <option value={p.pos || ""}>{p.posLabel || "—"}</option>}{POSCODES.map(c => <option key={c} value={c}>{c.split("/").map(x => POSNAME[x]).join("/")}</option>)}</select></td>
+                            <td className="px-2 py-1.5">{cellIn(p, "age", "âge")}</td>
+                            <td className="px-2 py-1.5">{cellIn(p, "height", "cm")}</td>
                             <td className="px-2 py-1.5">{f1(p.ppm)}</td><td className="px-2 py-1.5">{f1(p.rpm)}</td><td className="px-2 py-1.5">{f1(p.pdpm)}</td><td className="px-2 py-1.5 font-semibold">{f1(p.eff)}</td>
                           </tr>
                         ))}
