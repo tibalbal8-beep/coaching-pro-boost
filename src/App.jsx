@@ -3737,6 +3737,50 @@ function parseLnbStatsCsv(text) {
   });
   return { players };
 }
+// Export HTML des Espoirs LNB pour le coach : tableau triable (clic sur un titre), filtres équipe / poste / âge / nom, imprimable, sans compte ni connexion
+function buildEspoirsHtml(players, logo = null) {
+  const esc = (x) => String(x ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const hasSt = players.some(p => p.st);
+  const cols = [["name", "Joueur", 0, "s"], ["team", "Équipe", 0, "s"], ["posLabel", "Poste", 0, "s"], ["age", "Âge", 0], ["height", "Taille", 0], ["ppm", "Pts", 1], ["rpm", "Reb", 1], ["pdpm", "Pds", 1], ["eff", "EFF", 1]]
+    .concat(hasSt ? [["s_mj", "MJ", 0], ["s_min", "Min", 1], ["s_ts", "TS %", 1], ["s_efg", "eFG %", 1], ["s_p2", "2 pts %", 1], ["s_p3", "3 pts %", 1], ["s_plf", "LF %", 1], ["s_usg", "Usage %", 1], ["s_ro", "RO", 1], ["s_rd", "RD", 1], ["s_stl", "Int", 1], ["s_ct", "Ct", 1], ["s_bp", "BP", 1], ["s_pm", "+/-", 1]] : []);
+  const rows = players.map(p => { const o = { name: p.name, team: p.team, pos: p.pos || "", posLabel: p.posLabel || "", age: p.age, height: p.height, ppm: p.ppm, rpm: p.rpm, pdpm: p.pdpm, eff: p.eff }; if (p.st) ["mj", "min", "ts", "efg", "p2", "p3", "plf", "usg", "ro", "rd", "stl", "ct", "bp", "pm"].forEach(k => { o["s_" + k] = p.st[k]; }); return o; });
+  const teams = [...new Set(players.map(p => p.team))].sort((a, b) => a.localeCompare(b, "fr"));
+  const data = JSON.stringify({ rows, cols }).replace(/</g, "\\u003c");
+  const date = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  return `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Espoirs LNB — ${esc(date)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}body{margin:0;padding:18px;background:#F2EDE4;color:#1B2A4A;font-family:'Inter',system-ui,sans-serif;font-size:14px}
+header{display:flex;align-items:center;gap:14px;margin-bottom:14px}header img{height:46px;width:46px;object-fit:contain;border-radius:8px;background:#fff;padding:4px}
+h1{font-family:'Oswald',sans-serif;font-size:28px;margin:0;letter-spacing:.5px;text-transform:uppercase}h1 small{display:block;font-family:'Inter',sans-serif;font-size:12px;color:#1B2A4A99;letter-spacing:0;text-transform:none;font-weight:400}
+.f{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}.f select,.f input{padding:7px 10px;border:1px solid #1B2A4A33;border-radius:8px;font:inherit;background:#fff}.f input[type=number]{width:70px}
+.pb{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}.pb button{border:1px solid #1B2A4A33;background:#fff;border-radius:999px;padding:6px 12px;font:600 12px inherit;cursor:pointer;color:#1B2A4A}.pb button.on{background:#1B2A4A;color:#fff;border-color:#1B2A4A}
+.w{overflow:auto;background:#fff;border:1px solid #1B2A4A1f;border-radius:12px;max-height:78vh}table{border-collapse:collapse;width:100%}
+th{position:sticky;top:0;background:#1B2A4A;color:#fff;text-align:left;padding:8px 10px;font-size:11px;letter-spacing:.4px;text-transform:uppercase;cursor:pointer;white-space:nowrap;user-select:none}th.n,td.n{text-align:right}
+td{padding:7px 10px;border-top:1px solid #1B2A4A12;white-space:nowrap}tr:nth-child(even) td{background:#1B2A4A06}td.b{font-weight:700}.c{font-size:12px;color:#1B2A4A99;margin:6px 2px}
+@media print{body{background:#fff;padding:0}.f,.pb{display:none}.w{max-height:none;border:0;overflow:visible}th{position:static}@page{size:A4 landscape;margin:8mm}table{font-size:9px}td,th{padding:3px 5px}}
+</style></head><body>
+<header>${logo ? `<img src="${logo}" alt="">` : ""}<h1>Espoirs LNB<small>Joueurs, postes, âges et statistiques · mis à jour le ${esc(date)}</small></h1></header>
+<div class="f"><select id="t"><option value="">Toutes les équipes</option>${teams.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join("")}</select>
+<input id="q" placeholder="Chercher un joueur"><span>Âge</span><input id="a1" type="number" min="14" max="30" placeholder="min"><input id="a2" type="number" min="14" max="30" placeholder="max"></div>
+<div class="pb" id="pb">${[["1", "Meneur"], ["2", "Arrière"], ["3", "Ailier"], ["4", "Ailier fort"], ["5", "Pivot"]].map(([k, l]) => `<button data-p="${k}">${k} · ${l}</button>`).join("")}</div>
+<div class="c" id="cnt"></div><div class="w"><table><thead><tr id="hd"></tr></thead><tbody id="bd"></tbody></table></div>
+<script type="application/json" id="d">${data}</script>
+<script>(function(){var D=JSON.parse(document.getElementById('d').textContent),R=D.rows,C=D.cols,sk='eff',sd=-1,pos='';
+function f(v,d){return v===null||v===undefined||v===''?'–':Number(v).toFixed(d).replace('.',',')}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+var hd=document.getElementById('hd');C.forEach(function(c){var th=document.createElement('th');th.textContent=c[1];if(!c[3])th.className='n';th.onclick=function(){if(sk===c[0])sd=-sd;else{sk=c[0];sd=c[3]?1:-1}render()};th.id='h_'+c[0];hd.appendChild(th)});
+function render(){var t=document.getElementById('t').value,q=document.getElementById('q').value.toLowerCase(),a1=parseInt(document.getElementById('a1').value),a2=parseInt(document.getElementById('a2').value);
+var L=R.filter(function(p){return (!t||p.team===t)&&(!pos||String(p.pos).split('/').indexOf(pos)>-1)&&(!q||p.name.toLowerCase().indexOf(q)>-1)&&(isNaN(a1)||(p.age!=null&&p.age>=a1))&&(isNaN(a2)||(p.age!=null&&p.age<=a2))});
+L.sort(function(x,y){var a=x[sk],b=y[sk];if(typeof a==='string'||typeof b==='string')return String(a||'').localeCompare(String(b||''),'fr')*sd;if(a==null&&b==null)return 0;if(a==null)return 1;if(b==null)return -1;return (a-b)*sd});
+document.getElementById('bd').innerHTML=L.map(function(p){return '<tr>'+C.map(function(c){var v=p[c[0]];if(c[3])return '<td'+(c[0]==='name'?' class="b"':'')+'>'+esc(v||'')+'</td>';return '<td class="n'+(c[0]==='eff'?' b':'')+'">'+(c[0]==='height'&&v?v+' cm':f(v,c[2]))+'</td>'}).join('')+'</tr>'}).join('');
+document.getElementById('cnt').textContent=L.length+' joueur'+(L.length>1?'s':'')+' · clique sur un titre de colonne pour trier';
+C.forEach(function(c){var h=document.getElementById('h_'+c[0]);h.textContent=c[1]+(sk===c[0]?(sd>0?' ▲':' ▼'):'')})}
+['t','q','a1','a2'].forEach(function(id){document.getElementById(id).addEventListener('input',render)});
+[].slice.call(document.querySelectorAll('#pb button')).forEach(function(b){b.onclick=function(){var k=b.getAttribute('data-p');pos=pos===k?'':k;[].slice.call(document.querySelectorAll('#pb button')).forEach(function(x){x.classList.toggle('on',x.getAttribute('data-p')===pos)});render()}});
+render();})();</script></body></html>`;
+}
 const leagueNorm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 // Page d'accueil Stats Center de la LNB (top 5 par catégorie) : titre de catégorie → statistique
 const LEAGUE_OVERVIEW_TITLES = { "points": "pts", "rebonds": "reb", "passes decisives": "ast", "evaluation": "eval", "interceptions": "stl", "contres": "blk", "tirs": "fgPct", "3 points": "tpPct", "lancers francs": "ftPct", "3 points marques": "tpm", "fautes provoquees": "fd", "ballons perdus": "tov" };
@@ -15592,6 +15636,7 @@ function CoachingProBoost({ session }) {
                 <textarea value={esText} onChange={e => setEsText(e.target.value)} rows={4} placeholder="Colle ici la page Effectif d'une équipe Espoirs…" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white/60 font-mono" />
                 <button disabled={!esText.trim()} onClick={read} className="mt-2 text-sm font-semibold text-white px-4 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>Lire la page</button>
                 <span className="ml-3 text-xs text-[#1B2A4A]/50">{ES.length} joueur{ES.length > 1 ? "s" : ""} · {teams.length} équipe{teams.length > 1 ? "s" : ""}</span>
+                {ES.length > 0 && <button onClick={() => { try { downloadBlob(new Blob([buildEspoirsHtml(ES, clubLogo)], { type: "text/html;charset=utf-8" }), `espoirs-lnb-${new Date().toISOString().slice(0, 10)}.html`); toast?.("✓ Export des Espoirs LNB prêt"); } catch (e) { cpbAlert?.("Export impossible : " + (e?.message || e)); } }} className="ml-3 text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "#2563EB" }}>📤 Exporter pour mon coach</button>}
                 {ES.length > 0 && <button onClick={async () => { const ok = await cpbAlert?.("Supprimer tous les joueurs Espoirs enregistrés ?", { confirm: true }); if (ok) saveEspoirs([]); }} className="ml-3 text-xs text-red-600 underline">Tout effacer</button>}
               </div>
               <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
