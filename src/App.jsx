@@ -12578,6 +12578,7 @@ function CoachingProBoost({ session }) {
               <span className="font-bold text-[#1B2A4A] text-lg" style={{ fontFamily: "Oswald, sans-serif" }}>MENU</span>
               <button onClick={() => setSidebarOpen(false)} className="text-[#1B2A4A]/50 hover:text-[#1B2A4A] p-1"><X size={22} /></button>
             </div>
+            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1 pr-1" style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}>
             {[
               { key: "sessions", label: "Séances", icon: ListPlus, alsoActive: "session" },
               { key: "library", label: "Bibliothèque", icon: Library },
@@ -12604,7 +12605,8 @@ function CoachingProBoost({ session }) {
                 </button>
               );
             })}
-            <div className="mt-auto pt-4 border-t border-[#1B2A4A]/10">
+            </div>
+            <div className="pt-4 border-t border-[#1B2A4A]/10 shrink-0">
               {/* Logo du club */}
               <div className="px-3 py-2 flex items-center gap-2">
                 {clubLogo ? (
