@@ -3694,6 +3694,41 @@ function parseLnbEspoirsRoster(text) {
   if (!players.length) throw new Error("je ne reconnais pas la page Effectif d'une équipe Espoirs sur lnb.fr (il faut les lignes « Taille », « Âge », « PPM »…)");
   return { team, players, posLabels: POS };
 }
+// Export CSV « statistiques » d'une équipe sur lnb.fr (moyennes par match) : une ligne par joueur, plus « Total »
+function parseLnbStatsCsv(text) {
+  const rowsRaw = []; let cur = [], cell = "", q = false;
+  const t = String(text || "").replace(/^﻿/, "");
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (q) { if (c === '"') { if (t[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === "," || c === ";") { cur.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && t[i + 1] === "\n") i++; cur.push(cell); cell = ""; if (cur.some(x => x !== "")) rowsRaw.push(cur); cur = []; }
+    else cell += c;
+  }
+  if (cell !== "" || cur.length) { cur.push(cell); if (cur.some(x => x !== "")) rowsRaw.push(cur); }
+  if (rowsRaw.length < 2) throw new Error("fichier vide");
+  const head = rowsRaw[0].map(h => String(h).trim().toUpperCase());
+  const ix = (n) => head.indexOf(n);
+  if (ix("JOUEUR") === -1 || ix("PTS") === -1 || ix("MJ") === -1) throw new Error("ce n'est pas l'export « statistiques » de la LNB (il faut les colonnes joueur, MJ, MIN, PTS…)");
+  const num = (v) => { const x = parseFloat(String(v ?? "").replace("%", "").replace(",", ".")); return isNaN(x) ? null : x; };
+  const mins = (v) => { const m = /(\d+)\s*'\s*(\d+)?/.exec(String(v || "")); return m ? +m[1] + (m[2] ? +m[2] / 60 : 0) : num(v); };
+  const get = (r, n) => ix(n) === -1 ? null : r[ix(n)];
+  const mk = (r) => ({ mj: num(get(r, "MJ")), s5: num(get(r, "S5")), min: mins(get(r, "MIN")), pts: num(get(r, "PTS")), r2: num(get(r, "2R")), t2: num(get(r, "2T")), r3: num(get(r, "3R")), t3: num(get(r, "3T")), lfr: num(get(r, "LFR")), lft: num(get(r, "LFT")), ro: num(get(r, "RO")), rd: num(get(r, "RD")), rt: num(get(r, "RT")), pd: num(get(r, "PD")), ct: num(get(r, "CT")), cs: num(get(r, "CS")), stl: num(get(r, "IN")), bp: num(get(r, "BP")), fte: num(get(r, "FTE")), fpr: num(get(r, "FPR")), pm: num(get(r, "+/-")), eval: num(get(r, "EVAL")) });
+  let total = null; const players = [];
+  rowsRaw.slice(1).forEach(r => { const n = String(r[ix("JOUEUR")] || "").trim(); if (!n) return; if (/^total$/i.test(n)) { total = mk(r); return; } if (/^[ée]quipe/i.test(n)) return; players.push({ name: n, ...mk(r) }); });
+  if (!players.length) throw new Error("aucun joueur trouvé dans ce fichier");
+  const tp = total && total.t2 !== null ? total.t2 + total.t3 + 0.44 * total.lft + total.bp : 0;
+  players.forEach(p => {
+    const fga = (p.t2 || 0) + (p.t3 || 0), fta = p.lft || 0;
+    p.fgPct = fga ? Math.round((p.r2 + p.r3) / fga * 1000) / 10 : null;
+    p.p2 = p.t2 ? Math.round(p.r2 / p.t2 * 1000) / 10 : null; p.p3 = p.t3 ? Math.round(p.r3 / p.t3 * 1000) / 10 : null; p.plf = fta ? Math.round(p.lfr / fta * 1000) / 10 : null;
+    p.ts = fga + fta ? Math.round(p.pts / (2 * (fga + 0.44 * fta)) * 1000) / 10 : null;
+    p.efg = fga ? Math.round((p.r2 + 1.5 * p.r3) / fga * 1000) / 10 : null;
+    p.usg = tp > 0 && p.min > 0 ? Math.round(((fga + 0.44 * fta + (p.bp || 0)) * 40) / (p.min * tp) * 1000) / 10 : null;
+  });
+  return { players };
+}
 const leagueNorm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 // Page d'accueil Stats Center de la LNB (top 5 par catégorie) : titre de catégorie → statistique
 const LEAGUE_OVERVIEW_TITLES = { "points": "pts", "rebonds": "reb", "passes decisives": "ast", "evaluation": "eval", "interceptions": "stl", "contres": "blk", "tirs": "fgPct", "3 points": "tpPct", "lancers francs": "ftPct", "3 points marques": "tpm", "fautes provoquees": "fd", "ballons perdus": "tov" };
@@ -11612,7 +11647,7 @@ function CoachingProBoost({ session }) {
   // (choisir des temps forts pour filtrer une liste existante).
   const [vsAnnounceName, setVsAnnounceName] = useState("");
   // Tag par entrées (iPad) : entrées tapées dans l'ordre, play choisi, nom du nouveau play, entrée ajoutée à la main
-  const [esText, setEsText] = useState(""), [esTeam, setEsTeam] = useState(""), [esPos, setEsPos] = useState(""), [esQuery, setEsQuery] = useState(""), [esAgeMin, setEsAgeMin] = useState(""), [esAgeMax, setEsAgeMax] = useState(""), [esSort, setEsSort] = useState({ k: "eff", d: -1 });
+  const [esText, setEsText] = useState(""), [esTeam, setEsTeam] = useState(""), [esPos, setEsPos] = useState(""), [esQuery, setEsQuery] = useState(""), [esAgeMin, setEsAgeMin] = useState(""), [esAgeMax, setEsAgeMax] = useState(""), [esSort, setEsSort] = useState({ k: "eff", d: -1 }), [esCsvTeam, setEsCsvTeam] = useState(""), [esCsvNew, setEsCsvNew] = useState("");
   const [vsEntrySel, setVsEntrySel] = useState([]), [vsEntryPlayId, setVsEntryPlayId] = useState(null), [vsEntryNew, setVsEntryNew] = useState(""), [vsEntryCustom, setVsEntryCustom] = useState(""), [vsEntryGroupsOpen, setVsEntryGroupsOpen] = useState(false), [vsEntryCat, setVsEntryCat] = useState(null), [vsFinNew, setVsFinNew] = useState([]);
   const [vsAnnounceTf, setVsAnnounceTf] = useState([]);
   const [vsAnnounceType, setVsAnnounceType] = useState("");
@@ -15477,10 +15512,32 @@ function CoachingProBoost({ session }) {
               cpbAlert?.(`${r.players.length} joueurs lus pour ${team}${ES.some(p => p.team.toLowerCase() === team.toLowerCase()) ? " (remplace la version précédente de cette équipe)" : ""}.`);
             } catch (e) { cpbAlert?.("Lecture impossible : " + e.message); }
           };
+          const importCsv = async (file) => {
+            if (!file) return;
+            const team = (esCsvTeam === "__new" ? esCsvNew.trim() : esCsvTeam) || teams[0];
+            if (!team) { cpbAlert?.("Choisis d'abord l'équipe de ce fichier (ou écris son nom)."); return; }
+            try {
+              const buf = await file.arrayBuffer(); let txt = new TextDecoder("utf-8").decode(buf); if (txt.includes("\ufffd")) txt = new TextDecoder("iso-8859-1").decode(buf);
+              const r = parseLnbStatsCsv(txt), now = new Date().toISOString().slice(0, 10);
+              let upd = 0, add = 0; const next = [...ES];
+              r.players.forEach(row => {
+                const k = leagueNorm(row.name);
+                let idx = next.findIndex(p => p.team.toLowerCase() === team.toLowerCase() && leagueNorm(p.name) === k);
+                if (idx === -1) idx = next.findIndex(p => p.team.toLowerCase() === team.toLowerCase() && k && (leagueNorm(p.name).includes(k) || k.includes(leagueNorm(p.name))));
+                const { name, ...st } = row;
+                const base = idx === -1 ? { id: uid(), team, name, num: null, pos: "", posLabel: "", height: null, age: null, man: {} } : next[idx];
+                const merged = { ...base, st, ppm: st.pts, rpm: st.rt, pdpm: st.pd, eff: st.eval, updated: now };
+                if (idx === -1) { next.push(merged); add++; } else { next[idx] = merged; upd++; }
+              });
+              saveEspoirs(next); setEsCsvNew("");
+              cpbAlert?.(`${team} : statistiques de ${upd} joueur${upd > 1 ? "s" : ""} mises à jour${add ? `, ${add} joueur${add > 1 ? "s" : ""} ajouté${add > 1 ? "s" : ""} (absent${add > 1 ? "s" : ""} de la page Effectif : âge, taille et poste à saisir)` : ""}.`);
+            } catch (e) { cpbAlert?.("Lecture impossible : " + e.message); }
+          };
           const q = esQuery.trim().toLowerCase(), amin = parseInt(esAgeMin, 10), amax = parseInt(esAgeMax, 10);
           const rows = ES.filter(p => (!esTeam || p.team === esTeam) && (!esPos || String(p.pos).split("/").includes(esPos)) && (!q || p.name.toLowerCase().includes(q)) && (isNaN(amin) || (p.age !== null && p.age >= amin)) && (isNaN(amax) || (p.age !== null && p.age <= amax)))
-            .sort((a, b) => { const x = a[esSort.k], y = b[esSort.k]; if (typeof x === "string" || typeof y === "string") return String(x ?? "").localeCompare(String(y ?? ""), "fr") * esSort.d; return ((x ?? -1e9) - (y ?? -1e9)) * esSort.d; });
+            .sort((a, b) => { const gv = (o, k) => k.startsWith("st.") ? o.st?.[k.slice(3)] : o[k]; const x = gv(a, esSort.k), y = gv(b, esSort.k); if (typeof x === "string" || typeof y === "string") return String(x ?? "").localeCompare(String(y ?? ""), "fr") * esSort.d; return ((x ?? -1e9) - (y ?? -1e9)) * esSort.d; });
           const f1 = (x) => x === null || x === undefined ? "–" : String(Math.round(x * 10) / 10).replace(".", ",");
+          const hasSt = ES.some(p => p.st);
           const POSNAME = { "1": "Meneur", "2": "Arrière", "3": "Ailier", "4": "Ailier fort", "5": "Pivot" };
           const POSCODES = ["1", "1/2", "2", "2/3", "3", "3/4", "4", "4/5", "5"];
           const setField = (id, k, v) => {
@@ -15504,6 +15561,17 @@ function CoachingProBoost({ session }) {
                 <span className="ml-3 text-xs text-[#1B2A4A]/50">{ES.length} joueur{ES.length > 1 ? "s" : ""} · {teams.length} équipe{teams.length > 1 ? "s" : ""}</span>
                 {ES.length > 0 && <button onClick={async () => { const ok = await cpbAlert?.("Supprimer tous les joueurs Espoirs enregistrés ?", { confirm: true }); if (ok) saveEspoirs([]); }} className="ml-3 text-xs text-red-600 underline">Tout effacer</button>}
               </div>
+              <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
+                <div className="text-xs font-semibold text-[#1B2A4A] mb-1">Statistiques détaillées (fichier CSV de la page Statistiques LNB)</div>
+                <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Choisis l'équipe du fichier, puis le fichier « statistics.csv ». Il ajoute minutes, tirs, TS %, eFG %, usage, rebonds offensifs/défensifs, interceptions, contres, balles perdues et +/-. L'équipe doit déjà exister (page Effectif collée) pour garder les âges.</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select value={esCsvTeam || teams[0] || ""} onChange={e => setEsCsvTeam(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white">{teams.map(t => <option key={t} value={t}>{t}</option>)}<option value="__new">Autre équipe…</option></select>
+                  {esCsvTeam === "__new" && <input value={esCsvNew} onChange={e => setEsCsvNew(e.target.value)} placeholder="Nom de l'équipe" className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white w-44" />}
+                  <label className="text-sm font-semibold text-white px-4 py-1.5 rounded-md cursor-pointer" style={{ backgroundColor: "#2563EB" }}>Choisir le fichier CSV
+                    <input type="file" accept=".csv,text/csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; importCsv(f); }} />
+                  </label>
+                </div>
+              </div>
               {ES.length > 0 && (
                 <>
                   <div className="flex flex-wrap gap-2 items-center mb-2">
@@ -15519,7 +15587,7 @@ function CoachingProBoost({ session }) {
                   <p className="text-[11px] text-[#1B2A4A]/40 mb-1">{rows.length} joueur{rows.length > 1 ? "s" : ""}. Clique sur un titre de colonne pour trier. Les cases d'âge et de taille vides (fond orangé) se remplissent à la main : tape la valeur puis Entrée. Les valeurs saisies à la main sont en orange et sont gardées quand tu recolles la page de l'équipe ({ES.filter(p => !p.age).length} âge{ES.filter(p => !p.age).length > 1 ? "s" : ""} et {ES.filter(p => !p.height).length} taille{ES.filter(p => !p.height).length > 1 ? "s" : ""} manquant{ES.filter(p => !p.height).length > 1 ? "s" : ""}).</p>
                   <div className="overflow-x-auto border border-[#1B2A4A]/12 rounded-xl bg-white">
                     <table className="w-full text-sm">
-                      <thead className="bg-[#1B2A4A]/6 text-[11px] uppercase tracking-wide text-[#1B2A4A]/70"><tr>{th("name", "Joueur")}{th("team", "Équipe")}{th("pos", "Poste")}{th("age", "Âge")}{th("height", "Taille")}{th("ppm", "Pts")}{th("rpm", "Reb")}{th("pdpm", "Pds")}{th("eff", "EFF")}</tr></thead>
+                      <thead className="bg-[#1B2A4A]/6 text-[11px] uppercase tracking-wide text-[#1B2A4A]/70"><tr>{th("name", "Joueur")}{th("team", "Équipe")}{th("pos", "Poste")}{th("age", "Âge")}{th("height", "Taille")}{th("ppm", "Pts")}{th("rpm", "Reb")}{th("pdpm", "Pds")}{th("eff", "EFF")}{hasSt && [["st.mj", "MJ"], ["st.min", "Min"], ["st.ts", "TS %"], ["st.efg", "eFG %"], ["st.p2", "2 pts %"], ["st.p3", "3 pts %"], ["st.plf", "LF %"], ["st.usg", "Usage %"], ["st.ro", "RO"], ["st.rd", "RD"], ["st.stl", "Int"], ["st.ct", "Ct"], ["st.bp", "BP"], ["st.pm", "+/-"]].map(([k, l]) => th(k, l))}</tr></thead>
                       <tbody>
                         {rows.map(p => (
                           <tr key={p.id} className="border-t border-[#1B2A4A]/8">
@@ -15529,6 +15597,7 @@ function CoachingProBoost({ session }) {
                             <td className="px-2 py-1.5">{cellIn(p, "age", "âge")}</td>
                             <td className="px-2 py-1.5">{cellIn(p, "height", "cm")}</td>
                             <td className="px-2 py-1.5">{f1(p.ppm)}</td><td className="px-2 py-1.5">{f1(p.rpm)}</td><td className="px-2 py-1.5">{f1(p.pdpm)}</td><td className="px-2 py-1.5 font-semibold">{f1(p.eff)}</td>
+                            {hasSt && ["mj", "min", "ts", "efg", "p2", "p3", "plf", "usg", "ro", "rd", "stl", "ct", "bp", "pm"].map(k => <td key={k} className="px-2 py-1.5 whitespace-nowrap">{p.st ? f1(p.st[k]) : "–"}</td>)}
                           </tr>
                         ))}
                       </tbody>
