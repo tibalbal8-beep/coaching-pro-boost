@@ -11655,7 +11655,7 @@ function CoachingProBoost({ session }) {
   // (choisir des temps forts pour filtrer une liste existante).
   const [vsAnnounceName, setVsAnnounceName] = useState("");
   // Tag par entrées (iPad) : entrées tapées dans l'ordre, play choisi, nom du nouveau play, entrée ajoutée à la main
-  const [esText, setEsText] = useState(""), [esTeam, setEsTeam] = useState(""), [esPos, setEsPos] = useState(""), [esQuery, setEsQuery] = useState(""), [esAgeMin, setEsAgeMin] = useState(""), [esAgeMax, setEsAgeMax] = useState(""), [esSort, setEsSort] = useState({ k: "eff", d: -1 }), [esCsvTeam, setEsCsvTeam] = useState(""), [esCsvNew, setEsCsvNew] = useState("");
+  const [esText, setEsText] = useState(""), [esTeam, setEsTeam] = useState(""), [esPos, setEsPos] = useState(""), [esQuery, setEsQuery] = useState(""), [esAgeMin, setEsAgeMin] = useState(""), [esAgeMax, setEsAgeMax] = useState(""), [esSort, setEsSort] = useState({ k: "eff", d: -1 }), [esCsvTeam, setEsCsvTeam] = useState(""), [esCsvNew, setEsCsvNew] = useState(""), [esSel, setEsSel] = useState([]), [esUndo, setEsUndo] = useState(null), [esMoveTo, setEsMoveTo] = useState("");
   const [vsEntrySel, setVsEntrySel] = useState([]), [vsEntryPlayId, setVsEntryPlayId] = useState(null), [vsEntryNew, setVsEntryNew] = useState(""), [vsEntryCustom, setVsEntryCustom] = useState(""), [vsEntryGroupsOpen, setVsEntryGroupsOpen] = useState(false), [vsEntryCat, setVsEntryCat] = useState(null), [vsFinNew, setVsFinNew] = useState([]);
   const [vsAnnounceTf, setVsAnnounceTf] = useState([]);
   const [vsAnnounceType, setVsAnnounceType] = useState("");
@@ -15522,7 +15522,7 @@ function CoachingProBoost({ session }) {
               });
               const seen = new Set(fresh.map(p => leagueNorm(p.name)));
               const kept = oldList.filter(p => p.st && !seen.has(leagueNorm(p.name)));   // joueur avec statistiques mais absent de la page Effectif : on le garde
-              saveEspoirs([...rest, ...fresh, ...kept]);
+              setEsUndo(ES); saveEspoirs([...rest, ...fresh, ...kept]);
               setEsText("");
               cpbAlert?.(`${r.players.length} joueurs lus pour ${team}${ES.some(p => p.team.toLowerCase() === team.toLowerCase()) ? " (remplace la version précédente de cette équipe)" : ""}.`);
             } catch (e) { cpbAlert?.("Lecture impossible : " + e.message); }
@@ -15532,7 +15532,7 @@ function CoachingProBoost({ session }) {
             try {
               const buf = await file.arrayBuffer(); let txt = new TextDecoder("utf-8").decode(buf); if (txt.includes("\ufffd")) txt = new TextDecoder("iso-8859-1").decode(buf);
               const r = parseLnbStatsCsv(txt), now = new Date().toISOString().slice(0, 10);
-              const fixed = (esCsvTeam === "__new" ? esCsvNew.trim() : esCsvTeam) || teams[0] || "";
+              const fixed = (esCsvTeam === "__new" ? esCsvNew.trim() : esCsvTeam) || "";
               if (!r.players.some(p => p.club) && !fixed) { cpbAlert?.("Ce fichier ne contient pas le nom de l'équipe : choisis-la d'abord (ou écris son nom)."); return; }
               let upd = 0, add = 0; const next = [...ES], clubs = new Set();
               r.players.forEach(row => {
@@ -15545,7 +15545,7 @@ function CoachingProBoost({ session }) {
                 const merged = { ...base, st, ppm: st.pts, rpm: st.rt, pdpm: st.pd, eff: st.eval, updated: now };
                 if (idx === -1) { next.push(merged); add++; } else { next[idx] = merged; upd++; }
               });
-              saveEspoirs(next); setEsCsvNew("");
+              setEsUndo(ES); saveEspoirs(next); setEsCsvNew("");
               cpbAlert?.(`${clubs.size} équipe${clubs.size > 1 ? "s" : ""} : statistiques de ${upd} joueur${upd > 1 ? "s" : ""} mises à jour${add ? `, ${add} joueur${add > 1 ? "s" : ""} ajouté${add > 1 ? "s" : ""} (absent${add > 1 ? "s" : ""} des pages Effectif : âge, taille et poste à saisir)` : ""}.`);
             } catch (e) { cpbAlert?.("Lecture impossible : " + e.message); }
           };
@@ -15554,6 +15554,23 @@ function CoachingProBoost({ session }) {
             .sort((a, b) => { const gv = (o, k) => k.startsWith("st.") ? o.st?.[k.slice(3)] : o[k]; const x = gv(a, esSort.k), y = gv(b, esSort.k); if (typeof x === "string" || typeof y === "string") return String(x ?? "").localeCompare(String(y ?? ""), "fr") * esSort.d; return ((x ?? -1e9) - (y ?? -1e9)) * esSort.d; });
           const f1 = (x) => x === null || x === undefined ? "–" : String(Math.round(x * 10) / 10).replace(".", ",");
           const hasSt = ES.some(p => p.st);
+          const moveSel = () => {
+            const to = esMoveTo; if (!to || !esSel.length) return;
+            const sel = new Set(esSel), moving = ES.filter(p => sel.has(p.id)), rest = ES.filter(p => !sel.has(p.id));
+            const out = [...rest];
+            moving.forEach(m => {
+              const i = out.findIndex(p => p.team.toLowerCase() === to.toLowerCase() && leagueNorm(p.name) === leagueNorm(m.name));
+              if (i === -1) out.push({ ...m, team: to });
+              else { const t = out[i]; out[i] = { ...t, st: m.st || t.st, ppm: m.st ? m.ppm : t.ppm, rpm: m.st ? m.rpm : t.rpm, pdpm: m.st ? m.pdpm : t.pdpm, eff: m.st ? m.eff : t.eff, age: t.age ?? m.age, height: t.height ?? m.height, pos: t.pos || m.pos, posLabel: t.posLabel || m.posLabel }; }
+            });
+            setEsUndo(ES); saveEspoirs(out); setEsSel([]);
+            cpbAlert?.(`${moving.length} joueur${moving.length > 1 ? "s" : ""} déplacé${moving.length > 1 ? "s" : ""} vers ${to}.`);
+          };
+          const delSel = async () => {
+            if (!esSel.length) return;
+            const ok = await cpbAlert?.(`Supprimer ${esSel.length} joueur${esSel.length > 1 ? "s" : ""} ?`, { confirm: true }); if (!ok) return;
+            const sel = new Set(esSel); setEsUndo(ES); saveEspoirs(ES.filter(p => !sel.has(p.id))); setEsSel([]);
+          };
           const POSNAME = { "1": "Meneur", "2": "Arrière", "3": "Ailier", "4": "Ailier fort", "5": "Pivot" };
           const POSCODES = ["1", "1/2", "2", "2/3", "3", "3/4", "4", "4/5", "5"];
           const setField = (id, k, v) => {
@@ -15581,7 +15598,7 @@ function CoachingProBoost({ session }) {
                 <div className="text-xs font-semibold text-[#1B2A4A] mb-1">Statistiques détaillées (fichier CSV de la page Statistiques LNB)</div>
                 <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Choisis le fichier CSV : celui de toute la ligue (colonne « Club », toutes les équipes d'un coup) ou celui d'une seule équipe (« statistics.csv » : choisis alors l'équipe dans la liste). Il ajoute minutes, tirs, TS %, eFG %, usage, rebonds offensifs/défensifs, interceptions, contres, balles perdues et +/-. L'équipe doit déjà exister (page Effectif collée) pour garder les âges.</p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <select value={esCsvTeam || teams[0] || ""} onChange={e => setEsCsvTeam(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white">{teams.map(t => <option key={t} value={t}>{t}</option>)}<option value="__new">Autre équipe…</option></select>
+                  <select value={esCsvTeam} onChange={e => setEsCsvTeam(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white"><option value="">— équipe du fichier (si une seule équipe) —</option>{teams.map(t => <option key={t} value={t}>{t}</option>)}<option value="__new">Autre équipe…</option></select>
                   {esCsvTeam === "__new" && <input value={esCsvNew} onChange={e => setEsCsvNew(e.target.value)} placeholder="Nom de l'équipe" className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white w-44" />}
                   <label className="text-sm font-semibold text-white px-4 py-1.5 rounded-md cursor-pointer" style={{ backgroundColor: "#2563EB" }}>Choisir le fichier CSV
                     <input type="file" accept=".csv,text/csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; importCsv(f); }} />
@@ -15600,13 +15617,25 @@ function CoachingProBoost({ session }) {
                   <div className="flex flex-wrap gap-1.5 mb-3">
                     {POSBTN.map(([k, lab]) => <button key={k} onClick={() => setEsPos(v => v === k ? "" : k)} className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${esPos === k ? "" : "border-[#1B2A4A]/25 text-[#1B2A4A] bg-white"}`} style={esPos === k ? { backgroundColor: "#1B2A4A", color: "#fff", borderColor: "#1B2A4A" } : undefined}>{k} · {lab}</button>)}
                   </div>
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    {esTeam && <button onClick={() => setEsSel(rows.filter(p => !p.age && !p.pos).map(p => p.id))} className="text-xs font-semibold px-3 py-1.5 rounded-md border border-[#1B2A4A]/25 bg-white text-[#1B2A4A]">Sélectionner les joueurs sans âge ni poste</button>}
+                    {esSel.length > 0 && (<>
+                      <span className="text-xs font-semibold text-[#1B2A4A]">{esSel.length} sélectionné{esSel.length > 1 ? "s" : ""} :</span>
+                      <select value={esMoveTo} onChange={e => setEsMoveTo(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white"><option value="">Déplacer vers…</option>{teams.map(t => <option key={t} value={t}>{t}</option>)}</select>
+                      <button disabled={!esMoveTo} onClick={moveSel} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#2563EB" }}>Déplacer</button>
+                      <button onClick={delSel} className="text-xs font-semibold text-red-600 px-2 py-1.5 underline">Supprimer</button>
+                      <button onClick={() => setEsSel([])} className="text-xs text-[#1B2A4A]/50 underline">Désélectionner</button>
+                    </>)}
+                    {esUndo && <button onClick={() => { saveEspoirs(esUndo); setEsUndo(null); setEsSel([]); }} className="ml-auto text-xs font-semibold px-3 py-1.5 rounded-md border border-[#FF6B35] text-[#FF6B35] bg-white">↩ Annuler la dernière opération</button>}
+                  </div>
                   <p className="text-[11px] text-[#1B2A4A]/40 mb-1">{rows.length} joueur{rows.length > 1 ? "s" : ""}. Clique sur un titre de colonne pour trier. Les cases d'âge et de taille vides (fond orangé) se remplissent à la main : tape la valeur puis Entrée. Les valeurs saisies à la main sont en orange et sont gardées quand tu recolles la page de l'équipe ({ES.filter(p => !p.age).length} âge{ES.filter(p => !p.age).length > 1 ? "s" : ""} et {ES.filter(p => !p.height).length} taille{ES.filter(p => !p.height).length > 1 ? "s" : ""} manquant{ES.filter(p => !p.height).length > 1 ? "s" : ""}).</p>
                   <div className="overflow-x-auto border border-[#1B2A4A]/12 rounded-xl bg-white">
                     <table className="w-full text-sm">
-                      <thead className="bg-[#1B2A4A]/6 text-[11px] uppercase tracking-wide text-[#1B2A4A]/70"><tr>{th("name", "Joueur")}{th("team", "Équipe")}{th("pos", "Poste")}{th("age", "Âge")}{th("height", "Taille")}{th("ppm", "Pts")}{th("rpm", "Reb")}{th("pdpm", "Pds")}{th("eff", "EFF")}{hasSt && [["st.mj", "MJ"], ["st.min", "Min"], ["st.ts", "TS %"], ["st.efg", "eFG %"], ["st.p2", "2 pts %"], ["st.p3", "3 pts %"], ["st.plf", "LF %"], ["st.usg", "Usage %"], ["st.ro", "RO"], ["st.rd", "RD"], ["st.stl", "Int"], ["st.ct", "Ct"], ["st.bp", "BP"], ["st.pm", "+/-"]].map(([k, l]) => th(k, l))}</tr></thead>
+                      <thead className="bg-[#1B2A4A]/6 text-[11px] uppercase tracking-wide text-[#1B2A4A]/70"><tr><th className="px-2 py-1.5 w-8"><input type="checkbox" title="Tout sélectionner (liste affichée)" checked={rows.length > 0 && rows.every(p => esSel.includes(p.id))} onChange={e => setEsSel(e.target.checked ? rows.map(p => p.id) : [])} /></th>{th("name", "Joueur")}{th("team", "Équipe")}{th("pos", "Poste")}{th("age", "Âge")}{th("height", "Taille")}{th("ppm", "Pts")}{th("rpm", "Reb")}{th("pdpm", "Pds")}{th("eff", "EFF")}{hasSt && [["st.mj", "MJ"], ["st.min", "Min"], ["st.ts", "TS %"], ["st.efg", "eFG %"], ["st.p2", "2 pts %"], ["st.p3", "3 pts %"], ["st.plf", "LF %"], ["st.usg", "Usage %"], ["st.ro", "RO"], ["st.rd", "RD"], ["st.stl", "Int"], ["st.ct", "Ct"], ["st.bp", "BP"], ["st.pm", "+/-"]].map(([k, l]) => th(k, l))}</tr></thead>
                       <tbody>
                         {rows.map(p => (
-                          <tr key={p.id} className="border-t border-[#1B2A4A]/8">
+                          <tr key={p.id} className={`border-t border-[#1B2A4A]/8 ${esSel.includes(p.id) ? "bg-[#2563EB]/8" : ""}`}>
+                            <td className="px-2 py-1.5"><input type="checkbox" checked={esSel.includes(p.id)} onChange={e => setEsSel(a => e.target.checked ? [...a, p.id] : a.filter(x => x !== p.id))} /></td>
                             <td className="px-2 py-1.5 font-semibold text-[#1B2A4A] whitespace-nowrap">{p.num ? <span className="text-[#1B2A4A]/40 mr-1">#{p.num}</span> : null}{p.name}</td>
                             <td className="px-2 py-1.5 text-[#1B2A4A]/70 whitespace-nowrap">{p.team}</td>
                             <td className="px-2 py-1.5 whitespace-nowrap"><select value={p.pos || ""} onChange={e => setField(p.id, "pos", e.target.value)} className={`bg-transparent text-sm ${p.man?.pos ? "font-semibold text-[#FF6B35]" : ""}`}>{!POSCODES.includes(p.pos) && <option value={p.pos || ""}>{p.posLabel || "—"}</option>}{POSCODES.map(c => <option key={c} value={c}>{c.split("/").map(x => POSNAME[x]).join("/")}</option>)}</select></td>
