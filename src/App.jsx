@@ -3713,13 +3713,20 @@ function parseLnbStatsCsv(text) {
   if (ix("JOUEUR") === -1 || ix("PTS") === -1 || ix("MJ") === -1) throw new Error("ce n'est pas l'export « statistiques » de la LNB (il faut les colonnes joueur, MJ, MIN, PTS…)");
   const num = (v) => { const x = parseFloat(String(v ?? "").replace("%", "").replace(",", ".")); return isNaN(x) ? null : x; };
   const mins = (v) => { const m = /(\d+)\s*'\s*(\d+)?/.exec(String(v || "")); return m ? +m[1] + (m[2] ? +m[2] / 60 : 0) : num(v); };
-  const get = (r, n) => ix(n) === -1 ? null : r[ix(n)];
-  const mk = (r) => ({ mj: num(get(r, "MJ")), s5: num(get(r, "S5")), min: mins(get(r, "MIN")), pts: num(get(r, "PTS")), r2: num(get(r, "2R")), t2: num(get(r, "2T")), r3: num(get(r, "3R")), t3: num(get(r, "3T")), lfr: num(get(r, "LFR")), lft: num(get(r, "LFT")), ro: num(get(r, "RO")), rd: num(get(r, "RD")), rt: num(get(r, "RT")), pd: num(get(r, "PD")), ct: num(get(r, "CT")), cs: num(get(r, "CS")), stl: num(get(r, "IN")), bp: num(get(r, "BP")), fte: num(get(r, "FTE")), fpr: num(get(r, "FPR")), pm: num(get(r, "+/-")), eval: num(get(r, "EVAL")) });
+  const get = (r, n) => { const alias = { "IN": ["INT"], "FPR": ["FO"], "EVAL": ["EFF"] }[n] || []; const k = [n, ...alias].find(x => ix(x) !== -1); return k ? r[ix(k)] : null; };
+  const mk = (r) => ({ club: ix("CLUB") === -1 ? null : String(r[ix("CLUB")] || "").trim(), mj: num(get(r, "MJ")), s5: num(get(r, "S5")), min: mins(get(r, "MIN")), pts: num(get(r, "PTS")), r2: num(get(r, "2R")), t2: num(get(r, "2T")), r3: num(get(r, "3R")), t3: num(get(r, "3T")), lfr: num(get(r, "LFR")), lft: num(get(r, "LFT")), ro: num(get(r, "RO")), rd: num(get(r, "RD")), rt: num(get(r, "RT")), pd: num(get(r, "PD")), ct: num(get(r, "CT")), cs: num(get(r, "CS")), stl: num(get(r, "IN")), bp: num(get(r, "BP")), fte: num(get(r, "FTE")), fpr: num(get(r, "FPR")), pm: num(get(r, "+/-")), eval: num(get(r, "EVAL")) });
   let total = null; const players = [];
   rowsRaw.slice(1).forEach(r => { const n = String(r[ix("JOUEUR")] || "").trim(); if (!n) return; if (/^total$/i.test(n)) { total = mk(r); return; } if (/^[ée]quipe/i.test(n)) return; players.push({ name: n, ...mk(r) }); });
   if (!players.length) throw new Error("aucun joueur trouvé dans ce fichier");
-  const tp = total && total.t2 !== null ? total.t2 + total.t3 + 0.44 * total.lft + total.bp : 0;
+  const tp1 = total && total.t2 !== null ? total.t2 + total.t3 + 0.44 * total.lft + total.bp : 0;
+  // Fichier de toute la ligue (colonne Club, pas de ligne Total) : possessions de chaque équipe = somme des totaux des joueurs ÷ nombre de matchs de l'équipe
+  const tpClub = new Map();
+  if (!tp1) {
+    const by = new Map(); players.forEach(p => { const k = p.club || ""; if (!by.has(k)) by.set(k, []); by.get(k).push(p); });
+    by.forEach((arr, k) => { const G = Math.max(...arr.map(p => p.mj || 0)); if (G > 0) tpClub.set(k, arr.reduce((a, p) => a + ((p.t2 || 0) + (p.t3 || 0) + 0.44 * (p.lft || 0) + (p.bp || 0)) * (p.mj || 0), 0) / G); });
+  }
   players.forEach(p => {
+    const tp = tp1 || tpClub.get(p.club || "") || 0;
     const fga = (p.t2 || 0) + (p.t3 || 0), fta = p.lft || 0;
     p.fgPct = fga ? Math.round((p.r2 + p.r3) / fga * 1000) / 10 : null;
     p.p2 = p.t2 ? Math.round(p.r2 / p.t2 * 1000) / 10 : null; p.p3 = p.t3 ? Math.round(p.r3 / p.t3 * 1000) / 10 : null; p.plf = fta ? Math.round(p.lfr / fta * 1000) / 10 : null;
@@ -15502,35 +15509,43 @@ function CoachingProBoost({ session }) {
               const r = parseLnbEspoirsRoster(esText);
               const team = r.team || "Équipe inconnue", now = new Date().toISOString().slice(0, 10);
               const rest = ES.filter(p => p.team.toLowerCase() !== team.toLowerCase());
-              const old = new Map(ES.filter(p => p.team.toLowerCase() === team.toLowerCase()).map(p => [leagueNorm(p.name), p]));
-              saveEspoirs([...rest, ...r.players.map(p => {
+              const oldList = ES.filter(p => p.team.toLowerCase() === team.toLowerCase()), old = new Map(oldList.map(p => [leagueNorm(p.name), p]));
+              const fresh = r.players.map(p => {
                 const o = old.get(leagueNorm(p.name)), man = { ...((o && o.man) || {}) }, n = { ...p, team, id: o ? o.id : uid(), updated: now };
-                if (o) { ["age", "height"].forEach(k => { if (man[k] || (n[k] === null && o[k] !== null && o[k] !== undefined)) n[k] = o[k]; }); if (man.pos) { n.pos = o.pos; n.posLabel = o.posLabel; } }
+                if (o) {
+                  ["age", "height"].forEach(k => { if (man[k] || (n[k] === null && o[k] !== null && o[k] !== undefined)) n[k] = o[k]; });
+                  if (man.pos) { n.pos = o.pos; n.posLabel = o.posLabel; }
+                  if (o.st) { n.st = o.st; n.ppm = o.st.pts; n.rpm = o.st.rt; n.pdpm = o.st.pd; n.eff = o.st.eval; }   // les statistiques détaillées du CSV restent
+                }
                 n.man = man; return n;
-              })]);
+              });
+              const seen = new Set(fresh.map(p => leagueNorm(p.name)));
+              const kept = oldList.filter(p => p.st && !seen.has(leagueNorm(p.name)));   // joueur avec statistiques mais absent de la page Effectif : on le garde
+              saveEspoirs([...rest, ...fresh, ...kept]);
               setEsText("");
               cpbAlert?.(`${r.players.length} joueurs lus pour ${team}${ES.some(p => p.team.toLowerCase() === team.toLowerCase()) ? " (remplace la version précédente de cette équipe)" : ""}.`);
             } catch (e) { cpbAlert?.("Lecture impossible : " + e.message); }
           };
           const importCsv = async (file) => {
             if (!file) return;
-            const team = (esCsvTeam === "__new" ? esCsvNew.trim() : esCsvTeam) || teams[0];
-            if (!team) { cpbAlert?.("Choisis d'abord l'équipe de ce fichier (ou écris son nom)."); return; }
             try {
               const buf = await file.arrayBuffer(); let txt = new TextDecoder("utf-8").decode(buf); if (txt.includes("\ufffd")) txt = new TextDecoder("iso-8859-1").decode(buf);
               const r = parseLnbStatsCsv(txt), now = new Date().toISOString().slice(0, 10);
-              let upd = 0, add = 0; const next = [...ES];
+              const fixed = (esCsvTeam === "__new" ? esCsvNew.trim() : esCsvTeam) || teams[0] || "";
+              if (!r.players.some(p => p.club) && !fixed) { cpbAlert?.("Ce fichier ne contient pas le nom de l'équipe : choisis-la d'abord (ou écris son nom)."); return; }
+              let upd = 0, add = 0; const next = [...ES], clubs = new Set();
               r.players.forEach(row => {
+                const team = row.club || fixed; clubs.add(team);
                 const k = leagueNorm(row.name);
                 let idx = next.findIndex(p => p.team.toLowerCase() === team.toLowerCase() && leagueNorm(p.name) === k);
                 if (idx === -1) idx = next.findIndex(p => p.team.toLowerCase() === team.toLowerCase() && k && (leagueNorm(p.name).includes(k) || k.includes(leagueNorm(p.name))));
-                const { name, ...st } = row;
+                const { name, club, ...st } = row;
                 const base = idx === -1 ? { id: uid(), team, name, num: null, pos: "", posLabel: "", height: null, age: null, man: {} } : next[idx];
                 const merged = { ...base, st, ppm: st.pts, rpm: st.rt, pdpm: st.pd, eff: st.eval, updated: now };
                 if (idx === -1) { next.push(merged); add++; } else { next[idx] = merged; upd++; }
               });
               saveEspoirs(next); setEsCsvNew("");
-              cpbAlert?.(`${team} : statistiques de ${upd} joueur${upd > 1 ? "s" : ""} mises à jour${add ? `, ${add} joueur${add > 1 ? "s" : ""} ajouté${add > 1 ? "s" : ""} (absent${add > 1 ? "s" : ""} de la page Effectif : âge, taille et poste à saisir)` : ""}.`);
+              cpbAlert?.(`${clubs.size} équipe${clubs.size > 1 ? "s" : ""} : statistiques de ${upd} joueur${upd > 1 ? "s" : ""} mises à jour${add ? `, ${add} joueur${add > 1 ? "s" : ""} ajouté${add > 1 ? "s" : ""} (absent${add > 1 ? "s" : ""} des pages Effectif : âge, taille et poste à saisir)` : ""}.`);
             } catch (e) { cpbAlert?.("Lecture impossible : " + e.message); }
           };
           const q = esQuery.trim().toLowerCase(), amin = parseInt(esAgeMin, 10), amax = parseInt(esAgeMax, 10);
@@ -15563,7 +15578,7 @@ function CoachingProBoost({ session }) {
               </div>
               <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
                 <div className="text-xs font-semibold text-[#1B2A4A] mb-1">Statistiques détaillées (fichier CSV de la page Statistiques LNB)</div>
-                <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Choisis l'équipe du fichier, puis le fichier « statistics.csv ». Il ajoute minutes, tirs, TS %, eFG %, usage, rebonds offensifs/défensifs, interceptions, contres, balles perdues et +/-. L'équipe doit déjà exister (page Effectif collée) pour garder les âges.</p>
+                <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Choisis le fichier CSV : celui de toute la ligue (colonne « Club », toutes les équipes d'un coup) ou celui d'une seule équipe (« statistics.csv » : choisis alors l'équipe dans la liste). Il ajoute minutes, tirs, TS %, eFG %, usage, rebonds offensifs/défensifs, interceptions, contres, balles perdues et +/-. L'équipe doit déjà exister (page Effectif collée) pour garder les âges.</p>
                 <div className="flex flex-wrap items-center gap-2">
                   <select value={esCsvTeam || teams[0] || ""} onChange={e => setEsCsvTeam(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white">{teams.map(t => <option key={t} value={t}>{t}</option>)}<option value="__new">Autre équipe…</option></select>
                   {esCsvTeam === "__new" && <input value={esCsvNew} onChange={e => setEsCsvNew(e.target.value)} placeholder="Nom de l'équipe" className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white w-44" />}
