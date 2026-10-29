@@ -3673,7 +3673,8 @@ const LEAGUE_STATS = [
 const LEAGUE_NM1_COLS = ["gp", "pts", "eval", "_2r", "_2t", "twoPct", "_3r", "_3t", "tpPct", "_fr", "_ft", "ftPct", "reb", "oreb", "dreb", "ast", "stl", "tov", "blk", "pf", "fd"];
 // ── Espoirs LNB : page « Effectif » d'une équipe sur lnb.fr (copier-coller) : poste, taille, âge, points / rebonds / passes par match ──
 function parseLnbEspoirsRoster(text) {
-  const lines = String(text || "").split(/\r?\n/).map(l => l.replace(/ /g, " ").trim()).filter(Boolean);
+  // Texte copié depuis un navigateur : accents « décomposés » (A + accent), espaces insécables, tirets longs, caractères invisibles
+  const lines = String(text || "").normalize("NFC").replace(/[\u200b-\u200d\ufeff]/g, "").replace(/[\u2010-\u2015\u2212]/g, "-").split(/\r?\n/).map(l => l.replace(/\u00a0/g, " ").trim()).filter(Boolean);
   const title = (x) => String(x).toLowerCase().replace(/(^|[\s\-/'’])([a-zà-ÿ])/g, (m, a, b) => a + b.toUpperCase());
   const POS = { "1": "Meneur", "2": "Arrière", "3": "Ailier", "4": "Ailier fort", "5": "Pivot" };
   let team = "";
@@ -3686,7 +3687,7 @@ function parseLnbEspoirsRoster(text) {
     const tm = /^Taille\s*-\s*(\d{3})?\s*$/.exec(lines[i]); if (!tm) continue;
     const pm = /^([1-5](?:\/[1-5])*)\s*-\s*(.+)$/.exec(lines[i - 1] || ""), name = lines[i - 2];
     if (!pm || !name || /^\d+$/.test(name)) continue;
-    const am = /^[ÂA]ge\s*-\s*(\d{1,2})?\s*$/.exec(lines[i + 1] || "");
+    const am = /^\S{0,2}ge\s*-\s*(\d{1,2})?\s*$/i.exec(lines[i + 1] || "");
     const st = {}; for (let k = i + 2; k < Math.min(lines.length, i + 7); k++) { const m = /^(PPM|RPM|PdPM|EFF)\s*(-?[\d.,]+)$/.exec(lines[k]); if (m) st[m[1]] = num(m[2]); }
     const jersey = /^\d{1,2}$/.test(lines[i - 3] || "") && lines[i - 3] !== "00" ? lines[i - 3] : null;
     players.push({ name: title(name), num: jersey, pos: pm[1], posLabel: pm[2].trim(), height: tm[1] ? +tm[1] : null, age: am && am[1] ? +am[1] : null, ppm: st.PPM ?? null, rpm: st.RPM ?? null, pdpm: st.PdPM ?? null, eff: st.EFF ?? null });
