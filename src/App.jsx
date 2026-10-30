@@ -581,6 +581,8 @@ function useStore(sport = DEFAULT_SPORT) {
   const [leagueGames, setLeagueGames] = useState([]);
   const leagueDataKey = `leagueData:${sport}`;
   const espoirsKey = `espoirs:${sport}`;
+  const recruitKey = `recruit:${sport}`;
+  const [recruit, setRecruit] = useState({ players: [] });
   const [espoirs, setEspoirs] = useState([]);
   const [leagueData, setLeagueData] = useState({ teams: [], stats: {} });
   const [scoutReports, setScoutReports] = useState([]);
@@ -688,6 +690,10 @@ function useStore(sport = DEFAULT_SPORT) {
       try {
         const sr = await storage.get(scoutReportsKey);
         setScoutReports(sr ? JSON.parse(sr.value) : []);
+      } catch { hadError = true; }
+      try {
+        const rc = await storage.get(recruitKey);
+        setRecruit(rc ? JSON.parse(rc.value) : { players: [] });
       } catch { hadError = true; }
       try {
         const es = await storage.get(espoirsKey);
@@ -827,6 +833,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const saveVideoScoutSessions = (next) => { setVideoScoutSessions(next); persist(videoScoutSessionsKey, JSON.stringify(next)); };
   const saveScoutReports = (next) => { setScoutReports(next); persist(scoutReportsKey, JSON.stringify(next)); };
   const saveLeagueGames = (next) => { setLeagueGames(next); persist(leagueGamesKey, JSON.stringify(next)); };
+  const saveRecruit = (next) => { setRecruit(next); persist(recruitKey, JSON.stringify(next)); };
   const saveEspoirs = (next) => { setEspoirs(next); persist(espoirsKey, JSON.stringify(next)); };
   const saveLeagueData = (next) => { setLeagueData(next); persist(leagueDataKey, JSON.stringify(next)); };
   const saveTeamAnalyses = (next) => { setTeamAnalyses(next); persist(teamAnalysesKey, JSON.stringify(next)); };
@@ -862,7 +869,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
+  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, recruit, saveRecruit, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
 }
 
 function usePdfJs() {
@@ -3780,6 +3787,87 @@ C.forEach(function(c){var h=document.getElementById('h_'+c[0]);h.textContent=c[1
 ['t','q','a1','a2'].forEach(function(id){document.getElementById(id).addEventListener('input',render)});
 [].slice.call(document.querySelectorAll('#pb button')).forEach(function(b){b.onclick=function(){var k=b.getAttribute('data-p');pos=pos===k?'':k;[].slice.call(document.querySelectorAll('#pb button')).forEach(function(x){x.classList.toggle('on',x.getAttribute('data-p')===pos)});render()}});
 render();})();</script></body></html>`;
+}
+// ── Recrutement : fiche de notation des joueurs (notes de 1 à 5 par critère, note globale, profils) ──
+const RECRUIT_DEFAULT_GROUPS = [
+  { id: "mental", name: "Mental et collectif", items: [{ id: "entrain", label: "Entraînabilité" }, { id: "cohesion", label: "Cohésion dans une équipe" }, { id: "esprit", label: "Esprit d'équipe" }, { id: "qi", label: "Intelligence de jeu" }] },
+  { id: "physique", name: "Qualités physiques", items: [{ id: "athl", label: "Athlétique" }, { id: "vitesse", label: "Vitesse" }, { id: "lateralite", label: "Latéralité" }, { id: "cardio", label: "Cardio" }] },
+  { id: "defense", name: "Défense", items: [{ id: "duel", label: "Duel" }, { id: "rotation", label: "Rotation" }, { id: "aide", label: "Aide" }, { id: "closeout", label: "Close out" }] },
+  { id: "pnrdef", name: "Défense du pick and roll", items: [{ id: "pd_step", label: "Step out" }, { id: "pd_switch", label: "Switch" }, { id: "pd_protect", label: "Protect" }] },
+  { id: "pnratt", name: "Attaque du pick and roll", items: [{ id: "pa_step", label: "Step out" }, { id: "pa_switch", label: "Switch" }, { id: "pa_protect", label: "Protect" }] },
+];
+const RECRUIT_COLORS = { 1: "#ef4444", 2: "#f97316", 3: "#eab308", 4: "#84cc16", 5: "#22c55e" };
+const RECRUIT_STATUS = ["À suivre", "Priorité", "Contacté", "Écarté"];
+// Moyennes par groupe (critères notés seulement), note globale = moyenne des groupes notés (poids w, 1 par défaut)
+function recruitScores(pl, groups) {
+  const r = pl.r || {}, by = {}; let wsum = 0, tot = 0, rated = 0, all = 0;
+  groups.forEach(g => {
+    const vals = g.items.map(it => r[it.id]).filter(v => typeof v === "number" && v >= 1 && v <= 5);
+    all += g.items.length; rated += vals.length;
+    const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    by[g.id] = { avg, n: vals.length, total: g.items.length, min: vals.length ? Math.min(...vals) : null };
+    if (avg !== null) { const w = typeof g.w === "number" ? g.w : 1; wsum += w; tot += avg * w; }
+  });
+  const overall = wsum ? tot / wsum : null;
+  return { by, overall, overall100: overall === null ? null : Math.round((overall - 1) / 4 * 100), coverage: all ? rated / all : 0, rated, all };
+}
+// Profils déduits des notes (groupes d'origine) : « 5 partout sur le physique » = athlète
+function recruitProfiles(pl, groups, sc) {
+  const out = [], weak = [], g = (id) => sc.by[id] || { avg: null, n: 0, total: 0, min: null };
+  const phy = g("physique"), def = g("defense"), men = g("mental"), pd = g("pnrdef"), pa = g("pnratt"), qi = (pl.r || {}).qi;
+  if (phy.n >= 3 && phy.avg >= 4.5 && phy.min >= 4) out.push("Athlète");
+  if (def.n >= 3 && def.avg >= 4.3) out.push(pd.n >= 2 && pd.avg >= 4 ? "Défenseur (pick and roll compris)" : "Défenseur");
+  if (men.n >= 3 && men.avg >= 4.5) out.push("Joueur de groupe");
+  if (typeof qi === "number" && qi >= 5) out.push("Cerveau");
+  if (pa.n >= 2 && pa.avg >= 4.3) out.push("Attaquant de pick and roll");
+  const rated = groups.map(x => g(x.id)).filter(x => x.avg !== null);
+  if (sc.overall !== null && sc.overall >= 4 && rated.length >= 3 && rated.every(x => x.avg >= 3.5)) out.push("Complet");
+  groups.forEach(x => { const v = g(x.id); if (v.n >= 2 && v.avg <= 2.5) weak.push(x.name); });
+  if (sc.coverage < 0.5) out.push("Fiche incomplète");
+  return { profiles: out, weak };
+}
+// Radar : une branche par groupe, 0 au centre, 5 au bord
+function recruitRadarSvg(groups, sc, size = 220) {
+  const n = groups.length; if (n < 3) return "";
+  const cx = size / 2, cy = size / 2 + 6, R = size / 2 - 38, pt = (i, v) => { const a = -Math.PI / 2 + i * 2 * Math.PI / n; return [cx + Math.cos(a) * R * v / 5, cy + Math.sin(a) * R * v / 5]; };
+  const ring = (v) => groups.map((_, i) => pt(i, v).map(x => x.toFixed(1)).join(",")).join(" ");
+  const poly = groups.map((x, i) => pt(i, sc.by[x.id].avg ?? 0).map(x => x.toFixed(1)).join(",")).join(" ");
+  const lab = (x) => String(x).replace(/ du pick and roll/, " P&R").replace(/Qualités physiques/, "Physique").replace(/Mental et collectif/, "Mental");
+  return `<svg viewBox="-34 0 ${size + 68} ${size + 12}" width="${size + 68}" height="${size + 12}" xmlns="http://www.w3.org/2000/svg" font-family="Inter,Arial,sans-serif">
+    ${[1, 2, 3, 4, 5].map(v => `<polygon points="${ring(v)}" fill="none" stroke="#1B2A4A${v === 5 ? "55" : "22"}" stroke-width="1"/>`).join("")}
+    ${groups.map((_, i) => { const [x, y] = pt(i, 5); return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="#1B2A4A22"/>`; }).join("")}
+    <polygon points="${poly}" fill="#FF6B3555" stroke="#FF6B35" stroke-width="2"/>
+    ${groups.map((x, i) => { const [lx, ly] = pt(i, 6.6); return `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="9.5" font-weight="600" fill="#1B2A4A" text-anchor="middle">${lab(x.name)}</text>`; }).join("")}</svg>`;
+}
+// Export HTML : classement + une fiche par joueur (imprimable, une fiche par feuille A4)
+function buildRecruitHtml(players, groups, logo = null) {
+  const esc = (x) => String(x ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const f = (x, d = 1) => x === null || x === undefined ? "–" : x.toFixed(d).replace(".", ",");
+  const date = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  const list = players.map(p => { const sc = recruitScores(p, groups); return { p, sc, pr: recruitProfiles(p, groups, sc) }; }).sort((a, b) => (b.sc.overall ?? -1) - (a.sc.overall ?? -1));
+  const dot = (v) => `<span class="d" style="background:${v ? RECRUIT_COLORS[v] : "#e5e7eb"}">${v || "–"}</span>`;
+  const card = ({ p, sc, pr }) => `<section class="card"><div class="top"><div><h2>${esc(p.name)}</h2><div class="sub">${[p.team, p.posLabel || p.pos, p.age ? p.age + " ans" : "", p.height ? p.height + " cm" : "", p.status].filter(Boolean).map(esc).join(" · ")}</div>
+    <div class="chips">${pr.profiles.map(x => `<span class="chip">${esc(x)}</span>`).join("")}${pr.weak.map(x => `<span class="chip w">À travailler : ${esc(x)}</span>`).join("")}</div></div>
+    <div class="ov"><b>${f(sc.overall)}</b><span>/ 5</span><small>${sc.overall100 ?? "–"} / 100</small></div></div>
+    <div class="cols"><div class="gs">${groups.map(g => `<div class="g"><div class="gh"><b>${esc(g.name)}</b><span>${f(sc.by[g.id].avg)}</span></div>${g.items.map(it => `<div class="it"><span>${esc(it.label)}</span>${dot((p.r || {})[it.id])}</div>`).join("")}</div>`).join("")}</div>
+    <div class="rd">${recruitRadarSvg(groups, sc, 230)}</div></div>${(p.notes || "").trim() ? `<div class="nt"><b>Notes</b><p>${esc(p.notes).replace(/\n/g, "<br>")}</p></div>` : ""}</section>`;
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Recrutement — ${esc(date)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>*{box-sizing:border-box}body{margin:0;padding:18px;background:#F2EDE4;color:#1B2A4A;font:14px 'Inter',system-ui,sans-serif}.page{max-width:900px;margin:0 auto}
+header{display:flex;align-items:center;gap:14px;margin-bottom:14px}header img{height:46px;width:46px;object-fit:contain;border-radius:8px;background:#fff;padding:4px}h1{font:700 28px 'Oswald',sans-serif;margin:0;text-transform:uppercase}h1 small{display:block;font:400 12px 'Inter',sans-serif;text-transform:none;color:#1B2A4A99}
+.card{background:#fff;border:1px solid #1B2A4A1f;border-radius:14px;padding:16px 18px;margin-bottom:14px;break-inside:avoid}.card h2{font:600 22px 'Oswald',sans-serif;margin:0}.sub{font-size:12px;color:#1B2A4A99;margin-top:2px}
+.top{display:flex;justify-content:space-between;gap:12px}.ov{text-align:center;min-width:90px}.ov b{font:700 36px 'Oswald',sans-serif;color:#FF6B35}.ov span{font-size:14px;color:#1B2A4A99}.ov small{display:block;font-size:11px;color:#1B2A4A99}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.chip{background:#1B2A4A;color:#fff;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:600}.chip.w{background:#fee2e2;color:#b91c1c}
+.cols{display:grid;grid-template-columns:1fr 240px;gap:14px;margin-top:10px}.gs{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px}.g{break-inside:avoid}.gh{display:flex;justify-content:space-between;border-bottom:2px solid #FF6B35;margin-bottom:3px;font-size:12px}.gh span{font-weight:700}
+.it{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:2px 0}.d{display:inline-block;min-width:22px;text-align:center;border-radius:6px;color:#fff;font-weight:700;padding:1px 0;font-size:12px}
+.nt{margin-top:10px;font-size:12.5px;border-top:1px solid #1B2A4A14;padding-top:8px}.nt p{margin:4px 0 0;line-height:1.45}
+table{width:100%;border-collapse:collapse;font-size:12.5px}th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#1B2A4A99;padding:6px 8px;border-bottom:2px solid #1B2A4A22}td{padding:6px 8px;border-top:1px solid #1B2A4A12}td.n,th.n{text-align:right}
+.bar{position:fixed;top:12px;right:12px}.bar button{background:#FF6B35;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer}
+@media print{body{background:#fff;padding:0}.bar{display:none}.card{border:1px solid #1B2A4A33;page-break-inside:avoid}.fiche{page-break-before:always}@page{size:A4;margin:10mm}}</style></head><body><div class="bar"><button onclick="window.print()">🖨️ Imprimer / PDF</button></div><div class="page">
+<header>${logo ? `<img src="${logo}" alt="">` : ""}<h1>Recrutement<small>Fiches de notation · ${esc(date)} · notes de 1 (pas bien) à 5 (incroyable)</small></h1></header>
+<section class="card"><table><thead><tr><th>#</th><th>Joueur</th><th>Poste</th><th class="n">Âge</th><th class="n">Note</th>${groups.map(g => `<th class="n">${esc(g.name.replace(/Qualités physiques/, "Physique").replace(/Mental et collectif/, "Mental").replace(/ du pick and roll/, " P&R"))}</th>`).join("")}<th>Profil</th></tr></thead><tbody>
+${list.map((x, i) => `<tr><td>${i + 1}</td><td><b>${esc(x.p.name)}</b><br><small>${esc(x.p.team || "")}</small></td><td>${esc(x.p.posLabel || x.p.pos || "")}</td><td class="n">${x.p.age ?? "–"}</td><td class="n"><b>${f(x.sc.overall)}</b></td>${groups.map(g => `<td class="n">${f(x.sc.by[g.id].avg)}</td>`).join("")}<td>${esc(x.pr.profiles.join(", "))}</td></tr>`).join("")}</tbody></table></section>
+${list.map(x => `<div class="fiche">${card(x)}</div>`).join("")}</div></body></html>`;
 }
 const leagueNorm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 // Page d'accueil Stats Center de la LNB (top 5 par catégorie) : titre de catégorie → statistique
@@ -10763,7 +10851,7 @@ function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport, hasAnalysis, analysisUntil, hasPack } = useSubscription(session?.user?.id);
   const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, canUseMatchmode, canUseMyteam, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
   const canAnalysis = isAdmin || canUseMyteam || hasAnalysis;   // Scouting report + Mon équipe
-  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
+  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, recruit, saveRecruit, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
   const SPORT_FORMATS = formats;
@@ -10862,7 +10950,7 @@ function CoachingProBoost({ session }) {
   const pdfReady = usePdfJs();
   const [view, setView] = useState(() => {
     const saved = localStorage.getItem("cpb_view");
-    return ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness","league","espoirs"].includes(saved) ? saved : "library";
+    return ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness","league","espoirs","recruit"].includes(saved) ? saved : "library";
   });
   // Toujours à jour, contrairement à `view` capturé dans la closure de l'effet ci-dessous
   // (qui ne tourne qu'une fois au montage) — évite qu'un retour arrière égaré (ex: swipe
@@ -10882,7 +10970,7 @@ function CoachingProBoost({ session }) {
       const v = e.state?.view;
       if (v === "session" && activeSessionRef.current) {
         setView("session");
-      } else if (v && ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness","league","espoirs"].includes(v)) {
+      } else if (v && ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness","league","espoirs","recruit"].includes(v)) {
         setView(v);
         localStorage.setItem("cpb_view", v);
       } else if (activeSessionRef.current) {
@@ -11699,6 +11787,7 @@ function CoachingProBoost({ session }) {
   // (choisir des temps forts pour filtrer une liste existante).
   const [vsAnnounceName, setVsAnnounceName] = useState("");
   // Tag par entrées (iPad) : entrées tapées dans l'ordre, play choisi, nom du nouveau play, entrée ajoutée à la main
+  const [rcSel, setRcSel] = useState(null), [rcQuery, setRcQuery] = useState(""), [rcStatus, setRcStatus] = useState(""), [rcCfgOpen, setRcCfgOpen] = useState(false), [rcNewItem, setRcNewItem] = useState({}), [rcNewGroup, setRcNewGroup] = useState("");
   const [esText, setEsText] = useState(""), [esTeam, setEsTeam] = useState(""), [esPos, setEsPos] = useState(""), [esQuery, setEsQuery] = useState(""), [esAgeMin, setEsAgeMin] = useState(""), [esAgeMax, setEsAgeMax] = useState(""), [esSort, setEsSort] = useState({ k: "eff", d: -1 }), [esCsvTeam, setEsCsvTeam] = useState(""), [esCsvNew, setEsCsvNew] = useState(""), [esSel, setEsSel] = useState([]), [esUndo, setEsUndo] = useState(null), [esMoveTo, setEsMoveTo] = useState("");
   const [vsEntrySel, setVsEntrySel] = useState([]), [vsEntryPlayId, setVsEntryPlayId] = useState(null), [vsEntryNew, setVsEntryNew] = useState(""), [vsEntryCustom, setVsEntryCustom] = useState(""), [vsEntryGroupsOpen, setVsEntryGroupsOpen] = useState(false), [vsEntryCat, setVsEntryCat] = useState(null), [vsFinNew, setVsFinNew] = useState([]);
   const [vsAnnounceTf, setVsAnnounceTf] = useState([]);
@@ -12678,6 +12767,7 @@ function CoachingProBoost({ session }) {
               { key: "scoutreport", label: isAdmin ? "Scouting report (admin)" : canAnalysis ? "Scouting report" : "Scouting report 🔒", icon: FileText },
               ...(isAdmin ? [{ key: "league", label: "Comparatif championnat (admin)", icon: BarChart3 }] : []),
               ...(isAdmin ? [{ key: "espoirs", label: "Espoirs LNB (admin)", icon: Users }] : []),
+              ...(isAdmin ? [{ key: "recruit", label: "Recrutement (admin)", icon: UserCheck }] : []),
               { key: "myteam", label: isAdmin ? "Mon équipe (admin)" : canAnalysis ? "Mon équipe" : "Mon équipe 🔒", icon: BarChart3 },
               ...(isAdmin || canManageWellness ? [{ key: "wellness", label: "Bien-être joueurs", icon: UserCheck }] : []),
               { key: "account", label: "Mon compte", icon: Users },
@@ -15546,6 +15636,133 @@ function CoachingProBoost({ session }) {
 
         {view === "pack" && !(isAdmin || hasPack) && <PackPaywall isPremium={isPremium} />}
         {view === "pack" && (isAdmin || hasPack) && <PackPage onOpenExercises={(d) => setSharedExerciseCollection({ ...d, fromPack: true })} onOpenPlays={setSharedPlayCollection} />}
+        {view === "recruit" && isAdmin && (() => {
+          const R = recruit || { players: [] }, groups = R.groups || RECRUIT_DEFAULT_GROUPS, players = R.players || [];
+          const POSNAME = { "1": "Meneur", "2": "Arrière", "3": "Ailier", "4": "Ailier fort", "5": "Pivot" };
+          const POSCODES = ["1", "1/2", "2", "2/3", "3", "3/4", "4", "4/5", "5"];
+          const save = (patch) => saveRecruit({ ...R, ...patch });
+          const upd = (id, patch) => save({ players: players.map(p => p.id === id ? { ...p, ...patch } : p) });
+          const setRate = (id, itemId, v) => { const p = players.find(x => x.id === id); const r = { ...(p.r || {}) }; if (r[itemId] === v) delete r[itemId]; else r[itemId] = v; upd(id, { r }); };
+          const addPlayer = () => { const np = { id: uid(), name: "Nouveau joueur", team: "", pos: "", posLabel: "", age: null, height: null, status: "À suivre", r: {}, notes: "", created: new Date().toISOString().slice(0, 10) }; save({ players: [...players, np] }); setRcSel(np.id); };
+          const scored = players.map(p => { const sc = recruitScores(p, groups); return { p, sc, pr: recruitProfiles(p, groups, sc) }; });
+          const q = rcQuery.trim().toLowerCase();
+          const shown = scored.filter(x => (!rcStatus || x.p.status === rcStatus) && (!q || (x.p.name + " " + (x.p.team || "")).toLowerCase().includes(q))).sort((a, b) => (b.sc.overall ?? -1) - (a.sc.overall ?? -1));
+          const cur = scored.find(x => x.p.id === rcSel) || null;
+          const f1 = (x) => x === null || x === undefined ? "–" : x.toFixed(1).replace(".", ",");
+          const inp = "w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white";
+          const exportHtml = (list) => { try { downloadBlob(new Blob([buildRecruitHtml(list, groups, clubLogo)], { type: "text/html;charset=utf-8" }), `recrutement-${new Date().toISOString().slice(0, 10)}.html`); toast?.("✓ Export du recrutement prêt"); } catch (e) { cpbAlert?.("Export impossible : " + (e?.message || e)); } };
+          return (
+            <div className="max-w-6xl">
+              <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
+                <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>RECRUTEMENT</h2>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={addPlayer} className="text-sm font-semibold text-white px-3 py-2 rounded-md" style={{ backgroundColor: "var(--sport-accent)" }}>+ Nouveau joueur</button>
+                  <button disabled={!players.length} onClick={() => exportHtml(players)} className="text-sm font-semibold text-white px-3 py-2 rounded-md disabled:opacity-40" style={{ backgroundColor: "#2563EB" }}>📤 Exporter classement + fiches</button>
+                  <button onClick={() => setRcCfgOpen(o => !o)} className="text-sm font-semibold px-3 py-2 rounded-md border border-[#1B2A4A]/25 bg-white text-[#1B2A4A]">⚙️ Critères</button>
+                </div>
+              </div>
+              <p className="text-xs text-[#1B2A4A]/40 mb-4">Note chaque critère de 1 (pas bien) à 5 (incroyable). La note globale est la moyenne des groupes notés ; les profils (athlète, défenseur…) se déduisent des notes. Pour ajouter des joueurs des Espoirs LNB : onglet « Espoirs LNB », coche les joueurs, puis « Ajouter au recrutement ».</p>
+              {rcCfgOpen && (
+                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-4">
+                  <div className="text-xs font-semibold text-[#1B2A4A] mb-2">Critères de notation (tu peux en ajouter, renommer, retirer)</div>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    {groups.map(g => (
+                      <div key={g.id} className="border border-[#1B2A4A]/12 rounded-lg p-2">
+                        <input key={g.id + g.name} defaultValue={g.name} onBlur={e => save({ groups: groups.map(x => x.id === g.id ? { ...x, name: e.target.value.trim() || x.name } : x) })} className="w-full font-semibold text-sm bg-transparent border-b border-[#1B2A4A]/15 mb-1 outline-none" />
+                        {g.items.map(it => (
+                          <div key={it.id} className="flex items-center gap-1 py-0.5">
+                            <input key={it.id + it.label} defaultValue={it.label} onBlur={e => save({ groups: groups.map(x => x.id === g.id ? { ...x, items: x.items.map(y => y.id === it.id ? { ...y, label: e.target.value.trim() || y.label } : y) } : x) })} className="flex-1 text-sm bg-transparent outline-none border-b border-transparent hover:border-[#1B2A4A]/20" />
+                            <button onClick={async () => { const ok = await cpbAlert?.(`Retirer le critère « ${it.label} » ?`, { confirm: true }); if (ok) save({ groups: groups.map(x => x.id === g.id ? { ...x, items: x.items.filter(y => y.id !== it.id) } : x) }); }} className="text-[#1B2A4A]/30 hover:text-red-600 text-xs">✕</button>
+                          </div>
+                        ))}
+                        <div className="flex gap-1 mt-1">
+                          <input value={rcNewItem[g.id] || ""} onChange={e => setRcNewItem(o => ({ ...o, [g.id]: e.target.value }))} placeholder="+ critère" className="flex-1 text-sm border border-[#1B2A4A]/15 rounded px-2 py-1 bg-white" />
+                          <button disabled={!(rcNewItem[g.id] || "").trim()} onClick={() => { save({ groups: groups.map(x => x.id === g.id ? { ...x, items: [...x.items, { id: "c" + uid(), label: rcNewItem[g.id].trim() }] } : x) }); setRcNewItem(o => ({ ...o, [g.id]: "" })); }} className="text-xs font-semibold text-white px-2 rounded disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>Ajouter</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <input value={rcNewGroup} onChange={e => setRcNewGroup(e.target.value)} placeholder="Nouveau groupe de critères (ex. Tir)" className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white w-64" />
+                    <button disabled={!rcNewGroup.trim()} onClick={() => { save({ groups: [...groups, { id: "g" + uid(), name: rcNewGroup.trim(), items: [] }] }); setRcNewGroup(""); }} className="text-xs font-semibold text-white px-3 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>Ajouter le groupe</button>
+                    {R.groups && <button onClick={async () => { const ok = await cpbAlert?.("Revenir aux critères d'origine ? Les notes déjà saisies sont conservées.", { confirm: true }); if (ok) save({ groups: undefined }); }} className="text-xs text-[#1B2A4A]/50 underline ml-auto">Rétablir les critères d'origine</button>}
+                  </div>
+                </div>
+              )}
+              <div className="grid lg:grid-cols-[320px_1fr] gap-4">
+                <div>
+                  <div className="flex gap-2 mb-2">
+                    <input value={rcQuery} onChange={e => setRcQuery(e.target.value)} placeholder="Chercher un joueur ou un club" className={inp} />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {RECRUIT_STATUS.map(st => <button key={st} onClick={() => setRcStatus(v => v === st ? "" : st)} className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${rcStatus === st ? "" : "border-[#1B2A4A]/25 text-[#1B2A4A] bg-white"}`} style={rcStatus === st ? { backgroundColor: "#1B2A4A", color: "#fff", borderColor: "#1B2A4A" } : undefined}>{st}</button>)}
+                  </div>
+                  {shown.length === 0 && <p className="text-xs text-[#1B2A4A]/40 italic">{players.length ? "Aucun joueur ne correspond." : "Aucun joueur pour l'instant : « + Nouveau joueur », ou ajoute-en depuis l'onglet Espoirs LNB."}</p>}
+                  <div className="flex flex-col gap-1.5">
+                    {shown.map(x => (
+                      <button key={x.p.id} onClick={() => setRcSel(x.p.id)} className={`text-left border rounded-lg p-2.5 bg-white flex items-center gap-3 ${rcSel === x.p.id ? "border-2 border-[#FF6B35]" : "border-[#1B2A4A]/15"}`}>
+                        <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold shrink-0" style={{ backgroundColor: x.sc.overall === null ? "#9ca3af" : RECRUIT_COLORS[Math.round(x.sc.overall)] }}>{f1(x.sc.overall)}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-[#1B2A4A] truncate">{x.p.name || "Sans nom"}</div>
+                          <div className="text-[11px] text-[#1B2A4A]/60 truncate">{[x.p.team, x.p.posLabel || x.p.pos, x.p.age ? x.p.age + " ans" : ""].filter(Boolean).join(" · ")}</div>
+                          <div className="flex flex-wrap gap-1 mt-0.5">{x.pr.profiles.slice(0, 2).map(t => <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#1B2A4A] text-white">{t}</span>)}{x.p.status && x.p.status !== "À suivre" && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35] font-semibold">{x.p.status}</span>}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  {!cur ? <p className="text-sm text-[#1B2A4A]/40 italic mt-6">Choisis un joueur dans la liste pour le noter.</p> : (
+                    <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4">
+                      <div className="grid sm:grid-cols-2 gap-2 mb-3">
+                        <div><div className="text-[11px] text-[#1B2A4A]/50">Nom</div><input key={cur.p.id + "n"} defaultValue={cur.p.name} onBlur={e => upd(cur.p.id, { name: e.target.value })} className={inp} /></div>
+                        <div><div className="text-[11px] text-[#1B2A4A]/50">Club</div><input key={cur.p.id + "t"} defaultValue={cur.p.team || ""} onBlur={e => upd(cur.p.id, { team: e.target.value })} className={inp} /></div>
+                        <div><div className="text-[11px] text-[#1B2A4A]/50">Poste</div>
+                          <select value={cur.p.pos || ""} onChange={e => upd(cur.p.id, { pos: e.target.value, posLabel: e.target.value.split("/").filter(Boolean).map(c => POSNAME[c]).join("/") })} className={inp}><option value="">—</option>{POSCODES.map(c => <option key={c} value={c}>{c.split("/").map(x => POSNAME[x]).join("/")}</option>)}</select></div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div><div className="text-[11px] text-[#1B2A4A]/50">Âge</div><input key={cur.p.id + "a"} defaultValue={cur.p.age ?? ""} inputMode="numeric" onBlur={e => { const v = parseInt(e.target.value, 10); upd(cur.p.id, { age: isNaN(v) ? null : v }); }} className={inp} /></div>
+                          <div><div className="text-[11px] text-[#1B2A4A]/50">Taille</div><input key={cur.p.id + "h"} defaultValue={cur.p.height ?? ""} inputMode="numeric" onBlur={e => { const v = parseInt(String(e.target.value).replace(/\D/g, ""), 10); upd(cur.p.id, { height: isNaN(v) ? null : v }); }} className={inp} /></div>
+                          <div><div className="text-[11px] text-[#1B2A4A]/50">Statut</div><select value={cur.p.status || "À suivre"} onChange={e => upd(cur.p.id, { status: e.target.value })} className={inp}>{RECRUIT_STATUS.map(st => <option key={st} value={st}>{st}</option>)}</select></div>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-4 mb-3">
+                        <div className="text-center"><div className="text-4xl font-bold" style={{ fontFamily: "Oswald, sans-serif", color: "#FF6B35" }}>{f1(cur.sc.overall)}<span className="text-base text-[#1B2A4A]/40"> / 5</span></div><div className="text-[11px] text-[#1B2A4A]/50">Note globale · {cur.sc.overall100 ?? "–"} / 100 · {cur.sc.rated}/{cur.sc.all} critères notés</div></div>
+                        <div className="flex flex-wrap gap-1.5 flex-1 min-w-[180px]">
+                          {cur.pr.profiles.map(t => <span key={t} className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#1B2A4A] text-white">{t}</span>)}
+                          {cur.pr.weak.map(t => <span key={t} className="text-xs font-semibold px-2.5 py-1 rounded-full bg-red-100 text-red-700">À travailler : {t}</span>)}
+                          {!cur.pr.profiles.length && !cur.pr.weak.length && <span className="text-xs text-[#1B2A4A]/40">Aucun profil encore : note plus de critères.</span>}
+                        </div>
+                        <div dangerouslySetInnerHTML={{ __html: recruitRadarSvg(groups, cur.sc, 200) }} />
+                      </div>
+                      <div className="grid md:grid-cols-2 gap-3">
+                        {groups.map(g => (
+                          <div key={g.id} className="border border-[#1B2A4A]/12 rounded-lg p-2.5 bg-white">
+                            <div className="flex justify-between items-baseline mb-1"><b className="text-sm text-[#1B2A4A]">{g.name}</b><span className="text-sm font-bold" style={{ color: cur.sc.by[g.id].avg ? RECRUIT_COLORS[Math.round(cur.sc.by[g.id].avg)] : "#9ca3af" }}>{f1(cur.sc.by[g.id].avg)}</span></div>
+                            {g.items.map(it => { const v = (cur.p.r || {})[it.id]; return (
+                              <div key={it.id} className="flex items-center justify-between gap-2 py-1">
+                                <span className="text-sm text-[#1B2A4A]">{it.label}</span>
+                                <span className="flex gap-1">{[1, 2, 3, 4, 5].map(n => (
+                                  <button key={n} onClick={() => setRate(cur.p.id, it.id, n)} className="w-8 h-8 rounded-md text-sm font-bold border"
+                                    style={v === n ? { backgroundColor: RECRUIT_COLORS[n], color: "#fff", borderColor: RECRUIT_COLORS[n] } : { borderColor: "#1B2A4A33", color: "#1B2A4A99", background: "#fff" }}>{n}</button>
+                                ))}</span>
+                              </div>
+                            ); })}
+                            {g.items.length === 0 && <p className="text-[11px] text-[#1B2A4A]/40 italic">Aucun critère : ajoute-en dans « ⚙️ Critères ».</p>}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3"><div className="text-[11px] text-[#1B2A4A]/50">Notes (renseignements pris, entourage, contact…)</div><textarea key={cur.p.id + "no"} defaultValue={cur.p.notes || ""} onBlur={e => upd(cur.p.id, { notes: e.target.value })} rows={4} className={inp} /></div>
+                      <div className="flex flex-wrap gap-3 mt-3">
+                        <button onClick={() => exportHtml([cur.p])} className="text-sm font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "#2563EB" }}>📤 Exporter cette fiche</button>
+                        <button onClick={async () => { const ok = await cpbAlert?.(`Supprimer « ${cur.p.name} » du recrutement ?`, { confirm: true }); if (ok) { save({ players: players.filter(x => x.id !== cur.p.id) }); setRcSel(null); } }} className="text-xs text-red-600 underline">Supprimer ce joueur</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
         {view === "espoirs" && isAdmin && (() => {
           const ES = espoirs || [];
           const teams = [...new Set(ES.map(p => p.team))].sort((a, b) => a.localeCompare(b, "fr"));
@@ -15668,6 +15885,7 @@ function CoachingProBoost({ session }) {
                       <span className="text-xs font-semibold text-[#1B2A4A]">{esSel.length} sélectionné{esSel.length > 1 ? "s" : ""} :</span>
                       <select value={esMoveTo} onChange={e => setEsMoveTo(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white"><option value="">Déplacer vers…</option>{teams.map(t => <option key={t} value={t}>{t}</option>)}</select>
                       <button disabled={!esMoveTo} onClick={moveSel} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#2563EB" }}>Déplacer</button>
+                      <button onClick={() => { const cur0 = recruit || { players: [] }, have = new Set((cur0.players || []).map(x => leagueNorm((x.team || "") + " " + x.name))); const add = ES.filter(p => esSel.includes(p.id) && !have.has(leagueNorm(p.team + " " + p.name))).map(p => ({ id: uid(), name: p.name, team: p.team, pos: p.pos || "", posLabel: p.posLabel || "", age: p.age ?? null, height: p.height ?? null, status: "À suivre", r: {}, notes: "", created: new Date().toISOString().slice(0, 10), source: "Espoirs LNB" })); if (add.length) saveRecruit({ ...cur0, players: [...(cur0.players || []), ...add] }); setEsSel([]); cpbAlert?.(`${add.length} joueur${add.length > 1 ? "s" : ""} ajouté${add.length > 1 ? "s" : ""} au recrutement${esSel.length - add.length > 0 ? ` (${esSel.length - add.length} déjà présent${esSel.length - add.length > 1 ? "s" : ""})` : ""}.`); }} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "#16a34a" }}>➕ Ajouter au recrutement</button>
                       <button onClick={delSel} className="text-xs font-semibold text-red-600 px-2 py-1.5 underline">Supprimer</button>
                       <button onClick={() => setEsSel([])} className="text-xs text-[#1B2A4A]/50 underline">Désélectionner</button>
                     </>)}
