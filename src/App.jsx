@@ -3798,6 +3798,70 @@ function recruitStatsOf(p, es) {
   if (m) return { live: true, v: recruitSnapOf(m), age: m.age, height: m.height };
   return p.snap ? { live: false, v: p.snap } : null;
 }
+// ── Matchs vus : statistiques d'un joueur tirées d'un export XML de match (une instance par action, code = « numéro Nom Prénom (id) ») ──
+function parseGameXmlForPlayer(text, playerName, fileName = "") {
+  const unesc = (x) => String(x || "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+  const inst = [];
+  (String(text).match(/<instance>[\s\S]*?<\/instance>/g) || []).forEach(i => {
+    const g = (re) => { const m = re.exec(i); return m ? unesc(m[1]) : null; };
+    const start = parseFloat(g(/<start>([\d.\-]+)<\/start>/)), end = parseFloat(g(/<end>([\d.\-]+)<\/end>/));
+    if (isNaN(start)) return;
+    inst.push({ s: start, e: isNaN(end) ? start : end, code: g(/<code>([\s\S]*?)<\/code>/) || "", team: g(/<group>Team<\/group><text>([\s\S]*?)<\/text>/), act: g(/<group>Action<\/group><text>([\s\S]*?)<\/text>/) || "", x: g(/<pos_x>([\d.\-]+)<\/pos_x>/), y: g(/<pos_y>([\d.\-]+)<\/pos_y>/) });
+  });
+  if (!inst.length) throw new Error("aucune action trouvée : ce n'est pas un export XML de match");
+  const toks = (n) => String(n || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/^\s*\d+\s+/, "").replace(/\(\d+\)/g, "").split(/[\s\-']+/).filter(Boolean).sort().join(" ");
+  const want = toks(playerName), wantSet = want.split(" ");
+  const codes = [...new Set(inst.map(x => x.code))];
+  let code = codes.find(c => toks(c) === want) || codes.find(c => { const t = toks(c).split(" "); return wantSet.every(w => t.includes(w)) && t.length <= wantSet.length + 1; });
+  if (!code) throw new Error(`« ${playerName} » n'apparaît pas dans ce fichier`);
+  const mine = inst.filter(x => x.code === code), myTeam = (mine.find(x => x.team) || {}).team || "";
+  const teams = [...new Set(inst.map(x => x.team).filter(Boolean))], opp = teams.find(t => t !== myTeam) || "";
+  const st = { pts: 0, fgm: 0, fga: 0, t3m: 0, t3a: 0, ftm: 0, fta: 0, or: 0, dr: 0, ast: 0, stl: 0, tov: 0, blk: 0, pf: 0, fd: 0 };
+  const xs = inst.filter(x => x.x !== null).map(x => +x.x).sort((a, b) => a - b), flip = xs.length ? xs[Math.floor(xs.length / 2)] < 14 : false;
+  const shots = [], clips = [];
+  mine.forEach(x => {
+    const a = x.act, head = a.split(" - ")[0];
+    if (head === "Shift") { clips.push([x.s, x.e, "Présence"]); return; }
+    clips.push([x.s, x.e, a]);
+    const m = /^([23]) pt (Made|Missed)/i.exec(a);
+    if (m) {
+      const made = /made/i.test(m[2]) ? 1 : 0, th = m[1] === "3";
+      st.fga++; st.fgm += made; if (th) { st.t3a++; st.t3m += made; } st.pts += made ? (th ? 3 : 2) : 0;
+      if (x.x !== null && x.y !== null) shots.push({ u: Math.round((+x.y - 7.5) * 100) / 100, v: Math.round((flip ? +x.x - 1.575 : 26.425 - +x.x) * 100) / 100, m: made, th: th ? 1 : 0, c: /uncontested/i.test(a) ? 0 : /contested/i.test(a) ? 1 : null });
+    }
+    else if (head === "2+1") { st.fga++; st.fgm++; st.pts += 2; st.fd++; }
+    else if (head === "2F") st.fd++;
+    else if (head === "FT Made") { st.fta++; st.ftm++; st.pts++; }
+    else if (head === "FT Missed") st.fta++;
+    else if (head === "Offensive Rebound") st.or++;
+    else if (head === "Defensive Rebound") st.dr++;
+    else if (head === "Assist") st.ast++;
+    else if (head === "Steal") st.stl++;
+    else if (head === "Turnover") st.tov++;
+    else if (head === "Block") st.blk++;
+    else if (/Foul$/.test(head)) st.pf++;
+  });
+  // Score de l'équipe pendant sa présence (les temps sont ceux de la vidéo)
+  const shifts = mine.filter(x => x.act.split(" - ")[0] === "Shift"), within = (t) => shifts.some(x => t >= x.s && t <= x.e);
+  let pf = 0, pa = 0;
+  inst.forEach(x => { const head = x.act.split(" - ")[0], v = /^3 pt Made/.test(x.act) ? 3 : /^2 pt Made/.test(x.act) || head === "2+1" ? 2 : head === "FT Made" ? 1 : 0; if (v && within(x.s)) { if (x.team === myTeam) pf += v; else pa += v; } });
+  const fm = /^(.*?)\s+(\d+)[_.](\d+)\s+(.*?)\s+(\d{2})\.(\d{2})\.(\d{4})\.xml$/i.exec(fileName || "");
+  const date = fm ? `${fm[7]}-${fm[6]}-${fm[5]}` : "", score = fm ? [+fm[2], +fm[3]] : null, home = fm ? fm[1] : "", away = fm ? fm[4] : "";
+  const mineHome = home && myTeam && (leagueNorm(home).includes(leagueNorm(myTeam)) || leagueNorm(myTeam).includes(leagueNorm(home)));
+  return { id: (fileName || "") + "|" + code, file: fileName, date, team: myTeam, opp, score: score ? (mineHome ? score : [score[1], score[0]]) : null, st: { ...st, onFor: pf, onAgainst: pa }, shots, clips, nShifts: shifts.length };
+}
+function recruitGamesTotal(games) {
+  const t = { n: games.length, pts: 0, fgm: 0, fga: 0, t3m: 0, t3a: 0, ftm: 0, fta: 0, or: 0, dr: 0, ast: 0, stl: 0, tov: 0, blk: 0, pf: 0, fd: 0, onFor: 0, onAgainst: 0 };
+  games.forEach(g => Object.keys(t).forEach(k => { if (k !== "n") t[k] += g.st[k] || 0; }));
+  t.ts = t.fga + t.fta ? t.pts / (2 * (t.fga + 0.44 * t.fta)) * 100 : null; t.fgPct = t.fga ? t.fgm / t.fga * 100 : null; t.p3 = t.t3a ? t.t3m / t.t3a * 100 : null; t.plf = t.fta ? t.ftm / t.fta * 100 : null;
+  return t;
+}
+function buildClipsXml(name, g) {
+  const esc = (x) => String(x ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const match = `${g.team} - ${g.opp}${g.date ? " (" + g.date.split("-").reverse().join("/") + ")" : ""}`;
+  const items = [...g.clips].sort((a, b) => a[0] - b[0]).map((c, i) => `<instance><ID>${i + 1}</ID><start>${c[0]}</start><end>${c[1]}</end><code>${esc(c[2] === "Présence" ? name + " (présence)" : name)}</code><label><group>Action</group><text>${esc(c[2])}</text></label><label><group>Match</group><text>${esc(match)}</text></label></instance>`).join("");
+  return `<?xml version="1.0" encoding="utf-8"?><file><SORT_INFO><sort_type>sort order</sort_type></SORT_INFO><ALL_INSTANCES>${items}</ALL_INSTANCES></file>`;
+}
 // ── Recrutement : fiche de notation des joueurs (notes de 1 à 5 par critère, note globale, profils) ──
 const RECRUIT_DEFAULT_GROUPS = [
   { id: "mental", name: "Mental et collectif", items: [{ id: "entrain", label: "Entraînabilité" }, { id: "cohesion", label: "Cohésion dans une équipe" }, { id: "esprit", label: "Esprit d'équipe" }, { id: "qi", label: "Intelligence de jeu" }] },
@@ -3857,10 +3921,19 @@ function buildRecruitHtml(players, groups, logo = null, es = []) {
   const list = players.map(p => { const sc = recruitScores(p, groups); return { p, sc, pr: recruitProfiles(p, groups, sc) }; }).sort((a, b) => (b.sc.overall ?? -1) - (a.sc.overall ?? -1));
   const dot = (v) => `<span class="d" style="background:${v ? RECRUIT_COLORS[v] : "#e5e7eb"}">${v || "–"}</span>`;
   const statsBlock = (p) => { const r = recruitStatsOf(p, es); if (!r) return ""; return `<div class="sts">${RECRUIT_STAT_DEFS.filter(([, k]) => r.v[k] !== null && r.v[k] !== undefined).map(([l, k, d]) => `<div class="s"><b>${f(r.v[k], d)}</b><span>${esc(l)}</span></div>`).join("")}</div>`; };
+  let chartId = 900;
+  const gamesBlock = (p) => {
+    const G = (p.games || []).slice().sort((a, b) => String(a.date).localeCompare(String(b.date))); if (!G.length) return "";
+    const t = recruitGamesTotal(G), fmtD = (d) => d ? d.split("-").reverse().join("/") : "", shots = G.flatMap(g => g.shots || []);
+    const row = (g) => `<tr><td>${esc(fmtD(g.date))}</td><td>${esc(g.team)} – ${esc(g.opp)}${g.score ? ` <small>${g.score[0]}–${g.score[1]}</small>` : ""}</td><td class="n"><b>${g.st.pts}</b></td><td class="n">${g.st.fgm}/${g.st.fga}</td><td class="n">${g.st.t3m}/${g.st.t3a}</td><td class="n">${g.st.ftm}/${g.st.fta}</td><td class="n">${g.st.or + g.st.dr}</td><td class="n">${g.st.ast}</td><td class="n">${g.st.stl}</td><td class="n">${g.st.tov}</td><td class="n">${g.st.pf}</td><td class="n">${g.st.onFor}–${g.st.onAgainst}</td></tr>`;
+    return `<div class="mv"><div class="gh"><b>Matchs vus (${G.length})</b><span>TS ${f(t.ts)} % · tirs ${f(t.fgPct)} % · 3 pts ${f(t.p3)} %</span></div>
+    <div class="mvc"><table><thead><tr><th>Date</th><th>Match</th><th class="n">Pts</th><th class="n">Tirs</th><th class="n">3 pts</th><th class="n">LF</th><th class="n">Reb</th><th class="n">Pds</th><th class="n">Int</th><th class="n">BP</th><th class="n">Fautes</th><th class="n" title="Points marqués – encaissés par son équipe pendant sa présence">Équipe sur le terrain</th></tr></thead><tbody>${G.map(row).join("")}</tbody></table>
+    ${shots.length >= 3 ? `<div class="sc">${shotChartSvg(shots, { id: ++chartId })}<small>${shots.length} tirs observés · ● réussi · ✕ raté</small></div>` : ""}</div></div>`;
+  };
   const card = ({ p, sc, pr }) => `<section class="card"><div class="top"><div><h2>${esc(p.name)}</h2><div class="sub">${[p.team, p.posLabel || p.pos, p.age ? p.age + " ans" : "", p.height ? p.height + " cm" : "", p.status].filter(Boolean).map(esc).join(" · ")}</div>
     <div class="chips">${pr.profiles.map(x => `<span class="chip">${esc(x)}</span>`).join("")}${pr.weak.map(x => `<span class="chip w">À travailler : ${esc(x)}</span>`).join("")}</div></div>
     <div class="ov"><b>${f(sc.overall)}</b><span>/ 5</span><small>${sc.overall100 ?? "–"} / 100</small></div></div>
-    ${statsBlock(p)}<div class="cols"><div class="gs">${groups.map(g => `<div class="g"><div class="gh"><b>${esc(g.name)}</b><span>${f(sc.by[g.id].avg)}</span></div>${g.items.map(it => `<div class="it"><span>${esc(it.label)}</span>${dot((p.r || {})[it.id])}</div>`).join("")}</div>`).join("")}</div>
+    ${statsBlock(p)}${gamesBlock(p)}<div class="cols"><div class="gs">${groups.map(g => `<div class="g"><div class="gh"><b>${esc(g.name)}</b><span>${f(sc.by[g.id].avg)}</span></div>${g.items.map(it => `<div class="it"><span>${esc(it.label)}</span>${dot((p.r || {})[it.id])}</div>`).join("")}</div>`).join("")}</div>
     <div class="rd">${recruitRadarSvg(groups, sc, 230)}</div></div>${(p.notes || "").trim() ? `<div class="nt"><b>Notes</b><p>${esc(p.notes).replace(/\n/g, "<br>")}</p></div>` : ""}</section>`;
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Recrutement — ${esc(date)}</title>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -3872,6 +3945,7 @@ header{display:flex;align-items:center;gap:14px;margin-bottom:14px}header img{he
 .cols{display:grid;grid-template-columns:1fr 240px;gap:14px;margin-top:10px}.gs{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px}.g{break-inside:avoid}.gh{display:flex;justify-content:space-between;border-bottom:2px solid #FF6B35;margin-bottom:3px;font-size:12px}.gh span{font-weight:700}
 .it{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:2px 0}.d{display:inline-block;min-width:22px;text-align:center;border-radius:6px;color:#fff;font-weight:700;padding:1px 0;font-size:12px}
 .sts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.s{background:#1B2A4A0d;border-radius:8px;padding:5px 8px;text-align:center;min-width:54px}.s b{display:block;font-size:14px}.s span{font-size:9.5px;text-transform:uppercase;color:#1B2A4A99}
+.mv{margin-top:12px}.mvc{display:grid;grid-template-columns:1fr 210px;gap:12px;align-items:start}.mvc table{font-size:11px}.mvc td,.mvc th{padding:3px 5px}.sc small{display:block;font-size:10px;color:#1B2A4A99;text-align:center}.shot-chart{width:100%;height:auto;display:block;border-radius:8px}
 .nt{margin-top:10px;font-size:12.5px;border-top:1px solid #1B2A4A14;padding-top:8px}.nt p{margin:4px 0 0;line-height:1.45}
 table{width:100%;border-collapse:collapse;font-size:12.5px}th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#1B2A4A99;padding:6px 8px;border-bottom:2px solid #1B2A4A22}td{padding:6px 8px;border-top:1px solid #1B2A4A12}td.n,th.n{text-align:right}
 .bar{position:fixed;top:12px;right:12px}.bar button{background:#FF6B35;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer}
@@ -15761,6 +15835,47 @@ function CoachingProBoost({ session }) {
                                 </select>
                               </div>
                             )}
+                          </div>
+                        );
+                      })()}
+                      {(() => {
+                        const G = (cur.p.games || []).slice().sort((a, b) => String(a.date).localeCompare(String(b.date))), t = G.length ? recruitGamesTotal(G) : null;
+                        const fmtD = (d) => d ? d.split("-").reverse().join("/") : "", shots = G.flatMap(g => g.shots || []);
+                        const importGame = async (file) => {
+                          if (!file) return;
+                          try {
+                            const buf = await file.arrayBuffer(); let txt = new TextDecoder("utf-8").decode(buf); if (txt.includes("\ufffd")) txt = new TextDecoder("iso-8859-1").decode(buf);
+                            const g = parseGameXmlForPlayer(txt, cur.p.name, file.name);
+                            if ((cur.p.games || []).some(x => x.id === g.id)) { cpbAlert?.("Ce match est déjà dans la fiche."); return; }
+                            upd(cur.p.id, { games: [...(cur.p.games || []), g] });
+                            cpbAlert?.(`Match ajouté : ${g.team} – ${g.opp}${g.score ? " (" + g.score[0] + "–" + g.score[1] + ")" : ""} · ${g.st.pts} pts, ${g.st.fgm}/${g.st.fga} aux tirs, ${g.clips.length - g.nShifts} actions.`);
+                          } catch (e) { cpbAlert?.("Lecture impossible : " + e.message); }
+                        };
+                        const dl = (g) => { try { downloadBlob(new Blob([buildClipsXml(cur.p.name, g)], { type: "application/xml;charset=utf-8" }), `clips-${slugifyForFile(cur.p.name)}-${g.date || "match"}.xml`); } catch (e) { cpbAlert?.("Export impossible : " + (e?.message || e)); } };
+                        return (
+                          <div className="mb-3 border border-[#1B2A4A]/12 rounded-lg p-2.5 bg-white">
+                            <div className="flex items-baseline justify-between mb-1.5 gap-2 flex-wrap"><b className="text-sm text-[#1B2A4A]">Matchs vus{G.length ? ` (${G.length})` : ""}</b>
+                              <label className="text-xs font-semibold text-white px-3 py-1.5 rounded-md cursor-pointer" style={{ backgroundColor: "#7c3aed" }}>+ Importer un XML de match<input type="file" accept=".xml,text/xml" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; importGame(f); }} /></label></div>
+                            {G.length === 0 && <p className="text-[11px] text-[#1B2A4A]/40 italic">Importe l'export XML d'un match où il a joué : l'application retrouve ses actions (« {cur.p.name} »), ses tirs et ses clips vidéo.</p>}
+                            {G.length > 0 && (
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                  <thead className="text-[10px] uppercase text-[#1B2A4A]/50"><tr><th className="text-left px-1 py-1">Match</th><th className="px-1">Pts</th><th className="px-1">Tirs</th><th className="px-1">3 pts</th><th className="px-1">LF</th><th className="px-1">Reb</th><th className="px-1">Pds</th><th className="px-1">Int</th><th className="px-1">BP</th><th className="px-1">Fautes</th><th className="px-1" title="Points marqués – encaissés par son équipe pendant sa présence">Équipe</th><th /></tr></thead>
+                                  <tbody>
+                                    {G.map(g => (
+                                      <tr key={g.id} className="border-t border-[#1B2A4A]/8 text-center">
+                                        <td className="text-left px-1 py-1 whitespace-nowrap"><b>{g.team} – {g.opp}</b> <span className="text-[#1B2A4A]/50">{fmtD(g.date)}{g.score ? ` · ${g.score[0]}–${g.score[1]}` : ""}</span></td>
+                                        <td className="font-bold">{g.st.pts}</td><td>{g.st.fgm}/{g.st.fga}</td><td>{g.st.t3m}/{g.st.t3a}</td><td>{g.st.ftm}/{g.st.fta}</td><td>{g.st.or + g.st.dr}</td><td>{g.st.ast}</td><td>{g.st.stl}</td><td>{g.st.tov}</td><td>{g.st.pf}</td><td className="whitespace-nowrap">{g.st.onFor}–{g.st.onAgainst}</td>
+                                        <td className="whitespace-nowrap"><button onClick={() => dl(g)} title="Fichier XML de ses actions, à importer dans Sportscode" className="text-[#2563EB] underline mr-2">Clips</button><button onClick={async () => { const ok = await cpbAlert?.("Retirer ce match de la fiche ?", { confirm: true }); if (ok) upd(cur.p.id, { games: (cur.p.games || []).filter(x => x.id !== g.id) }); }} className="text-[#1B2A4A]/30 hover:text-red-600">✕</button></td>
+                                      </tr>
+                                    ))}
+                                    {G.length > 1 && <tr className="border-t-2 border-[#1B2A4A]/20 text-center font-semibold bg-[#1B2A4A]/4"><td className="text-left px-1 py-1">Total · moyenne par match</td><td>{t.pts} · {f1(t.pts / t.n)}</td><td>{t.fgm}/{t.fga}</td><td>{t.t3m}/{t.t3a}</td><td>{t.ftm}/{t.fta}</td><td>{t.or + t.dr}</td><td>{t.ast}</td><td>{t.stl}</td><td>{t.tov}</td><td>{t.pf}</td><td>{t.onFor}–{t.onAgainst}</td><td /></tr>}
+                                  </tbody>
+                                </table>
+                                <p className="text-[11px] text-[#1B2A4A]/50 mt-1">TS % {f1(t.ts)} · tirs {f1(t.fgPct)} % · 3 pts {f1(t.p3)} % · lancers francs {f1(t.plf)} %. « Équipe » = points marqués – encaissés par son équipe pendant sa présence (d'après les temps de la vidéo : à prendre avec prudence quand il joue peu).</p>
+                              </div>
+                            )}
+                            {shots.length >= 3 && <div className="mt-2 max-w-[300px]"><div dangerouslySetInnerHTML={{ __html: shotChartSvg(shots, { id: 880 }) }} /><div className="text-[10px] text-[#1B2A4A]/50 text-center">{shots.length} tirs observés · ● réussi · ✕ raté · % et réussis-tentés par zone</div></div>}
                           </div>
                         );
                       })()}
