@@ -3872,14 +3872,21 @@ const RECRUIT_DEFAULT_GROUPS = [
 ];
 const RECRUIT_COLORS = { 1: "#ef4444", 2: "#f97316", 3: "#eab308", 4: "#84cc16", 5: "#22c55e" };
 const RECRUIT_STATUS = ["À suivre", "Priorité", "Contacté", "Écarté"];
+// Un critère peut être réservé à certains postes (it.pos = ["1","2"]…). Joueur 2/3 : on garde ceux du 2 OU du 3 ; sans poste : tous.
+function recruitItemsFor(g, pl) {
+  const ps = String((pl && pl.pos) || "").split("/").filter(Boolean);
+  return g.items.filter(it => !ps.length || !(it.pos && it.pos.length) || it.pos.some(x => ps.includes(x)));
+}
+function recruitGroupsFor(pl, groups) { return groups.map(g => ({ ...g, items: recruitItemsFor(g, pl) })).filter(g => g.items.length); }
 // Moyennes par groupe (critères notés seulement), note globale = moyenne des groupes notés (poids w, 1 par défaut)
 function recruitScores(pl, groups) {
   const r = pl.r || {}, by = {}; let wsum = 0, tot = 0, rated = 0, all = 0;
   groups.forEach(g => {
-    const vals = g.items.map(it => r[it.id]).filter(v => typeof v === "number" && v >= 1 && v <= 5);
-    all += g.items.length; rated += vals.length;
+    const its = recruitItemsFor(g, pl);
+    const vals = its.map(it => r[it.id]).filter(v => typeof v === "number" && v >= 1 && v <= 5);
+    all += its.length; rated += vals.length;
     const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-    by[g.id] = { avg, n: vals.length, total: g.items.length, min: vals.length ? Math.min(...vals) : null };
+    by[g.id] = { avg, n: vals.length, total: its.length, min: vals.length ? Math.min(...vals) : null };
     if (avg !== null) { const w = typeof g.w === "number" ? g.w : 1; wsum += w; tot += avg * w; }
   });
   const overall = wsum ? tot / wsum : null;
@@ -3934,8 +3941,8 @@ function buildRecruitHtml(players, groups, logo = null, es = []) {
     ${(p.phone || p.agent || p.agentPhone) ? `<div class="ct">${p.phone ? `<span><b>Joueur</b> ${esc(p.phone)}</span>` : ""}${(p.agent || p.agentPhone) ? `<span><b>Agent</b> ${esc([p.agent, p.agentPhone].filter(Boolean).join(" · "))}</span>` : ""}</div>` : ""}
     <div class="chips">${pr.profiles.map(x => `<span class="chip">${esc(x)}</span>`).join("")}${pr.weak.map(x => `<span class="chip w">À travailler : ${esc(x)}</span>`).join("")}</div></div>
     <div class="ov"><b>${f(sc.overall)}</b><span>/ 5</span><small>${sc.overall100 ?? "–"} / 100</small></div></div>
-    ${statsBlock(p)}${gamesBlock(p)}<div class="cols"><div class="gs">${groups.map(g => `<div class="g"><div class="gh"><b>${esc(g.name)}</b><span>${f(sc.by[g.id].avg)}</span></div>${g.items.map(it => `<div class="it"><span>${esc(it.label)}</span>${dot((p.r || {})[it.id])}</div>`).join("")}</div>`).join("")}</div>
-    <div class="rd">${recruitRadarSvg(groups, sc, 230)}</div></div>${(p.notes || "").trim() ? `<div class="nt"><b>Notes</b><p>${esc(p.notes).replace(/\n/g, "<br>")}</p></div>` : ""}</section>`;
+    ${statsBlock(p)}${gamesBlock(p)}<div class="cols"><div class="gs">${recruitGroupsFor(p, groups).map(g => `<div class="g"><div class="gh"><b>${esc(g.name)}</b><span>${f(sc.by[g.id].avg)}</span></div>${g.items.map(it => `<div class="it"><span>${esc(it.label)}</span>${dot((p.r || {})[it.id])}</div>`).join("")}</div>`).join("")}</div>
+    <div class="rd">${recruitRadarSvg(recruitGroupsFor(p, groups), sc, 230)}</div></div>${(p.notes || "").trim() ? `<div class="nt"><b>Notes</b><p>${esc(p.notes).replace(/\n/g, "<br>")}</p></div>` : ""}</section>`;
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Recrutement — ${esc(date)}</title>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>*{box-sizing:border-box}body{margin:0;padding:18px;background:#F2EDE4;color:#1B2A4A;font:14px 'Inter',system-ui,sans-serif}.page{max-width:900px;margin:0 auto}
@@ -15760,6 +15767,7 @@ function CoachingProBoost({ session }) {
                         {g.items.map(it => (
                           <div key={it.id} className="flex items-center gap-1 py-0.5">
                             <input key={it.id + it.label} defaultValue={it.label} onBlur={e => save({ groups: groups.map(x => x.id === g.id ? { ...x, items: x.items.map(y => y.id === it.id ? { ...y, label: e.target.value.trim() || y.label } : y) } : x) })} className="flex-1 text-sm bg-transparent outline-none border-b border-transparent hover:border-[#1B2A4A]/20" />
+                            <span className="flex gap-0.5" title="Postes concernés (aucun = tous les postes)">{["1", "2", "3", "4", "5"].map(n => { const on = (it.pos || []).includes(n); return <button key={n} onClick={() => save({ groups: groups.map(x => x.id === g.id ? { ...x, items: x.items.map(y => y.id === it.id ? { ...y, pos: on ? (y.pos || []).filter(z => z !== n) : [...(y.pos || []), n] } : y) } : x) })} className="w-5 h-5 rounded text-[10px] font-bold border" style={on ? { backgroundColor: "#1B2A4A", color: "#fff", borderColor: "#1B2A4A" } : { borderColor: "#1B2A4A22", color: "#1B2A4A66", background: "#fff" }}>{n}</button>; })}</span>
                             <button onClick={async () => { const ok = await cpbAlert?.(`Retirer le critère « ${it.label} » ?`, { confirm: true }); if (ok) save({ groups: groups.map(x => x.id === g.id ? { ...x, items: x.items.filter(y => y.id !== it.id) } : x) }); }} className="text-[#1B2A4A]/30 hover:text-red-600 text-xs">✕</button>
                           </div>
                         ))}
@@ -15769,6 +15777,14 @@ function CoachingProBoost({ session }) {
                         </div>
                       </div>
                     ))}
+                  </div>
+                  <div className="mt-3">
+                    <div className="text-[11px] text-[#1B2A4A]/50 mb-1">Critères suggérés par poste (touche pour ajouter au groupe « {groups[0] ? groups[0].name : ""} » ; tu pourras régler les postes ensuite) :</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[["Montée de balle", ["1", "2"]], ["Création pour les autres", ["1", "2"]], ["Tir extérieur", ["1", "2", "3"]], ["Pose d'écrans", ["4", "5"]], ["Jeu dos au panier", ["4", "5"]], ["Protection du cercle", ["4", "5"]], ["Rebond", ["3", "4", "5"]]].map(([lab, ps]) => (
+                        <button key={lab} onClick={() => save({ groups: groups.map((x, i) => i === 0 ? { ...x, items: [...x.items, { id: "c" + uid(), label: lab, pos: ps }] } : x) })} className="px-2.5 py-1 rounded-full text-xs border border-[#1B2A4A]/25 bg-white text-[#1B2A4A]">+ {lab} <span className="text-[#1B2A4A]/40">({ps.join(" ")})</span></button>
+                      ))}
+                    </div>
                   </div>
                   <div className="flex gap-2 mt-3">
                     <input value={rcNewGroup} onChange={e => setRcNewGroup(e.target.value)} placeholder="Nouveau groupe de critères (ex. Tir)" className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white w-64" />
@@ -15826,7 +15842,7 @@ function CoachingProBoost({ session }) {
                           {cur.pr.weak.map(t => <span key={t} className="text-xs font-semibold px-2.5 py-1 rounded-full bg-red-100 text-red-700">À travailler : {t}</span>)}
                           {!cur.pr.profiles.length && !cur.pr.weak.length && <span className="text-xs text-[#1B2A4A]/40">Aucun profil encore : note plus de critères.</span>}
                         </div>
-                        <div dangerouslySetInnerHTML={{ __html: recruitRadarSvg(groups, cur.sc, 200) }} />
+                        <div dangerouslySetInnerHTML={{ __html: recruitRadarSvg(recruitGroupsFor(cur.p, groups), cur.sc, 200) }} />
                       </div>
                       {(() => {
                         const st = recruitStatsOf(cur.p, espoirs || []), ES2 = espoirs || [];
@@ -15887,8 +15903,9 @@ function CoachingProBoost({ session }) {
                           </div>
                         );
                       })()}
+                      {cur.p.pos && <p className="text-[11px] text-[#1B2A4A]/50 mb-1.5">Critères adaptés au poste {cur.p.posLabel || cur.p.pos}. Les critères réservés à d'autres postes sont masqués (réglage dans « ⚙️ Critères »).</p>}
                       <div className="grid md:grid-cols-2 gap-3">
-                        {groups.map(g => (
+                        {recruitGroupsFor(cur.p, groups).map(g => (
                           <div key={g.id} className="border border-[#1B2A4A]/12 rounded-lg p-2.5 bg-white">
                             <div className="flex justify-between items-baseline mb-1"><b className="text-sm text-[#1B2A4A]">{g.name}</b><span className="text-sm font-bold" style={{ color: cur.sc.by[g.id].avg ? RECRUIT_COLORS[Math.round(cur.sc.by[g.id].avg)] : "#9ca3af" }}>{f1(cur.sc.by[g.id].avg)}</span></div>
                             {g.items.map(it => { const v = (cur.p.r || {})[it.id]; return (
