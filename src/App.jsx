@@ -3788,6 +3788,16 @@ C.forEach(function(c){var h=document.getElementById('h_'+c[0]);h.textContent=c[1
 [].slice.call(document.querySelectorAll('#pb button')).forEach(function(b){b.onclick=function(){var k=b.getAttribute('data-p');pos=pos===k?'':k;[].slice.call(document.querySelectorAll('#pb button')).forEach(function(x){x.classList.toggle('on',x.getAttribute('data-p')===pos)});render()}});
 render();})();</script></body></html>`;
 }
+// Statistiques d'un joueur du recrutement : prises en direct dans la liste Espoirs LNB (lien ou même nom), sinon dernière copie enregistrée
+const RECRUIT_STAT_DEFS = [["MJ", "mj", 0], ["Min", "min", 1], ["Pts", "pts", 1], ["Reb", "reb", 1], ["Pds", "pd", 1], ["Int", "stl", 1], ["Ct", "ct", 1], ["BP", "bp", 1], ["TS %", "ts", 1], ["eFG %", "efg", 1], ["2 pts %", "p2", 1], ["3 pts %", "p3", 1], ["LF %", "plf", 1], ["Usage %", "usg", 1], ["RO", "ro", 1], ["RD", "rd", 1], ["+/-", "pm", 1], ["EFF", "eff", 1]];
+function recruitSnapOf(m) { const st = m.st || {}; return { pts: st.pts ?? m.ppm ?? null, reb: st.rt ?? m.rpm ?? null, pd: st.pd ?? m.pdpm ?? null, eff: st.eval ?? m.eff ?? null, mj: st.mj ?? null, min: st.min ?? null, ts: st.ts ?? null, efg: st.efg ?? null, p2: st.p2 ?? null, p3: st.p3 ?? null, plf: st.plf ?? null, usg: st.usg ?? null, ro: st.ro ?? null, rd: st.rd ?? null, stl: st.stl ?? null, ct: st.ct ?? null, bp: st.bp ?? null, pm: st.pm ?? null }; }
+function recruitStatsOf(p, es) {
+  const k = (x) => leagueNorm(x); let m = null;
+  if (p.link) m = (es || []).find(e => e.team === p.link.team && e.name === p.link.name) || null;
+  if (!m) { const c = (es || []).filter(e => k(e.name) === k(p.name)); if (c.length === 1) m = c[0]; else if (c.length > 1 && p.team) m = c.find(e => k(e.team) === k(p.team)) || null; }
+  if (m) return { live: true, v: recruitSnapOf(m), age: m.age, height: m.height };
+  return p.snap ? { live: false, v: p.snap } : null;
+}
 // ── Recrutement : fiche de notation des joueurs (notes de 1 à 5 par critère, note globale, profils) ──
 const RECRUIT_DEFAULT_GROUPS = [
   { id: "mental", name: "Mental et collectif", items: [{ id: "entrain", label: "Entraînabilité" }, { id: "cohesion", label: "Cohésion dans une équipe" }, { id: "esprit", label: "Esprit d'équipe" }, { id: "qi", label: "Intelligence de jeu" }] },
@@ -3840,16 +3850,17 @@ function recruitRadarSvg(groups, sc, size = 220) {
     ${groups.map((x, i) => { const [lx, ly] = pt(i, 6.6); return `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="9.5" font-weight="600" fill="#1B2A4A" text-anchor="middle">${lab(x.name)}</text>`; }).join("")}</svg>`;
 }
 // Export HTML : classement + une fiche par joueur (imprimable, une fiche par feuille A4)
-function buildRecruitHtml(players, groups, logo = null) {
+function buildRecruitHtml(players, groups, logo = null, es = []) {
   const esc = (x) => String(x ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const f = (x, d = 1) => x === null || x === undefined ? "–" : x.toFixed(d).replace(".", ",");
   const date = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
   const list = players.map(p => { const sc = recruitScores(p, groups); return { p, sc, pr: recruitProfiles(p, groups, sc) }; }).sort((a, b) => (b.sc.overall ?? -1) - (a.sc.overall ?? -1));
   const dot = (v) => `<span class="d" style="background:${v ? RECRUIT_COLORS[v] : "#e5e7eb"}">${v || "–"}</span>`;
+  const statsBlock = (p) => { const r = recruitStatsOf(p, es); if (!r) return ""; return `<div class="sts">${RECRUIT_STAT_DEFS.filter(([, k]) => r.v[k] !== null && r.v[k] !== undefined).map(([l, k, d]) => `<div class="s"><b>${f(r.v[k], d)}</b><span>${esc(l)}</span></div>`).join("")}</div>`; };
   const card = ({ p, sc, pr }) => `<section class="card"><div class="top"><div><h2>${esc(p.name)}</h2><div class="sub">${[p.team, p.posLabel || p.pos, p.age ? p.age + " ans" : "", p.height ? p.height + " cm" : "", p.status].filter(Boolean).map(esc).join(" · ")}</div>
     <div class="chips">${pr.profiles.map(x => `<span class="chip">${esc(x)}</span>`).join("")}${pr.weak.map(x => `<span class="chip w">À travailler : ${esc(x)}</span>`).join("")}</div></div>
     <div class="ov"><b>${f(sc.overall)}</b><span>/ 5</span><small>${sc.overall100 ?? "–"} / 100</small></div></div>
-    <div class="cols"><div class="gs">${groups.map(g => `<div class="g"><div class="gh"><b>${esc(g.name)}</b><span>${f(sc.by[g.id].avg)}</span></div>${g.items.map(it => `<div class="it"><span>${esc(it.label)}</span>${dot((p.r || {})[it.id])}</div>`).join("")}</div>`).join("")}</div>
+    ${statsBlock(p)}<div class="cols"><div class="gs">${groups.map(g => `<div class="g"><div class="gh"><b>${esc(g.name)}</b><span>${f(sc.by[g.id].avg)}</span></div>${g.items.map(it => `<div class="it"><span>${esc(it.label)}</span>${dot((p.r || {})[it.id])}</div>`).join("")}</div>`).join("")}</div>
     <div class="rd">${recruitRadarSvg(groups, sc, 230)}</div></div>${(p.notes || "").trim() ? `<div class="nt"><b>Notes</b><p>${esc(p.notes).replace(/\n/g, "<br>")}</p></div>` : ""}</section>`;
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Recrutement — ${esc(date)}</title>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -3860,6 +3871,7 @@ header{display:flex;align-items:center;gap:14px;margin-bottom:14px}header img{he
 .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.chip{background:#1B2A4A;color:#fff;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:600}.chip.w{background:#fee2e2;color:#b91c1c}
 .cols{display:grid;grid-template-columns:1fr 240px;gap:14px;margin-top:10px}.gs{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px}.g{break-inside:avoid}.gh{display:flex;justify-content:space-between;border-bottom:2px solid #FF6B35;margin-bottom:3px;font-size:12px}.gh span{font-weight:700}
 .it{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:2px 0}.d{display:inline-block;min-width:22px;text-align:center;border-radius:6px;color:#fff;font-weight:700;padding:1px 0;font-size:12px}
+.sts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.s{background:#1B2A4A0d;border-radius:8px;padding:5px 8px;text-align:center;min-width:54px}.s b{display:block;font-size:14px}.s span{font-size:9.5px;text-transform:uppercase;color:#1B2A4A99}
 .nt{margin-top:10px;font-size:12.5px;border-top:1px solid #1B2A4A14;padding-top:8px}.nt p{margin:4px 0 0;line-height:1.45}
 table{width:100%;border-collapse:collapse;font-size:12.5px}th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:#1B2A4A99;padding:6px 8px;border-bottom:2px solid #1B2A4A22}td{padding:6px 8px;border-top:1px solid #1B2A4A12}td.n,th.n{text-align:right}
 .bar{position:fixed;top:12px;right:12px}.bar button{background:#FF6B35;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer}
@@ -15650,7 +15662,7 @@ function CoachingProBoost({ session }) {
           const cur = scored.find(x => x.p.id === rcSel) || null;
           const f1 = (x) => x === null || x === undefined ? "–" : x.toFixed(1).replace(".", ",");
           const inp = "w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white";
-          const exportHtml = (list) => { try { downloadBlob(new Blob([buildRecruitHtml(list, groups, clubLogo)], { type: "text/html;charset=utf-8" }), `recrutement-${new Date().toISOString().slice(0, 10)}.html`); toast?.("✓ Export du recrutement prêt"); } catch (e) { cpbAlert?.("Export impossible : " + (e?.message || e)); } };
+          const exportHtml = (list) => { try { downloadBlob(new Blob([buildRecruitHtml(list, groups, clubLogo, espoirs || [])], { type: "text/html;charset=utf-8" }), `recrutement-${new Date().toISOString().slice(0, 10)}.html`); toast?.("✓ Export du recrutement prêt"); } catch (e) { cpbAlert?.("Export impossible : " + (e?.message || e)); } };
           return (
             <div className="max-w-6xl">
               <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
@@ -15734,6 +15746,24 @@ function CoachingProBoost({ session }) {
                         </div>
                         <div dangerouslySetInnerHTML={{ __html: recruitRadarSvg(groups, cur.sc, 200) }} />
                       </div>
+                      {(() => {
+                        const st = recruitStatsOf(cur.p, espoirs || []), ES2 = espoirs || [];
+                        return (
+                          <div className="mb-3 border border-[#1B2A4A]/12 rounded-lg p-2.5 bg-white">
+                            <div className="flex items-baseline justify-between mb-1.5"><b className="text-sm text-[#1B2A4A]">Statistiques</b><span className="text-[11px] text-[#1B2A4A]/40">{st ? (st.live ? "Espoirs LNB · à jour avec ton dernier import" : "Copie enregistrée (joueur introuvable dans les Espoirs LNB)") : "Aucune statistique"}</span></div>
+                            {st && <div className="flex flex-wrap gap-1.5">{RECRUIT_STAT_DEFS.filter(([, k]) => st.v[k] !== null && st.v[k] !== undefined).map(([l, k, d]) => <div key={k} className="rounded-md px-2 py-1 text-center min-w-[52px]" style={{ background: "rgba(27,42,74,.06)" }}><div className="text-sm font-bold text-[#1B2A4A]">{f1(st.v[k]).replace(/^(\d+),0$/, "$1")}</div><div className="text-[9px] uppercase text-[#1B2A4A]/50">{l}</div></div>)}</div>}
+                            {ES2.length > 0 && (
+                              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                <span className="text-[11px] text-[#1B2A4A]/50">{st ? "Rattacher à un autre joueur :" : "Rattacher à un joueur des Espoirs LNB :"}</span>
+                                <select value="" onChange={e => { const m = ES2.find(x => x.id === e.target.value); if (!m) return; upd(cur.p.id, { link: { team: m.team, name: m.name }, snap: recruitSnapOf(m), team: cur.p.team || m.team, age: cur.p.age ?? m.age ?? null, height: cur.p.height ?? m.height ?? null, pos: cur.p.pos || m.pos || "", posLabel: cur.p.posLabel || m.posLabel || "" }); }} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-xs bg-white max-w-[260px]">
+                                  <option value="">Choisir…</option>
+                                  {[...new Set(ES2.map(x => x.team))].sort((a, b) => a.localeCompare(b, "fr")).map(t => <optgroup key={t} label={t}>{ES2.filter(x => x.team === t).sort((a, b) => a.name.localeCompare(b.name, "fr")).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</optgroup>)}
+                                </select>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <div className="grid md:grid-cols-2 gap-3">
                         {groups.map(g => (
                           <div key={g.id} className="border border-[#1B2A4A]/12 rounded-lg p-2.5 bg-white">
@@ -15885,7 +15915,7 @@ function CoachingProBoost({ session }) {
                       <span className="text-xs font-semibold text-[#1B2A4A]">{esSel.length} sélectionné{esSel.length > 1 ? "s" : ""} :</span>
                       <select value={esMoveTo} onChange={e => setEsMoveTo(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white"><option value="">Déplacer vers…</option>{teams.map(t => <option key={t} value={t}>{t}</option>)}</select>
                       <button disabled={!esMoveTo} onClick={moveSel} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#2563EB" }}>Déplacer</button>
-                      <button onClick={() => { const cur0 = recruit || { players: [] }, have = new Set((cur0.players || []).map(x => leagueNorm((x.team || "") + " " + x.name))); const add = ES.filter(p => esSel.includes(p.id) && !have.has(leagueNorm(p.team + " " + p.name))).map(p => ({ id: uid(), name: p.name, team: p.team, pos: p.pos || "", posLabel: p.posLabel || "", age: p.age ?? null, height: p.height ?? null, status: "À suivre", r: {}, notes: "", created: new Date().toISOString().slice(0, 10), source: "Espoirs LNB" })); if (add.length) saveRecruit({ ...cur0, players: [...(cur0.players || []), ...add] }); setEsSel([]); cpbAlert?.(`${add.length} joueur${add.length > 1 ? "s" : ""} ajouté${add.length > 1 ? "s" : ""} au recrutement${esSel.length - add.length > 0 ? ` (${esSel.length - add.length} déjà présent${esSel.length - add.length > 1 ? "s" : ""})` : ""}.`); }} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "#16a34a" }}>➕ Ajouter au recrutement</button>
+                      <button onClick={() => { const cur0 = recruit || { players: [] }, have = new Set((cur0.players || []).map(x => leagueNorm((x.team || "") + " " + x.name))); const add = ES.filter(p => esSel.includes(p.id) && !have.has(leagueNorm(p.team + " " + p.name))).map(p => ({ id: uid(), name: p.name, team: p.team, pos: p.pos || "", posLabel: p.posLabel || "", age: p.age ?? null, height: p.height ?? null, status: "À suivre", r: {}, notes: "", created: new Date().toISOString().slice(0, 10), source: "Espoirs LNB", link: { team: p.team, name: p.name }, snap: recruitSnapOf(p) })); if (add.length) saveRecruit({ ...cur0, players: [...(cur0.players || []), ...add] }); setEsSel([]); cpbAlert?.(`${add.length} joueur${add.length > 1 ? "s" : ""} ajouté${add.length > 1 ? "s" : ""} au recrutement${esSel.length - add.length > 0 ? ` (${esSel.length - add.length} déjà présent${esSel.length - add.length > 1 ? "s" : ""})` : ""}.`); }} className="text-xs font-semibold text-white px-3 py-1.5 rounded-md" style={{ backgroundColor: "#16a34a" }}>➕ Ajouter au recrutement</button>
                       <button onClick={delSel} className="text-xs font-semibold text-red-600 px-2 py-1.5 underline">Supprimer</button>
                       <button onClick={() => setEsSel([])} className="text-xs text-[#1B2A4A]/50 underline">Désélectionner</button>
                     </>)}
