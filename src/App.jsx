@@ -581,11 +581,11 @@ function useStore(sport = DEFAULT_SPORT) {
   // Analyse de mon équipe (admin) : imports Excel (cinq alignés, box score par match).
   const [teamAnalyses, setTeamAnalyses] = useState([]);
   const teamAnalysesKey = `teamAnalyses:${sport}`;
-  const leagueGamesKey = `leagueGames:${sport}`;
+  const leagueGamesKey = "leagueGames:basketball";
   const [leagueGames, setLeagueGames] = useState([]);
-  const leagueDataKey = `leagueData:${sport}`;
-  const espoirsKey = `espoirs:${sport}`;
-  const recruitKey = `recruit:${sport}`;
+  const leagueDataKey = "leagueData:basketball";   // clés communes à tous les comptes : ces onglets ne concernent que le basket, quel que soit le sport choisi dans le compte
+  const espoirsKey = "espoirs:basketball";
+  const recruitKey = "recruit:basketball";
   const [recruit, setRecruit] = useState({ players: [] });
   const [espoirs, setEspoirs] = useState([]);
   const [leagueData, setLeagueData] = useState({ teams: [], stats: {} });
