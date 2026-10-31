@@ -11883,7 +11883,7 @@ function CoachingProBoost({ session }) {
   const [vsAnnounceName, setVsAnnounceName] = useState("");
   // Tag par entrées (iPad) : entrées tapées dans l'ordre, play choisi, nom du nouveau play, entrée ajoutée à la main
   const [rcSel, setRcSel] = useState(null), [rcQuery, setRcQuery] = useState(""), [rcStatus, setRcStatus] = useState(""), [rcCfgOpen, setRcCfgOpen] = useState(false), [rcNewItem, setRcNewItem] = useState({}), [rcNewGroup, setRcNewGroup] = useState("");
-  const [esText, setEsText] = useState(""), [esTeam, setEsTeam] = useState(""), [esPos, setEsPos] = useState(""), [esQuery, setEsQuery] = useState(""), [esAgeMin, setEsAgeMin] = useState(""), [esAgeMax, setEsAgeMax] = useState(""), [esSort, setEsSort] = useState({ k: "eff", d: -1 }), [esCsvTeam, setEsCsvTeam] = useState(""), [esCsvNew, setEsCsvNew] = useState(""), [esSel, setEsSel] = useState([]), [esUndo, setEsUndo] = useState(null), [esMoveTo, setEsMoveTo] = useState("");
+  const [esText, setEsText] = useState(""), [esTeam, setEsTeam] = useState(""), [esPos, setEsPos] = useState(""), [esQuery, setEsQuery] = useState(""), [esAgeMin, setEsAgeMin] = useState(""), [esAgeMax, setEsAgeMax] = useState(""), [esSort, setEsSort] = useState({ k: "eff", d: -1 }), [esCsvTeam, setEsCsvTeam] = useState(""), [esCsvNew, setEsCsvNew] = useState(""), [esSel, setEsSel] = useState([]), [esTab, setEsTab] = useState("list"), [esSearch, setEsSearch] = useState(""), [esUndo, setEsUndo] = useState(null), [esMoveTo, setEsMoveTo] = useState("");
   const [vsEntrySel, setVsEntrySel] = useState([]), [vsEntryPlayId, setVsEntryPlayId] = useState(null), [vsEntryNew, setVsEntryNew] = useState(""), [vsEntryCustom, setVsEntryCustom] = useState(""), [vsEntryGroupsOpen, setVsEntryGroupsOpen] = useState(false), [vsEntryCat, setVsEntryCat] = useState(null), [vsFinNew, setVsFinNew] = useState([]);
   const [vsAnnounceTf, setVsAnnounceTf] = useState([]);
   const [vsAnnounceType, setVsAnnounceType] = useState("");
@@ -16042,6 +16042,36 @@ function CoachingProBoost({ session }) {
                 </div>
               </div>
               {ES.length > 0 && (
+                <div className="flex gap-1.5 mb-3">
+                  {[["list", "Liste et filtres"], ["search", "🔍 Chercher un joueur"]].map(([k, l]) => <button key={k} onClick={() => setEsTab(k)} className={`px-4 py-2 rounded-lg text-sm font-semibold border ${esTab === k ? "" : "border-[#1B2A4A]/25 text-[#1B2A4A] bg-white"}`} style={esTab === k ? { backgroundColor: "#1B2A4A", color: "#fff", borderColor: "#1B2A4A" } : undefined}>{l}</button>)}
+                </div>
+              )}
+              {ES.length > 0 && esTab === "search" && (() => {
+                const toks = leagueNorm(esSearch).split(" ").filter(Boolean);
+                const res = !toks.length ? [] : ES.map(p => { const hay = leagueNorm(p.name + " " + p.team), nm = leagueNorm(p.name); if (!toks.every(t => hay.includes(t))) return null; return { p, score: (nm === toks.join(" ") ? 0 : nm.startsWith(toks[0]) ? 1 : nm.split(" ").some(w => w.startsWith(toks[0])) ? 2 : 3) }; }).filter(Boolean).sort((a, b) => a.score - b.score || a.p.name.localeCompare(b.p.name, "fr")).slice(0, 30).map(x => x.p);
+                const have = new Set(((recruit || {}).players || []).map(x => leagueNorm((x.team || "") + " " + x.name)));
+                const chips = (p) => { const sn = recruitSnapOf(p); return [["Pts", sn.pts], ["Reb", sn.reb], ["Pds", sn.pd], ["MJ", sn.mj], ["Min", sn.min], ["TS %", sn.ts], ["Usage %", sn.usg], ["EFF", sn.eff]].filter(([, v]) => v !== null && v !== undefined); };
+                return (
+                  <div className="mb-4">
+                    <input autoFocus value={esSearch} onChange={e => setEsSearch(e.target.value)} placeholder="Tape un nom, un prénom ou un club (ex. bria, roanne ragoo…)" className="w-full border-2 border-[#1B2A4A]/25 focus:border-[#FF6B35] rounded-xl px-4 py-3 text-base bg-white outline-none" />
+                    <p className="text-[11px] text-[#1B2A4A]/40 mt-1.5">{!toks.length ? `${ES.length} joueurs dans la base. Les accents et les majuscules n'ont pas d'importance.` : `${res.length} résultat${res.length > 1 ? "s" : ""}${res.length === 30 ? " (30 premiers)" : ""}`}</p>
+                    <div className="grid sm:grid-cols-2 gap-2 mt-2">
+                      {res.map(p => (
+                        <div key={p.id} className="border border-[#1B2A4A]/15 rounded-xl bg-white p-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0"><div className="font-bold text-[#1B2A4A] truncate">{p.num ? <span className="text-[#1B2A4A]/40 mr-1">#{p.num}</span> : null}{p.name}</div>
+                              <div className="text-xs text-[#1B2A4A]/60">{[p.team, p.posLabel, p.age ? p.age + " ans" : "", p.height ? p.height + " cm" : ""].filter(Boolean).join(" · ") || "Informations manquantes"}</div></div>
+                            <button disabled={have.has(leagueNorm(p.team + " " + p.name))} onClick={() => { const cur0 = recruit || { players: [] }; saveRecruit({ ...cur0, players: [...(cur0.players || []), { id: uid(), name: p.name, team: p.team, pos: p.pos || "", posLabel: p.posLabel || "", age: p.age ?? null, height: p.height ?? null, status: "À suivre", r: {}, notes: "", created: new Date().toISOString().slice(0, 10), source: "Espoirs LNB", link: { team: p.team, name: p.name }, snap: recruitSnapOf(p) }] }); toast?.(`✓ ${p.name} ajouté au recrutement`); }} className="shrink-0 text-[11px] font-semibold text-white px-2.5 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#16a34a" }}>{have.has(leagueNorm(p.team + " " + p.name)) ? "Déjà ajouté" : "➕ Recrutement"}</button>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 mt-2">{chips(p).map(([l, v]) => <div key={l} className="rounded-md px-2 py-1 text-center min-w-[46px]" style={{ background: "rgba(27,42,74,.06)" }}><div className="text-sm font-bold text-[#1B2A4A]">{String(Math.round(v * 10) / 10).replace(".", ",")}</div><div className="text-[9px] uppercase text-[#1B2A4A]/50">{l}</div></div>)}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {toks.length > 0 && res.length === 0 && <p className="text-sm text-[#1B2A4A]/50 italic mt-3">Aucun joueur ne correspond. Vérifie l'orthographe, ou cherche seulement une partie du nom.</p>}
+                  </div>
+                );
+              })()}
+              {ES.length > 0 && esTab !== "search" && (
                 <>
                   <div className="flex flex-wrap gap-2 items-center mb-2">
                     <select value={esTeam} onChange={e => setEsTeam(e.target.value)} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white"><option value="">Toutes les équipes</option>{teams.map(t => <option key={t} value={t}>{t}</option>)}</select>
