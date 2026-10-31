@@ -15899,14 +15899,15 @@ function CoachingProBoost({ session }) {
                   {shown.length === 0 && <p className="text-xs text-[#1B2A4A]/40 italic">{players.length ? "Aucun joueur ne correspond." : "Aucun joueur pour l'instant : « + Nouveau joueur », ou ajoute-en depuis l'onglet Espoirs LNB."}</p>}
                   <div className="flex flex-col gap-1.5">
                     {shown.map(x => (
-                      <button key={x.p.id} onClick={() => setRcSel(x.p.id)} className={`text-left border rounded-lg p-2.5 bg-white flex items-center gap-3 ${rcSel === x.p.id ? "border-2 border-[#FF6B35]" : "border-[#1B2A4A]/15"}`}>
+                      <div key={x.p.id} role="button" tabIndex={0} onClick={() => setRcSel(x.p.id)} className={`text-left cursor-pointer border rounded-lg p-2.5 bg-white flex items-center gap-3 ${rcSel === x.p.id ? "border-2 border-[#FF6B35]" : "border-[#1B2A4A]/15"}`}>
                         <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold shrink-0" style={{ backgroundColor: x.sc.overall === null ? "#9ca3af" : RECRUIT_COLORS[Math.round(x.sc.overall)] }}>{f1(x.sc.overall)}</div>
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold text-[#1B2A4A] truncate">{x.p.name || "Sans nom"}</div>
                           <div className="text-[11px] text-[#1B2A4A]/60 truncate">{[x.p.team, x.p.posLabel || x.p.pos, x.p.age ? x.p.age + " ans" : ""].filter(Boolean).join(" · ")}</div>
                           <div className="flex flex-wrap gap-1 mt-0.5">{x.pr.profiles.slice(0, 2).map(t => <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#1B2A4A] text-white">{t}</span>)}{x.p.status && x.p.status !== "À suivre" && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#FF6B35]/15 text-[#FF6B35] font-semibold">{x.p.status}</span>}</div>
                         </div>
-                      </button>
+                        <button type="button" title="Supprimer ce joueur" aria-label="Supprimer ce joueur" onClick={async (e) => { e.stopPropagation(); const ok = await cpbAlert?.(`Supprimer « ${x.p.name} » du recrutement ? Cette action est définitive.`, { confirm: true }); if (ok) { save({ players: players.filter(y => y.id !== x.p.id) }); if (rcSel === x.p.id) setRcSel(null); } }} className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-[#1B2A4A]/40 hover:text-red-600 hover:bg-red-50">🗑️</button>
+                      </div>
                     ))}
                   </div>
                 </div>
