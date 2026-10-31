@@ -223,6 +223,7 @@ function useAnnouncement(userId) {
   const [canManageWellness, setCanManageWellness] = useState(false);
   const [canUseMatchmode, setCanUseMatchmode] = useState(false);
   const [canUseMyteam, setCanUseMyteam] = useState(false);
+  const [scoutGuest, setScoutGuest] = useState(false);
 
   useEffect(() => {
     supabase.from("announcements").select("id, message").eq("active", true)
@@ -241,6 +242,9 @@ function useAnnouncement(userId) {
     // Permission « Mon équipe » lue à part : si la colonne n'existe pas encore (SQL pas exécuté), cela ne doit pas casser les autres droits.
     supabase.from("profiles").select("can_use_myteam").eq("id", userId).maybeSingle()
       .then(({ data, error }) => { setCanUseMyteam(!error && !!data?.can_use_myteam); }, () => setCanUseMyteam(false));
+    // Compte « invité scouting » (comparatif en consultation, Espoirs LNB, recrutement) : colonne lue à part, comme les autres droits
+    supabase.from("profiles").select("scout_guest").eq("id", userId).maybeSingle()
+      .then(({ data, error }) => { setScoutGuest(!error && !!data?.scout_guest); }, () => setScoutGuest(false));
   }, [userId]);
 
   const dismiss = () => {
@@ -257,7 +261,7 @@ function useAnnouncement(userId) {
     await supabase.from("announcements").update({ active: false }).eq("active", true);
   };
 
-  return { announcement, dismiss, isAdmin, canManageWellness, canUseMatchmode, canUseMyteam, publish, deactivate };
+  return { announcement, dismiss, isAdmin, canManageWellness, canUseMatchmode, canUseMyteam, scoutGuest, publish, deactivate };
 }
 
 // Pack « Analyse » : abonnement ANNUEL de 200 € (Scouting report + Mon équipe). Renseigne ici l'identifiant du prix créé dans Stripe.
@@ -691,22 +695,11 @@ function useStore(sport = DEFAULT_SPORT) {
         const sr = await storage.get(scoutReportsKey);
         setScoutReports(sr ? JSON.parse(sr.value) : []);
       } catch { hadError = true; }
-      try {
-        const rc = await storage.get(recruitKey);
-        setRecruit(rc ? JSON.parse(rc.value) : { players: [] });
-      } catch { hadError = true; }
-      try {
-        const es = await storage.get(espoirsKey);
-        setEspoirs(es ? JSON.parse(es.value) : []);
-      } catch { hadError = true; }
-      try {
-        const ld = await storage.get(leagueDataKey);
-        setLeagueData(ld ? JSON.parse(ld.value) : { teams: [], stats: {} });
-      } catch { hadError = true; }
-      try {
-        const lgm = await storage.get(leagueGamesKey);
-        setLeagueGames(lgm ? JSON.parse(lgm.value) : []);
-      } catch { hadError = true; }
+      // Espoirs LNB, recrutement et comparatif : espace partagé entre l'admin et les invités scouting (sinon données privées, comme avant)
+      try { setRecruit(await loadSharedJson(recruitKey, { players: [] })); } catch { hadError = true; }
+      try { setEspoirs(await loadSharedJson(espoirsKey, [])); } catch { hadError = true; }
+      try { setLeagueData(await loadSharedJson(leagueDataKey, { teams: [], stats: {} })); } catch { hadError = true; }
+      try { setLeagueGames(await loadSharedJson(leagueGamesKey, [])); } catch { hadError = true; }
       try {
         const ta = await storage.get(teamAnalysesKey);
         setTeamAnalyses(ta ? JSON.parse(ta.value) : []);
@@ -832,10 +825,64 @@ function useStore(sport = DEFAULT_SPORT) {
   };
   const saveVideoScoutSessions = (next) => { setVideoScoutSessions(next); persist(videoScoutSessionsKey, JSON.stringify(next)); };
   const saveScoutReports = (next) => { setScoutReports(next); persist(scoutReportsKey, JSON.stringify(next)); };
-  const saveLeagueGames = (next) => { setLeagueGames(next); persist(leagueGamesKey, JSON.stringify(next)); };
-  const saveRecruit = (next) => { setRecruit(next); persist(recruitKey, JSON.stringify(next)); };
-  const saveEspoirs = (next) => { setEspoirs(next); persist(espoirsKey, JSON.stringify(next)); };
-  const saveLeagueData = (next) => { setLeagueData(next); persist(leagueDataKey, JSON.stringify(next)); };
+
+  // ── Espace partagé (admin + invités scouting) : versions lues, file d'enregistrement par clé, détection des modifications simultanées ──
+  const sharedVer = useRef({}), sharedQueue = useRef({}), sharedBusy = useRef(false);
+  async function loadSharedJson(key, fallback) {
+    const al = await storage.sharedAllowed();
+    if (al.ok) {
+      const sh = await storage.getShared(key);
+      if (sh) { sharedVer.current[key] = sh.version; return JSON.parse(sh.value); }
+      sharedVer.current[key] = null;
+      if (!al.guest) {   // première ouverture côté admin : ses données privées passent dans l'espace partagé
+        const own = await storage.get(key);
+        if (own) { const r = await storage.setShared(key, own.value, null); if (r.ok) sharedVer.current[key] = r.version; return JSON.parse(own.value); }
+      }
+      return fallback;
+    }
+    const own = await storage.get(key);
+    return own ? JSON.parse(own.value) : fallback;
+  }
+  async function saveSharedJson(key, setter, obj) {
+    setter(obj);
+    const al = await storage.sharedAllowed();
+    if (!al.ok) { persist(key, JSON.stringify(obj)); return; }
+    sharedQueue.current[key] = { obj, setter };
+    if (sharedBusy.current) return;   // une sauvegarde est déjà en cours : elle enverra la dernière version en attente
+    sharedBusy.current = true;
+    try {
+      for (let guard = 0; guard < 50; guard++) {
+        const k = Object.keys(sharedQueue.current)[0]; if (!k) break;
+        const { obj: o, setter: st } = sharedQueue.current[k]; delete sharedQueue.current[k];
+        try {
+          const r = await storage.setShared(k, JSON.stringify(o), sharedVer.current[k] ?? null);
+          if (r.ok) sharedVer.current[k] = r.version;
+          else {
+            const sh = await storage.getShared(k);
+            if (sh) { sharedVer.current[k] = sh.version; st(JSON.parse(sh.value)); } else sharedVer.current[k] = null;
+            persistAlert?.("⚠️ Quelqu'un d'autre vient de modifier ces données : ta dernière modification n'a pas été enregistrée. La dernière version est rechargée, refais-la.");
+          }
+        } catch (e) {
+          console.error("Enregistrement partagé", k, e);
+          persistAlert?.("⚠️ Échec de l'enregistrement (connexion perdue ou droit refusé). Vérifie ta connexion et refais la modification.");
+        }
+      }
+    } finally { sharedBusy.current = false; }
+  }
+  // Relit les données partagées si l'autre compte a enregistré entre-temps (appelé à intervalle régulier quand on est sur ces onglets)
+  const refreshShared = async () => {
+    try {
+      const al = await storage.sharedAllowed(); if (!al.ok || sharedBusy.current) return;
+      for (const [key, setter] of [[recruitKey, setRecruit], [espoirsKey, setEspoirs], [leagueDataKey, setLeagueData], [leagueGamesKey, setLeagueGames]]) {
+        const sh = await storage.getShared(key);
+        if (sh && sh.version !== sharedVer.current[key] && !sharedBusy.current) { sharedVer.current[key] = sh.version; setter(JSON.parse(sh.value)); }
+      }
+    } catch (e) { console.error("refreshShared", e); }
+  };
+  const saveLeagueGames = (next) => saveSharedJson(leagueGamesKey, setLeagueGames, next);
+  const saveRecruit = (next) => saveSharedJson(recruitKey, setRecruit, next);
+  const saveEspoirs = (next) => saveSharedJson(espoirsKey, setEspoirs, next);
+  const saveLeagueData = (next) => saveSharedJson(leagueDataKey, setLeagueData, next);
   const saveTeamAnalyses = (next) => { setTeamAnalyses(next); persist(teamAnalysesKey, JSON.stringify(next)); };
   const savePlays = async (next) => {
     for (const play of next) {
@@ -869,7 +916,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, recruit, saveRecruit, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
+  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, recruit, saveRecruit, refreshShared, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
 }
 
 function usePdfJs() {
@@ -10944,9 +10991,11 @@ function AnnouncementAdminPanel({ currentMessage, onPublish, onDeactivate, cpbAl
 
 function CoachingProBoost({ session }) {
   const { isPremium, sport, setSport, hasAnalysis, analysisUntil, hasPack } = useSubscription(session?.user?.id);
-  const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, canUseMatchmode, canUseMyteam, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
+  const { announcement, dismiss: dismissAnnouncement, isAdmin, canManageWellness, canUseMatchmode, canUseMyteam, scoutGuest, publish: publishAnnouncement, deactivate: deactivateAnnouncement } = useAnnouncement(session?.user?.id);
+  const guestOnly = scoutGuest && !isAdmin;   // invité scouting : uniquement comparatif (consultation), Espoirs LNB et recrutement
+  const canScout = isAdmin || scoutGuest;
   const canAnalysis = isAdmin || canUseMyteam || hasAnalysis;   // Scouting report + Mon équipe
-  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, recruit, saveRecruit, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
+  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, recruit, saveRecruit, refreshShared, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
   const SPORT_FORMATS = formats;
@@ -11057,6 +11106,20 @@ function CoachingProBoost({ session }) {
     localStorage.setItem("cpb_view", v);
     history.pushState({ view: v }, "", "#" + v);
   };
+
+  // Invité scouting : on le ramène sur les onglets autorisés (lien enregistré, bouton « retour »…)
+  useEffect(() => {
+    if (guestOnly && !["league", "espoirs", "recruit", "account"].includes(view)) setViewPersist("league");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guestOnly, view]);
+  // Données partagées : relues toutes les 40 s sur ces onglets, pour voir ce que l'autre compte a ajouté
+  useEffect(() => {
+    if (!canScout || !["league", "espoirs", "recruit"].includes(view)) return;
+    refreshShared();
+    const t = setInterval(refreshShared, 40000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canScout, view]);
 
   useEffect(() => {
     // Initialise l'état history sans redirection
@@ -11882,6 +11945,7 @@ function CoachingProBoost({ session }) {
   // (choisir des temps forts pour filtrer une liste existante).
   const [vsAnnounceName, setVsAnnounceName] = useState("");
   // Tag par entrées (iPad) : entrées tapées dans l'ordre, play choisi, nom du nouveau play, entrée ajoutée à la main
+  const [lgGuest, setLgGuest] = useState(() => { try { return JSON.parse(localStorage.getItem("cpb_lg_guest") || "{}"); } catch { return {}; } });
   const [rcSel, setRcSel] = useState(null), [rcQuery, setRcQuery] = useState(""), [rcStatus, setRcStatus] = useState(""), [rcCfgOpen, setRcCfgOpen] = useState(false), [rcNewItem, setRcNewItem] = useState({}), [rcNewGroup, setRcNewGroup] = useState("");
   const [esText, setEsText] = useState(""), [esTeam, setEsTeam] = useState(""), [esPos, setEsPos] = useState(""), [esQuery, setEsQuery] = useState(""), [esAgeMin, setEsAgeMin] = useState(""), [esAgeMax, setEsAgeMax] = useState(""), [esSort, setEsSort] = useState({ k: "eff", d: -1 }), [esCsvTeam, setEsCsvTeam] = useState(""), [esCsvNew, setEsCsvNew] = useState(""), [esSel, setEsSel] = useState([]), [esTab, setEsTab] = useState("list"), [esSearch, setEsSearch] = useState(""), [esUndo, setEsUndo] = useState(null), [esMoveTo, setEsMoveTo] = useState("");
   const [vsEntrySel, setVsEntrySel] = useState([]), [vsEntryPlayId, setVsEntryPlayId] = useState(null), [vsEntryNew, setVsEntryNew] = useState(""), [vsEntryCustom, setVsEntryCustom] = useState(""), [vsEntryGroupsOpen, setVsEntryGroupsOpen] = useState(false), [vsEntryCat, setVsEntryCat] = useState(null), [vsFinNew, setVsFinNew] = useState([]);
@@ -12860,13 +12924,13 @@ function CoachingProBoost({ session }) {
               ...(isAdmin || canUseMatchmode ? [{ key: "matchmode", label: isAdmin ? "Mode match (admin)" : "Mode match", icon: Zap }] : []),
               ...(isAdmin ? [{ key: "videoscout", label: "Scouting vidéo (admin)", icon: Video }] : []),
               { key: "scoutreport", label: isAdmin ? "Scouting report (admin)" : canAnalysis ? "Scouting report" : "Scouting report 🔒", icon: FileText },
-              ...(isAdmin ? [{ key: "league", label: "Comparatif championnat (admin)", icon: BarChart3 }] : []),
-              ...(isAdmin ? [{ key: "espoirs", label: "Espoirs LNB (admin)", icon: Users }] : []),
-              ...(isAdmin ? [{ key: "recruit", label: "Recrutement (admin)", icon: UserCheck }] : []),
+              ...(canScout ? [{ key: "league", label: isAdmin ? "Comparatif championnat (admin)" : "Comparatif championnat", icon: BarChart3 }] : []),
+              ...(canScout ? [{ key: "espoirs", label: isAdmin ? "Espoirs LNB (admin)" : "Espoirs LNB", icon: Users }] : []),
+              ...(canScout ? [{ key: "recruit", label: isAdmin ? "Recrutement (admin)" : "Recrutement", icon: UserCheck }] : []),
               { key: "myteam", label: isAdmin ? "Mon équipe (admin)" : canAnalysis ? "Mon équipe" : "Mon équipe 🔒", icon: BarChart3 },
               ...(isAdmin || canManageWellness ? [{ key: "wellness", label: "Bien-être joueurs", icon: UserCheck }] : []),
               { key: "account", label: "Mon compte", icon: Users },
-            ].map(item => {
+            ].filter(item => !guestOnly || ["league", "espoirs", "recruit", "account"].includes(item.key)).map(item => {
               const active = view === item.key || view === item.alsoActive;
               const Icon = item.icon;
               return (
@@ -15731,7 +15795,7 @@ function CoachingProBoost({ session }) {
 
         {view === "pack" && !(isAdmin || hasPack) && <PackPaywall isPremium={isPremium} />}
         {view === "pack" && (isAdmin || hasPack) && <PackPage onOpenExercises={(d) => setSharedExerciseCollection({ ...d, fromPack: true })} onOpenPlays={setSharedPlayCollection} />}
-        {view === "recruit" && isAdmin && (() => {
+        {view === "recruit" && canScout && (() => {
           const R = recruit || { players: [] }, groups = R.groups || RECRUIT_DEFAULT_GROUPS, players = R.players || [];
           const POSNAME = { "1": "Meneur", "2": "Arrière", "3": "Ailier", "4": "Ailier fort", "5": "Pivot" };
           const POSCODES = ["1", "1/2", "2", "2/3", "3", "3/4", "4", "4/5", "5"];
@@ -15937,7 +16001,7 @@ function CoachingProBoost({ session }) {
             </div>
           );
         })()}
-        {view === "espoirs" && isAdmin && (() => {
+        {view === "espoirs" && canScout && (() => {
           const ES = espoirs || [];
           const teams = [...new Set(ES.map(p => p.team))].sort((a, b) => a.localeCompare(b, "fr"));
           const read = () => {
@@ -16120,8 +16184,12 @@ function CoachingProBoost({ session }) {
             </div>
           );
         })()}
-        {view === "league" && isAdmin && (() => {
-          const LG = leagueData;
+        {view === "league" && canScout && (() => {
+          const guest = guestOnly;
+          // Invité : il ne modifie pas les données du comparatif, seulement les deux équipes comparées (réglage gardé sur son appareil)
+          const LG = guest ? { ...leagueData, mine: lgGuest.mine || null, other: lgGuest.other || null } : leagueData;
+          const setGuestSel = (patch) => { const next = { ...lgGuest, ...patch }; setLgGuest(next); try { localStorage.setItem("cpb_lg_guest", JSON.stringify(next)); } catch {} };
+          const sortedTeams = [...(leagueData.teams || [])].sort((a, b) => a.name.localeCompare(b.name, "fr"));
           let html = "";
           try { html = buildTeamReportHtml({ id: "league", name: "Comparatif championnat", league: LG, leaguePlayers: lgPlayers("league", LG.teams), lineups: [], lineupsFile: "", boxScore: null, notes: "" }, null); }
           catch (e) { html = `<p style="font-family:sans-serif;color:#b91c1c;padding:16px">Erreur d'affichage : ${String(e?.message || e).replace(/</g, "&lt;")}</p>`; }
@@ -16137,9 +16205,9 @@ function CoachingProBoost({ session }) {
                 const goEd = (id) => { try { document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch {} };
                 const goRep = (id) => { try { document.getElementById("lg-frame")?.contentDocument?.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch {} };
                 const items = [
-                  ["Équipes", () => { setTaLgTeamsOpen(true); setTimeout(() => goEd("lg-ed-teams"), 50); }, true],
-                  ["Statistiques collées", () => goEd("lg-ed-paste"), true],
-                  ["Matchs", () => goEd("lg-ed-games"), true],
+                  ["Équipes", () => { setTaLgTeamsOpen(true); setTimeout(() => goEd("lg-ed-teams"), 50); }, !guest],
+                  ["Statistiques collées", () => goEd("lg-ed-paste"), !guest],
+                  ["Matchs", () => goEd("lg-ed-games"), !guest],
                   ["Comparatif", () => goRep("lg-compare"), html.includes('id="lg-compare"')],
                   ["Meilleures équipes", () => goRep("lg-tops"), html.includes('id="lg-tops"')],
                   ["Face-à-face", () => goRep("lg-face"), html.includes('id="lg-face"')],
@@ -16152,7 +16220,19 @@ function CoachingProBoost({ session }) {
                 );
               })()}
               <p className="text-xs text-[#1B2A4A]/40 mb-4">Les équipes du championnat, leurs statistiques collées depuis le site et les matchs LiveStats (chiffres exacts). Indépendant des analyses « Mon équipe ».</p>
-              <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-3">{renderLeagueEditor(LG, saveLeagueData, "league")}</div>
+              {guest ? (
+                <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-3">
+                  <div className="text-xs text-[#1B2A4A]/50 mb-2">Choisis les équipes à comparer (les statistiques sont gérées par le responsable du comparatif).</div>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <label className="text-xs text-[#1B2A4A]/60">Équipe à analyser
+                      <select value={lgGuest.mine || ""} onChange={e => setGuestSel({ mine: e.target.value || null })} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mt-0.5 text-[#1B2A4A]"><option value="">—</option>{sortedTeams.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+                    </label>
+                    <label className="text-xs text-[#1B2A4A]/60">Comparer avec une autre équipe
+                      <select value={lgGuest.other || ""} onChange={e => setGuestSel({ other: e.target.value || null })} className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white mt-0.5 text-[#1B2A4A]"><option value="">—</option>{sortedTeams.filter(x => x.id !== lgGuest.mine).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+                    </label>
+                  </div>
+                </div>
+              ) : <div className="border border-[#1B2A4A]/15 rounded-xl bg-white/70 p-4 mb-3">{renderLeagueEditor(LG, saveLeagueData, "league")}</div>}
               <iframe id="lg-frame" title="Comparatif championnat" srcDoc={html} className="w-full rounded-xl border border-[#1B2A4A]/10"
                 style={{ height: 600, background: "#F2EDE4" }}
                 onLoad={e => { const el = e.currentTarget; fitFrame(el); setTimeout(() => fitFrame(el), 800); }} />

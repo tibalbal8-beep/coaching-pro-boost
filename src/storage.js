@@ -25,8 +25,10 @@ let cachedUserId = null;
 let cachedUserIdReady = supabase.auth.getSession().then(({ data: { session } }) => {
   cachedUserId = session?.user?.id || null;
 });
+let sharedPromise = null;   // droits sur l'espace partagé (voir sharedAllowed) : relu à chaque changement de compte
 supabase.auth.onAuthStateChange((_event, session) => {
   cachedUserId = session?.user?.id || null;
+  sharedPromise = null;
 });
 
 function getCurrentUserIdSync() {
@@ -134,6 +136,50 @@ export const storage = {
       }
     }
     return { keys, prefix };
+  },
+
+  // ── Espace partagé de scouting (table shared_scouting, voir supabase_scouting_partage.sql) ──
+  // Utilisé pour les Espoirs LNB, le recrutement et le comparatif championnat : l'admin et les comptes « invités scouting » lisent et écrivent
+  // les mêmes lignes. Écriture avec numéro de version : si quelqu'un d'autre a enregistré entre-temps, on le détecte au lieu d'écraser.
+  async sharedAllowed() {
+    if (!sharedPromise) {
+      sharedPromise = (async () => {
+        try {
+          const userId = cachedUserId !== null ? getCurrentUserIdSync() : await ensureUserIdReady();
+          const a = await supabase.from("profiles").select("is_admin").eq("id", userId).maybeSingle();
+          const admin = !a.error && !!a.data?.is_admin;
+          let guest = false;
+          try { const b = await supabase.from("profiles").select("scout_guest").eq("id", userId).maybeSingle(); guest = !b.error && !!b.data?.scout_guest; } catch { /* colonne pas encore créée */ }
+          if (!admin && !guest) return { ok: false };
+          const probe = await supabase.from("shared_scouting").select("key").limit(1);
+          if (probe.error) return { ok: false };   // table pas encore créée : on reste sur les données privées
+          return { ok: true, guest: guest && !admin };
+        } catch { return { ok: false }; }
+      })();
+    }
+    return sharedPromise;
+  },
+
+  async getShared(key) {
+    const { data, error } = await supabase.from("shared_scouting").select("value, version").eq("key", key).maybeSingle();
+    if (error) throw error;
+    return data ? { value: data.value, version: data.version } : null;
+  },
+
+  // expected = version lue au chargement (null = la ligne n'existe pas encore). Renvoie { ok, version } ou { conflict: true }.
+  async setShared(key, value, expected) {
+    const userId = cachedUserId !== null ? getCurrentUserIdSync() : await ensureUserIdReady();
+    if (expected === null || expected === undefined) {
+      const { error } = await supabase.from("shared_scouting").insert({ key, value, version: 1, updated_by: userId });
+      if (error) { if (error.code === "23505") return { conflict: true }; throw error; }
+      return { ok: true, version: 1 };
+    }
+    const { data, error } = await supabase.from("shared_scouting")
+      .update({ value, version: expected + 1, updated_by: userId, updated_at: new Date().toISOString() })
+      .eq("key", key).eq("version", expected).select("version");
+    if (error) throw error;
+    if (!data || !data.length) return { conflict: true };
+    return { ok: true, version: expected + 1 };
   },
 
   // Historique de versions (best-effort, ne bloque jamais l'écriture principale).
