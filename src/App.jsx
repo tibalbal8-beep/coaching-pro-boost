@@ -14944,7 +14944,7 @@ function CoachingProBoost({ session }) {
                   DEFAULT_ENTRIES.forEach(addE);
                   (activeVs.attacks || []).forEach(a => (a.labels || []).forEach(l => { if (typeof l !== "string" && /entr[ée]e/i.test(l.group || "")) addE(l.text); }));
                   teamPlays.forEach(p => (p.tags || []).forEach(t => { if (/^e_/i.test(t)) addE(t); }));
-                  vsEntrySel.forEach(addE);
+                  vsEntrySel.filter(t => /^e_/i.test(t)).forEach(addE);
                   const cmpAlpha = (a, b) => String(a).replace(/^e_/i, "").localeCompare(String(b).replace(/^e_/i, ""), "fr", { sensitivity: "base", numeric: true });
                   entryList.sort(cmpAlpha);
                   // Finalités du play (intentions Sportscode : TOP52, SIDE51, STEPUP, POSTUP…), facultatives, plusieurs possibles
@@ -14958,9 +14958,13 @@ function CoachingProBoost({ session }) {
                   finList.sort(cmpAlpha);
                   const entryKeys = new Set(entryList.map(norm));
                   const isEntryTag = (t) => /^e_/i.test(t) || entryKeys.has(norm(t));
-                  const playEntries = (p) => (p.tags || []).filter(isEntryTag);
+                  const finKeys = new Set(finList.map(x => norm(x)));
+                  const isFinKey = (t) => finKeys.has(norm(t)) && !/^e_/i.test(t);
+                  // Séquence du play = entrées ET finalités dans l'ordre où elles sont taguées (les anciens plays : finalités à la suite)
+                  const playEntries = (p) => { const base = (p.tags || []).filter(t => isEntryTag(t) || isFinKey(t)), have = new Set(base.map(norm)); return [...base, ...(p.finalites || []).filter(f => !have.has(norm(f)))]; };
                   const selKeys = vsEntrySel.map(norm), selSet = new Set(selKeys);
-                  const toggle = (t) => setVsEntrySel(arr => arr.some(x => norm(x) === norm(t)) ? arr.filter(x => norm(x) !== norm(t)) : [...arr, asEntry(t)]);
+                  const toggle = (t, fin = false) => setVsEntrySel(arr => arr.some(x => norm(x) === norm(t)) ? arr.filter(x => norm(x) !== norm(t)) : [...arr, fin ? t : asEntry(t)]);
+                  const selFins = () => vsEntrySel.filter(isFinKey);
                   const pretty = (t) => String(t).replace(/^e_/i, "");
                   // Le play doit COMMENCER par les entrées touchées, dans l'ordre : plus j'ajoute d'entrées, plus la liste se réduit.
                   const byNum = (x, y) => { const nx = parseInt(String(x.titre).replace(/\D+/g, ""), 10), ny = parseInt(String(y.titre).replace(/\D+/g, ""), 10); return (isNaN(nx) ? 1e9 : nx) - (isNaN(ny) ? 1e9 : ny) || String(x.titre).localeCompare(String(y.titre), "fr"); };
@@ -14972,19 +14976,19 @@ function CoachingProBoost({ session }) {
                   const chosen = vsEntryPlayId ? teamPlays.find(p => p.id === vsEntryPlayId) : null;
                   const makePlay = (titre, type, tags, finalites = []) => ({ id: uid(), titre, type, scoutedTeam: activeVs.opponent, tempsFort: [], intention: "", description: "", notes: "", tags, finalites, images: [], schemas: [], createdAt: new Date().toISOString() });
                   const toggleFin = (t) => setVsFinNew(arr => arr.some(x => x.toLowerCase() === t.toLowerCase()) ? arr.filter(x => x.toLowerCase() !== t.toLowerCase()) : [...arr, t]);
-                  const toggleFinOf = (p, t) => { const cur = p.finalites || [], has = cur.some(x => x.toLowerCase() === t.toLowerCase()); savePlays(plays.map(x => x.id === p.id ? { ...x, finalites: has ? cur.filter(y => y.toLowerCase() !== t.toLowerCase()) : [...cur, t] } : x)); };
+                  const toggleFinOf = (p, t) => { const cur = p.finalites || [], has = cur.some(x => x.toLowerCase() === t.toLowerCase()); const tg = p.tags || []; savePlays(plays.map(x => x.id === p.id ? { ...x, finalites: has ? cur.filter(y => y.toLowerCase() !== t.toLowerCase()) : [...cur, t], tags: has ? tg.filter(y => norm(y) !== norm(t)) : [...tg.filter(y => norm(y) !== norm(t)), t] } : x)); };
                   const finChips = (selected, onToggle) => (<div className="flex flex-wrap gap-1.5">{finList.map(t => { const on = selected.some(x => x.toLowerCase() === t.toLowerCase()); return (<button key={t} onClick={() => onToggle(t)} className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${on ? "" : "border-[#1B2A4A]/25 text-[#1B2A4A] bg-[#E6F6DD] hover:border-[#1B2A4A]"}`} style={on ? { backgroundColor: "#16a34a", color: "#fff", borderColor: "#16a34a" } : undefined}>{t}</button>); })}</div>);
                   const pick = (p) => { setVsEntryPlayId(p.id); setVsHighlightPlayId(p.id); };
                   const createFromEntries = () => {
                     const name = (vsEntryNew.trim() || defaultName);
                     const existing = teamPlays.find(p => p.titre?.trim().toLowerCase() === name.toLowerCase());
                     if (existing) { pick(existing); toast?.(`✓ ${existing.titre} existe déjà — choisi`); return; }
-                    const np = makePlay(name, playTypes.includes("Système offensif") ? "Système offensif" : playTypes[0], vsEntrySel.map(asEntry), vsFinNew);
+                    const np = makePlay(name, playTypes.includes("Système offensif") ? "Système offensif" : playTypes[0], vsEntrySel.map(t => isFinKey(t) ? t : asEntry(t)), selFins());
                     savePlays([...plays, np]); pick(np); setVsEntryNew(""); toast?.(`✓ ${name} créé (${vsEntrySel.map(pretty).join(" + ")})`);
                   };
                   const done = () => { setVsEntrySel([]); setVsEntryPlayId(null); setVsEntryNew(""); setVsEntryCat(null); setVsFinNew([]); };
                   const outcome = (v, ctx) => { const id = vsEntryPlayId; done(); if (ctx) requestVsMissContext(id, v); else recordVsOutcome(id, v); };
-                  const groups = (() => { const m = new Map(); teamPlays.forEach(p => { const f = playEntries(p)[0]; const k = f ? norm(f) : "—"; if (!m.has(k)) m.set(k, { label: f ? pretty(f) : "Sans entrée", plays: [] }); m.get(k).plays.push(p); }); return [...m.values()].sort((a, b) => b.plays.length - a.plays.length); })();
+                  const groups = (() => { const m = new Map(); teamPlays.forEach(p => { const f = playEntries(p).find(isEntryTag); const k = f ? norm(f) : "—"; if (!m.has(k)) m.set(k, { label: f ? pretty(f) : "Sans entrée", plays: [] }); m.get(k).plays.push(p); }); return [...m.values()].sort((a, b) => b.plays.length - a.plays.length); })();
                   return (
                     <div className="border border-[#1B2A4A]/15 rounded-xl bg-white p-4 mb-4">
                       <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Tag par entrées</div>
@@ -14998,6 +15002,14 @@ function CoachingProBoost({ session }) {
                           <input value={vsEntryCustom} onChange={e => setVsEntryCustom(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && vsEntryCustom.trim()) { toggle(vsEntryCustom.trim()); setVsEntryCustom(""); } }} placeholder="+ autre entrée" className="w-32 border border-[#1B2A4A]/20 rounded-lg px-2 py-2 text-sm bg-white" />
                         </span>
                       </div>
+                      {!chosen && (
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          <span className="text-[11px] text-[#1B2A4A]/50 w-full">Finalités (se placent dans l'ordre, avec les entrées) :</span>
+                          {finList.map(t => { const on = selSet.has(norm(t)); const rank = selKeys.indexOf(norm(t)) + 1; return (
+                            <button key={t} onClick={() => toggle(t, true)} className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border ${on ? "" : "border-[#1B2A4A]/25 text-[#1B2A4A] bg-[#E6F6DD] hover:border-[#1B2A4A]"}`}
+                              style={on ? { backgroundColor: "#16a34a", color: "#fff", borderColor: "#16a34a" } : undefined}>{on ? `${rank}. ` : ""}{t}</button>); })}
+                        </div>
+                      )}
                       {vsEntrySel.length > 0 && (
                         <div className="text-sm text-[#1B2A4A] mb-2"><b>{vsEntrySel.map(pretty).join(" → ")}</b> <button onClick={done} className="ml-2 text-xs text-red-500 hover:underline">Effacer</button></div>
                       )}
@@ -15024,12 +15036,6 @@ function CoachingProBoost({ session }) {
                             </div>
                           )}
                           {vsEntrySel.length > 0 && !(sugg[0] && sugg[0].exact) && (
-                            <div className="mb-2">
-                              <div className="text-[11px] text-[#1B2A4A]/50 mb-1">Finalités du nouveau play (facultatif) :</div>
-                              {finChips(vsFinNew, toggleFin)}
-                            </div>
-                          )}
-                          {vsEntrySel.length > 0 && !(sugg[0] && sugg[0].exact) && (
                             <div className="flex flex-wrap gap-2 items-center mb-2">
                               <input value={vsEntryNew} onChange={e => setVsEntryNew(e.target.value)} placeholder={defaultName} className="w-40 border border-[#1B2A4A]/20 rounded-lg px-3 py-2.5 text-sm bg-white" />
                               <button onClick={createFromEntries} className="px-4 py-2.5 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "#FF6B35" }}>Nouveau play « {vsEntryNew.trim() || defaultName} »</button>
@@ -15053,7 +15059,7 @@ function CoachingProBoost({ session }) {
                                     {playEntries(p).length > 0 && <div className="text-[10px] text-[#1B2A4A]/60">{playEntries(p).map(pretty).join(" → ")}</div>}
                                   </button>
                                 ))}
-                                <button onClick={() => { const np = makePlay(`${kind} ${nextK}`, playTypes.includes(kind) ? kind : playTypes[0], vsEntrySel.map(asEntry), vsFinNew); savePlays([...plays, np]); pick(np); setVsEntryCat(null); toast?.(`✓ ${np.titre} créé`); }}
+                                <button onClick={() => { const np = makePlay(`${kind} ${nextK}`, playTypes.includes(kind) ? kind : playTypes[0], vsEntrySel.map(t => isFinKey(t) ? t : asEntry(t)), selFins()); savePlays([...plays, np]); pick(np); setVsEntryCat(null); toast?.(`✓ ${np.titre} créé`); }}
                                   className="px-3 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "#FF6B35" }}>+ Nouveau {kind} {nextK}</button>
                               </div>
                             );
