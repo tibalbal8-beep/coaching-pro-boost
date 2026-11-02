@@ -15059,8 +15059,9 @@ function CoachingProBoost({ session }) {
                                     {playEntries(p).length > 0 && <div className="text-[10px] text-[#1B2A4A]/60">{playEntries(p).map(pretty).join(" → ")}</div>}
                                   </button>
                                 ))}
-                                <button onClick={() => { const np = makePlay(`${kind} ${nextK}`, playTypes.includes(kind) ? kind : playTypes[0], vsEntrySel.map(t => isFinKey(t) ? t : asEntry(t)), selFins()); savePlays([...plays, np]); pick(np); setVsEntryCat(null); toast?.(`✓ ${np.titre} créé`); }}
-                                  className="px-3 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "#FF6B35" }}>+ Nouveau {kind} {nextK}</button>
+                                <input value={vsEntryNew} onChange={e => setVsEntryNew(e.target.value)} placeholder={`${kind} ${nextK}`} className="w-40 border border-[#1B2A4A]/20 rounded-lg px-3 py-2 text-sm bg-white" />
+                                <button onClick={() => { const nm = vsEntryNew.trim() || `${kind} ${nextK}`; const ex = teamPlays.find(p => String(p.titre || "").trim().toLowerCase() === nm.toLowerCase()); if (ex) { pick(ex); setVsEntryCat(null); setVsEntryNew(""); toast?.(`✓ ${ex.titre} existe déjà — choisi`); return; } const np = makePlay(nm, playTypes.includes(kind) ? kind : playTypes[0], vsEntrySel.map(t => isFinKey(t) ? t : asEntry(t)), selFins()); savePlays([...plays, np]); pick(np); setVsEntryCat(null); setVsEntryNew(""); toast?.(`✓ ${np.titre} créé`); }}
+                                  className="px-3 py-2 rounded-lg text-sm font-semibold text-white" style={{ backgroundColor: "#FF6B35" }}>+ Nouveau « {vsEntryNew.trim() || `${kind} ${nextK}`} »</button>
                               </div>
                             );
                           })()}
