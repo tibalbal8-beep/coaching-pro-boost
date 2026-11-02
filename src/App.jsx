@@ -15049,8 +15049,8 @@ function CoachingProBoost({ session }) {
                           </div>
                           {vsEntryCat && (() => {
                             const kind = vsEntryCat, re = new RegExp("^" + kind + "\\s*(\\d+)$", "i");
-                            const list = teamPlays.filter(p => re.test(String(p.titre || "").trim())).sort(byNum);
-                            const nextK = list.reduce((m, p) => Math.max(m, +re.exec(String(p.titre).trim())[1]), 0) + 1;
+                            const list = teamPlays.filter(p => p.type === kind || re.test(String(p.titre || "").trim())).sort(byNum);
+                            const nextK = list.reduce((m, p) => { const x = re.exec(String(p.titre).trim()); return x ? Math.max(m, +x[1]) : m; }, 0) + 1;
                             return (
                               <div className="mt-2 flex flex-wrap gap-2">
                                 {list.map(p => (
