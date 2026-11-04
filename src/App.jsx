@@ -5849,7 +5849,7 @@ function useFileImage(ex) {
 function FilterAccordion({ label, activeCount, borderTop, children }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className={borderTop ? "border-t border-[#1B2A4A]/8" : ""}>
+    <div className={"ns-acc " + (borderTop ? "border-t border-[#1B2A4A]/8" : "")}>
       <button onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#1B2A4A]/4 transition-colors">
         <div className="flex items-center gap-2">
@@ -5878,7 +5878,7 @@ function ExerciseCard({ ex, index, onClick, onView, onRemove, onAddToDraft, onCr
   const [carouselIdx, setCarouselIdx] = useState(0);
   const [confirmDel, setConfirmDel] = useState(false);
   return (
-    <div className="border border-[#1B2A4A]/10 rounded-xl bg-white shadow-md shadow-[#1B2A4A]/10 p-4 relative group hover:shadow-lg transition-shadow" onClick={selectMode ? onToggleSelect : onClick}>
+    <div className="ns-card border border-[#1B2A4A]/10 rounded-xl bg-white shadow-md shadow-[#1B2A4A]/10 p-4 relative group hover:shadow-lg transition-shadow" onClick={selectMode ? onToggleSelect : onClick}>
       {selectMode && (
         <div className="absolute top-2 left-2 z-10 w-5 h-5 rounded flex items-center justify-center border-2"
           style={{ borderColor: selected ? "#FF6B35" : "#1B2A4A40", backgroundColor: selected ? "#FF6B35" : "#fff" }}>
@@ -5911,7 +5911,7 @@ function ExerciseCard({ ex, index, onClick, onView, onRemove, onAddToDraft, onCr
       <div className="cursor-pointer">
         <h3 className="font-semibold text-[#1B2A4A] mb-1.5 leading-tight">{ex.titre}</h3>
         {ex.diagram ? (
-          <div className="mb-2"><CourtDiagram players={ex.diagram.players} paths={ex.diagram.paths} screens={ex.diagram.screens} /></div>
+          <div className="mb-2 ns-media"><CourtDiagram players={ex.diagram.players} paths={ex.diagram.paths} screens={ex.diagram.screens} /></div>
         ) : (() => {
           const hasFile = fileImage && ex.file?.type?.startsWith("image/");
           const allPhotos = [...(hasFile ? [fileImage] : []), ...schemas];
@@ -5919,7 +5919,7 @@ function ExerciseCard({ ex, index, onClick, onView, onRemove, onAddToDraft, onCr
           const idx = Math.min(carouselIdx, allPhotos.length - 1);
           const isFileSlide = hasFile && idx === 0;
           return (
-            <div className="mb-2 rounded-lg overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="mb-2 rounded-lg overflow-hidden ns-media" onClick={e => e.stopPropagation()}>
               <MediaCarousel items={allPhotos} index={idx} onIndexChange={setCarouselIdx} card={false} height="h-48"
                 onClickImage={onView}
                 overlay={isFileSlide && onCropImage && (
@@ -5931,19 +5931,19 @@ function ExerciseCard({ ex, index, onClick, onView, onRemove, onAddToDraft, onCr
             </div>
           );
         })()}
-        <div className="flex items-center gap-3 text-xs text-[#1B2A4A]/60 mb-2">
+        <div className="ns-meta flex items-center gap-3 text-xs text-[#1B2A4A]/60 mb-2">
           <span className="flex items-center gap-1"><Clock size={12} />{ex.duree} min</span>
           <span>{ex.format}</span><span>{ex.niveau}</span>{catList(ex).length > 0 && <span className="px-1.5 py-0.5 rounded bg-[#1B2A4A]/8">{catList(ex).join(", ")}</span>}
           {ex.avis?.length > 0 && <span className="flex items-center gap-0.5 text-[#FF6B35]"><Star size={12} fill="#FF6B35" strokeWidth={0} />{(ex.avis.reduce((s, a) => s + a.note, 0) / ex.avis.length).toFixed(1)}</span>}
         </div>
-        <div className="flex flex-wrap gap-1 mb-2">
+        <div className="ns-themes flex flex-wrap gap-1 mb-2">
           {ex.themes?.slice(0, 3).map(t => <span key={t} className="text-[10px] px-2 py-0.5 rounded-full bg-[#1B2A4A]/8 text-[#1B2A4A]/70">{t}</span>)}
           {ex.themes?.length > 3 && <span className="text-[10px] px-2 py-0.5 text-[#1B2A4A]/40">+{ex.themes.length - 3}</span>}
         </div>
       </div>
       {onAddToDraft && (
         <button onClick={(e) => { e.stopPropagation(); onAddToDraft(); }}
-          className="w-full mt-1 flex items-center justify-center gap-1 border border-[#FF6B35]/40 rounded-md px-2 py-1.5 text-xs font-medium text-[#FF6B35] hover:bg-[#FF6B35] hover:text-white transition-colors">
+          className="ns-add w-full mt-1 flex items-center justify-center gap-1 border border-[#FF6B35]/40 rounded-md px-2 py-1.5 text-xs font-medium text-[#FF6B35] hover:bg-[#FF6B35] hover:text-white transition-colors">
           <Plus size={13} /> Ajouter à la nouvelle séance
         </button>
       )}
@@ -12009,6 +12009,10 @@ function CoachingProBoost({ session }) {
   // (choisir des temps forts pour filtrer une liste existante).
   const [vsAnnounceName, setVsAnnounceName] = useState("");
   // Tag par entrées (iPad) : entrées tapées dans l'ordre, play choisi, nom du nouveau play, entrée ajoutée à la main
+  // Nouveau style (test) : réservé à l'admin, réglé par appareil ; l'ancien style reste intact quand il est coupé
+  const [newStyle, setNewStyleState] = useState(() => { try { return localStorage.getItem("cpb_newstyle") === "1"; } catch { return false; } });
+  const setNewStyle = (v) => { setNewStyleState(v); try { localStorage.setItem("cpb_newstyle", v ? "1" : "0"); } catch {} };
+  useEffect(() => { document.body.classList.toggle("cpb-ns", !!(isAdmin && newStyle)); return () => document.body.classList.remove("cpb-ns"); }, [isAdmin, newStyle]);
   const [lgGuest, setLgGuest] = useState(() => { try { return JSON.parse(localStorage.getItem("cpb_lg_guest") || "{}"); } catch { return {}; } });
   const [rcSel, setRcSel] = useState(null), [rcQuery, setRcQuery] = useState(""), [rcStatus, setRcStatus] = useState(""), [rcCfgOpen, setRcCfgOpen] = useState(false), [rcNewItem, setRcNewItem] = useState({}), [rcNewGroup, setRcNewGroup] = useState("");
   const [esText, setEsText] = useState(""), [esTeam, setEsTeam] = useState(""), [esPos, setEsPos] = useState(""), [esQuery, setEsQuery] = useState(""), [esAgeMin, setEsAgeMin] = useState(""), [esAgeMax, setEsAgeMax] = useState(""), [esSort, setEsSort] = useState({ k: "eff", d: -1 }), [esCsvTeam, setEsCsvTeam] = useState(""), [esCsvNew, setEsCsvNew] = useState(""), [esSel, setEsSel] = useState([]), [esTab, setEsTab] = useState("list"), [esSearch, setEsSearch] = useState(""), [esUndo, setEsUndo] = useState(null), [esMoveTo, setEsMoveTo] = useState("");
@@ -13049,7 +13053,7 @@ function CoachingProBoost({ session }) {
           <>
             <div className="flex items-center justify-between mb-5">
               <div>
-                <h2 className="text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>BIBLIOTHÈQUE D'EXERCICES</h2>
+                <h2 className="ns-title text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>BIBLIOTHÈQUE D'EXERCICES</h2>
                 <p className="text-sm text-[#1B2A4A]/50">
                   {filtered.length !== exercises.length
                     ? `${filtered.length} exercice${filtered.length !== 1 ? "s" : ""} affiché${filtered.length !== 1 ? "s" : ""} sur ${exercises.length}`
@@ -13127,7 +13131,7 @@ function CoachingProBoost({ session }) {
                 </div>
               </div>
             )}
-            <div className="relative mb-3">
+            <div className="ns-search relative mb-3">
               <input value={librarySearch} onChange={e => setLibrarySearch(e.target.value)} placeholder="Rechercher un exercice par nom..."
                 className="w-full border border-[#1B2A4A]/20 rounded-lg pl-9 pr-8 py-2 text-sm bg-white/60 outline-none focus:border-[#FF6B35]" />
               <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#1B2A4A]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 10.5A6.5 6.5 0 114 10.5a6.5 6.5 0 0113 0z" /></svg>
@@ -13185,7 +13189,7 @@ function CoachingProBoost({ session }) {
                 },
               ];
               return (
-                <div className="mb-5 rounded-2xl overflow-hidden border border-[#1B2A4A]/10 bg-white/60">
+                <div className="ns-filters mb-5 rounded-2xl overflow-hidden border border-[#1B2A4A]/10 bg-white/60">
                   {filterSections.map((sec, idx) => (
                     <FilterAccordion key={sec.key} label={sec.label} activeCount={sec.active} borderTop={idx > 0}>
                       {sec.content}
@@ -17268,6 +17272,14 @@ function CoachingProBoost({ session }) {
         {view === "account" && (
           <div className="max-w-md">
             <h2 className="text-2xl font-bold text-[#1B2A4A] mb-6" style={{ fontFamily: "Oswald, sans-serif" }}>MON COMPTE</h2>
+
+            {isAdmin && (
+              <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">
+                <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1">Nouveau style (test)</div>
+                <p className="text-xs text-[#1B2A4A]/50 mb-3">Visible uniquement pour toi, sur cet appareil. Pour l'instant : la Bibliothèque d'exercices. Les autres comptes ne voient aucun changement.</p>
+                <label className="flex items-center gap-2 text-sm font-medium text-[#1B2A4A] cursor-pointer"><input type="checkbox" checked={newStyle} onChange={e => setNewStyle(e.target.checked)} /> Activer le nouveau style</label>
+              </div>
+            )}
 
             {isAdmin && (
               <div className="bg-white/70 border border-[#1B2A4A]/15 rounded-2xl p-4 mb-4">

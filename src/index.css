@@ -21,3 +21,20 @@ body {
 .animate-carousel-fade {
   animation: carousel-fade 0.25s ease-out both;
 }
+
+/* ── Nouveau style (test, admin uniquement) : actif seulement quand <body> porte la classe cpb-ns ── */
+body.cpb-ns{background:#eef1f8!important}
+body.cpb-ns .ns-title{letter-spacing:.01em}
+body.cpb-ns .ns-search input{border:0!important;border-radius:22px!important;background:#fff!important;padding:16px 20px 16px 44px!important;font-size:15px!important;box-shadow:0 2px 10px #1b2a4a0d}
+body.cpb-ns .ns-search svg{left:18px!important}
+body.cpb-ns .ns-filters{border:0!important;background:transparent!important;display:flex;flex-wrap:wrap;gap:10px;overflow:visible!important;border-radius:0!important}
+body.cpb-ns .ns-filters > .ns-acc{border:0!important;background:#fff;border-radius:22px;box-shadow:0 2px 10px #1b2a4a0d;flex:1 1 220px;overflow:hidden}
+body.cpb-ns .ns-filters > .ns-acc > button{padding:14px 18px!important}
+body.cpb-ns .ns-card{border:0!important;border-radius:30px!important;padding:18px!important;box-shadow:0 8px 24px #1b2a4a14!important;display:flex;flex-direction:column}
+body.cpb-ns .ns-card h3{font-size:18px}
+body.cpb-ns .ns-media{background:#dfe7ff;border-radius:22px!important;padding:8px;overflow:hidden}
+body.cpb-ns .ns-meta{flex-wrap:wrap;gap:6px!important}
+body.cpb-ns .ns-meta > span{background:#f1f3f8;border-radius:999px;padding:5px 11px;font-weight:600;color:#1b2a4a}
+body.cpb-ns .ns-meta > span:first-child{background:#0f1626;color:#fff}
+body.cpb-ns .ns-themes span{background:#9db4ff!important;color:#0f1626!important;font-weight:600}
+body.cpb-ns .ns-add{background:#0f1626!important;color:#fff!important;border:0!important;border-radius:999px!important;padding:13px!important;font-size:14px!important;font-weight:700!important}
