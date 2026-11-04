@@ -42,3 +42,25 @@ body.cpb-ns .min-h-screen{background:#eef1f8!important}
 body.cpb-ns .ns-media{padding:0!important}
 body.cpb-ns .ns-media div:not(.absolute){background:transparent!important}
 body.cpb-ns .ns-media img,body.cpb-ns .ns-media svg{mix-blend-mode:multiply}
+
+/* ── Nouveau style : appliqué à tous les onglets (toujours seulement avec body.cpb-ns) ── */
+body.cpb-ns .rounded-xl,body.cpb-ns .rounded-2xl,body.cpb-ns .rounded-3xl{border-radius:26px!important}
+body.cpb-ns .rounded-lg{border-radius:18px!important}
+body.cpb-ns .rounded-md{border-radius:14px!important}
+body.cpb-ns button.rounded-md,body.cpb-ns button.rounded-lg,body.cpb-ns a.rounded-md,body.cpb-ns a.rounded-lg{border-radius:999px!important}
+/* cartes : plus de cadre gris, une ombre douce à la place */
+body.cpb-ns div[class*="border-[#1B2A4A]"]:not(input):not(select):not(textarea){border-color:transparent!important}
+body.cpb-ns div.rounded-xl[class*="bg-white"],body.cpb-ns div.rounded-2xl[class*="bg-white"],body.cpb-ns div.rounded-lg[class*="bg-white"]{background:#fff!important;box-shadow:0 8px 24px #1b2a4a12}
+/* champs de saisie */
+body.cpb-ns input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),body.cpb-ns select,body.cpb-ns textarea{border-color:#dde3f0!important;border-radius:16px!important;background:#fff!important}
+body.cpb-ns input:focus,body.cpb-ns select:focus,body.cpb-ns textarea:focus{border-color:#9db4ff!important;box-shadow:0 0 0 3px #9db4ff40!important}
+/* boutons « principaux » sombres en noir doux, pilules */
+body.cpb-ns button[class*="bg-[#1B2A4A]"]{background:#0f1626!important}
+body.cpb-ns button[class*="border-[#1B2A4A]/20"],body.cpb-ns button[class*="border-[#1B2A4A]/30"]{background:#fff;border-color:#e3e7f0!important;border-radius:999px!important}
+/* puces / étiquettes */
+body.cpb-ns .rounded-full[class*="bg-[#1B2A4A]/"]{background:#e4eaff!important}
+/* tableaux */
+body.cpb-ns table{border-collapse:separate;border-spacing:0 4px}
+body.cpb-ns th{color:#6b7488}
+/* titres Oswald un peu plus présents */
+body.cpb-ns h2{letter-spacing:.01em}
