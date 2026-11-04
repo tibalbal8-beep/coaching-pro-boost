@@ -723,7 +723,7 @@ function useStore(sport = DEFAULT_SPORT) {
     lastSnapAtRef.current[key] = now;
     storage.snapshot(key, value).catch(() => {});
   }, []);
-  const persist = useCallback(async (key, value) => {
+  const persistNow = useCallback(async (key, value) => {
     if (lastPersistedRef.current[key] === value) return;
     const attempt = async () => {
       const r = await storage.set(key, value);
@@ -753,6 +753,18 @@ function useStore(sport = DEFAULT_SPORT) {
       snapshotThrottled(key, value);
     }
   }, [persistAlert, snapshotThrottled]);
+  // Écritures d'une même clé l'une après l'autre : une saisie rapide (une frappe = un enregistrement) ne peut plus
+  // voir une ancienne valeur terminer en dernier et écraser la plus récente.
+  const persistQ = useRef({});
+  const persist = useCallback(async (key, value) => {
+    const q = persistQ.current;
+    if (q[key]) { q[key].pending = { value }; return; }
+    q[key] = { pending: null };
+    try {
+      let v = value;
+      for (;;) { await persistNow(key, v); const nx = q[key].pending; if (!nx) break; q[key].pending = null; v = nx.value; }
+    } finally { delete q[key]; }
+  }, [persistNow]);
 
   // Bug corrigé le 20/07/2026 : la plupart des exercices en mémoire ne portent PAS `file`/
   // `schemas` (chargés en lazy uniquement à l'affichage, jamais reversés dans l'état partagé
@@ -824,7 +836,11 @@ function useStore(sport = DEFAULT_SPORT) {
     trySyncMatchSessions(next);
   };
   const saveVideoScoutSessions = (next) => { setVideoScoutSessions(next); persist(videoScoutSessionsKey, JSON.stringify(next)); };
-  const saveScoutReports = (next) => { setScoutReports(next); persist(scoutReportsKey, JSON.stringify(next)); };
+  const scoutReportsRef = useRef([]);
+  scoutReportsRef.current = scoutReports;
+  const saveScoutReports = (next) => { scoutReportsRef.current = next; setScoutReports(next); persist(scoutReportsKey, JSON.stringify(next)); };
+  // Modifie un report à partir de la version la plus récente (et non de celle du dernier affichage) : deux saisies rapprochées ne s'écrasent plus
+  const updateScoutReport = (id, patch) => saveScoutReports(scoutReportsRef.current.map(r => r.id === id ? { ...r, ...(typeof patch === "function" ? patch(r) : patch) } : r));
 
   // ── Espace partagé (admin + invités scouting) : versions lues, file d'enregistrement par clé, détection des modifications simultanées ──
   const sharedVer = useRef({}), sharedQueue = useRef({}), sharedBusy = useRef(false);
@@ -916,7 +932,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, recruit, saveRecruit, refreshShared, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
+  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, recruit, saveRecruit, refreshShared, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, updateScoutReport, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
 }
 
 function usePdfJs() {
@@ -11007,7 +11023,7 @@ function CoachingProBoost({ session }) {
   const guestOnly = scoutGuest && !isAdmin;   // invité scouting : uniquement comparatif (consultation), Espoirs LNB et recrutement
   const canScout = isAdmin || scoutGuest;
   const canAnalysis = isAdmin || canUseMyteam || hasAnalysis;   // Scouting report + Mon équipe
-  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, recruit, saveRecruit, refreshShared, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
+  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, recruit, saveRecruit, refreshShared, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, updateScoutReport, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
   const SPORT_FORMATS = formats;
@@ -16278,7 +16294,7 @@ function CoachingProBoost({ session }) {
         {view === "myteam" && !canAnalysis && <AnalysisPaywall what="Mon équipe" />}
         {view === "scoutreport" && canAnalysis && (() => {
           const activeSr = scoutReports.find(r => r.id === activeScoutReportId) || null;
-          const updateActiveSr = (patch) => saveScoutReports(scoutReports.map(r => r.id === activeScoutReportId ? { ...r, ...patch } : r));
+          const updateActiveSr = (patch) => updateScoutReport(activeScoutReportId, patch);
           const inputCls = "w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-sm bg-white/60";
           const lbl = "text-xs uppercase tracking-wide text-[#1B2A4A]/50 mb-1";
           const f1 = (x) => x === null || x === undefined ? "—" : x.toFixed(1).replace(".", ",");
@@ -16321,7 +16337,7 @@ function CoachingProBoost({ session }) {
           }
 
           const merged = mergeScoutPlayers(activeSr);
-          const setMan = (p, patch) => updateActiveSr({ manual: { ...(activeSr.manual || {}), [scoutKey(p)]: { ...((activeSr.manual || {})[scoutKey(p)] || {}), ...patch } } });
+          const setMan = (p, patch) => updateActiveSr(r => ({ manual: { ...(r.manual || {}), [scoutKey(p)]: { ...((r.manual || {})[scoutKey(p)] || {}), ...patch } } }));
           const handleExcel = async (file) => {
             if (!file) return;
             try {
@@ -16488,7 +16504,7 @@ function CoachingProBoost({ session }) {
                           {ph ? <img src={ph} alt="" className="w-12 h-12 rounded-full object-cover" /> : <span className="w-12 h-12 rounded-full bg-[#1B2A4A]/10 flex items-center justify-center text-lg">📷</span>}
                           <input type="file" accept="image/*" className="hidden" onChange={async e => {
                             const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
-                            try { const url = await readImageAsJpeg(f, 320, 0.75); updateActiveSr({ photos: { ...(activeSr.photos || {}), [k]: url } }); } catch { cpbAlert?.("Photo illisible."); }
+                            try { const url = await readImageAsJpeg(f, 320, 0.75); updateActiveSr(r => ({ photos: { ...(r.photos || {}), [k]: url } })); } catch { cpbAlert?.("Photo illisible."); }
                           }} />
                         </label>
                         <div className="min-w-0 flex-1">
@@ -16536,7 +16552,7 @@ function CoachingProBoost({ session }) {
                       <div className="mt-2">{field("instruction", "Consigne défensive / à retenir", 2)}</div>
                       {(() => {
                         const so = (activeSr.statOverrides || {})[k] || {}, open = !!srStatsOpen[k];
-                        const setSo = (patch) => { const next = { ...so, ...patch }; Object.keys(next).forEach(f => { if (next[f] === "" || next[f] === null || next[f] === undefined) delete next[f]; }); updateActiveSr({ statOverrides: { ...(activeSr.statOverrides || {}), [k]: next } }); };
+                        const setSo = (patch) => updateActiveSr(r => { const next = { ...((r.statOverrides || {})[k] || {}), ...patch }; Object.keys(next).forEach(f => { if (next[f] === "" || next[f] === null || next[f] === undefined) delete next[f]; }); return { statOverrides: { ...(r.statOverrides || {}), [k]: next } }; });
                         const num = (f) => (e) => { const v = e.target.value.replace(",", "."); setSo({ [f]: v === "" ? "" : (isNaN(parseFloat(v)) ? so[f] : parseFloat(v)) }); };
                         const show = (f) => so[f] !== undefined ? so[f] : (p[f] !== null && p[f] !== undefined ? Math.round(p[f] * 10) / 10 : "");
                         const inp = (f, label, w = "w-16") => (
