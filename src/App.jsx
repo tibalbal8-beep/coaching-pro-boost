@@ -5898,6 +5898,11 @@ function ExerciseCard({ ex, index, onClick, onView, onRemove, onAddToDraft, onCr
             )
           )}
         </div>
+        <div className="flex items-center gap-2">
+        {onAddToDraft && (
+          <button onClick={(e) => { e.stopPropagation(); onAddToDraft(); }} title="Ajouter à la nouvelle séance" aria-label="Ajouter à la nouvelle séance"
+            className="ns-plus items-center justify-center w-8 h-8 rounded-full bg-[#0f1626] text-white hover:bg-[#FF6B35] transition-colors"><Plus size={16} /></button>
+        )}
         {onShare && (
           <button onClick={(e) => { e.stopPropagation(); onShare(); }}
             className="text-[#1B2A4A]/30 hover:text-[#FF6B35] transition-colors" title="Partager">
@@ -5907,6 +5912,7 @@ function ExerciseCard({ ex, index, onClick, onView, onRemove, onAddToDraft, onCr
             </svg>
           </button>
         )}
+        </div>
       </div>
       <div className="cursor-pointer">
         <h3 className="font-semibold text-[#1B2A4A] mb-1.5 leading-tight">{ex.titre}</h3>

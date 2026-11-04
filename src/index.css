@@ -64,3 +64,7 @@ body.cpb-ns table{border-collapse:separate;border-spacing:0 4px}
 body.cpb-ns th{color:#6b7488}
 /* titres Oswald un peu plus présents */
 body.cpb-ns h2{letter-spacing:.01em}
+/* Bibliothèque : « + » rond en haut de la carte (à côté du partage), bouton du bas masqué */
+.ns-plus{display:none}
+body.cpb-ns .ns-plus{display:inline-flex}
+body.cpb-ns .ns-add{display:none!important}
