@@ -55,7 +55,7 @@ body.cpb-ns div.rounded-xl[class*="bg-white"],body.cpb-ns div.rounded-2xl[class*
 body.cpb-ns input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),body.cpb-ns select,body.cpb-ns textarea{border-color:#dde3f0!important;border-radius:16px!important;background:#fff!important}
 body.cpb-ns input:focus,body.cpb-ns select:focus,body.cpb-ns textarea:focus{border-color:#9db4ff!important;box-shadow:0 0 0 3px #9db4ff40!important}
 /* boutons « principaux » sombres en noir doux, pilules */
-body.cpb-ns button[class*="bg-[#1B2A4A]"]{background:#0f1626!important}
+body.cpb-ns button.bg-\[\#1B2A4A\]{background:#0f1626!important}
 body.cpb-ns button[class*="border-[#1B2A4A]/20"],body.cpb-ns button[class*="border-[#1B2A4A]/30"]{background:#fff;border-color:#e3e7f0!important;border-radius:999px!important}
 /* puces / étiquettes */
 body.cpb-ns .rounded-full[class*="bg-[#1B2A4A]/"]{background:#e4eaff!important}
