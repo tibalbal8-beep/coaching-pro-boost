@@ -2372,7 +2372,21 @@ function mergeScoutPlayers(r) {
     return p;
   });
 }
-function buildScoutReportHtml(r, logo = null) {
+// Équipe du comparatif championnat qui correspond à l'adversaire du report (choix manuel r.faceTeam, sinon le nom)
+function scoutFaceTeam(r, league) {
+  const T = (league && league.teams) || []; if (!T.length) return null;
+  if (r.faceTeam && T.some(t => t.id === r.faceTeam)) return r.faceTeam;
+  const o = leagueNorm(r.opponent); if (!o) return null;
+  const hit = T.find(t => leagueNorm(t.name) === o) || T.find(t => { const n = leagueNorm(t.name); return n && (n.includes(o) || o.includes(n)); });
+  return hit ? hit.id : null;
+}
+// Face-à-face « mon équipe / adversaire » du comparatif championnat, pour le scouting report ("" s'il manque des données)
+function scoutFaceHtml(r, league) {
+  if (!league || r.faceOn === false || !league.mine) return "";
+  const other = scoutFaceTeam(r, league); if (!other || other === league.mine) return "";
+  try { return leagueHtml({ league: { ...league, other }, faceOnly: true }); } catch { return ""; }
+}
+function buildScoutReportHtml(r, logo = null, league = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const merged = mergeScoutPlayers(r);
   const photos = {}, manual = {};
@@ -2423,6 +2437,7 @@ function buildScoutReportHtml(r, logo = null) {
     </header>
     ${notes}
     ${bilan}
+    ${scoutFaceHtml(r, league)}
     ${teamTable}
     ${extraHtml}
     ${players || `<section class="card"><p class="muted">Aucun joueur renseigné.</p></section>`}
@@ -4388,6 +4403,17 @@ function leagueHtml(a) {
   const full = all.filter(s => !s.partial), leaders = all.filter(s => !s.partial || s.S.hi);
   const mineT = byId.get(L.mine), otherT = byId.get(L.other);
   const head = (title, extra = "", id = "") => `<section class="card"${id ? ` id="${id}"` : ""}><h2><i></i>${title}</h2>${extra}`;
+  const faceSection0 = () => {
+    let out = "";
+  if (mineT && otherT && mineT.id !== otherT.id) {
+    const rows = full.filter(s => s.mine && s.other);
+    if (rows.length) out += head(`${badge(mineT, true)} face à ${badge(otherT, true)}`, `<div class="bs-table"><table class="pm-five lg"><thead><tr><th>Statistique</th><th class="num">${esc(mineT.name)}</th><th class="num">${esc(otherT.name)}</th><th class="num">Moy. champ.</th><th class="num">Avantage</th></tr></thead><tbody>
+      ${rows.map(st => { const d = st.mine.v - st.other.v, mineBetter = st.S.hi ? d > 0 : d < 0, tie = Math.abs(d) < 0.05; return `<tr><td><b>${st.S.label}</b></td><td class="num ${!tie && mineBetter ? "lg-win" : ""}"><b>${fmt(st.S, st.mine.v)}</b> <small>${st.mineRank}ᵉ</small></td><td class="num ${!tie && !mineBetter ? "lg-win" : ""}"><b>${fmt(st.S, st.other.v)}</b> <small>${st.entries.indexOf(st.other) + 1}ᵉ</small></td><td class="num">${fmt(st.S, st.avg)}</td><td class="num">${tie ? "=" : esc((mineBetter ? mineT : otherT).name)}</td></tr>`; }).join("")}
+      </tbody></table></div>`, "lg-face") + "</section>";
+  }
+    return out;
+  };
+  if (a.faceOnly) return faceSection0();
   if (!all.length) return head("Comparatif championnat", `<p class="hint">Aucune statistique avec au moins 3 équipes pour l'instant.</p>`, "lg-compare") + "</section>" + leaguePlayersHtml(a);
   let out = "";
   if (!full.length) {
@@ -4414,12 +4440,7 @@ function leagueHtml(a) {
     return `<div class="lg-card"><div class="lg-title">${st.S.label}<small>${st.partial ? " · top " + shown.length : " · moy. " + fmt(st.S, st.avg)}</small></div>${shown.map(e => `<div class="lg-row${e.t.id === L.mine ? " lg-me" : ""}"><span class="lg-rk2">${st.entries.indexOf(e) + 1}</span><span class="lg-name">${badge(e.t)}</span><span class="lg-bar"><i style="width:${Math.max(3, Math.abs(e.v) / max * 100).toFixed(0)}%"></i></span><b>${fmt(st.S, e.v)}</b></div>`).join("")}</div>`;
   }).join("");
   out += head("Les meilleures équipes par statistique", `<p class="hint">Les 5 premières de chaque classement${mineT ? `, avec ${esc(mineT.name)} en surbrillance (ajoutée en bas si elle est hors du top 5)` : ""}.</p><div class="lg-grid">${tops}</div>`, "lg-tops") + "</section>";
-  if (mineT && otherT && mineT.id !== otherT.id) {
-    const rows = full.filter(s => s.mine && s.other);
-    if (rows.length) out += head(`${badge(mineT, true)} face à ${badge(otherT, true)}`, `<div class="bs-table"><table class="pm-five lg"><thead><tr><th>Statistique</th><th class="num">${esc(mineT.name)}</th><th class="num">${esc(otherT.name)}</th><th class="num">Moy. champ.</th><th class="num">Avantage</th></tr></thead><tbody>
-      ${rows.map(st => { const d = st.mine.v - st.other.v, mineBetter = st.S.hi ? d > 0 : d < 0, tie = Math.abs(d) < 0.05; return `<tr><td><b>${st.S.label}</b></td><td class="num ${!tie && mineBetter ? "lg-win" : ""}"><b>${fmt(st.S, st.mine.v)}</b> <small>${st.mineRank}ᵉ</small></td><td class="num ${!tie && !mineBetter ? "lg-win" : ""}"><b>${fmt(st.S, st.other.v)}</b> <small>${st.entries.indexOf(st.other) + 1}ᵉ</small></td><td class="num">${fmt(st.S, st.avg)}</td><td class="num">${tie ? "=" : esc((mineBetter ? mineT : otherT).name)}</td></tr>`; }).join("")}
-      </tbody></table></div>`, "lg-face") + "</section>";
-  }
+  out += faceSection0();
   return out + leaguePlayersHtml(a);
 }
 function buildTeamReportHtml(a, logo = null, opts = {}) {
@@ -11523,7 +11544,7 @@ function CoachingProBoost({ session }) {
     }
     else if (p.kind === "scoutreport") {
       try {
-        const html = buildScoutReportHtml(p.report, logo);
+        const html = buildScoutReportHtml(p.report, logo, leagueData);
         downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `scouting-report-${slugifyForFile(p.report.opponent)}.html`);
         toast?.("✓ Scouting report exporté");
       } catch (e) {
@@ -16383,6 +16404,22 @@ function CoachingProBoost({ session }) {
                 <button onClick={() => setActiveScoutReportId(null)} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A]">← Tous les reports</button>
                 <button onClick={() => setLogoExportPrompt({ report: activeSr, kind: "scoutreport" })} className="px-4 py-2 rounded-md text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>📄 Exporter le scouting report</button>
               </div>
+              {(leagueData.teams || []).length > 0 && leagueData.mine && (() => {
+                const ft = scoutFaceTeam(activeSr, leagueData), ok = !!scoutFaceHtml(activeSr, leagueData), mineName = (leagueData.teams.find(t => t.id === leagueData.mine) || {}).name;
+                return (
+                  <div className="mb-4 p-3 rounded-lg border border-[#1B2A4A]/15 bg-white/70 text-sm text-[#1B2A4A]">
+                    <label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={activeSr.faceOn !== false} onChange={e => updateActiveSr({ faceOn: e.target.checked })} /> Inclure le face-à-face du comparatif championnat dans l'export</label>
+                    <div className="flex items-center gap-2 flex-wrap mt-2 text-xs text-[#1B2A4A]/70">
+                      <span>{mineName || "Mon équipe"} face à</span>
+                      <select value={ft || ""} onChange={e => updateActiveSr({ faceTeam: e.target.value || null })} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 bg-white text-[#1B2A4A]">
+                        <option value="">— choisir l'adversaire —</option>
+                        {[...leagueData.teams].filter(t => t.id !== leagueData.mine).sort((x, y) => x.name.localeCompare(y.name, "fr")).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
+                      {activeSr.faceOn !== false && !ok && <span className="text-amber-700">Pas assez de statistiques communes pour ce face-à-face : rien ne sera ajouté.</span>}
+                    </div>
+                  </div>
+                );
+              })()}
               <div className="grid sm:grid-cols-2 gap-3 mb-4">
                 <div><div className={lbl}>Équipe adverse</div><input value={activeSr.opponent} onChange={e => updateActiveSr({ opponent: e.target.value })} className={inputCls} /></div>
                 <div><div className={lbl}>Date du match</div><input type="date" value={activeSr.date || ""} onChange={e => updateActiveSr({ date: e.target.value || null })} className={inputCls} /></div>
