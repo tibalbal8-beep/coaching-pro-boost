@@ -9873,7 +9873,7 @@ function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare, onS
   const currentItem = carouselItems[Math.min(imgIdx, carouselItems.length - 1)];
 
   return (
-    <div className={`relative border rounded-xl bg-white shadow-md shadow-[#1B2A4A]/10 hover:shadow-lg overflow-hidden transition-all ${selected ? "border-[#FF6B35] ring-2 ring-[#FF6B35]/30" : play.favorite ? "border-[#FF6B35]/40" : "border-[#1B2A4A]/10 hover:border-[#FF6B35]/50"}`}>
+    <div className={`ns-pcard relative border rounded-xl bg-white shadow-md shadow-[#1B2A4A]/10 hover:shadow-lg overflow-hidden transition-all ${selected ? "border-[#FF6B35] ring-2 ring-[#FF6B35]/30" : play.favorite ? "border-[#FF6B35]/40" : "border-[#1B2A4A]/10 hover:border-[#FF6B35]/50"}`}>
       {onToggleFavorite && (
         <button onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
           className="absolute top-2 right-2 z-20 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white"
@@ -9890,7 +9890,7 @@ function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare, onS
         </div>
       )}
       {carouselItems.length > 0 && (
-        <div className="cursor-pointer">
+        <div className="cursor-pointer ns-media">
           <MediaCarousel items={carouselItems.map(it => it.src)} index={imgIdx} onIndexChange={setImgIdx} card={false} height="h-48"
             onClickImage={onView}
             overlay={currentItem.annotation && (
@@ -9914,7 +9914,7 @@ function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare, onS
             {(play.tags || []).length > 0 && (
               <div className="flex flex-wrap gap-1 mt-1.5">
                 {(play.tags || []).map(t => (
-                  <span key={t} className="text-xs bg-[#1B2A4A]/8 text-[#1B2A4A]/60 rounded-full px-2 py-0.5">{t}</span>
+                  <span key={t} className="ns-ptag text-xs bg-[#1B2A4A]/8 text-[#1B2A4A]/60 rounded-full px-2 py-0.5">{t}</span>
                 ))}
               </div>
             )}
@@ -13340,7 +13340,7 @@ function CoachingProBoost({ session }) {
                 </div>
               </div>
             )}
-            <div className="relative mb-3">
+            <div className="ns-search relative mb-3">
               <input value={playbookSearch} onChange={e => setPlaybookSearch(e.target.value)} placeholder="Rechercher un play par nom..."
                 className="w-full border border-[#1B2A4A]/20 rounded-lg pl-9 pr-8 py-2 text-sm bg-white/60 outline-none focus:border-[#FF6B35]" />
               <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#1B2A4A]/30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 10.5A6.5 6.5 0 114 10.5a6.5 6.5 0 0113 0z" /></svg>
