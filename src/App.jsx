@@ -9883,7 +9883,7 @@ function PlayCard({ play, onView, onEdit, onRemove, onAddToSession, onShare, onS
       )}
       {onSelect && (
         <div className="flex items-center gap-2 px-3 pt-2" onClick={onSelect}>
-          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-colors ${selected ? "bg-[#FF6B35] border-[#FF6B35]" : "border-[#1B2A4A]/30"}`}>
+          <div className={`ns-check w-5 h-5 rounded border-2 flex items-center justify-center cursor-pointer transition-colors ${selected ? "bg-[#FF6B35] border-[#FF6B35]" : "border-[#1B2A4A]/30"}`}>
             {selected && <Check size={12} className="text-white" />}
           </div>
           <span className="text-xs text-[#1B2A4A]/50">{selected ? "Sélectionné" : "Sélectionner"}</span>

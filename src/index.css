@@ -87,3 +87,5 @@ body.cpb-ns .ns-pcard .font-semibold.text-sm{font-family:Inter,sans-serif;font-w
 body.cpb-ns .ns-ptag{background:#9db4ff!important;color:#0f1626!important;font-weight:600}
 body.cpb-ns .ns-pcard button[title="Ajouter à la séance"]{background:#0f1626;color:#fff!important;border-radius:999px;width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center}
 body.cpb-ns .ns-pcard button[title="Ajouter à la séance"]:hover{background:#ff6b35}
+/* cases à cocher dessinées avec des div : leur contour doit rester visible */
+body.cpb-ns .ns-check:not(.bg-\[\#FF6B35\]){border:2px solid #9aa6c0!important;background:#fff;border-radius:7px!important}
