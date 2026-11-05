@@ -12018,7 +12018,13 @@ function CoachingProBoost({ session }) {
   // Nouveau style (test) : réservé à l'admin, réglé par appareil ; l'ancien style reste intact quand il est coupé
   const [newStyle, setNewStyleState] = useState(() => { try { return localStorage.getItem("cpb_newstyle") === "1"; } catch { return false; } });
   const setNewStyle = (v) => { setNewStyleState(v); try { localStorage.setItem("cpb_newstyle", v ? "1" : "0"); } catch {} };
-  useEffect(() => { document.body.classList.toggle("cpb-ns", !!(isAdmin && newStyle)); return () => document.body.classList.remove("cpb-ns"); }, [isAdmin, newStyle]);
+  useEffect(() => {
+    const on = !!(isAdmin && newStyle);
+    document.body.classList.toggle("cpb-ns", on);
+    // Police du nouveau style chargée seulement quand il est actif
+    if (on && !document.getElementById("cpb-ns-font")) { const l = document.createElement("link"); l.id = "cpb-ns-font"; l.rel = "stylesheet"; l.href = "https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@800&family=Inter:wght@400;500;600;700;800&display=swap"; document.head.appendChild(l); }
+    return () => document.body.classList.remove("cpb-ns");
+  }, [isAdmin, newStyle]);
   const [lgGuest, setLgGuest] = useState(() => { try { return JSON.parse(localStorage.getItem("cpb_lg_guest") || "{}"); } catch { return {}; } });
   const [rcSel, setRcSel] = useState(null), [rcQuery, setRcQuery] = useState(""), [rcStatus, setRcStatus] = useState(""), [rcCfgOpen, setRcCfgOpen] = useState(false), [rcNewItem, setRcNewItem] = useState({}), [rcNewGroup, setRcNewGroup] = useState("");
   const [esText, setEsText] = useState(""), [esTeam, setEsTeam] = useState(""), [esPos, setEsPos] = useState(""), [esQuery, setEsQuery] = useState(""), [esAgeMin, setEsAgeMin] = useState(""), [esAgeMax, setEsAgeMax] = useState(""), [esSort, setEsSort] = useState({ k: "eff", d: -1 }), [esCsvTeam, setEsCsvTeam] = useState(""), [esCsvNew, setEsCsvNew] = useState(""), [esSel, setEsSel] = useState([]), [esTab, setEsTab] = useState("list"), [esSearch, setEsSearch] = useState(""), [esUndo, setEsUndo] = useState(null), [esMoveTo, setEsMoveTo] = useState("");
