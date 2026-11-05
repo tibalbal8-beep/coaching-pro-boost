@@ -8360,7 +8360,13 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       { label: "Parquet complet", file: "/basketball-parquet-complet.jpg" },
     ],
   };
-  const TERRAIN_DEFS = TERRAIN_DEFS_BY_SPORT[courtType] || TERRAIN_DEFS_BY_SPORT.basketball;
+  // Terrains bleus du nouveau style : en tête de liste (donc choisis par défaut) quand le nouveau style est actif (admin)
+  const NS_TERRAINS = (courtType === "basketball" && typeof document !== "undefined" && document.body.classList.contains("cpb-ns")) ? [
+    { label: "Terrain bleu", file: "/basketball-bleu-complet.png" },
+    { label: "Demi bleu ↑", file: "/basketball-bleu-demi-haut.png" },
+    { label: "Demi bleu ↓", file: "/basketball-bleu-demi-bas.png" },
+  ] : [];
+  const TERRAIN_DEFS = [...NS_TERRAINS, ...(TERRAIN_DEFS_BY_SPORT[courtType] || TERRAIN_DEFS_BY_SPORT.basketball)];
 
   const [activeTerrain, setActiveTerrain] = useState(0);
   const [bgReady, setBgReady] = useState(false);
