@@ -76,3 +76,6 @@ body.cpb-ns button,body.cpb-ns select,body.cpb-ns label{font-family:Inter,sans-s
 body.cpb-ns p,body.cpb-ns textarea,body.cpb-ns input{font-family:Inter,sans-serif;font-weight:400}
 body.cpb-ns .ns-meta > span,body.cpb-ns time,body.cpb-ns td,body.cpb-ns th{font-family:Inter,sans-serif;font-weight:500}
 body.cpb-ns .tabular-nums,body.cpb-ns [class*="font-bold"].text-2xl,body.cpb-ns [class*="font-bold"].text-3xl{font-family:Inter,sans-serif;font-weight:700}
+/* Filtres : le panneau ouvert prend toute la largeur, sous la rangée de boutons (au lieu de s'étirer en hauteur) */
+body.cpb-ns .ns-filters{align-items:flex-start}
+body.cpb-ns .ns-filters > .ns-acc.ns-open{flex:1 1 100%;order:10}

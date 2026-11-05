@@ -5849,7 +5849,7 @@ function useFileImage(ex) {
 function FilterAccordion({ label, activeCount, borderTop, children }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className={"ns-acc " + (borderTop ? "border-t border-[#1B2A4A]/8" : "")}>
+    <div className={"ns-acc " + (open ? "ns-open " : "") + (borderTop ? "border-t border-[#1B2A4A]/8" : "")}>
       <button onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#1B2A4A]/4 transition-colors">
         <div className="flex items-center gap-2">
