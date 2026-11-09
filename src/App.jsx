@@ -848,7 +848,14 @@ function useStore(sport = DEFAULT_SPORT) {
   const saveScoutReports = (next) => { scoutReportsRef.current = next; setScoutReports(next); persist(scoutReportsKey, JSON.stringify(next)); };
   const gameThemesRef = useRef([]);
   gameThemesRef.current = gameThemes;
-  const saveGameThemes = (next) => { gameThemesRef.current = next; setGameThemes(next); persist(gameThemesKey, JSON.stringify(next)); };
+  const gtTimer = useRef(null);
+  const flushGameThemes = () => { if (gtTimer.current) { clearTimeout(gtTimer.current); gtTimer.current = null; persist(gameThemesKey, JSON.stringify(gameThemesRef.current)); } };
+  const saveGameThemes = (next) => { gameThemesRef.current = next; setGameThemes(next); if (gtTimer.current) clearTimeout(gtTimer.current); gtTimer.current = setTimeout(flushGameThemes, 600); };
+  useEffect(() => {
+    const f = () => { if (document.visibilityState === "hidden") flushGameThemes(); };
+    document.addEventListener("visibilitychange", f); window.addEventListener("pagehide", flushGameThemes);
+    return () => { document.removeEventListener("visibilitychange", f); window.removeEventListener("pagehide", flushGameThemes); flushGameThemes(); };
+  }, [gameThemesKey]);
   // patch = objet ou fonction (thème) => objet : toujours appliqué à la version la plus récente
   const updateGameTheme = (id, patch) => saveGameThemes(gameThemesRef.current.map(t => t.id === id ? { ...t, ...(typeof patch === "function" ? patch(t) : patch) } : t));
   // Modifie un report à partir de la version la plus récente (et non de celle du dernier affichage) : deux saisies rapprochées ne s'écrasent plus
@@ -11715,7 +11722,7 @@ function CoachingProBoost({ session }) {
   const [scoutingTitle, setScoutingTitle] = useState("");
   const [editingPlay, setEditingPlay] = useState(null);
   const [viewingPlay, setViewingPlay] = useState(null);
-  const [gtOpenId, setGtOpenId] = useState(null), [gtQuery, setGtQuery] = useState(""), [gtNewName, setGtNewName] = useState(""), [gtPick, setGtPick] = useState(null), [gtPickQuery, setGtPickQuery] = useState(""), [gtEditId, setGtEditId] = useState(null), [gtLink, setGtLink] = useState({ title: "", url: "" });
+  const [gtOpenId, setGtOpenId] = useState(null), [gtQuery, setGtQuery] = useState(""), [gtNewName, setGtNewName] = useState(""), [gtPick, setGtPick] = useState(null), [gtPickQuery, setGtPickQuery] = useState(""), [gtEditId, setGtEditId] = useState(null), [gtDraw, setGtDraw] = useState(null), [gtZoom, setGtZoom] = useState(null), [gtLink, setGtLink] = useState({ title: "", url: "" });
   const [viewingExercise, setViewingExercise] = useState(null);
   const [filterPlayType, setFilterPlayType] = useState([]);
   const [filterPlayTags, setFilterPlayTags] = useState([]);
@@ -15979,6 +15986,25 @@ function CoachingProBoost({ session }) {
                     {gtEditId === c.id ? (
                       <>
                         <input value={c.title} onChange={e => updConcept(c.id, { title: e.target.value })} className="w-full font-bold text-[#1B2A4A] border-b border-[#FF6B35] outline-none bg-transparent mb-2" />
+                        {(c.images || []).length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            {(c.images || []).map((src, ii) => (
+                              <div key={ii} className="relative group">
+                                <img src={src} alt="" onClick={() => setGtDraw({ cid: c.id, idx: ii })} title="Modifier ce schéma" className="w-28 h-20 object-cover rounded-lg border border-[#1B2A4A]/15 cursor-pointer" />
+                                <button onClick={() => updConcept(c.id, { images: (c.images || []).filter((_, j) => j !== ii) })} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 text-[11px] flex items-center justify-center" title="Retirer">✕</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          <button onClick={() => setGtDraw({ cid: c.id, idx: (c.images || []).length })} className="text-xs font-semibold px-3 py-1.5 rounded-full border border-[#FF6B35]/50 text-[#FF6B35]">✏️ Dessiner un schéma</button>
+                          <label className="text-xs font-semibold px-3 py-1.5 rounded-full border border-[#1B2A4A]/25 text-[#1B2A4A] cursor-pointer">🖼️ Ajouter une image
+                            <input type="file" accept="image/*" multiple className="hidden" onChange={async e => {
+                              const files = [...(e.target.files || [])]; e.target.value = "";
+                              try { const urls = []; for (const f of files) urls.push(await readImageAsJpeg(f, 1100, 0.75)); if (urls.length) updConcept(c.id, { images: [...(c.images || []), ...urls] }); } catch { cpbAlert?.("Image illisible."); }
+                            }} />
+                          </label>
+                        </div>
                         <textarea value={c.body || ""} onChange={e => updConcept(c.id, { body: e.target.value })} rows={9} placeholder={"# Principe\n- Le porteur attaque l'écran…\n- Le poseur lit le défenseur…"} className="w-full text-sm border border-[#1B2A4A]/15 rounded-lg px-3 py-2 bg-white/60 outline-none focus:border-[#FF6B35]" />
                         <div className="flex gap-2 mt-2"><button onClick={() => setGtEditId(null)} className="text-xs font-semibold text-white px-3 py-1.5 rounded-full" style={{ backgroundColor: "var(--sport-accent)" }}>Terminé</button>
                           <button onClick={async () => { const ok = await cpbAlert?.(`Supprimer le concept « ${c.title} » ?`, { confirm: true }); if (ok) { upd(t => ({ concepts: (t.concepts || []).filter(x => x.id !== c.id) })); setGtEditId(null); } }} className="text-xs text-red-600 underline ml-auto">Supprimer</button></div>
@@ -15986,7 +16012,12 @@ function CoachingProBoost({ session }) {
                     ) : (
                       <>
                         <div className="flex items-start justify-between gap-2 mb-1"><div className="font-bold text-[#1B2A4A]">{c.title}</div><button onClick={() => setGtEditId(c.id)} className="p-1 text-[#1B2A4A]/40 hover:text-[#FF6B35]" title="Modifier"><Pencil size={14} /></button></div>
-                        {c.body ? <div className="space-y-0.5">{renderNote(c.body)}</div> : <p className="text-sm text-[#1B2A4A]/30 italic">Vide : clique sur le crayon pour écrire.</p>}
+                        {(c.images || []).length > 0 && (
+                          <div className="grid grid-cols-2 gap-2 mb-2">
+                            {(c.images || []).map((src, ii) => <img key={ii} src={src} alt="" onClick={() => setGtZoom(src)} className="w-full rounded-xl border border-[#1B2A4A]/10 cursor-zoom-in object-contain bg-white" />)}
+                          </div>
+                        )}
+                        {c.body ? <div className="space-y-0.5">{renderNote(c.body)}</div> : ((c.images || []).length === 0 && <p className="text-sm text-[#1B2A4A]/30 italic">Vide : clique sur le crayon pour écrire, dessiner ou ajouter une image.</p>)}
                       </>
                     )}
                   </div>
@@ -16034,6 +16065,23 @@ function CoachingProBoost({ session }) {
                 <button onClick={async () => { const ok = await cpbAlert?.(`Supprimer le thème « ${T.name} » ? Les plays et exercices ne sont pas supprimés, seulement ce thème et ses concepts.`, { confirm: true }); if (ok) { saveGameThemes(gameThemes.filter(t => t.id !== T.id)); setGtOpenId(null); } }} className="text-xs text-red-600 underline">Supprimer ce thème</button>
               </div>
 
+              {gtDraw && (() => {
+                const cc = (T.concepts || []).find(x => x.id === gtDraw.cid); const imgs = (cc && cc.images) || [];
+                return (
+                  <div className="fixed inset-0 z-[320] bg-[#F2EDE4] overflow-auto p-3 sm:p-5">
+                    <DrawTacticalView courtType={SPORT_COURT} initialImage={gtDraw.idx < imgs.length ? imgs[gtDraw.idx] : null}
+                      allSchemas={imgs} currentSchemaIdx={gtDraw.idx} referencePhotoOptions={[]}
+                      onCancel={() => setGtDraw(null)}
+                      onValidate={(dataUrl) => { updConcept(gtDraw.cid, { images: gtDraw.idx < imgs.length ? imgs.map((x, i) => i === gtDraw.idx ? dataUrl : x) : [...imgs, dataUrl] }); setGtDraw(null); }} />
+                  </div>
+                );
+              })()}
+              {gtZoom && (
+                <div className="fixed inset-0 z-[320] bg-black/80 flex items-center justify-center p-4" onClick={() => setGtZoom(null)}>
+                  <img src={gtZoom} alt="" className="max-w-full max-h-full rounded-xl bg-white" />
+                  <button className="absolute top-4 right-4 text-white text-3xl leading-none" aria-label="Fermer">✕</button>
+                </div>
+              )}
               {gtPick && (
                 <div className="fixed inset-0 z-[300] bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-6" onClick={() => setGtPick(null)}>
                   <div className="bg-[#F2EDE4] w-full sm:max-w-xl max-h-[85vh] rounded-t-3xl sm:rounded-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
