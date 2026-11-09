@@ -591,6 +591,9 @@ function useStore(sport = DEFAULT_SPORT) {
   const [leagueData, setLeagueData] = useState({ teams: [], stats: {} });
   const [scoutReports, setScoutReports] = useState([]);
   const scoutReportsKey = `scoutReports:${sport}`;
+  // Thèmes de jeu (« attaque de zone », « pick and roll »…) : concepts écrits + plays, exercices et liens rattachés
+  const [gameThemes, setGameThemes] = useState([]);
+  const gameThemesKey = `gameThemes:${sport}`;
   // Copie locale (localStorage, synchrone) du Mode match — seule donnée de l'app à en avoir
   // une : c'est la seule pensée pour être utilisée en direct, sans connexion, pendant un match.
   const matchSessionsLocalKey = `cpb_local_matchSessions:${sport}`;
@@ -694,6 +697,10 @@ function useStore(sport = DEFAULT_SPORT) {
       try {
         const sr = await storage.get(scoutReportsKey);
         setScoutReports(sr ? JSON.parse(sr.value) : []);
+      } catch { hadError = true; }
+      try {
+        const gt = await storage.get(gameThemesKey);
+        setGameThemes(gt ? JSON.parse(gt.value) : []);
       } catch { hadError = true; }
       // Espoirs LNB, recrutement et comparatif : espace partagé entre l'admin et les invités scouting (sinon données privées, comme avant)
       try { setRecruit(await loadSharedJson(recruitKey, { players: [] })); } catch { hadError = true; }
@@ -839,6 +846,11 @@ function useStore(sport = DEFAULT_SPORT) {
   const scoutReportsRef = useRef([]);
   scoutReportsRef.current = scoutReports;
   const saveScoutReports = (next) => { scoutReportsRef.current = next; setScoutReports(next); persist(scoutReportsKey, JSON.stringify(next)); };
+  const gameThemesRef = useRef([]);
+  gameThemesRef.current = gameThemes;
+  const saveGameThemes = (next) => { gameThemesRef.current = next; setGameThemes(next); persist(gameThemesKey, JSON.stringify(next)); };
+  // patch = objet ou fonction (thème) => objet : toujours appliqué à la version la plus récente
+  const updateGameTheme = (id, patch) => saveGameThemes(gameThemesRef.current.map(t => t.id === id ? { ...t, ...(typeof patch === "function" ? patch(t) : patch) } : t));
   // Modifie un report à partir de la version la plus récente (et non de celle du dernier affichage) : deux saisies rapprochées ne s'écrasent plus
   const updateScoutReport = (id, patch) => saveScoutReports(scoutReportsRef.current.map(r => r.id === id ? { ...r, ...(typeof patch === "function" ? patch(r) : patch) } : r));
 
@@ -932,7 +944,7 @@ function useStore(sport = DEFAULT_SPORT) {
   const savePlayTags = (next) => { setPlayTags(next); persist("playTags", JSON.stringify(next)); };
   const saveClubLogo = async (dataUrl) => { setClubLogo(dataUrl); if (dataUrl) await storage.set("clubLogo", dataUrl); else await storage.delete("clubLogo"); };
 
-  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, recruit, saveRecruit, refreshShared, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, updateScoutReport, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
+  return { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, gameThemes, saveGameThemes, updateGameTheme, coreLoaded, espoirs, saveEspoirs, recruit, saveRecruit, refreshShared, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, updateScoutReport, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist };
 }
 
 function usePdfJs() {
@@ -11056,7 +11068,7 @@ function CoachingProBoost({ session }) {
   const guestOnly = scoutGuest && !isAdmin;   // invité scouting : uniquement comparatif (consultation), Espoirs LNB et recrutement
   const canScout = isAdmin || scoutGuest;
   const canAnalysis = isAdmin || canUseMyteam || hasAnalysis;   // Scouting report + Mon équipe
-  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, coreLoaded, espoirs, saveEspoirs, recruit, saveRecruit, refreshShared, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, updateScoutReport, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
+  const { exercises, sessions, themes, formats, playTypes, teams, activeTeamId, players, individualSessions, matchSessions, videoScoutSessions, scoutReports, gameThemes, saveGameThemes, updateGameTheme, coreLoaded, espoirs, saveEspoirs, recruit, saveRecruit, refreshShared, teamAnalyses, leagueGames, saveLeagueGames, leagueData, saveLeagueData, plays, playTags, clubLogo, saveExercises, saveSessions, saveThemes, saveFormats, savePlayTypes, saveTeams, saveActiveTeamId, savePlayers, saveIndividualSessions, saveMatchSessions, saveVideoScoutSessions, saveScoutReports, updateScoutReport, saveTeamAnalyses, savePlays, savePlayTags, saveClubLogo, loaded, loadError, matchSyncPending, persist } = useStore(sport);
   const sportConfig = SPORTS_CONFIG[sport] || SPORTS_CONFIG.basketball;
   const SPORT_PHASES = sportConfig.phases;
   const SPORT_FORMATS = formats;
@@ -11155,7 +11167,7 @@ function CoachingProBoost({ session }) {
   const pdfReady = usePdfJs();
   const [view, setView] = useState(() => {
     const saved = localStorage.getItem("cpb_view");
-    return ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness","league","espoirs","recruit"].includes(saved) ? saved : "library";
+    return ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness","league","espoirs","recruit","themes"].includes(saved) ? saved : "library";
   });
   // Toujours à jour, contrairement à `view` capturé dans la closure de l'effet ci-dessous
   // (qui ne tourne qu'une fois au montage) — évite qu'un retour arrière égaré (ex: swipe
@@ -11204,7 +11216,7 @@ function CoachingProBoost({ session }) {
       const v = e.state?.view;
       if (v === "session" && activeSessionRef.current) {
         setView("session");
-      } else if (v && ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness","league","espoirs","recruit"].includes(v)) {
+      } else if (v && ["library","sessions","stats","playbook","account","suivi","matchmode","videoscout","scoutreport","pack","myteam","wellness","league","espoirs","recruit","themes"].includes(v)) {
         setView(v);
         localStorage.setItem("cpb_view", v);
       } else if (activeSessionRef.current) {
@@ -11703,6 +11715,7 @@ function CoachingProBoost({ session }) {
   const [scoutingTitle, setScoutingTitle] = useState("");
   const [editingPlay, setEditingPlay] = useState(null);
   const [viewingPlay, setViewingPlay] = useState(null);
+  const [gtOpenId, setGtOpenId] = useState(null), [gtQuery, setGtQuery] = useState(""), [gtNewName, setGtNewName] = useState(""), [gtPick, setGtPick] = useState(null), [gtPickQuery, setGtPickQuery] = useState(""), [gtEditId, setGtEditId] = useState(null), [gtLink, setGtLink] = useState({ title: "", url: "" });
   const [viewingExercise, setViewingExercise] = useState(null);
   const [filterPlayType, setFilterPlayType] = useState([]);
   const [filterPlayTags, setFilterPlayTags] = useState([]);
@@ -13006,6 +13019,7 @@ function CoachingProBoost({ session }) {
               { key: "sessions", label: "Séances", icon: ListPlus, alsoActive: "session" },
               { key: "library", label: "Bibliothèque", icon: Library },
               { key: "playbook", label: "Play Book", icon: BookOpen },
+              ...(isAdmin ? [{ key: "themes", label: "Thèmes de jeu (admin)", icon: Layers }] : []),
               { key: "stats", label: "Stats", icon: BarChart3 },
               { key: "pack", label: isAdmin || hasPack ? "Pack exercices & plays" : "Pack exercices & plays 🔒", icon: Library },
               ...(isAdmin ? [{ key: "suivi", label: "Suivi individuel (admin)", icon: UserCheck }] : []),
@@ -15890,6 +15904,158 @@ function CoachingProBoost({ session }) {
 
         {view === "pack" && !(isAdmin || hasPack) && <PackPaywall isPremium={isPremium} />}
         {view === "pack" && (isAdmin || hasPack) && <PackPage onOpenExercises={(d) => setSharedExerciseCollection({ ...d, fromPack: true })} onOpenPlays={setSharedPlayCollection} />}
+        {view === "themes" && isAdmin && (() => {
+          const T = gameThemes.find(t => t.id === gtOpenId) || null;
+          const norm2 = (x) => String(x || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+          const upd = (patch) => updateGameTheme(T.id, patch);
+          const addTheme = () => {
+            const name = gtNewName.trim(); if (!name) return;
+            if (gameThemes.some(t => norm2(t.name) === norm2(name))) { cpbAlert?.("Ce thème existe déjà."); return; }
+            const nt = { id: uid(), name, desc: "", concepts: [], playIds: [], exerciseIds: [], links: [], created: new Date().toISOString().slice(0, 10) };
+            saveGameThemes([...gameThemes, nt]); setGtNewName(""); setGtOpenId(nt.id);
+          };
+          // Texte d'un concept : « - » en puce, « # » en sous-titre, le reste en paragraphe
+          const renderNote = (txt) => String(txt || "").split("\n").map((l, i) => {
+            if (/^#\s+/.test(l)) return <div key={i} className="font-bold text-[#1B2A4A] mt-2">{l.replace(/^#\s+/, "")}</div>;
+            if (/^[-•]\s+/.test(l)) return <div key={i} className="flex gap-2 text-sm text-[#1B2A4A]/80"><span className="text-[#FF6B35]">•</span><span>{l.replace(/^[-•]\s+/, "")}</span></div>;
+            return l.trim() ? <p key={i} className="text-sm text-[#1B2A4A]/80">{l}</p> : <div key={i} className="h-1.5" />;
+          });
+          // ── Liste des thèmes ──
+          if (!T) {
+            const shown = [...gameThemes].filter(t => !gtQuery.trim() || norm2(t.name + " " + t.desc).includes(norm2(gtQuery))).sort((a, b) => a.name.localeCompare(b.name, "fr"));
+            return (
+              <div className="max-w-5xl">
+                <h2 className="ns-title text-2xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>THÈMES DE JEU</h2>
+                <p className="text-sm text-[#1B2A4A]/50 mb-4">Un thème rassemble tes concepts, tes plays du Play Book, tes exercices et tes liens vidéo.</p>
+                <div className="flex gap-2 flex-wrap mb-3">
+                  <input value={gtNewName} onChange={e => setGtNewName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addTheme(); }} placeholder="Nouveau thème (ex : Attaque de zone)" className="flex-1 min-w-[220px] border border-[#1B2A4A]/20 rounded-lg px-3 py-2.5 text-sm bg-white/60 outline-none focus:border-[#FF6B35]" />
+                  <button onClick={addTheme} className="flex items-center gap-1.5 text-white px-4 py-2.5 rounded-md text-sm font-medium" style={{ backgroundColor: "var(--sport-accent)" }}><Plus size={16} /> Créer le thème</button>
+                </div>
+                {gameThemes.length > 4 && <input value={gtQuery} onChange={e => setGtQuery(e.target.value)} placeholder="Rechercher un thème…" className="w-full border border-[#1B2A4A]/20 rounded-lg px-3 py-2 text-sm bg-white/60 outline-none mb-3" />}
+                {gameThemes.length === 0 ? (
+                  <div className="text-center py-14 text-[#1B2A4A]/40 text-sm">Aucun thème pour l'instant. Crée le premier ci-dessus, par exemple « Attaque de zone » ou « Pick and roll — attaque ».</div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {shown.map(t => (
+                      <button key={t.id} onClick={() => setGtOpenId(t.id)} className="ns-card text-left border border-[#1B2A4A]/10 rounded-2xl bg-white shadow-md shadow-[#1B2A4A]/10 p-4 hover:shadow-lg transition-shadow">
+                        <div className="font-bold text-[#1B2A4A] text-lg leading-tight">{t.name}</div>
+                        {t.desc && <div className="text-xs text-[#1B2A4A]/50 mt-1 line-clamp-2">{t.desc}</div>}
+                        <div className="ns-meta flex flex-wrap gap-1.5 mt-3 text-xs text-[#1B2A4A]/70">
+                          <span className="px-2 py-1 rounded-full bg-[#1B2A4A]/8">{(t.concepts || []).length} concept{(t.concepts || []).length > 1 ? "s" : ""}</span>
+                          <span className="px-2 py-1 rounded-full bg-[#1B2A4A]/8">{(t.playIds || []).length} play{(t.playIds || []).length > 1 ? "s" : ""}</span>
+                          <span className="px-2 py-1 rounded-full bg-[#1B2A4A]/8">{(t.exerciseIds || []).length} exercice{(t.exerciseIds || []).length > 1 ? "s" : ""}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          }
+          // ── Page d'un thème ──
+          const tPlays = (T.playIds || []).map(id => plays.find(p => p.id === id)).filter(Boolean);
+          const tEx = (T.exerciseIds || []).map(id => exercises.find(e => e.id === id)).filter(Boolean);
+          const toggleId = (field, id) => upd(t => ({ [field]: (t[field] || []).includes(id) ? (t[field] || []).filter(x => x !== id) : [...(t[field] || []), id] }));
+          const secTitle = (label, n, action) => (
+            <div className="flex items-center justify-between mt-7 mb-2"><div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold">{label} <span className="text-[#1B2A4A]/30">({n})</span></div>{action}</div>
+          );
+          const addBtn = (label, onClick) => <button onClick={onClick} className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full text-white" style={{ backgroundColor: "var(--sport-accent)" }}><Plus size={13} /> {label}</button>;
+          const addConcept = () => { const c = { id: uid(), title: "Nouveau concept", body: "" }; upd(t => ({ concepts: [...(t.concepts || []), c] })); setGtEditId(c.id); };
+          const updConcept = (cid, patch) => upd(t => ({ concepts: (t.concepts || []).map(c => c.id === cid ? { ...c, ...patch } : c) }));
+          const pickList = gtPick === "plays" ? plays : gtPick === "exercises" ? exercises : [];
+          const pickField = gtPick === "plays" ? "playIds" : "exerciseIds";
+          const pickShown = pickList.filter(x => !gtPickQuery.trim() || norm2(x.titre + " " + (x.type || "") + " " + (x.themes || []).join(" ") + " " + (x.tags || []).join(" ")).includes(norm2(gtPickQuery)));
+          return (
+            <div className="max-w-5xl">
+              <button onClick={() => { setGtOpenId(null); setGtEditId(null); }} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] mb-2">← Tous les thèmes</button>
+              <input value={T.name} onChange={e => upd({ name: e.target.value })} className="w-full text-2xl font-bold text-[#1B2A4A] bg-transparent outline-none border-b border-transparent focus:border-[#FF6B35]" style={{ fontFamily: "Oswald, sans-serif" }} />
+              <textarea value={T.desc || ""} onChange={e => upd({ desc: e.target.value })} rows={2} placeholder="En une ou deux phrases : l'idée de ce thème…" className="w-full mt-2 text-sm text-[#1B2A4A]/80 border border-[#1B2A4A]/15 rounded-lg px-3 py-2 bg-white/60 outline-none focus:border-[#FF6B35]" />
+
+              {secTitle("Concepts", (T.concepts || []).length, addBtn("Nouveau concept", addConcept))}
+              {(T.concepts || []).length === 0 && <p className="text-sm text-[#1B2A4A]/40">Écris ici tes principes, consignes et lectures. Astuce : une ligne qui commence par « - » devient une puce, par « # » un sous-titre.</p>}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {(T.concepts || []).map(c => (
+                  <div key={c.id} className="border border-[#1B2A4A]/10 rounded-2xl bg-white shadow-md shadow-[#1B2A4A]/10 p-4">
+                    {gtEditId === c.id ? (
+                      <>
+                        <input value={c.title} onChange={e => updConcept(c.id, { title: e.target.value })} className="w-full font-bold text-[#1B2A4A] border-b border-[#FF6B35] outline-none bg-transparent mb-2" />
+                        <textarea value={c.body || ""} onChange={e => updConcept(c.id, { body: e.target.value })} rows={9} placeholder={"# Principe\n- Le porteur attaque l'écran…\n- Le poseur lit le défenseur…"} className="w-full text-sm border border-[#1B2A4A]/15 rounded-lg px-3 py-2 bg-white/60 outline-none focus:border-[#FF6B35]" />
+                        <div className="flex gap-2 mt-2"><button onClick={() => setGtEditId(null)} className="text-xs font-semibold text-white px-3 py-1.5 rounded-full" style={{ backgroundColor: "var(--sport-accent)" }}>Terminé</button>
+                          <button onClick={async () => { const ok = await cpbAlert?.(`Supprimer le concept « ${c.title} » ?`, { confirm: true }); if (ok) { upd(t => ({ concepts: (t.concepts || []).filter(x => x.id !== c.id) })); setGtEditId(null); } }} className="text-xs text-red-600 underline ml-auto">Supprimer</button></div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-start justify-between gap-2 mb-1"><div className="font-bold text-[#1B2A4A]">{c.title}</div><button onClick={() => setGtEditId(c.id)} className="p-1 text-[#1B2A4A]/40 hover:text-[#FF6B35]" title="Modifier"><Pencil size={14} /></button></div>
+                        {c.body ? <div className="space-y-0.5">{renderNote(c.body)}</div> : <p className="text-sm text-[#1B2A4A]/30 italic">Vide : clique sur le crayon pour écrire.</p>}
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {secTitle("Plays du Play Book", tPlays.length, addBtn("Ajouter des plays", () => { setGtPick("plays"); setGtPickQuery(""); }))}
+              {tPlays.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucun play rattaché à ce thème.</p>}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {tPlays.map(pl => (
+                  <div key={pl.id}>
+                    <PlayCard play={pl} onView={() => setViewingPlay(pl)} />
+                    <button onClick={() => toggleId("playIds", pl.id)} className="text-[11px] text-[#1B2A4A]/40 hover:text-red-600 underline mt-1 ml-2">Retirer du thème</button>
+                  </div>
+                ))}
+              </div>
+
+              {secTitle("Exercices de la Bibliothèque", tEx.length, addBtn("Ajouter des exercices", () => { setGtPick("exercises"); setGtPickQuery(""); }))}
+              {tEx.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucun exercice rattaché à ce thème.</p>}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {tEx.map((ex, i) => (
+                  <div key={ex.id}>
+                    <ExerciseCard ex={ex} index={i} onClick={() => setViewingExercise(ex)} onView={() => setViewingExercise(ex)} />
+                    <button onClick={() => toggleId("exerciseIds", ex.id)} className="text-[11px] text-[#1B2A4A]/40 hover:text-red-600 underline mt-1 ml-2">Retirer du thème</button>
+                  </div>
+                ))}
+              </div>
+
+              {secTitle("Liens et vidéos", (T.links || []).length, null)}
+              <div className="space-y-1.5 mb-2">
+                {(T.links || []).map(l => (
+                  <div key={l.id} className="flex items-center gap-2 border border-[#1B2A4A]/10 rounded-xl bg-white px-3 py-2">
+                    <a href={/^https?:\/\//i.test(l.url) ? l.url : "https://" + l.url} target="_blank" rel="noreferrer" className="flex-1 min-w-0 text-sm font-semibold text-[#1B2A4A] truncate hover:underline">▶ {l.title || l.url}</a>
+                    <button onClick={() => upd(t => ({ links: (t.links || []).filter(x => x.id !== l.id) }))} className="text-[#1B2A4A]/30 hover:text-red-600"><Trash2 size={14} /></button>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <input value={gtLink.title} onChange={e => setGtLink({ ...gtLink, title: e.target.value })} placeholder="Titre (ex : Match Lyon, attaque de zone)" className="flex-1 min-w-[180px] border border-[#1B2A4A]/20 rounded-lg px-3 py-2 text-sm bg-white/60 outline-none" />
+                <input value={gtLink.url} onChange={e => setGtLink({ ...gtLink, url: e.target.value })} placeholder="Lien (YouTube, Drive…)" className="flex-1 min-w-[180px] border border-[#1B2A4A]/20 rounded-lg px-3 py-2 text-sm bg-white/60 outline-none" />
+                <button onClick={() => { if (!gtLink.url.trim()) return; upd(t => ({ links: [...(t.links || []), { id: uid(), title: gtLink.title.trim(), url: gtLink.url.trim() }] })); setGtLink({ title: "", url: "" }); }} className="px-4 py-2 rounded-md text-sm font-semibold text-white" style={{ backgroundColor: "var(--sport-accent)" }}>Ajouter</button>
+              </div>
+
+              <div className="mt-10 pt-4 border-t border-[#1B2A4A]/10">
+                <button onClick={async () => { const ok = await cpbAlert?.(`Supprimer le thème « ${T.name} » ? Les plays et exercices ne sont pas supprimés, seulement ce thème et ses concepts.`, { confirm: true }); if (ok) { saveGameThemes(gameThemes.filter(t => t.id !== T.id)); setGtOpenId(null); } }} className="text-xs text-red-600 underline">Supprimer ce thème</button>
+              </div>
+
+              {gtPick && (
+                <div className="fixed inset-0 z-[300] bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-6" onClick={() => setGtPick(null)}>
+                  <div className="bg-[#F2EDE4] w-full sm:max-w-xl max-h-[85vh] rounded-t-3xl sm:rounded-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                    <div className="p-4 border-b border-[#1B2A4A]/10 flex items-center gap-2">
+                      <div className="font-bold text-[#1B2A4A] flex-1">{gtPick === "plays" ? "Plays du Play Book" : "Exercices de la Bibliothèque"} <span className="text-xs font-normal text-[#1B2A4A]/50">· {(T[pickField] || []).length} choisi{(T[pickField] || []).length > 1 ? "s" : ""}</span></div>
+                      <button onClick={() => setGtPick(null)} className="text-sm font-semibold text-white px-4 py-1.5 rounded-full" style={{ backgroundColor: "var(--sport-accent)" }}>Terminé</button>
+                    </div>
+                    <div className="p-3"><input autoFocus value={gtPickQuery} onChange={e => setGtPickQuery(e.target.value)} placeholder="Rechercher par nom, thème, tag…" className="w-full border border-[#1B2A4A]/20 rounded-lg px-3 py-2 text-sm bg-white outline-none" /></div>
+                    <div className="overflow-y-auto px-3 pb-4 space-y-1.5">
+                      {pickShown.length === 0 && <p className="text-sm text-[#1B2A4A]/40 p-3">Aucun résultat.</p>}
+                      {pickShown.map(x => { const on = (T[pickField] || []).includes(x.id); return (
+                        <button key={x.id} onClick={() => toggleId(pickField, x.id)} className={`w-full text-left flex items-center gap-3 rounded-xl px-3 py-2.5 border ${on ? "bg-white border-[#FF6B35]" : "bg-white/70 border-[#1B2A4A]/10"}`}>
+                          <span className={`ns-check w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${on ? "bg-[#FF6B35] border-[#FF6B35]" : "border-[#1B2A4A]/30"}`}>{on && <Check size={12} className="text-white" />}</span>
+                          <span className="min-w-0"><span className="block text-sm font-semibold text-[#1B2A4A] truncate">{x.titre}</span><span className="block text-[11px] text-[#1B2A4A]/50 truncate">{gtPick === "plays" ? (x.type || "") : [x.format, (x.themes || []).slice(0, 3).join(", ")].filter(Boolean).join(" · ")}</span></span>
+                        </button>); })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {view === "recruit" && canScout && (() => {
           const R = recruit || { players: [] }, groups = R.groups || RECRUIT_DEFAULT_GROUPS, players = R.players || [];
           const POSNAME = { "1": "Meneur", "2": "Arrière", "3": "Ailier", "4": "Ailier fort", "5": "Pivot" };
