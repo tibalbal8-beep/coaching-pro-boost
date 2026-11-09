@@ -2391,6 +2391,260 @@ function mergeScoutPlayers(r) {
     return p;
   });
 }
+// ── Tableaux libres (type Canva) : page 1280×720 où l'on pose texte, images, schémas, formes et flèches ──
+const BD_W = 1280, BD_H = 720;
+const BD_COLORS = ["#1B2A4A", "#FF6B35", "#2563EB", "#16a34a", "#dc2626", "#facc15", "#9db4ff", "#dfe7ff", "#ffffff", "#111111"];
+const bdAbs = (src) => (typeof src === "string" && src.startsWith("/") && typeof location !== "undefined") ? location.origin + src : src;
+const bdBox = (el) => ({ position: "absolute", left: el.x + "px", top: el.y + "px", width: el.w + "px", height: el.h + "px" });
+const bdTextStyle = (el) => ({ ...bdBox(el), fontSize: (el.size || 32) + "px", fontWeight: el.bold ? 800 : 500, fontStyle: el.italic ? "italic" : "normal", color: el.color || "#1B2A4A", textAlign: el.align || "left", background: el.bg && el.bg !== "transparent" ? el.bg : "transparent", borderRadius: (el.radius ?? 12) + "px", padding: "8px 12px", whiteSpace: "pre-wrap", lineHeight: 1.25, overflow: "hidden", fontFamily: "Inter, sans-serif", boxSizing: "border-box" });
+const bdShapeStyle = (el) => ({ ...bdBox(el), background: el.fill || "transparent", border: (el.sw || 0) > 0 ? `${el.sw}px ${el.dash ? "dashed" : "solid"} ${el.stroke || "#1B2A4A"}` : "none", borderRadius: el.kind === "ellipse" ? "50%" : el.kind === "round" ? "28px" : "0", boxSizing: "border-box" });
+function bdArrowGeo(el) {
+  const sw = el.sw || 6, pad = sw * 4 + 12, minx = Math.min(el.x1, el.x2) - pad, miny = Math.min(el.y1, el.y2) - pad, maxx = Math.max(el.x1, el.x2) + pad, maxy = Math.max(el.y1, el.y2) + pad;
+  const ang = Math.atan2(el.y2 - el.y1, el.x2 - el.x1), hs = sw * 3.2 + 8;
+  const hx = el.x2 - Math.cos(ang) * hs * 0.6, hy = el.y2 - Math.sin(ang) * hs * 0.6;   // la ligne s'arrête dans la pointe
+  const p1 = [el.x2, el.y2], p2 = [el.x2 - Math.cos(ang - 0.45) * hs, el.y2 - Math.sin(ang - 0.45) * hs], p3 = [el.x2 - Math.cos(ang + 0.45) * hs, el.y2 - Math.sin(ang + 0.45) * hs];
+  return { sw, minx, miny, w: maxx - minx, h: maxy - miny, hx, hy, tri: [p1, p2, p3].map(p => `${p[0] - minx},${p[1] - miny}`).join(" ") };
+}
+function BoardArrowSvg({ el, onPointerDown }) {
+  const g = bdArrowGeo(el), lx = (v) => v - g.minx, ly = (v) => v - g.miny;
+  return (
+    <svg width={g.w} height={g.h} style={{ position: "absolute", left: g.minx, top: g.miny, overflow: "visible", pointerEvents: "none" }}>
+      <line x1={lx(el.x1)} y1={ly(el.y1)} x2={lx(g.hx)} y2={ly(g.hy)} stroke={el.color || "#FF6B35"} strokeWidth={g.sw} strokeLinecap="round" strokeDasharray={el.dash ? `${g.sw * 2.2} ${g.sw * 1.6}` : undefined} />
+      {el.head !== false && <polygon points={g.tri} fill={el.color || "#FF6B35"} />}
+      <line x1={lx(el.x1)} y1={ly(el.y1)} x2={lx(el.x2)} y2={ly(el.y2)} stroke="transparent" strokeWidth={Math.max(g.sw, 26)} style={{ pointerEvents: onPointerDown ? "stroke" : "none", cursor: "move" }} onPointerDown={onPointerDown} />
+    </svg>
+  );
+}
+function BoardEl({ el, onPointerDown, onDoubleClick }) {
+  if (el.type === "arrow") return <BoardArrowSvg el={el} onPointerDown={onPointerDown} />;
+  const common = { onPointerDown, onDoubleClick, style: undefined };
+  if (el.type === "text") return <div {...common} style={{ ...bdTextStyle(el), cursor: onPointerDown ? "move" : "default", userSelect: "none" }}>{el.text}</div>;
+  if (el.type === "image") return <img src={el.src} alt="" draggable={false} onPointerDown={onPointerDown} style={{ ...bdBox(el), objectFit: "contain", borderRadius: (el.radius || 0) + "px", cursor: onPointerDown ? "move" : "default", userSelect: "none" }} />;
+  return <div {...common} style={{ ...bdShapeStyle(el), cursor: onPointerDown ? "move" : "default" }} />;
+}
+function BoardPageStatic({ page, width }) {
+  const sc = width / BD_W;
+  return (
+    <div style={{ width, height: BD_H * sc, position: "relative", overflow: "hidden", background: page.bg || "#fff" }}>
+      <div style={{ width: BD_W, height: BD_H, transform: `scale(${sc})`, transformOrigin: "0 0", position: "absolute", left: 0, top: 0 }}>
+        {(page.els || []).map(el => <BoardEl key={el.id} el={el} />)}
+      </div>
+    </div>
+  );
+}
+function bdNewBoard(kind = "blank", name = "Nouveau tableau") {
+  const t = (o) => ({ id: uid(), type: "text", x: 80, y: 60, w: 1120, h: 90, text: "Titre", size: 56, bold: true, italic: false, color: "#1B2A4A", align: "left", bg: "transparent", radius: 12, ...o });
+  const im = (o) => ({ id: uid(), type: "image", x: 80, y: 180, w: 360, h: 480, src: "/basketball-bleu-complet.png", radius: 18, ...o });
+  let els = [t({ text: name })];
+  if (kind === "colonnes") els = [t({ text: name }), t({ x: 80, y: 190, w: 540, h: 60, text: "Principes", size: 34, bold: true, color: "#ffffff", bg: "#1B2A4A" }), t({ x: 80, y: 260, w: 540, h: 380, text: "- \n- \n- ", size: 28, bg: "#dfe7ff" }), t({ x: 660, y: 190, w: 540, h: 60, text: "Consignes", size: 34, bold: true, color: "#ffffff", bg: "#FF6B35" }), t({ x: 660, y: 260, w: 540, h: 380, text: "- \n- \n- ", size: 28, bg: "#fff1ea" })];
+  if (kind === "schema") els = [t({ text: name }), im({ x: 80, y: 170, w: 360, h: 540 }), t({ x: 480, y: 190, w: 720, h: 60, text: "Lecture du jeu", size: 34, bold: true, color: "#ffffff", bg: "#1B2A4A" }), t({ x: 480, y: 260, w: 720, h: 400, text: "- \n- \n- ", size: 28, bg: "#dfe7ff" })];
+  return { id: uid(), name, pages: [{ id: uid(), bg: "#ffffff", els }], created: new Date().toISOString().slice(0, 10) };
+}
+function buildBoardHtml(board, logo = null) {
+  const esc = (str) => String(str ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const css = (o) => Object.entries(o).map(([k, v]) => `${k.replace(/[A-Z]/g, m => "-" + m.toLowerCase())}:${v}`).join(";");
+  const elHtml = (el) => {
+    if (el.type === "text") return `<div style="${css(bdTextStyle(el))}">${esc(el.text)}</div>`;
+    if (el.type === "image") return `<img src="${esc(bdAbs(el.src))}" alt="" style="${css({ ...bdBox(el), objectFit: "contain", borderRadius: (el.radius || 0) + "px" })}" />`;
+    if (el.type === "arrow") { const g = bdArrowGeo(el), lx = (v) => v - g.minx, ly = (v) => v - g.miny; return `<svg width="${g.w}" height="${g.h}" style="position:absolute;left:${g.minx}px;top:${g.miny}px;overflow:visible"><line x1="${lx(el.x1)}" y1="${ly(el.y1)}" x2="${lx(g.hx)}" y2="${ly(g.hy)}" stroke="${el.color || "#FF6B35"}" stroke-width="${g.sw}" stroke-linecap="round"${el.dash ? ` stroke-dasharray="${g.sw * 2.2} ${g.sw * 1.6}"` : ""}/>${el.head !== false ? `<polygon points="${g.tri}" fill="${el.color || "#FF6B35"}"/>` : ""}</svg>`; }
+    return `<div style="${css(bdShapeStyle(el))}"></div>`;
+  };
+  return `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(board.name)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#eef1f8;font-family:Inter,sans-serif}
+.bar{position:fixed;top:10px;right:10px;z-index:99;display:flex;gap:8px}.bar button,.cpb-close{border:0;border-radius:999px;background:#1B2A4A;color:#fff;font-weight:700;font-size:13px;padding:10px 16px;cursor:pointer;box-shadow:0 4px 14px rgba(27,42,74,.35)}
+.cpb-close{position:fixed;top:10px;left:10px;z-index:99;width:40px;height:40px;padding:0;font-size:20px}
+.bd-wrap{width:${BD_W}px;height:${BD_H}px;margin:14px auto;position:relative;overflow:hidden;box-shadow:0 8px 24px rgba(27,42,74,.15);background:#fff}
+.bd-wrap>*{position:absolute}
+.ttl{text-align:center;font-weight:800;color:#1B2A4A;padding:56px 0 4px;font-size:20px}
+@page{size:${BD_W}px ${BD_H}px;margin:0}
+@media print{body{background:#fff}.bar,.cpb-close,.ttl{display:none!important}.bd-wrap{zoom:1!important;margin:0;box-shadow:none;page-break-after:always;break-after:page}}
+</style></head><body>
+<button class="cpb-close" title="Fermer" aria-label="Fermer" onclick="try{window.close()}catch(e){}if(history.length>1){history.back()}">✕</button>
+<div class="bar"><button onclick="window.print()">🖨️ Imprimer / PDF</button></div>
+<div class="ttl">${esc(board.name)}</div>
+${board.pages.map(p => `<div class="bd-wrap" style="background:${esc(p.bg || "#fff")}">${(p.els || []).map(elHtml).join("")}</div>`).join("\n")}
+<script>function fit(){var z=Math.min(1,(innerWidth-20)/${BD_W});document.querySelectorAll('.bd-wrap').forEach(function(w){w.style.zoom=z})}fit();addEventListener('resize',fit);</script>
+</body></html>`;
+}
+function BoardEditor({ board, onChange, onClose, cpbAlert, toast, courtType = "basketball" }) {
+  const [pi, setPi] = useState(0), [selId, setSelId] = useState(null), [editId, setEditId] = useState(null), [draw, setDraw] = useState(false), [crop, setCrop] = useState(false), [scale, setScale] = useState(0.6);
+  const wrapRef = useRef(null), boardRef = useRef(board), hist = useRef([]), dragRef = useRef(null);
+  boardRef.current = board;
+  const pIdx = Math.min(pi, board.pages.length - 1), page = board.pages[pIdx];
+  const sel = (page.els || []).find(e => e.id === selId) || null;
+  useEffect(() => {
+    const el = wrapRef.current; if (!el) return;
+    const f = () => setScale(Math.max(0.2, Math.min(1.2, (el.clientWidth - 24) / BD_W)));
+    f(); const ro = new ResizeObserver(f); ro.observe(el); return () => ro.disconnect();
+  }, []);
+  const commit = (fn, rec = true) => {
+    const b = boardRef.current;
+    if (rec) { hist.current.push(JSON.stringify(b)); if (hist.current.length > 60) hist.current.shift(); }
+    const nb = fn(b); boardRef.current = nb; onChange(nb);
+  };
+  const setEls = (fn, rec = true) => commit(b => ({ ...b, pages: b.pages.map((p, i) => i === pIdx ? { ...p, els: fn(p.els || []) } : p) }), rec);
+  const updEl = (id, patch, rec = true) => setEls(els => els.map(e => e.id === id ? { ...e, ...patch } : e), rec);
+  const addEl = (el) => { setEls(els => [...els, el]); setSelId(el.id); };
+  const undo = () => { const s = hist.current.pop(); if (!s) return; const nb = JSON.parse(s); boardRef.current = nb; onChange(nb); setSelId(null); setEditId(null); };
+  const delSel = () => { if (!sel) return; setEls(els => els.filter(e => e.id !== sel.id)); setSelId(null); setEditId(null); };
+  const dupSel = () => { if (!sel) return; const c = JSON.parse(JSON.stringify(sel)); c.id = uid(); if (c.type === "arrow") { c.x1 += 30; c.y1 += 30; c.x2 += 30; c.y2 += 30; } else { c.x += 30; c.y += 30; } addEl(c); };
+  const zMove = (dir) => { if (!sel) return; setEls(els => { const i = els.findIndex(e => e.id === sel.id), j = Math.max(0, Math.min(els.length - 1, i + dir)); const a = [...els]; const [x] = a.splice(i, 1); a.splice(j, 0, x); return a; }); };
+  useEffect(() => {
+    const onKey = (e) => {
+      const tag = (e.target.tagName || "").toUpperCase(); if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || editId || draw || crop) return;
+      const cmd = e.metaKey || e.ctrlKey;
+      if ((e.key === "Delete" || e.key === "Backspace") && selId) { e.preventDefault(); delSel(); }
+      else if (cmd && e.key.toLowerCase() === "z") { e.preventDefault(); undo(); }
+      else if (cmd && e.key.toLowerCase() === "d" && selId) { e.preventDefault(); dupSel(); }
+      else if (selId && e.key.startsWith("Arrow") && sel) {
+        e.preventDefault(); const st = e.shiftKey ? 10 : 1, dx = e.key === "ArrowLeft" ? -st : e.key === "ArrowRight" ? st : 0, dy = e.key === "ArrowUp" ? -st : e.key === "ArrowDown" ? st : 0;
+        updEl(sel.id, sel.type === "arrow" ? { x1: sel.x1 + dx, y1: sel.y1 + dy, x2: sel.x2 + dx, y2: sel.y2 + dy } : { x: sel.x + dx, y: sel.y + dy }, false);
+      }
+    };
+    window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey);
+  });
+  // Glisser / redimensionner : suivi par la fenêtre pour ne pas perdre l'élément quand le doigt sort de sa boîte
+  const startDrag = (e, el, mode) => {
+    e.stopPropagation(); e.preventDefault();
+    if (editId && editId !== el.id) setEditId(null);
+    setSelId(el.id);
+    hist.current.push(JSON.stringify(boardRef.current)); if (hist.current.length > 60) hist.current.shift();
+    dragRef.current = { mode, id: el.id, sx: e.clientX, sy: e.clientY, o: { ...el } };
+    const mv = (ev) => {
+      const d = dragRef.current; if (!d) return; const dx = (ev.clientX - d.sx) / scale, dy = (ev.clientY - d.sy) / scale, o = d.o;
+      if (d.mode === "move") updEl(d.id, o.type === "arrow" ? { x1: o.x1 + dx, y1: o.y1 + dy, x2: o.x2 + dx, y2: o.y2 + dy } : { x: Math.round(o.x + dx), y: Math.round(o.y + dy) }, false);
+      else if (d.mode === "a1") updEl(d.id, { x1: Math.round(o.x1 + dx), y1: Math.round(o.y1 + dy) }, false);
+      else if (d.mode === "a2") updEl(d.id, { x2: Math.round(o.x2 + dx), y2: Math.round(o.y2 + dy) }, false);
+      else {
+        let x = o.x, y = o.y, w = o.w, h = o.h; const m = d.mode;
+        if (m.includes("e")) w = o.w + dx; if (m.includes("s")) h = o.h + dy;
+        if (m.includes("w")) { w = o.w - dx; x = o.x + dx; } if (m.includes("n")) { h = o.h - dy; y = o.y + dy; }
+        if (o.type === "image" || ev.shiftKey) { const r = o.w / o.h; if (Math.abs(w - o.w) / o.w >= Math.abs(h - o.h) / o.h) h = w / r; else w = h * r; if (m.includes("w")) x = o.x + o.w - w; if (m.includes("n")) y = o.y + o.h - h; }
+        if (w < 24 || h < 24) return;
+        updEl(d.id, { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) }, false);
+      }
+    };
+    const up = () => { dragRef.current = null; window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
+  };
+  const fitSize = (iw, ih, maxW, maxH) => { const r = Math.min(maxW / iw, maxH / ih, 1); return [Math.round(iw * r), Math.round(ih * r)]; };
+  const addImageSrc = (src, extra = {}) => { const im = new Image(); im.onload = () => { const [w, h] = fitSize(im.naturalWidth, im.naturalHeight, 560, 520); addEl({ id: uid(), type: "image", x: 100, y: 100, w, h, src, radius: 0, ...extra }); }; im.onerror = () => cpbAlert?.("Image illisible."); im.src = src; };
+  const addText = () => { const el = { id: uid(), type: "text", x: 100, y: 100, w: 460, h: 130, text: "Texte", size: 32, bold: false, italic: false, color: "#1B2A4A", align: "left", bg: "transparent", radius: 12 }; addEl(el); setEditId(el.id); };
+  const addShape = (kind) => addEl({ id: uid(), type: "shape", kind, x: 140, y: 140, w: 320, h: 200, fill: "#dfe7ff", stroke: "#1B2A4A", sw: 0 });
+  const addArrow = () => addEl({ id: uid(), type: "arrow", x1: 200, y1: 360, x2: 520, y2: 360, color: "#FF6B35", sw: 6, dash: false, head: true });
+  const swatches = (cur, onPick, withNone = false) => (
+    <div className="flex flex-wrap gap-1.5">
+      {withNone && <button onClick={() => onPick("transparent")} title="Aucun" className={`w-6 h-6 rounded-full border text-[10px] ${cur === "transparent" || !cur ? "border-[#FF6B35] ring-2 ring-[#FF6B35]/30" : "border-[#1B2A4A]/25"}`}>∅</button>}
+      {BD_COLORS.map(c => <button key={c} onClick={() => onPick(c)} className={`w-6 h-6 rounded-full border ${cur === c ? "border-[#FF6B35] ring-2 ring-[#FF6B35]/40" : "border-[#1B2A4A]/25"}`} style={{ background: c }} />)}
+    </div>
+  );
+  const tb = "px-3 py-2 rounded-full text-xs font-semibold bg-white border border-[#1B2A4A]/15 text-[#1B2A4A] hover:border-[#FF6B35] whitespace-nowrap";
+  const hs = Math.max(14, 16 / scale), handles = sel && sel.type !== "arrow" && editId !== sel.id ? [["nw", 0, 0], ["ne", 1, 0], ["sw", 0, 1], ["se", 1, 1]] : [];
+  return (
+    <div className="fixed inset-0 z-[330] bg-[#eef1f8] flex flex-col" style={{ touchAction: "none" }}>
+      <div className="flex items-center gap-2 px-3 py-2 bg-white border-b border-[#1B2A4A]/10 flex-wrap">
+        <button onClick={onClose} className="text-sm font-semibold text-white px-4 py-2 rounded-full" style={{ backgroundColor: "var(--sport-accent)" }}>✓ Terminé</button>
+        <input value={board.name} onChange={e => commit(b => ({ ...b, name: e.target.value }), false)} className="flex-1 min-w-[160px] font-bold text-[#1B2A4A] bg-transparent outline-none border-b border-transparent focus:border-[#FF6B35]" />
+        <button onClick={undo} className={tb}>↶ Annuler</button>
+        <button onClick={() => { try { const html = buildBoardHtml(board, null); downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `tableau-${slugifyForFile(board.name)}.html`); toast?.("✓ Tableau exporté (ouvre le fichier puis « Imprimer / PDF »)"); } catch (e) { cpbAlert?.("Export impossible : " + (e?.message || e)); } }} className={tb + " !bg-[#2563EB] !text-white !border-[#2563EB]"}>📤 Exporter</button>
+      </div>
+      <div className="flex items-center gap-2 px-3 py-2 overflow-x-auto">
+        <button onClick={addText} className={tb}>＋ Texte</button>
+        <label className={tb + " cursor-pointer"}>🖼️ Image<input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; try { addImageSrc(await readImageAsJpeg(f, 1400, 0.8)); } catch { cpbAlert?.("Image illisible."); } }} /></label>
+        <button onClick={() => setDraw(true)} className={tb}>✏️ Schéma</button>
+        <select value="" onChange={e => { const v = e.target.value; if (!v) return; const [src, w, h] = v.split("|"); const [fw, fh] = fitSize(+w, +h, 480, 520); addEl({ id: uid(), type: "image", x: 100, y: 100, w: fw, h: fh, src, radius: 18 }); }} className={tb}>
+          <option value="">🏀 Terrain…</option>
+          <option value="/basketball-bleu-complet.png|800|1200">Terrain entier</option><option value="/basketball-bleu-demi-haut.png|1024|770">Demi-terrain haut</option><option value="/basketball-bleu-demi-bas.png|1024|768">Demi-terrain bas</option>
+        </select>
+        <button onClick={() => addShape("rect")} className={tb}>▭ Rectangle</button>
+        <button onClick={() => addShape("round")} className={tb}>▢ Arrondi</button>
+        <button onClick={() => addShape("ellipse")} className={tb}>◯ Rond</button>
+        <button onClick={addArrow} className={tb}>➜ Flèche</button>
+      </div>
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-3 px-3 pb-3">
+        <div ref={wrapRef} className="flex-1 min-w-0 overflow-auto rounded-2xl bg-[#dde3f0] p-3" onPointerDown={() => { setSelId(null); setEditId(null); }}>
+          <div style={{ width: BD_W * scale, height: BD_H * scale, position: "relative", margin: "0 auto", boxShadow: "0 8px 24px #1b2a4a26" }}>
+            <div style={{ width: BD_W, height: BD_H, position: "absolute", left: 0, top: 0, transform: `scale(${scale})`, transformOrigin: "0 0", background: page.bg || "#fff", overflow: "hidden" }}>
+              {(page.els || []).map(el => editId === el.id && el.type === "text" ? (
+                <textarea key={el.id} autoFocus value={el.text} onChange={e => updEl(el.id, { text: e.target.value }, false)} onBlur={() => setEditId(null)} onPointerDown={e => e.stopPropagation()}
+                  style={{ ...bdTextStyle(el), resize: "none", outline: "2px solid #FF6B35", background: el.bg && el.bg !== "transparent" ? el.bg : "#fff", userSelect: "text" }} />
+              ) : <BoardEl key={el.id} el={el} onPointerDown={e => startDrag(e, el, "move")} onDoubleClick={() => { if (el.type === "text") setEditId(el.id); }} />)}
+              {sel && sel.type !== "arrow" && <div style={{ position: "absolute", left: sel.x - 2, top: sel.y - 2, width: sel.w + 4, height: sel.h + 4, border: `${Math.max(2, 2 / scale)}px solid #FF6B35`, pointerEvents: "none", boxSizing: "border-box" }} />}
+              {handles.map(([m, fx, fy]) => <div key={m} onPointerDown={e => startDrag(e, sel, m)} style={{ position: "absolute", left: sel.x + fx * sel.w - hs / 2, top: sel.y + fy * sel.h - hs / 2, width: hs, height: hs, background: "#fff", border: `${Math.max(2, 2 / scale)}px solid #FF6B35`, borderRadius: "50%", cursor: m === "nw" || m === "se" ? "nwse-resize" : "nesw-resize" }} />)}
+              {sel && sel.type === "arrow" && [["a1", sel.x1, sel.y1], ["a2", sel.x2, sel.y2]].map(([m, x, y]) => <div key={m} onPointerDown={e => startDrag(e, sel, m)} style={{ position: "absolute", left: x - hs / 2, top: y - hs / 2, width: hs, height: hs, background: "#fff", border: `${Math.max(2, 2 / scale)}px solid #FF6B35`, borderRadius: "50%", cursor: "move" }} />)}
+            </div>
+          </div>
+        </div>
+        <div className="md:w-64 shrink-0 overflow-y-auto rounded-2xl bg-white p-3 space-y-3 text-sm text-[#1B2A4A] max-h-48 md:max-h-none">
+          {!sel ? (
+            <>
+              <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold">Page {pIdx + 1} / {board.pages.length}</div>
+              <div className="text-xs text-[#1B2A4A]/50">Fond de la page</div>{swatches(page.bg || "#ffffff", c => commit(b => ({ ...b, pages: b.pages.map((p, i) => i === pIdx ? { ...p, bg: c } : p) })))}
+              <p className="text-[11px] text-[#1B2A4A]/40">Touche un élément pour le déplacer ou le modifier. Double-clic sur un texte pour l'écrire. Coins = taille. Suppr = effacer, Cmd+Z = annuler.</p>
+            </>
+          ) : (
+            <>
+              <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold">{{ text: "Texte", image: "Image", shape: "Forme", arrow: "Flèche" }[sel.type]}</div>
+              {sel.type === "text" && (<>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <button onClick={() => updEl(sel.id, { size: Math.max(10, sel.size - 4) })} className={tb}>A−</button><span className="text-xs w-8 text-center">{sel.size}</span><button onClick={() => updEl(sel.id, { size: Math.min(160, sel.size + 4) })} className={tb}>A+</button>
+                  <button onClick={() => updEl(sel.id, { bold: !sel.bold })} className={tb + (sel.bold ? " !bg-[#1B2A4A] !text-white" : "")}>G</button>
+                  <button onClick={() => updEl(sel.id, { italic: !sel.italic })} className={tb + (sel.italic ? " !bg-[#1B2A4A] !text-white" : "")}><i>I</i></button>
+                </div>
+                <div className="flex gap-1.5">{[["left", "⇤"], ["center", "↔"], ["right", "⇥"]].map(([a, ic]) => <button key={a} onClick={() => updEl(sel.id, { align: a })} className={tb + (sel.align === a ? " !bg-[#1B2A4A] !text-white" : "")}>{ic}</button>)}</div>
+                <div className="text-xs text-[#1B2A4A]/50">Couleur du texte</div>{swatches(sel.color, c => updEl(sel.id, { color: c }))}
+                <div className="text-xs text-[#1B2A4A]/50">Fond</div>{swatches(sel.bg, c => updEl(sel.id, { bg: c }), true)}
+                <button onClick={() => setEditId(sel.id)} className={tb + " w-full"}>Modifier le texte</button>
+              </>)}
+              {sel.type === "shape" && (<>
+                <div className="text-xs text-[#1B2A4A]/50">Remplissage</div>{swatches(sel.fill, c => updEl(sel.id, { fill: c }), true)}
+                <div className="text-xs text-[#1B2A4A]/50">Contour</div>{swatches(sel.stroke, c => updEl(sel.id, { stroke: c, sw: sel.sw || 4 }))}
+                <div className="flex gap-1.5 items-center"><button onClick={() => updEl(sel.id, { sw: Math.max(0, (sel.sw || 0) - 2) })} className={tb}>−</button><span className="text-xs">épaisseur {sel.sw || 0}</span><button onClick={() => updEl(sel.id, { sw: Math.min(24, (sel.sw || 0) + 2) })} className={tb}>+</button></div>
+                <button onClick={() => updEl(sel.id, { dash: !sel.dash })} className={tb + (sel.dash ? " !bg-[#1B2A4A] !text-white" : "")}>Pointillés</button>
+              </>)}
+              {sel.type === "arrow" && (<>
+                <div className="text-xs text-[#1B2A4A]/50">Couleur</div>{swatches(sel.color, c => updEl(sel.id, { color: c }))}
+                <div className="flex gap-1.5 items-center"><button onClick={() => updEl(sel.id, { sw: Math.max(2, sel.sw - 2) })} className={tb}>−</button><span className="text-xs">épaisseur {sel.sw}</span><button onClick={() => updEl(sel.id, { sw: Math.min(24, sel.sw + 2) })} className={tb}>+</button></div>
+                <div className="flex gap-1.5"><button onClick={() => updEl(sel.id, { dash: !sel.dash })} className={tb + (sel.dash ? " !bg-[#1B2A4A] !text-white" : "")}>Pointillés</button><button onClick={() => updEl(sel.id, { head: sel.head === false })} className={tb}>{sel.head === false ? "Ajouter la pointe" : "Sans pointe"}</button></div>
+                <button onClick={() => updEl(sel.id, { x1: sel.x2, y1: sel.y2, x2: sel.x1, y2: sel.y1 })} className={tb + " w-full"}>⇄ Inverser le sens</button>
+              </>)}
+              {sel.type === "image" && (<>
+                <button onClick={() => setCrop(true)} className={tb + " w-full"}>✂️ Rogner</button>
+                <div className="flex gap-1.5 items-center"><span className="text-xs">Coins arrondis</span><button onClick={() => updEl(sel.id, { radius: Math.max(0, (sel.radius || 0) - 8) })} className={tb}>−</button><button onClick={() => updEl(sel.id, { radius: Math.min(80, (sel.radius || 0) + 8) })} className={tb}>+</button></div>
+              </>)}
+              <div className="grid grid-cols-2 gap-1.5 pt-2 border-t border-[#1B2A4A]/10">
+                <button onClick={dupSel} className={tb}>⧉ Dupliquer</button><button onClick={delSel} className={tb + " !text-red-600"}>🗑 Supprimer</button>
+                <button onClick={() => zMove(1)} className={tb}>⬆ Devant</button><button onClick={() => zMove(-1)} className={tb}>⬇ Derrière</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 px-3 pb-3 overflow-x-auto">
+        {board.pages.map((p, i) => (
+          <button key={p.id} onClick={() => { setPi(i); setSelId(null); setEditId(null); }} className={`shrink-0 rounded-lg overflow-hidden border-2 ${i === pIdx ? "border-[#FF6B35]" : "border-transparent"}`}><BoardPageStatic page={p} width={120} /></button>
+        ))}
+        <button onClick={() => { commit(b => ({ ...b, pages: [...b.pages, { id: uid(), bg: "#ffffff", els: [] }] })); setPi(board.pages.length); setSelId(null); }} className={tb}>＋ Page</button>
+        <button onClick={() => { const c = JSON.parse(JSON.stringify(page)); c.id = uid(); c.els = c.els.map(e => ({ ...e, id: uid() })); commit(b => ({ ...b, pages: [...b.pages.slice(0, pIdx + 1), c, ...b.pages.slice(pIdx + 1)] })); setPi(pIdx + 1); }} className={tb}>⧉ Dupliquer la page</button>
+        {board.pages.length > 1 && <button onClick={async () => { const ok = await cpbAlert?.(`Supprimer la page ${pIdx + 1} ?`, { confirm: true }); if (ok) { commit(b => ({ ...b, pages: b.pages.filter((_, i) => i !== pIdx) })); setPi(Math.max(0, pIdx - 1)); setSelId(null); } }} className={tb + " !text-red-600"}>🗑 Page</button>}
+      </div>
+      {draw && (
+        <div className="fixed inset-0 z-[340] bg-[#F2EDE4] overflow-auto p-3 sm:p-5">
+          <DrawTacticalView courtType={courtType} initialImage={null} allSchemas={[]} currentSchemaIdx={0} referencePhotoOptions={[]} onCancel={() => setDraw(false)} onValidate={(dataUrl) => { addImageSrc(dataUrl, { radius: 18 }); setDraw(false); }} />
+        </div>
+      )}
+      {crop && sel && sel.type === "image" && (
+        <div className="fixed inset-0 z-[340] bg-[#F2EDE4] overflow-auto p-3 sm:p-5">
+          <CropPhotoView imageData={bdAbs(sel.src)} courtType={courtType} onCancel={() => setCrop(false)} onCrop={(dataUrl) => { const im = new Image(); im.onload = () => { const [w, h] = fitSize(im.naturalWidth, im.naturalHeight, Math.max(sel.w, 200), Math.max(sel.h, 200)); updEl(sel.id, { src: dataUrl, w, h }); setCrop(false); }; im.src = dataUrl; }} />
+        </div>
+      )}
+    </div>
+  );
+}
 // Fiche d'un thème de jeu (concepts, plays, exercices, liens) : page A4 autonome, partageable ou imprimable en PDF
 function buildThemeHtml(theme, playsData, exData, logo = null, opts = {}) {
   const esc = (str) => String(str ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -11763,7 +12017,7 @@ function CoachingProBoost({ session }) {
   const [scoutingTitle, setScoutingTitle] = useState("");
   const [editingPlay, setEditingPlay] = useState(null);
   const [viewingPlay, setViewingPlay] = useState(null);
-  const [gtOpenId, setGtOpenId] = useState(null), [gtQuery, setGtQuery] = useState(""), [gtNewName, setGtNewName] = useState(""), [gtPick, setGtPick] = useState(null), [gtPickQuery, setGtPickQuery] = useState(""), [gtEditId, setGtEditId] = useState(null), [gtDraw, setGtDraw] = useState(null), [gtCrop, setGtCrop] = useState(null), [gtExp, setGtExp] = useState(null), [gtZoom, setGtZoom] = useState(null), [gtLink, setGtLink] = useState({ title: "", url: "" });
+  const [gtOpenId, setGtOpenId] = useState(null), [gtQuery, setGtQuery] = useState(""), [gtNewName, setGtNewName] = useState(""), [gtPick, setGtPick] = useState(null), [gtPickQuery, setGtPickQuery] = useState(""), [gtEditId, setGtEditId] = useState(null), [gtDraw, setGtDraw] = useState(null), [gtBoardId, setGtBoardId] = useState(null), [gtCrop, setGtCrop] = useState(null), [gtExp, setGtExp] = useState(null), [gtZoom, setGtZoom] = useState(null), [gtLink, setGtLink] = useState({ title: "", url: "" });
   const [viewingExercise, setViewingExercise] = useState(null);
   const [filterPlayType, setFilterPlayType] = useState([]);
   const [filterPlayTags, setFilterPlayTags] = useState([]);
@@ -16055,6 +16309,30 @@ function CoachingProBoost({ session }) {
                 );
               })()}
               <textarea value={T.desc || ""} onChange={e => upd({ desc: e.target.value })} rows={2} placeholder="En une ou deux phrases : l'idée de ce thème…" className="w-full mt-2 text-sm text-[#1B2A4A]/80 border border-[#1B2A4A]/15 rounded-lg px-3 py-2 bg-white/60 outline-none focus:border-[#FF6B35]" />
+
+              {secTitle("Tableaux (éditeur libre)", (T.boards || []).length, (
+                <div className="flex gap-1.5 flex-wrap justify-end">
+                  {[["blank", "Vierge"], ["colonnes", "2 colonnes"], ["schema", "Schéma + texte"]].map(([k, l]) => (
+                    <button key={k} onClick={() => { const b = bdNewBoard(k, T.name); upd(t => ({ boards: [...(t.boards || []), b] })); setGtBoardId(b.id); }} className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full text-white" style={{ backgroundColor: "var(--sport-accent)" }}><Plus size={13} /> {l}</button>
+                  ))}
+                </div>
+              ))}
+              {(T.boards || []).length === 0 && <p className="text-sm text-[#1B2A4A]/40">Compose une page comme sur Canva : texte, images, schémas, formes et flèches posés où tu veux. Choisis un modèle ci-dessus pour commencer.</p>}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {(T.boards || []).map(b => (
+                  <div key={b.id} className="ns-card border border-[#1B2A4A]/10 rounded-2xl bg-white shadow-md shadow-[#1B2A4A]/10 p-3">
+                    <button onClick={() => setGtBoardId(b.id)} className="block w-full rounded-xl overflow-hidden border border-[#1B2A4A]/10 ns-media" style={{ lineHeight: 0 }}><BoardPageStatic page={b.pages[0]} width={300} /></button>
+                    <div className="flex items-center justify-between gap-2 mt-2">
+                      <div className="min-w-0"><div className="font-bold text-[#1B2A4A] truncate">{b.name}</div><div className="text-[11px] text-[#1B2A4A]/50">{b.pages.length} page{b.pages.length > 1 ? "s" : ""}</div></div>
+                      <div className="flex gap-1 shrink-0">
+                        <button onClick={() => setGtBoardId(b.id)} className="p-1.5 text-[#1B2A4A]/50 hover:text-[#FF6B35]" title="Ouvrir"><Pencil size={15} /></button>
+                        <button onClick={async () => { const ok = await cpbAlert?.(`Supprimer le tableau « ${b.name} » ?`, { confirm: true }); if (ok) upd(t => ({ boards: (t.boards || []).filter(x => x.id !== b.id) })); }} className="p-1.5 text-[#1B2A4A]/30 hover:text-red-600" title="Supprimer"><Trash2 size={15} /></button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {gtBoardId && (() => { const B = (T.boards || []).find(x => x.id === gtBoardId); return B ? <BoardEditor board={B} onChange={(nb) => upd(t => ({ boards: (t.boards || []).map(x => x.id === nb.id ? nb : x) }))} onClose={() => setGtBoardId(null)} cpbAlert={cpbAlert} toast={toast} courtType={SPORT_COURT} /> : null; })()}
 
               {secTitle("Concepts", (T.concepts || []).length, addBtn("Nouveau concept", addConcept))}
               {(T.concepts || []).length === 0 && <p className="text-sm text-[#1B2A4A]/40">Écris ici tes principes, consignes et lectures. Astuce : une ligne qui commence par « - » devient une puce, par « # » un sous-titre.</p>}
