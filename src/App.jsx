@@ -12017,7 +12017,7 @@ function CoachingProBoost({ session }) {
   const [scoutingTitle, setScoutingTitle] = useState("");
   const [editingPlay, setEditingPlay] = useState(null);
   const [viewingPlay, setViewingPlay] = useState(null);
-  const [gtOpenId, setGtOpenId] = useState(null), [gtQuery, setGtQuery] = useState(""), [gtNewName, setGtNewName] = useState(""), [gtPick, setGtPick] = useState(null), [gtPickQuery, setGtPickQuery] = useState(""), [gtEditId, setGtEditId] = useState(null), [gtDraw, setGtDraw] = useState(null), [gtBoardId, setGtBoardId] = useState(null), [gtFilter, setGtFilter] = useState([]), [gtTagFor, setGtTagFor] = useState(null), [gtTagInput, setGtTagInput] = useState(""), [gtCrop, setGtCrop] = useState(null), [gtExp, setGtExp] = useState(null), [gtZoom, setGtZoom] = useState(null), [gtLink, setGtLink] = useState({ title: "", url: "" });
+  const [gtOpenId, setGtOpenId] = useState(null), [gtQuery, setGtQuery] = useState(""), [gtNewName, setGtNewName] = useState(""), [gtPick, setGtPick] = useState(null), [gtPickQuery, setGtPickQuery] = useState(""), [gtEditId, setGtEditId] = useState(null), [gtDraw, setGtDraw] = useState(null), [gtBoardId, setGtBoardId] = useState(null), [gtFilter, setGtFilter] = useState([]), [gtTagFor, setGtTagFor] = useState(null), [gtTagInput, setGtTagInput] = useState(""), [gtCrop, setGtCrop] = useState(null), [gtSplit, setGtSplit] = useState(null), [gtExp, setGtExp] = useState(null), [gtZoom, setGtZoom] = useState(null), [gtLink, setGtLink] = useState({ title: "", url: "" });
   const [viewingExercise, setViewingExercise] = useState(null);
   const [filterPlayType, setFilterPlayType] = useState([]);
   const [filterPlayTags, setFilterPlayTags] = useState([]);
@@ -16374,7 +16374,10 @@ function CoachingProBoost({ session }) {
               </div>
               {gtBoardId && (() => { const B = (T.boards || []).find(x => x.id === gtBoardId); return B ? <BoardEditor board={B} onChange={(nb) => upd(t => ({ boards: (t.boards || []).map(x => x.id === nb.id ? nb : x) }))} onClose={() => setGtBoardId(null)} cpbAlert={cpbAlert} toast={toast} courtType={SPORT_COURT} /> : null; })()}
 
-              {secTitle("Concepts", (T.concepts || []).length, addBtn("Nouveau concept", addConcept))}
+              {secTitle("Concepts", (T.concepts || []).length, <div className="flex gap-2 flex-wrap">{addBtn("Nouveau concept", addConcept)}
+                <label className="text-xs font-semibold px-3 py-1.5 rounded-full border border-[#FF6B35]/50 text-[#FF6B35] cursor-pointer whitespace-nowrap">✂️ Importer &amp; découper
+                  <input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; try { setGtSplit({ src: await readImageAsJpeg(f, 2000, 0.85), n: 0 }); } catch { cpbAlert?.("Image illisible."); } }} />
+                </label></div>)}
               {(T.concepts || []).length === 0 && <p className="text-sm text-[#1B2A4A]/40">Écris ici tes principes, consignes et lectures. Astuce : une ligne qui commence par « - » devient une puce, par « # » un sous-titre.</p>}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {(T.concepts || []).filter(c => visibleItem("concept:" + c.id)).map(c => (
@@ -16476,6 +16479,11 @@ function CoachingProBoost({ session }) {
                   </div>
                 );
               })()}
+              {gtSplit && (
+                <CropPhotoView imageData={gtSplit.src} multiMode={true} cropCount={gtSplit.n} courtType={SPORT_COURT}
+                  onCancel={() => setGtSplit(null)}
+                  onCrop={(dataUrl) => { const k = gtSplit.n + 1; upd(t => ({ concepts: [...(t.concepts || []), { id: uid(), title: `Concept ${(t.concepts || []).length + 1}`, body: "", images: [dataUrl] }] })); setGtSplit(g => g && { ...g, n: k }); toast?.(`Concept ${k} créé`); }} />
+              )}
               {gtCrop && (() => {
                 const cc = (T.concepts || []).find(x => x.id === gtCrop.cid); const imgs = (cc && cc.images) || [];
                 if (!imgs[gtCrop.idx]) return null;
