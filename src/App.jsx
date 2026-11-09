@@ -9006,7 +9006,7 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
             {fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
           </button>
           <canvas ref={canvasRef} width={dims.width} height={dims.height}
-            style={{ width: "100%", height: "auto", display: "block", touchAction: "none", ...(fullscreen ? { maxHeight: "100vh", width: "auto", maxWidth: "100vw" } : {}) }}
+            style={{ width: "100%", height: "auto", display: "block", touchAction: "none", ...(fullscreen ? { maxHeight: "100vh", width: "auto", maxWidth: "100vw" } : (dims.height / dims.width > 1.2 ? { width: "auto", maxWidth: "100%", maxHeight: "78vh", margin: "0 auto" } : {})) }}
             onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp} />
           {previousSchemaGhost && showGhost && (
             <img src={previousSchemaGhost} alt=""
