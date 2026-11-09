@@ -12017,7 +12017,7 @@ function CoachingProBoost({ session }) {
   const [scoutingTitle, setScoutingTitle] = useState("");
   const [editingPlay, setEditingPlay] = useState(null);
   const [viewingPlay, setViewingPlay] = useState(null);
-  const [gtOpenId, setGtOpenId] = useState(null), [gtQuery, setGtQuery] = useState(""), [gtNewName, setGtNewName] = useState(""), [gtPick, setGtPick] = useState(null), [gtPickQuery, setGtPickQuery] = useState(""), [gtEditId, setGtEditId] = useState(null), [gtDraw, setGtDraw] = useState(null), [gtBoardId, setGtBoardId] = useState(null), [gtCrop, setGtCrop] = useState(null), [gtExp, setGtExp] = useState(null), [gtZoom, setGtZoom] = useState(null), [gtLink, setGtLink] = useState({ title: "", url: "" });
+  const [gtOpenId, setGtOpenId] = useState(null), [gtQuery, setGtQuery] = useState(""), [gtNewName, setGtNewName] = useState(""), [gtPick, setGtPick] = useState(null), [gtPickQuery, setGtPickQuery] = useState(""), [gtEditId, setGtEditId] = useState(null), [gtDraw, setGtDraw] = useState(null), [gtBoardId, setGtBoardId] = useState(null), [gtFilter, setGtFilter] = useState([]), [gtTagFor, setGtTagFor] = useState(null), [gtTagInput, setGtTagInput] = useState(""), [gtCrop, setGtCrop] = useState(null), [gtExp, setGtExp] = useState(null), [gtZoom, setGtZoom] = useState(null), [gtLink, setGtLink] = useState({ title: "", url: "" });
   const [viewingExercise, setViewingExercise] = useState(null);
   const [filterPlayType, setFilterPlayType] = useState([]);
   const [filterPlayTags, setFilterPlayTags] = useState([]);
@@ -16258,6 +16258,38 @@ function CoachingProBoost({ session }) {
           const tPlays = (T.playIds || []).map(id => plays.find(p => p.id === id)).filter(Boolean);
           const tEx = (T.exerciseIds || []).map(id => exercises.find(e => e.id === id)).filter(Boolean);
           const toggleId = (field, id) => upd(t => ({ [field]: (t[field] || []).includes(id) ? (t[field] || []).filter(x => x !== id) : [...(t[field] || []), id] }));
+          // Étiquettes du thème (ex : Step out, Flat, Drop) : posées sur chaque tableau, concept, play ou exercice, puis utilisées comme filtres
+          const tm = T.tagMap || {};
+          const tagsOf = (k) => tm[k] || [];
+          const allTags = [...new Set([...(T.tagList || []), ...Object.values(tm).flat()])].sort((a, b) => a.localeCompare(b, "fr"));
+          const visibleItem = (k) => gtFilter.length === 0 || tagsOf(k).some(x => gtFilter.includes(x));
+          const setTags = (k, arr) => upd(t => ({ tagMap: { ...(t.tagMap || {}), [k]: arr }, tagList: [...new Set([...(t.tagList || []), ...arr])] }));
+          const toggleTag = (k, tag) => setTags(k, tagsOf(k).includes(tag) ? tagsOf(k).filter(x => x !== tag) : [...tagsOf(k), tag]);
+          const removeTag = async (tag) => { const ok = await cpbAlert?.(`Supprimer l'étiquette « ${tag} » de ce thème ?`, { confirm: true }); if (!ok) return; upd(t => ({ tagList: (t.tagList || []).filter(x => x !== tag), tagMap: Object.fromEntries(Object.entries(t.tagMap || {}).map(([k, v]) => [k, v.filter(x => x !== tag)])) })); setGtFilter(f => f.filter(x => x !== tag)); };
+          const SUGGEST = ["Step out", "Flat", "Drop", "Show", "Stick / Under", "Ice", "Trappe", "Switch"];
+          const tagRow = (k) => (
+            <div className="mt-1.5">
+              <div className="flex flex-wrap items-center gap-1">
+                {tagsOf(k).map(tg => <span key={tg} className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "#9db4ff", color: "#0f1626" }}>{tg}</span>)}
+                <button onClick={() => { setGtTagFor(gtTagFor === k ? null : k); setGtTagInput(""); }} className="text-[11px] px-2 py-0.5 rounded-full border border-dashed border-[#1B2A4A]/30 text-[#1B2A4A]/60 hover:border-[#FF6B35] hover:text-[#FF6B35]">🏷 {tagsOf(k).length ? "Modifier" : "Étiquettes"}</button>
+              </div>
+              {gtTagFor === k && (
+                <div className="mt-1.5 p-2 rounded-xl bg-[#1B2A4A]/5">
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {[...new Set([...allTags, ...SUGGEST])].map(tg => { const on = tagsOf(k).includes(tg); return (
+                      <span key={tg} className="inline-flex items-center">
+                        <button onClick={() => toggleTag(k, tg)} className={`text-xs px-2.5 py-1 rounded-full border font-semibold ${on ? "text-white border-[#1B2A4A]" : "bg-white text-[#1B2A4A] border-[#1B2A4A]/20"}`} style={on ? { background: "#1B2A4A" } : undefined}>{tg}</button>
+                        {allTags.includes(tg) && <button onClick={() => removeTag(tg)} className="text-[10px] text-[#1B2A4A]/30 hover:text-red-600 ml-0.5" title="Supprimer cette étiquette du thème">✕</button>}
+                      </span>); })}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <input value={gtTagInput} onChange={e => setGtTagInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && gtTagInput.trim()) { const v = gtTagInput.trim(); setTags(k, tagsOf(k).includes(v) ? tagsOf(k) : [...tagsOf(k), v]); setGtTagInput(""); } }} placeholder="+ nouvelle étiquette" className="flex-1 border border-[#1B2A4A]/20 rounded-lg px-2 py-1 text-xs bg-white outline-none" />
+                    <button onClick={() => setGtTagFor(null)} className="text-xs font-semibold text-white px-3 py-1 rounded-full" style={{ backgroundColor: "var(--sport-accent)" }}>OK</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
           const secTitle = (label, n, action) => (
             <div className="flex items-center justify-between mt-7 mb-2"><div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold">{label} <span className="text-[#1B2A4A]/30">({n})</span></div>{action}</div>
           );
@@ -16309,6 +16341,13 @@ function CoachingProBoost({ session }) {
                 );
               })()}
               <textarea value={T.desc || ""} onChange={e => upd({ desc: e.target.value })} rows={2} placeholder="En une ou deux phrases : l'idée de ce thème…" className="w-full mt-2 text-sm text-[#1B2A4A]/80 border border-[#1B2A4A]/15 rounded-lg px-3 py-2 bg-white/60 outline-none focus:border-[#FF6B35]" />
+              {allTags.length > 0 && (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5 sticky top-0 z-10 py-2 bg-[#F2EDE4]/95 backdrop-blur">
+                  <span className="text-xs text-[#1B2A4A]/50 mr-1">Filtrer :</span>
+                  {allTags.map(tg => { const on = gtFilter.includes(tg); return <button key={tg} onClick={() => setGtFilter(f => on ? f.filter(x => x !== tg) : [...f, tg])} className={`px-3.5 py-2 rounded-full text-sm font-semibold border ${on ? "text-white border-[#1B2A4A]" : "bg-white text-[#1B2A4A] border-[#1B2A4A]/20"}`} style={on ? { background: "#1B2A4A" } : undefined}>{tg}</button>; })}
+                  {gtFilter.length > 0 && <button onClick={() => setGtFilter([])} className="text-xs text-[#FF6B35] font-semibold underline ml-1">Tout afficher</button>}
+                </div>
+              )}
 
               {secTitle("Tableaux (éditeur libre)", (T.boards || []).length, (
                 <div className="flex gap-1.5 flex-wrap justify-end">
@@ -16319,7 +16358,7 @@ function CoachingProBoost({ session }) {
               ))}
               {(T.boards || []).length === 0 && <p className="text-sm text-[#1B2A4A]/40">Compose une page comme sur Canva : texte, images, schémas, formes et flèches posés où tu veux. Choisis un modèle ci-dessus pour commencer.</p>}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {(T.boards || []).map(b => (
+                {(T.boards || []).filter(b => visibleItem("board:" + b.id)).map(b => (
                   <div key={b.id} className="ns-card border border-[#1B2A4A]/10 rounded-2xl bg-white shadow-md shadow-[#1B2A4A]/10 p-3">
                     <button onClick={() => setGtBoardId(b.id)} className="block w-full rounded-xl overflow-hidden border border-[#1B2A4A]/10 ns-media" style={{ lineHeight: 0 }}><BoardPageStatic page={b.pages[0]} width={300} /></button>
                     <div className="flex items-center justify-between gap-2 mt-2">
@@ -16329,6 +16368,7 @@ function CoachingProBoost({ session }) {
                         <button onClick={async () => { const ok = await cpbAlert?.(`Supprimer le tableau « ${b.name} » ?`, { confirm: true }); if (ok) upd(t => ({ boards: (t.boards || []).filter(x => x.id !== b.id) })); }} className="p-1.5 text-[#1B2A4A]/30 hover:text-red-600" title="Supprimer"><Trash2 size={15} /></button>
                       </div>
                     </div>
+                    {tagRow("board:" + b.id)}
                   </div>
                 ))}
               </div>
@@ -16337,7 +16377,7 @@ function CoachingProBoost({ session }) {
               {secTitle("Concepts", (T.concepts || []).length, addBtn("Nouveau concept", addConcept))}
               {(T.concepts || []).length === 0 && <p className="text-sm text-[#1B2A4A]/40">Écris ici tes principes, consignes et lectures. Astuce : une ligne qui commence par « - » devient une puce, par « # » un sous-titre.</p>}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {(T.concepts || []).map(c => (
+                {(T.concepts || []).filter(c => visibleItem("concept:" + c.id)).map(c => (
                   <div key={c.id} className="border border-[#1B2A4A]/10 rounded-2xl bg-white shadow-md shadow-[#1B2A4A]/10 p-4">
                     {gtEditId === c.id ? (
                       <>
@@ -16375,6 +16415,7 @@ function CoachingProBoost({ session }) {
                           </div>
                         )}
                         {c.body ? <div className="space-y-0.5">{renderNote(c.body)}</div> : ((c.images || []).length === 0 && <p className="text-sm text-[#1B2A4A]/30 italic">Vide : clique sur le crayon pour écrire, dessiner ou ajouter une image.</p>)}
+                        {tagRow("concept:" + c.id)}
                       </>
                     )}
                   </div>
@@ -16384,9 +16425,10 @@ function CoachingProBoost({ session }) {
               {secTitle("Plays du Play Book", tPlays.length, addBtn("Ajouter des plays", () => { setGtPick("plays"); setGtPickQuery(""); }))}
               {tPlays.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucun play rattaché à ce thème.</p>}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {tPlays.map(pl => (
+                {tPlays.filter(pl => visibleItem("play:" + pl.id)).map(pl => (
                   <div key={pl.id}>
                     <PlayCard play={pl} onView={() => setViewingPlay(pl)} />
+                    <div className="px-2">{tagRow("play:" + pl.id)}</div>
                     <button onClick={() => toggleId("playIds", pl.id)} className="text-[11px] text-[#1B2A4A]/40 hover:text-red-600 underline mt-1 ml-2">Retirer du thème</button>
                   </div>
                 ))}
@@ -16395,9 +16437,10 @@ function CoachingProBoost({ session }) {
               {secTitle("Exercices de la Bibliothèque", tEx.length, addBtn("Ajouter des exercices", () => { setGtPick("exercises"); setGtPickQuery(""); }))}
               {tEx.length === 0 && <p className="text-sm text-[#1B2A4A]/40">Aucun exercice rattaché à ce thème.</p>}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {tEx.map((ex, i) => (
+                {tEx.filter(ex => visibleItem("ex:" + ex.id)).map((ex, i) => (
                   <div key={ex.id}>
                     <ExerciseCard ex={ex} index={i} onClick={() => setViewingExercise(ex)} onView={() => setViewingExercise(ex)} />
+                    <div className="px-2">{tagRow("ex:" + ex.id)}</div>
                     <button onClick={() => toggleId("exerciseIds", ex.id)} className="text-[11px] text-[#1B2A4A]/40 hover:text-red-600 underline mt-1 ml-2">Retirer du thème</button>
                   </div>
                 ))}
