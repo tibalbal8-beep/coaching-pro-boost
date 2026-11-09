@@ -2391,6 +2391,47 @@ function mergeScoutPlayers(r) {
     return p;
   });
 }
+// Fiche d'un thème de jeu (concepts, plays, exercices, liens) : page A4 autonome, partageable ou imprimable en PDF
+function buildThemeHtml(theme, playsData, exData, logo = null, opts = {}) {
+  const esc = (str) => String(str ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const note = (txt) => String(txt || "").split("\n").map(l => {
+    if (/^#\s+/.test(l)) return `<div class="th-h">${esc(l.replace(/^#\s+/, ""))}</div>`;
+    if (/^[-•]\s+/.test(l)) return `<div class="th-li"><b>•</b><span>${esc(l.replace(/^[-•]\s+/, ""))}</span></div>`;
+    return l.trim() ? `<p class="th-p">${esc(l)}</p>` : `<div style="height:6px"></div>`;
+  }).join("");
+  const imgs = (arr) => arr.length ? `<div class="th-imgs">${arr.map(src => `<img src="${src}" alt="" />`).join("")}</div>` : "";
+  const sec = (title, n, body) => `<section class="card"><h2><i></i>${esc(title)} <small style="font-weight:400;opacity:.5">(${n})</small></h2>${body}</section>`;
+  const concepts = opts.concepts !== false ? (theme.concepts || []) : [];
+  const conceptsHtml = concepts.length ? sec("Concepts", concepts.length, concepts.map(c => `<div class="th-c"><h3>${esc(c.title)}</h3>${imgs(c.images || [])}${note(c.body)}</div>`).join("")) : "";
+  const playsHtml = playsData.length ? sec("Plays", playsData.length, `<div class="th-grid">${playsData.map(pl => `<div class="th-c"><h3>${esc(pl.titre)}</h3><div class="th-sub">${esc(pl.type || "")}${pl.scoutedTeam ? " · " + esc(pl.scoutedTeam) : ""}</div>${imgs((pl._images || []).map(i => i.data).filter(Boolean).slice(0, 3))}${pl.description ? `<p class="th-p">${esc(pl.description)}</p>` : ""}${(pl.tags || []).length ? `<div>${pl.tags.map(t => `<span class="chip">${esc(t)}</span>`).join("")}</div>` : ""}</div>`).join("")}</div>`) : "";
+  const exHtml = exData.length ? sec("Exercices", exData.length, `<div class="th-grid">${exData.map(({ ex, images }) => `<div class="th-c"><h3>${esc(ex.titre)}</h3><div class="th-sub">${[ex.duree ? ex.duree + " min" : "", ex.format, ex.niveau].filter(Boolean).map(esc).join(" · ")}</div>${imgs(images.slice(0, 3))}${ex.objectif ? `<p class="th-p">${esc(ex.objectif)}</p>` : ""}${(ex.themes || []).length ? `<div>${ex.themes.slice(0, 4).map(t => `<span class="chip">${esc(t)}</span>`).join("")}</div>` : ""}</div>`).join("")}</div>`) : "";
+  const links = opts.links !== false ? (theme.links || []) : [];
+  const linksHtml = links.length ? sec("Liens et vidéos", links.length, links.map(l => `<p class="th-p">▶ <a href="${esc(/^https?:\/\//i.test(l.url) ? l.url : "https://" + l.url)}">${esc(l.title || l.url)}</a></p>`).join("")) : "";
+  return `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(theme.name)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>${SCOUT_REPORT_CSS}
+.th-c{margin:0 0 14px;break-inside:avoid}.th-c h3{font-size:15px;margin:0 0 4px;color:#1B2A4A}.th-sub{font-size:11px;color:#1B2A4A99;margin-bottom:6px}
+.th-h{font-weight:700;color:#1B2A4A;margin-top:8px}.th-p{font-size:13px;line-height:1.45;margin:2px 0}.th-li{display:flex;gap:8px;font-size:13px;line-height:1.45}.th-li b{color:#FF6B35}
+.th-imgs{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:6px 0}.th-imgs img{width:100%;border-radius:10px;border:1px solid #1B2A4A14;background:#fff;object-fit:contain}
+.th-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}@media(max-width:640px){.th-grid{grid-template-columns:1fr}}
+.cpb-close{position:fixed;top:10px;left:10px;z-index:99;width:40px;height:40px;border-radius:50%;border:0;background:#1B2A4A;color:#fff;font-size:20px;cursor:pointer;box-shadow:0 4px 14px rgba(27,42,74,.35)}@media print{.cpb-close{display:none!important}}
+</style></head><body>
+<button class="cpb-close" title="Fermer" aria-label="Fermer" onclick="try{window.close()}catch(e){}if(history.length>1){history.back()}">✕</button>
+${PRINT_BAR_HTML}
+<div class="page">
+  <header class="hero">
+    ${logo ? `<img src="${logo}" alt="Logo" class="hero-logo" />` : ""}
+    <div class="brand"><b>●</b> Coaching Pro Boost</div>
+    <div class="kicker">Fiche thème</div>
+    <h1>${esc(theme.name)}</h1>
+    ${theme.desc ? `<div class="meta">${esc(theme.desc)}</div>` : ""}
+  </header>
+  ${conceptsHtml}${playsHtml}${exHtml}${linksHtml}
+  <p class="stamp">Coaching Pro Boost · coachingproboost.com · fiche générée le ${new Date().toLocaleDateString("fr-FR")}</p>
+</div></body></html>`;
+}
 // Équipe du comparatif championnat qui correspond à l'adversaire du report (choix manuel r.faceTeam, sinon le nom)
 function scoutFaceTeam(r, league) {
   const T = (league && league.teams) || []; if (!T.length) return null;
@@ -11722,7 +11763,7 @@ function CoachingProBoost({ session }) {
   const [scoutingTitle, setScoutingTitle] = useState("");
   const [editingPlay, setEditingPlay] = useState(null);
   const [viewingPlay, setViewingPlay] = useState(null);
-  const [gtOpenId, setGtOpenId] = useState(null), [gtQuery, setGtQuery] = useState(""), [gtNewName, setGtNewName] = useState(""), [gtPick, setGtPick] = useState(null), [gtPickQuery, setGtPickQuery] = useState(""), [gtEditId, setGtEditId] = useState(null), [gtDraw, setGtDraw] = useState(null), [gtZoom, setGtZoom] = useState(null), [gtLink, setGtLink] = useState({ title: "", url: "" });
+  const [gtOpenId, setGtOpenId] = useState(null), [gtQuery, setGtQuery] = useState(""), [gtNewName, setGtNewName] = useState(""), [gtPick, setGtPick] = useState(null), [gtPickQuery, setGtPickQuery] = useState(""), [gtEditId, setGtEditId] = useState(null), [gtDraw, setGtDraw] = useState(null), [gtCrop, setGtCrop] = useState(null), [gtExp, setGtExp] = useState(null), [gtZoom, setGtZoom] = useState(null), [gtLink, setGtLink] = useState({ title: "", url: "" });
   const [viewingExercise, setViewingExercise] = useState(null);
   const [filterPlayType, setFilterPlayType] = useState([]);
   const [filterPlayTags, setFilterPlayTags] = useState([]);
@@ -15975,7 +16016,44 @@ function CoachingProBoost({ session }) {
           return (
             <div className="max-w-5xl">
               <button onClick={() => { setGtOpenId(null); setGtEditId(null); }} className="text-sm text-[#1B2A4A]/50 hover:text-[#1B2A4A] mb-2">← Tous les thèmes</button>
-              <input value={T.name} onChange={e => upd({ name: e.target.value })} className="w-full text-2xl font-bold text-[#1B2A4A] bg-transparent outline-none border-b border-transparent focus:border-[#FF6B35]" style={{ fontFamily: "Oswald, sans-serif" }} />
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+              <input value={T.name} onChange={e => upd({ name: e.target.value })} className="flex-1 min-w-[200px] text-2xl font-bold text-[#1B2A4A] bg-transparent outline-none border-b border-transparent focus:border-[#FF6B35]" style={{ fontFamily: "Oswald, sans-serif" }} />
+              <button onClick={() => setGtExp(e => e ? null : { concepts: true, plays: true, exercises: true, links: true, busy: false })} className="text-sm font-semibold text-white px-4 py-2 rounded-full" style={{ backgroundColor: "#2563EB" }}>📤 Exporter / partager</button>
+              </div>
+              {gtExp && (() => {
+                const run = async (mode) => {
+                  setGtExp(e => ({ ...e, busy: true }));
+                  try {
+                    const playsData = gtExp.plays && T.playIds?.length ? await loadPlaysWithImages(T.playIds) : [];
+                    const exData = [];
+                    if (gtExp.exercises) for (const ex of tEx) {
+                      const images = [];
+                      try { const fr = ex.file?.data ? { data: ex.file.data } : (ex.file ? JSON.parse((await storage.get(`file:${ex.id}`))?.value || "null") : null); if (fr?.data && (ex.file?.type || "").startsWith("image/")) images.push(fr.data); } catch {}
+                      try { const sc = ex.schemas?.length ? ex.schemas : (ex.schemaCount ? JSON.parse((await storage.get(`schemas:${ex.id}`))?.value || "[]") : []); images.push(...sc); } catch {}
+                      exData.push({ ex, images });
+                    }
+                    const html = buildThemeHtml(T, playsData, exData, clubLogo || null, { concepts: gtExp.concepts, links: gtExp.links });
+                    const blob = new Blob([html], { type: "text/html;charset=utf-8" }), fname = `theme-${slugifyForFile(T.name)}.html`;
+                    if (mode === "share") {
+                      const f = new File([blob], fname, { type: "text/html" });
+                      if (navigator.canShare && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f], title: T.name }); setGtExp(null); return; } catch (e) { if (e && e.name === "AbortError") { setGtExp(x => ({ ...x, busy: false })); return; } } }
+                    }
+                    downloadBlob(blob, fname); toast?.("✓ Fiche exportée"); setGtExp(null);
+                  } catch (e) { console.error("Export thème", e); cpbAlert?.("L'export a échoué : " + (e?.message || e)); setGtExp(x => ({ ...x, busy: false })); }
+                };
+                const chk = (k, label) => <label className="flex items-center gap-2 text-sm text-[#1B2A4A]"><input type="checkbox" checked={!!gtExp[k]} onChange={e => setGtExp({ ...gtExp, [k]: e.target.checked })} /> {label}</label>;
+                return (
+                  <div className="mt-3 border border-[#1B2A4A]/15 rounded-2xl bg-white p-4">
+                    <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-2">Contenu de la fiche</div>
+                    <div className="flex flex-wrap gap-x-5 gap-y-2 mb-3">{chk("concepts", "Concepts")}{chk("plays", "Plays")}{chk("exercises", "Exercices")}{chk("links", "Liens et vidéos")}</div>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <button disabled={gtExp.busy} onClick={() => run("download")} className="px-4 py-2 rounded-full text-sm font-semibold text-white disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>{gtExp.busy ? "Préparation…" : "Télécharger la fiche"}</button>
+                      <button disabled={gtExp.busy} onClick={() => run("share")} className="px-4 py-2 rounded-full text-sm font-semibold border border-[#1B2A4A]/25 text-[#1B2A4A] disabled:opacity-50">Partager…</button>
+                      <span className="text-[11px] text-[#1B2A4A]/40">Le fichier s'ouvre dans le navigateur ; le bouton « Imprimer / PDF » en haut à droite donne un PDF A4.</span>
+                    </div>
+                  </div>
+                );
+              })()}
               <textarea value={T.desc || ""} onChange={e => upd({ desc: e.target.value })} rows={2} placeholder="En une ou deux phrases : l'idée de ce thème…" className="w-full mt-2 text-sm text-[#1B2A4A]/80 border border-[#1B2A4A]/15 rounded-lg px-3 py-2 bg-white/60 outline-none focus:border-[#FF6B35]" />
 
               {secTitle("Concepts", (T.concepts || []).length, addBtn("Nouveau concept", addConcept))}
@@ -15991,6 +16069,7 @@ function CoachingProBoost({ session }) {
                             {(c.images || []).map((src, ii) => (
                               <div key={ii} className="relative group">
                                 <img src={src} alt="" onClick={() => setGtDraw({ cid: c.id, idx: ii })} title="Modifier ce schéma" className="w-28 h-20 object-cover rounded-lg border border-[#1B2A4A]/15 cursor-pointer" />
+                                <button onClick={() => setGtCrop({ cid: c.id, idx: ii })} title="Rogner cette image" className="absolute -bottom-1.5 -right-1.5 bg-white border border-[#1B2A4A]/25 text-[#1B2A4A] rounded-full w-6 h-6 text-[12px] flex items-center justify-center shadow">✂️</button>
                                 <button onClick={() => updConcept(c.id, { images: (c.images || []).filter((_, j) => j !== ii) })} className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-5 h-5 text-[11px] flex items-center justify-center" title="Retirer">✕</button>
                               </div>
                             ))}
@@ -16073,6 +16152,17 @@ function CoachingProBoost({ session }) {
                       allSchemas={imgs} currentSchemaIdx={gtDraw.idx} referencePhotoOptions={[]}
                       onCancel={() => setGtDraw(null)}
                       onValidate={(dataUrl) => { updConcept(gtDraw.cid, { images: gtDraw.idx < imgs.length ? imgs.map((x, i) => i === gtDraw.idx ? dataUrl : x) : [...imgs, dataUrl] }); setGtDraw(null); }} />
+                  </div>
+                );
+              })()}
+              {gtCrop && (() => {
+                const cc = (T.concepts || []).find(x => x.id === gtCrop.cid); const imgs = (cc && cc.images) || [];
+                if (!imgs[gtCrop.idx]) return null;
+                return (
+                  <div className="fixed inset-0 z-[320] bg-[#F2EDE4] overflow-auto p-3 sm:p-5">
+                    <CropPhotoView imageData={imgs[gtCrop.idx]} courtType={SPORT_COURT}
+                      onCancel={() => setGtCrop(null)}
+                      onCrop={(dataUrl) => { updConcept(gtCrop.cid, { images: imgs.map((x, i) => i === gtCrop.idx ? dataUrl : x) }); setGtCrop(null); }} />
                   </div>
                 );
               })()}
