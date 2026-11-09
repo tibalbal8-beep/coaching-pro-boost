@@ -11460,10 +11460,12 @@ function CoachingProBoost({ session }) {
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:'Inter',sans-serif;background:#F2EDE4;color:#1B2A4A;padding:20px}
-    @media print{body{background:white;padding:0}@page{margin:8mm;size:A4}}
+    @media print{body{background:white;padding:0}@page{margin:8mm;size:A4}.cpb-close{display:none!important}}
+    .cpb-close{position:fixed;top:10px;right:10px;z-index:99;width:40px;height:40px;border-radius:50%;border:0;background:#1B2A4A;color:#fff;font-size:20px;line-height:1;cursor:pointer;box-shadow:0 4px 14px rgba(27,42,74,.35)}
   </style>
 </head>
 <body>
+  <button class="cpb-close" title="Fermer" aria-label="Fermer" onclick="try{window.close()}catch(e){}if(history.length>1){history.back()}else{document.body.innerHTML='&lt;p style=&quot;font-family:sans-serif;padding:24px;color:#1B2A4A&quot;&gt;Tu peux fermer cet onglet ou cette fenêtre.&lt;/p&gt;'}">✕</button>
   <div style="max-width:780px;margin:0 auto;">
     <div style="background:#1B2A4A;color:white;border-radius:12px;padding:24px;margin-bottom:20px;text-align:center;">
       ${logo ? `<img src="${logo}" alt="Logo" style="width:56px;height:56px;object-fit:contain;border-radius:8px;background:white;padding:4px;margin-bottom:8px;" />` : `<div style="font-size:32px;margin-bottom:8px;">🏀</div>`}
