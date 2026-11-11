@@ -2762,7 +2762,21 @@ function scoutInsightsHtml(r, league, games) {
   const css = `<style>.ins-g{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media (max-width:700px){.ins-g{grid-template-columns:1fr}}.ins-b{border:1px solid #1B2A4A1f;border-radius:16px;padding:14px;background:#fff;break-inside:avoid}.ins-b h3{font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:#1B2A4A99;margin:0 0 6px}.ins-h{font-size:15px;line-height:1.3;color:#1B2A4A}.ins-h b{color:#FF6B35}.ins-s{font-size:11px;color:#1B2A4A80;margin:4px 0 10px}.ins-r{display:grid;grid-template-columns:minmax(0,38%) 1fr 46px;gap:8px;align-items:center;margin:5px 0}.ins-n{font-size:12px;font-weight:600;line-height:1.15}.ins-n small{display:block;font-weight:400;font-size:10px;color:#1B2A4A80}.ins-t{height:12px;background:#1B2A4A12;border-radius:99px;overflow:hidden}.ins-t i{display:block;height:100%;border-radius:99px}.ins-v{font-size:12px;font-weight:600;text-align:right}.ins-v.hi{font-weight:800;color:#FF6B35}</style>`;
   return `<section class="card"><h2><i></i>Tendances de ${esc(T.name)}</h2><p class="muted" style="font-size:12px;margin:0 0 10px">D'après ${gp} match${gp > 1 ? "s" : ""} LiveStats.</p>${css}<div class="ins-g">${blocks.map(b => `<div class="ins-b"><h3>${b.ttl}</h3><div class="ins-h">${b.head}</div><div class="ins-s">${b.sub}</div>${b.rows}</div>`).join("")}</div></section>`;
 }
+// Matchs LiveStats du comparatif de l'équipe scoutée, au format « box score » du report (évite de recoller les liens)
+function scoutBoxFromLeague(r, league, games) {
+  if (!league || !games || !games.length) return null;
+  const id = scoutFaceTeam(r, league); const T = id && league.teams.find(t => t.id === id); if (!T) return null;
+  const { find } = leagueTeamClusters(games, league.teams), key = find(leagueNorm(T.name));
+  const K = ["pts", "fgm", "fga", "fg3m", "fg3a", "ftm", "fta", "oreb", "dreb", "ast", "tov", "stl"];
+  const side = (t) => ({ pts: t.v[0], fgm: t.v[1], fga: t.v[2], fg3m: t.v[3], fg3a: t.v[4], ftm: t.v[5], fta: t.v[6], oreb: t.v[7], dreb: t.v[8], ast: t.v[9], tov: t.v[10], stl: t.v[11] });
+  const out = [];
+  games.forEach(g => { const i = [0, 1].find(k => g.t[k] && find(leagueNorm(g.t[k].n)) === key); if (i === undefined) return;
+    const me = side(g.t[i]), op = side(g.t[1 - i]);
+    out.push({ date: "", opponent: g.t[1 - i].n, score: `${me.pts}-${op.pts}`, ...me, oppPts: op.pts, opp: op }); });
+  return out.length ? out : null;
+}
 function buildScoutReportHtml(r, logo = null, league = null, games = null) {
+  if (!r.boxScore) { try { const d = scoutBoxFromLeague(r, league, games); if (d) r = { ...r, boxScore: { fileName: "LiveStats du comparatif", games: d, excluded: [] } }; } catch {} }
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const merged = mergeScoutPlayers(r);
   const photos = {}, manual = {};
@@ -2781,7 +2795,7 @@ function buildScoutReportHtml(r, logo = null, league = null, games = null) {
     const pill = (l, v) => `<div class="bs-kpi"><b>${v}</b><span>${l}</span></div>`;
     const rows = S.perGame.map(({ g, m }) => {
       const away = /^\s*@/.test(g.opponent), name = esc(String(g.opponent).replace(/^\s*(@|vs\.?|contre)\s*/i, ""));
-      return `<tr style="border-top:1px solid #1B2A4A14"><td style="padding:5px 8px">${esc(g.date)}</td><td style="padding:5px 8px">${away ? "Extérieur" : "Domicile"}</td><td style="padding:5px 8px;font-weight:600">${name}</td><td style="padding:5px 8px;text-align:right">${esc(g.score)}</td><td style="padding:5px 8px;text-align:right;font-weight:700;color:${m.win === true ? "#15803d" : m.win === false ? "#b91c1c" : "#1B2A4A"}">${m.win === true ? "V" : m.win === false ? "D" : ""}</td></tr>`;
+      return `<tr style="border-top:1px solid #1B2A4A14"><td style="padding:5px 8px">${esc(g.date)}</td><td style="padding:5px 8px">${away ? "Extérieur" : /^\s*(vs\.?|contre)\s/i.test(String(g.opponent)) ? "Domicile" : ""}</td><td style="padding:5px 8px;font-weight:600">${name}</td><td style="padding:5px 8px;text-align:right">${esc(g.score)}</td><td style="padding:5px 8px;text-align:right;font-weight:700;color:${m.win === true ? "#15803d" : m.win === false ? "#b91c1c" : "#1B2A4A"}">${m.win === true ? "V" : m.win === false ? "D" : ""}</td></tr>`;
     }).join("");
     return `<section class="card"><h2><i></i>Bilan de ${esc(r.opponent)}</h2>
       <div class="bs-kpis">${pill("Total", rc({ w: S.wins, l: S.losses }))}${pill("À domicile", rc(S.homeRec))}${pill("À l'extérieur", rc(S.awayRec))}</div>
@@ -17184,6 +17198,7 @@ function CoachingProBoost({ session }) {
                   {activeSr.lnbPlayers && <span className="text-xs text-[#1B2A4A]/60">Page LNB{activeSr.lnbTeam ? ` (${activeSr.lnbTeam})` : ""} ({activeSr.lnbPlayers.length}) <button onClick={() => updateActiveSr({ lnbPlayers: null, extraStats: null })} className="text-red-500 ml-1 hover:underline">retirer</button></span>}
                   {activeSr.boxPlayers && <span className="text-xs text-[#1B2A4A]/60">Box score collé ({activeSr.boxPlayers.length}) <button onClick={() => updateActiveSr({ boxPlayers: null, teamTotals: null, oppTotals: null })} className="text-red-500 ml-1 hover:underline">retirer</button></span>}
                 </div>
+                {!activeSr.boxScore && (() => { let d = null; try { d = scoutBoxFromLeague(activeSr, leagueData, leagueGames); } catch {} return d ? <p className="text-xs text-[#16a34a] font-semibold mb-1">✓ {d.length} match{d.length > 1 ? "s" : ""} LiveStats de cette équipe repris automatiquement du comparatif (bilan et tendances dans le report) : pas besoin de coller les liens.</p> : null; })()}
                 {activeSr.boxScore && (() => {
                   const bsAll = activeSr.boxScore, ex = bsAll.excluded || [], sel = boxSelected(bsAll).games || [];
                   const S = boxScoreSummary(sel.length ? sel : bsAll.games), all = boxScoreSummary(bsAll.games);
