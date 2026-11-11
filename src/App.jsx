@@ -2700,7 +2700,69 @@ function scoutFaceHtml(r, league) {
   const other = scoutFaceTeam(r, league); if (!other || other === league.mine) return "";
   try { return leagueHtml({ league: { ...league, other }, faceOnly: true }); } catch { return ""; }
 }
-function buildScoutReportHtml(r, logo = null, league = null) {
+// Tendances de l'équipe adverse d'après les matchs LiveStats du comparatif : qui prend les tirs / les 3 points, qui va au rebond offensif, sur qui faire faute
+function scoutInsightsHtml(r, league, games) {
+  if (!league || !games || !games.length || r.insightsOn === false) return "";
+  const id = scoutFaceTeam(r, league); if (!id) return "";
+  const T = league.teams.find(t => t.id === id); if (!T) return "";
+  const esc = (str) => String(str ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const { find } = leagueTeamClusters(games, league.teams), key = find(leagueNorm(T.name));
+  const by = new Map(); let gp = 0;
+  games.forEach(g => [0, 1].forEach(i => {
+    if (!g.t[i] || find(leagueNorm(g.t[i].n)) !== key || !(g.t[i].pl || []).length) return;
+    gp++;
+    g.t[i].pl.forEach(p => {
+      const k = leagueNorm(p.n); let e = by.get(k);
+      if (!e) { const pretty = p.n.split(" ").map(w => w.length > 1 && w === w.toUpperCase() ? w.charAt(0) + w.slice(1).toLowerCase() : w).join(" "); e = { name: pretty, gp: 0, v: Array(14).fill(0) }; by.set(k, e); }
+      e.gp++; p.v.forEach((x, j) => { e.v[j] += x; });
+    });
+  }));
+  const P = [...by.values()]; if (!gp || !P.length) return "";
+  const sum = (j) => P.reduce((a, p) => a + p.v[j], 0);
+  const pct = (x) => Math.round(x * 100), fr = (x, d = 1) => x.toFixed(d).replace(".", ",");
+  const short = (n) => { const w = n.trim().split(/\s+/); return w.length > 1 ? w[0].charAt(0) + ". " + w.slice(1).join(" ") : n; };
+  // plus petit groupe de joueurs qui réunit au moins `thr` de la statistique
+  const topShare = (arr, getV, total, thr) => { let c = 0, k = 0; for (const p of arr) { c += getV(p); k++; if (c / total >= thr) break; } return { k, share: c / total }; };
+  const bar = (label, sub, frac, text, color, hi) => `<div class="ins-r"><div class="ins-n">${esc(short(label))}<small>${esc(sub)}</small></div><div class="ins-t"><i style="width:${Math.max(2, Math.round(frac * 100))}%;background:${color}"></i></div><div class="ins-v${hi ? " hi" : ""}">${text}</div></div>`;
+  const blocks = [];
+  // 1 · Les 3 points
+  const A3 = sum(4), M3 = sum(3);
+  if (A3 >= 15) {
+    const L = [...P].sort((a, b) => b.v[4] - a.v[4]), ts = topShare(L, p => p.v[4], A3, 0.8), mx = L[0].v[4] / A3;
+    blocks.push({ ttl: "Qui prend les tirs à 3 points", head: `<b>${ts.k} joueur${ts.k > 1 ? "s" : ""}</b> prennent <b>${pct(ts.share)} %</b> des tirs à 3 points de l'équipe${ts.k <= 5 ? " : focus sur eux" : ""}`,
+      sub: `Équipe : ${fr(A3 / gp)} tentatives par match, ${pct(M3 / A3)} % de réussite`,
+      rows: L.slice(0, 6).map((p, i) => bar(p.name, `${fr(p.v[4] / p.gp)} tent./match · ${p.v[4] ? pct(p.v[3] / p.v[4]) : 0} %`, p.v[4] / A3 / mx, pct(p.v[4] / A3) + " %", i < ts.k ? "#FF6B35" : "#9db4ff", i < ts.k)).join("") });
+  }
+  // 2 · Les tirs en général
+  const FA = sum(2), PT = sum(0);
+  if (FA >= 30) {
+    const L = [...P].sort((a, b) => b.v[2] - a.v[2]), ts = topShare(L, p => p.v[2], FA, 0.7), mx = L[0].v[2] / FA;
+    blocks.push({ ttl: "Qui prend les tirs", head: `<b>${ts.k} joueur${ts.k > 1 ? "s" : ""}</b> prennent <b>${pct(ts.share)} %</b> des tirs de l'équipe`,
+      sub: `Équipe : ${fr(FA / gp)} tirs par match, ${fr(PT / gp)} points`,
+      rows: L.slice(0, 6).map((p, i) => bar(p.name, `${fr(p.v[2] / p.gp)} tirs/match · ${fr(p.v[0] / p.gp)} pts`, p.v[2] / FA / mx, pct(p.v[2] / FA) + " %", "#1B2A4A", i < ts.k)).join("") });
+  }
+  // 3 · Rebond offensif
+  const OR = sum(7);
+  if (OR >= 10) {
+    const L = [...P].sort((a, b) => b.v[7] - a.v[7]), ts = topShare(L, p => p.v[7], OR, 0.7), mx = L[0].v[7] / OR;
+    blocks.push({ ttl: "Rebond offensif : vigilance", head: `<b>${ts.k} joueur${ts.k > 1 ? "s" : ""}</b> prennent <b>${pct(ts.share)} %</b> des rebonds offensifs`,
+      sub: `Équipe : ${fr(OR / gp)} rebonds offensifs par match`,
+      rows: L.slice(0, 6).map((p, i) => bar(p.name, `${fr(p.v[7] / p.gp)} reb. off./match`, p.v[7] / OR / mx, pct(p.v[7] / OR) + " %", "#2563EB", i < ts.k)).join("") });
+  }
+  // 4 · Lancers francs : sur qui faire faute
+  const FTA = sum(6), FTM = sum(5), minFt = Math.max(6, Math.round(FTA * 0.04));
+  if (FTA >= 20) {
+    const Q = P.filter(p => p.v[6] >= minFt).sort((a, b) => a.v[5] / a.v[6] - b.v[5] / b.v[6]);
+    const weak = Q.filter(p => p.v[5] / p.v[6] < 0.65);
+    if (Q.length >= 3) blocks.push({ ttl: "Lancers francs : sur qui faire faute", head: weak.length ? `Faute possible sur <b>${weak.slice(0, 3).map(p => esc(short(p.name))).join(", ")}</b> (moins de 65 % aux lancers francs)` : `Aucun point faible évident aux lancers francs`,
+      sub: `Équipe : ${fr(FTA / gp)} lancers par match, ${pct(FTM / FTA)} % de réussite · joueurs avec au moins ${minFt} lancers tentés`,
+      rows: Q.slice(0, 7).map(p => { const q = p.v[5] / p.v[6]; return bar(p.name, `${fr(p.v[6] / p.gp)} lancers/match`, q, pct(q) + " %", q < 0.65 ? "#DC2626" : q >= 0.8 ? "#16A34A" : "#9db4ff", q < 0.65); }).join("") });
+  }
+  if (!blocks.length) return "";
+  const css = `<style>.ins-g{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media (max-width:700px){.ins-g{grid-template-columns:1fr}}.ins-b{border:1px solid #1B2A4A1f;border-radius:16px;padding:14px;background:#fff;break-inside:avoid}.ins-b h3{font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:#1B2A4A99;margin:0 0 6px}.ins-h{font-size:15px;line-height:1.3;color:#1B2A4A}.ins-h b{color:#FF6B35}.ins-s{font-size:11px;color:#1B2A4A80;margin:4px 0 10px}.ins-r{display:grid;grid-template-columns:minmax(0,38%) 1fr 46px;gap:8px;align-items:center;margin:5px 0}.ins-n{font-size:12px;font-weight:600;line-height:1.15}.ins-n small{display:block;font-weight:400;font-size:10px;color:#1B2A4A80}.ins-t{height:12px;background:#1B2A4A12;border-radius:99px;overflow:hidden}.ins-t i{display:block;height:100%;border-radius:99px}.ins-v{font-size:12px;font-weight:600;text-align:right}.ins-v.hi{font-weight:800;color:#FF6B35}</style>`;
+  return `<section class="card"><h2><i></i>Tendances de ${esc(T.name)}</h2><p class="muted" style="font-size:12px;margin:0 0 10px">D'après ${gp} match${gp > 1 ? "s" : ""} LiveStats.</p>${css}<div class="ins-g">${blocks.map(b => `<div class="ins-b"><h3>${b.ttl}</h3><div class="ins-h">${b.head}</div><div class="ins-s">${b.sub}</div>${b.rows}</div>`).join("")}</div></section>`;
+}
+function buildScoutReportHtml(r, logo = null, league = null, games = null) {
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const merged = mergeScoutPlayers(r);
   const photos = {}, manual = {};
@@ -2752,6 +2814,7 @@ function buildScoutReportHtml(r, logo = null, league = null) {
     ${notes}
     ${bilan}
     ${scoutFaceHtml(r, league)}
+    ${(() => { try { return scoutInsightsHtml(r, league, games); } catch { return ""; } })()}
     ${teamTable}
     ${extraHtml}
     ${players || `<section class="card"><p class="muted">Aucun joueur renseigné.</p></section>`}
@@ -11872,7 +11935,7 @@ function CoachingProBoost({ session }) {
     }
     else if (p.kind === "scoutreport") {
       try {
-        const html = buildScoutReportHtml(p.report, logo, leagueData);
+        const html = buildScoutReportHtml(p.report, logo, leagueData, leagueGames);
         downloadBlob(new Blob([html], { type: "text/html;charset=utf-8" }), `scouting-report-${slugifyForFile(p.report.opponent)}.html`);
         toast?.("✓ Scouting report exporté");
       } catch (e) {
