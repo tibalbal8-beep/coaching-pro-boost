@@ -10824,9 +10824,8 @@ function PlayImageSlot({ img, playId, onChange, onRemove }) {
 // ── Éditeur de play multi-étapes (« Studio ») : un outil par mouvement, joueurs numérotés, défense, plots, zones, étapes avec miniatures ──
 // Chaque étape est exportée en image dans les schémas du play ; les éléments sont gardés (play.studio) pour pouvoir le rouvrir et le modifier.
 const STUDIO_BGS = {
-  parquet: { label: "Parquet", half: "/basketball-parquet-demi-haut.jpg", full: "/basketball-parquet-complet.jpg" },
-  bleu: { label: "Bleu", half: "/basketball-bleu-demi-haut.png", full: "/basketball-bleu-complet.png" },
-  classique: { label: "Classique", half: "/basketball-demi-terrain-haut.png", full: "/basketball-terrain-complet.png" },
+  clair: { label: "Parquet clair", half: "/basketball-clair-demi.png", full: "/basketball-clair-complet.png" },
+  bleu: { label: "Bleu", half: "/basketball-bleu-pro-demi.png", full: "/basketball-bleu-pro-complet.png" },
 };
 const STUDIO_COLORS = ["#111827", "#0ea5e9", "#dc2626", "#d99a06", "#16a34a", "#2563eb", "#7c3aed"];
 const STUDIO_R = 17;
@@ -10929,13 +10928,13 @@ async function studioStepPng(step, bgSrc, dims) {
 function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   const [steps, setSteps] = useState(() => initial && initial.steps && initial.steps.length ? initial.steps : [studioNewStep()]);
   const [cur, setCur] = useState(0), [tool, setTool] = useState("select"), [color, setColor] = useState("#111827");
-  const [bg, setBg] = useState((initial && initial.bg) || "parquet"), [half, setHalf] = useState(initial ? initial.half !== false : true);
-  const [sel, setSel] = useState(null), [draft, setDraft] = useState(null), [dims, setDims] = useState({ w: 640, h: 533 }), [busy, setBusy] = useState(false);
+  const [bg, setBg] = useState((initial && STUDIO_BGS[initial.bg] ? initial.bg : "clair")), [half, setHalf] = useState(initial ? initial.half !== false : true);
+  const [sel, setSel] = useState(null), [draft, setDraft] = useState(null), [dims, setDims] = useState({ w: 640, h: 480 }), [busy, setBusy] = useState(false);
   const svgRef = useRef(null), drag = useRef(null), hist = useRef([]), redo = useRef([]), stepsRef = useRef(steps), draftRef = useRef(null);
   stepsRef.current = steps;
   const setDraftBoth = (d) => { draftRef.current = typeof d === "function" ? d(draftRef.current) : d; setDraft(draftRef.current); };
   const bgSrc = STUDIO_BGS[bg][half ? "half" : "full"];
-  useEffect(() => { setDims({ w: 640, h: half ? 533 : 960 }); }, [half]);
+  useEffect(() => { setDims({ w: 640, h: half ? 480 : 960 }); }, [half]);
   const step = steps[cur] || steps[0], curStep = () => stepsRef.current[cur] || stepsRef.current[0];
   const commit = (next) => { hist.current.push(JSON.stringify(stepsRef.current)); if (hist.current.length > 60) hist.current.shift(); redo.current = []; stepsRef.current = next; setSteps(next); };
   const setStep = (patch, snap = true) => { const next = stepsRef.current.map((s, i) => i === cur ? (typeof patch === "function" ? patch(s) : { ...s, ...patch }) : s); if (snap) commit(next); else { stepsRef.current = next; setSteps(next); } };
