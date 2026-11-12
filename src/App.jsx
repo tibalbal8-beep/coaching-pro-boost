@@ -10939,6 +10939,18 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   const [sel, setSel] = useState(null), [zoneShape, setZoneShape] = useState("rect"), [zoneMenu, setZoneMenu] = useState(false), [draft, setDraft] = useState(null), [dims, setDims] = useState({ w: 640, h: 480 }), [busy, setBusy] = useState(false);
   const svgRef = useRef(null), drag = useRef(null), hist = useRef([]), redo = useRef([]), stepsRef = useRef(steps), draftRef = useRef(null);
   stepsRef.current = steps;
+  // Bouton retour (téléphone/navigateur) : ferme l'éditeur au lieu de quitter la page.
+  const onCancelRef = useRef(onCancel); onCancelRef.current = onCancel;
+  useEffect(() => {
+    let closedByBack = false;
+    try { history.pushState({ ...(history.state || {}), studio: 1 }, "", location.href); } catch (e) {}
+    const onPop = () => { closedByBack = true; onCancelRef.current && onCancelRef.current(); };
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      if (!closedByBack) { try { if (history.state && history.state.studio) history.back(); } catch (e) {} }
+    };
+  }, []);
   const setDraftBoth = (d) => { draftRef.current = typeof d === "function" ? d(draftRef.current) : d; setDraft(draftRef.current); };
   const bgSrc = STUDIO_BGS[bg][half ? "half" : "full"];
   useEffect(() => { setDims({ w: 640, h: half ? 480 : 960 }); }, [half]);
