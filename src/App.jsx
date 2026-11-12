@@ -10846,7 +10846,7 @@ function studioPolyline(p, g) {
   if (!via) { for (let i = 0; i <= 40; i++) { const t = i / 40; out.push({ x: (1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * c.x + t * t * b.x, y: (1 - t) * (1 - t) * a.y + 2 * (1 - t) * t * c.y + t * t * b.y }); } return out; }
   const pts = [a, ...via, b]; out.push(pts[0]);
   for (let i = 1; i < pts.length - 1; i++) {
-    const V = pts[i], P = pts[i - 1], N = pts[i + 1], dp = Math.hypot(P.x - V.x, P.y - V.y) || 1, dn = Math.hypot(N.x - V.x, N.y - V.y) || 1, rr = Math.min(22, dp / 2, dn / 2);
+    const V = pts[i], P = pts[i - 1], N = pts[i + 1], dp = Math.hypot(P.x - V.x, P.y - V.y) || 1, dn = Math.hypot(N.x - V.x, N.y - V.y) || 1, rr = Math.min(34, dp / 2, dn / 2);
     const P1 = { x: V.x + (P.x - V.x) * rr / dp, y: V.y + (P.y - V.y) * rr / dp }, N1 = { x: V.x + (N.x - V.x) * rr / dn, y: V.y + (N.y - V.y) * rr / dn };
     for (let k = 0; k <= 6; k++) { const t = k / 6; out.push({ x: (1 - t) * (1 - t) * P1.x + 2 * (1 - t) * t * V.x + t * t * N1.x, y: (1 - t) * (1 - t) * P1.y + 2 * (1 - t) * t * V.y + t * t * N1.y }); }
   }
@@ -10896,7 +10896,7 @@ function studioInner(step, o = {}) {
     if (selected) {
       if (g.via) {
         const V = [a, ...g.via, b];
-        for (let i = 0; i < V.length - 1; i++) hs += `<circle cx="${f((V[i].x + V[i + 1].x) / 2)}" cy="${f((V[i].y + V[i + 1].y) / 2)}" r="6" fill="#fff" fill-opacity=".8" stroke="#FF6B35" stroke-width="2" stroke-dasharray="3 2" data-h="m${i}" style="cursor:copy"/>`;
+        for (let i = 0; i < V.length - 1; i++) hs += `<circle cx="${f((V[i].x + V[i + 1].x) / 2)}" cy="${f((V[i].y + V[i + 1].y) / 2)}" r="8" fill="#fff" fill-opacity=".9" stroke="#FF6B35" stroke-width="2" stroke-dasharray="3 2" data-h="m${i}" style="cursor:copy"/><text x="${f((V[i].x + V[i + 1].x) / 2)}" y="${f((V[i].y + V[i + 1].y) / 2 + 4.5)}" text-anchor="middle" font-family="Arial,sans-serif" font-weight="800" font-size="13" fill="#FF6B35" style="pointer-events:none">+</text>`;
         g.via.forEach((v, i) => { hs += `<circle cx="${f(v.x)}" cy="${f(v.y)}" r="9" fill="#fff" stroke="#FF6B35" stroke-width="3" data-h="v${i}" style="cursor:grab"/>`; });
       } else { const m = R[Math.floor(R.length / 2)]; hs += `<circle cx="${f(m.x)}" cy="${f(m.y)}" r="9" fill="#fff" stroke="#FF6B35" stroke-width="3" data-h="c" style="cursor:grab"/>`; }
     }
@@ -10992,9 +10992,9 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
         let M = null, md = 0; (d.pts || []).forEach(q => { const dev = Math.abs((B.x - A.x) * (A.y - q.y) - (A.x - q.x) * (B.y - A.y)) / cl; if (dev > md) { md = dev; M = q; } });
         const c = M && md > 14 ? { x: 2 * M.x - (A.x + B.x) / 2, y: 2 * M.y - (A.y + B.y) / 2 } : undefined, nid = uid();
         // plusieurs changements de direction : on garde les coins du geste (ligne brisée aux angles arrondis) ; un simple arc reste une courbe
-        const raw = [A, ...(d.pts || []).slice(1, -1), B], V = studioSimplify(raw, 16); let via = null;
+        const raw = [A, ...(d.pts || []).slice(1, -1), B]; let eps = 16, V = studioSimplify(raw, eps); while (V.length > 5 && eps < 400) { eps += 8; V = studioSimplify(raw, eps); } let via = null;
         if (V.length >= 3) { const defl = (U, W, Z) => { const x1 = W.x - U.x, y1 = W.y - U.y, x2 = Z.x - W.x, y2 = Z.y - W.y, n = (Math.hypot(x1, y1) * Math.hypot(x2, y2)) || 1; return Math.acos(Math.max(-1, Math.min(1, (x1 * x2 + y1 * y2) / n))) * 180 / Math.PI; };
-          const isCurve = V.length === 3 && defl(V[0], V[1], V[2]) < 55; if (!isCurve) via = V.slice(1, -1).slice(0, 7).map(q => ({ x: q.x, y: q.y })); }
+          const isCurve = V.length === 3 && defl(V[0], V[1], V[2]) < 55; if (!isCurve) via = V.slice(1, -1).slice(0, 3).map(q => ({ x: q.x, y: q.y })); }
         setStep(s => ({ ...s, paths: [...s.paths, { id: nid, kind: pa.kind, color: pa.color, a: pa.a, b: ep && ep.id !== (pa.a.pid) ? { pid: ep.id, x: ep.x, y: ep.y } : { x: pe.x, y: pe.y }, ...(via ? { via } : c ? { c } : {}) }] })); setSel({ t: "path", id: nid });
       }
       setDraftBoth(null);
@@ -11044,7 +11044,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
             <div className="ml-auto flex gap-2 items-center">{sel && <button onClick={removeSel} className="text-xs font-semibold text-red-600 underline">Supprimer la sélection</button>}
               <button onClick={undo} className="px-3 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20">↶ Annuler</button><button onClick={rdo} className="px-3 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20">↷ Rétablir</button></div>
           </div>
-          <p className="text-[11px] text-[#1B2A4A]/45 mt-2">Trace un mouvement en glissant d'un joueur à un autre (il s'accroche aux joueurs) : si ton geste est courbe, le trait l'est aussi ; si tu changes de direction sans lever le doigt, chaque coin est gardé. Après le tracé, tire les pastilles orange pour ajuster (les petites pastilles pointillées ajoutent un coin). Double-clique un joueur pour lui donner la balle.</p>
+          <p className="text-[11px] text-[#1B2A4A]/45 mt-2">Trace un mouvement en glissant d'un joueur à un autre (il s'accroche aux joueurs) : si ton geste est courbe, le trait l'est aussi ; si tu changes de direction sans lever le doigt, chaque coin est gardé. Après le tracé, tire les pastilles orange pour ajuster (les pastilles « + » entre deux points ajoutent un point : tire-les à l'endroit voulu pour mieux arrondir). Double-clique un joueur pour lui donner la balle.</p>
         </div>
         <div className="flex gap-3 items-start">
           <div className="hidden sm:flex flex-col gap-2 w-28 shrink-0">
