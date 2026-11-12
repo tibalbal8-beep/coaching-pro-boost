@@ -10828,53 +10828,85 @@ const STUDIO_BGS = {
   bleu: { label: "Bleu", half: "/basketball-bleu-demi-haut.png", full: "/basketball-bleu-complet.png" },
   classique: { label: "Classique", half: "/basketball-demi-terrain-haut.png", full: "/basketball-terrain-complet.png" },
 };
-const STUDIO_COLORS = ["#111827", "#db2777", "#dc2626", "#d99a06", "#16a34a", "#2563eb", "#7c3aed"];
+const STUDIO_COLORS = ["#111827", "#0ea5e9", "#dc2626", "#d99a06", "#16a34a", "#2563eb", "#7c3aed"];
 const STUDIO_R = 17;
 const studioHash = (s) => { let h = 5381; for (let i = 0; i < s.length; i += 7) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return s.length + ":" + h; };
 const studioNewStep = () => ({ id: uid(), players: [], cones: [], paths: [], zones: [], texts: [] });
 function studioPathGeom(p, step) {
   const pl = (ep) => ep && ep.pid ? step.players.find(q => q.id === ep.pid) : null;
   const pa = pl(p.a), pb = pl(p.b), A0 = pa ? { x: pa.x, y: pa.y } : { x: p.a.x, y: p.a.y }, B0 = pb ? { x: pb.x, y: pb.y } : { x: p.b.x, y: p.b.y };
+  const via = p.via && p.via.length ? p.via : null;
   const C = p.c || { x: (A0.x + B0.x) / 2, y: (A0.y + B0.y) / 2 };
   const off = (P, toward, has) => { if (!has) return P; const dx = toward.x - P.x, dy = toward.y - P.y, d = Math.hypot(dx, dy) || 1; return { x: P.x + dx / d * STUDIO_R, y: P.y + dy / d * STUDIO_R }; };
-  return { a: off(A0, C, !!pa), b: off(B0, C, !!pb), c: C };
+  return { a: off(A0, via ? via[0] : C, !!pa), b: off(B0, via ? via[via.length - 1] : C, !!pb), c: C, via };
 }
-// Dessine tous les éléments d'une étape en SVG (chaîne) : sert à l'éditeur, aux miniatures et à l'export image
+// Points le long du trait : courbe (un point de contrôle) ou ligne brisée aux coins arrondis (plusieurs changements de direction)
+function studioPolyline(p, g) {
+  const { a, b, c, via } = g, out = [];
+  if (!via) { for (let i = 0; i <= 40; i++) { const t = i / 40; out.push({ x: (1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * c.x + t * t * b.x, y: (1 - t) * (1 - t) * a.y + 2 * (1 - t) * t * c.y + t * t * b.y }); } return out; }
+  const pts = [a, ...via, b]; out.push(pts[0]);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const V = pts[i], P = pts[i - 1], N = pts[i + 1], dp = Math.hypot(P.x - V.x, P.y - V.y) || 1, dn = Math.hypot(N.x - V.x, N.y - V.y) || 1, rr = Math.min(22, dp / 2, dn / 2);
+    const P1 = { x: V.x + (P.x - V.x) * rr / dp, y: V.y + (P.y - V.y) * rr / dp }, N1 = { x: V.x + (N.x - V.x) * rr / dn, y: V.y + (N.y - V.y) * rr / dn };
+    for (let k = 0; k <= 6; k++) { const t = k / 6; out.push({ x: (1 - t) * (1 - t) * P1.x + 2 * (1 - t) * t * V.x + t * t * N1.x, y: (1 - t) * (1 - t) * P1.y + 2 * (1 - t) * t * V.y + t * t * N1.y }); }
+  }
+  out.push(pts[pts.length - 1]); return out;
+}
+function studioResample(poly, step = 3) {
+  const R = [poly[0]]; let acc = 0, prev = poly[0];
+  for (let i = 1; i < poly.length; i++) { let cur = poly[i], d = Math.hypot(cur.x - prev.x, cur.y - prev.y); while (acc + d >= step && d > 0) { const t = (step - acc) / d, nx = { x: prev.x + (cur.x - prev.x) * t, y: prev.y + (cur.y - prev.y) * t }; R.push(nx); prev = nx; d = Math.hypot(cur.x - prev.x, cur.y - prev.y); acc = 0; } acc += d; prev = cur; }
+  const last = poly[poly.length - 1], e = R[R.length - 1]; if (Math.hypot(last.x - e.x, last.y - e.y) > 0.5) R.push(last); return R;
+}
+function studioSimplify(pts, eps) {
+  if (pts.length < 3) return pts;
+  const A = pts[0], B = pts[pts.length - 1], cl = Math.hypot(B.x - A.x, B.y - A.y) || 1; let md = 0, mi = 0;
+  for (let i = 1; i < pts.length - 1; i++) { const d = Math.abs((B.x - A.x) * (A.y - pts[i].y) - (A.x - pts[i].x) * (B.y - A.y)) / cl; if (d > md) { md = d; mi = i; } }
+  if (md <= eps) return [A, B];
+  return [...studioSimplify(pts.slice(0, mi + 1), eps).slice(0, -1), ...studioSimplify(pts.slice(mi), eps)];
+}
+// Studio : dessin d'une étape
 function studioInner(step, o = {}) {
   const { sel = null, draft = null } = o, f = (n) => Math.round(n * 10) / 10;
   const arrow = (tip, from, col, size = 13) => { const dx = tip.x - from.x, dy = tip.y - from.y, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d, px = -uy, py = ux;
     return `<polygon points="${f(tip.x)},${f(tip.y)} ${f(tip.x - ux * size + px * size * .55)},${f(tip.y - uy * size + py * size * .55)} ${f(tip.x - ux * size - px * size * .55)},${f(tip.y - uy * size - py * size * .55)}" fill="${col}"/>`; };
+  const ptsStr = (A) => A.map(q => `${f(q.x)},${f(q.y)}`).join(" ");
+  const trim = (R, d) => { let L = 0; const cum = [0]; for (let i = 1; i < R.length; i++) { L += Math.hypot(R[i].x - R[i - 1].x, R[i].y - R[i - 1].y); cum.push(L); } const out = R.filter((_, i) => cum[i] <= L - d); if (out.length < 2) return [R[0], R[Math.min(1, R.length - 1)]]; return out; };
   const pathSvg = (p, id, selected) => {
-    const g = studioPathGeom(p, step), { a, b, c } = g, col = p.color || "#111827", q = (t) => ({ x: (1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * c.x + t * t * b.x, y: (1 - t) * (1 - t) * a.y + 2 * (1 - t) * t * c.y + t * t * b.y });
-    const len = Math.hypot(c.x - a.x, c.y - a.y) + Math.hypot(b.x - c.x, b.y - c.y), tipFrom = { x: b.x - (c.x - b.x) * 0 - (b.x - c.x), y: b.y - (b.y - c.y) };
-    const dir = { x: b.x - c.x, y: b.y - c.y }; if (Math.hypot(dir.x, dir.y) < 1) { dir.x = b.x - a.x; dir.y = b.y - a.y; }
-    const dl = Math.hypot(dir.x, dir.y) || 1, ux = dir.x / dl, uy = dir.y / dl, back = { x: b.x - ux * 13, y: b.y - uy * 13 }, from = { x: b.x - ux * 20, y: b.y - uy * 20 };
-    const hit = `<path d="M${f(a.x)},${f(a.y)} Q${f(c.x)},${f(c.y)} ${f(b.x)},${f(b.y)}" fill="none" stroke="transparent" stroke-width="22" data-t="path" data-id="${id}" style="cursor:pointer"/>`;
+    const g = studioPathGeom(p, step), { a, b } = g, col = p.color || "#111827", R = studioResample(studioPolyline(p, g), 3);
+    const kb = Math.max(0, R.length - 1 - 4), dir = { x: b.x - R[kb].x, y: b.y - R[kb].y }, dl = Math.hypot(dir.x, dir.y) || 1, ux = dir.x / dl, uy = dir.y / dl, from = { x: b.x - ux * 12, y: b.y - uy * 12 };
+    const hit = `<polyline points="${ptsStr(R)}" fill="none" stroke="transparent" stroke-width="22" stroke-linejoin="round" data-t="path" data-id="${id}" style="cursor:pointer"/>`;
+    const line = (A, extra = "", w = 3.2) => `<polyline points="${ptsStr(A)}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" ${extra}/>`;
     let body = "";
-    const sw = p.kind === "shot" ? 6 : 3.2;
-    const curve = (extra = "", end = back) => `<path d="M${f(a.x)},${f(a.y)} Q${f(c.x)},${f(c.y)} ${f(end.x)},${f(end.y)}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="round" ${extra}/>`;
-    if (p.kind === "cut") body = curve() + arrow(b, from, col);
-    else if (p.kind === "pass") body = curve('stroke-dasharray="9 7"') + arrow(b, from, col);
+    if (p.kind === "cut") body = line(trim(R, 11)) + arrow(b, from, col);
+    else if (p.kind === "pass") body = line(trim(R, 11), 'stroke-dasharray="9 7"') + arrow(b, from, col);
     else if (p.kind === "shot") {
-      const tb = Math.max(.2, 1 - 16 / Math.max(len, 40)), N = Math.max(10, Math.round(len * tb / 6)), L1 = [], L2 = [];
-      for (let i = 0; i <= N; i++) { const t = i / N * tb, P = q(t), P2 = q(Math.min(1, t + .01)), dx = P2.x - P.x, dy = P2.y - P.y, d = Math.hypot(dx, dy) || 1, nx = -dy / d * 4, ny = dx / d * 4; L1.push(`${f(P.x + nx)},${f(P.y + ny)}`); L2.push(`${f(P.x - nx)},${f(P.y - ny)}`); }
-      body = `<polyline points="${L1.join(" ")}" fill="none" stroke="${col}" stroke-width="2.6" stroke-linecap="round"/><polyline points="${L2.join(" ")}" fill="none" stroke="${col}" stroke-width="2.6" stroke-linecap="round"/>` + arrow(b, { x: b.x - ux * 16, y: b.y - uy * 16 }, col, 17);
+      const T = trim(R, 16), L1 = [], L2 = [];
+      T.forEach((q, i) => { const q2 = T[Math.min(T.length - 1, i + 1)], q1 = T[Math.max(0, i - 1)], dx = q2.x - q1.x, dy = q2.y - q1.y, d = Math.hypot(dx, dy) || 1, nx = -dy / d * 4, ny = dx / d * 4; L1.push({ x: q.x + nx, y: q.y + ny }); L2.push({ x: q.x - nx, y: q.y - ny }); });
+      body = line(L1, "", 2.6) + line(L2, "", 2.6) + arrow(b, { x: b.x - ux * 16, y: b.y - uy * 16 }, col, 17);
     }
-    else if (p.kind === "handoff") { const m = q(.5); body = curve() + arrow(b, from, col) + [-5, 5].map(s => `<line x1="${f(m.x - uy * 11 + ux * s)}" y1="${f(m.y + ux * 11 + uy * s)}" x2="${f(m.x + uy * 11 + ux * s)}" y2="${f(m.y - ux * 11 + uy * s)}" stroke="${col}" stroke-width="3"/>`).join(""); }
-    else if (p.kind === "screen") body = curve("", b) + `<line x1="${f(b.x - uy * 13)}" y1="${f(b.y + ux * 13)}" x2="${f(b.x + uy * 13)}" y2="${f(b.y - ux * 13)}" stroke="${col}" stroke-width="5" stroke-linecap="round"/>`;
+    else if (p.kind === "handoff") { const m = R[Math.floor(R.length / 2)], m2 = R[Math.min(R.length - 1, Math.floor(R.length / 2) + 2)], m1 = R[Math.max(0, Math.floor(R.length / 2) - 2)], dx = m2.x - m1.x, dy = m2.y - m1.y, dd = Math.hypot(dx, dy) || 1, vx = dx / dd, vy = dy / dd;
+      body = line(trim(R, 11)) + arrow(b, from, col) + [-5, 5].map(sg => `<line x1="${f(m.x - vy * 11 + vx * sg)}" y1="${f(m.y + vx * 11 + vy * sg)}" x2="${f(m.x + vy * 11 + vx * sg)}" y2="${f(m.y - vx * 11 + vy * sg)}" stroke="${col}" stroke-width="3"/>`).join(""); }
+    else if (p.kind === "screen") body = line(R) + `<line x1="${f(b.x - uy * 13)}" y1="${f(b.y + ux * 13)}" x2="${f(b.x + uy * 13)}" y2="${f(b.y - ux * 13)}" stroke="${col}" stroke-width="5" stroke-linecap="round"/>`;
     else if (p.kind === "dribble") {
-      const tb = Math.max(.2, 1 - 11 / Math.max(len, 30)), N = Math.max(12, Math.round(len * tb / 5)), pts = [];
-      for (let i = 0; i <= N; i++) { const t = i / N * tb, P = q(t), P2 = q(Math.min(1, t + .01)), dx = P2.x - P.x, dy = P2.y - P.y, d = Math.hypot(dx, dy) || 1, amp = Math.sin(i * 1.5) * 5 * Math.min(1, (N - i) / 3) * Math.min(1, i / 2); pts.push(`${f(P.x - dy / d * amp)},${f(P.y + dx / d * amp)}`); }
-      const Pe = q(tb); pts.push(`${f(Pe.x)},${f(Pe.y)}`);
-      body = `<polyline points="${pts.join(" ")}" fill="none" stroke="${col}" stroke-width="3" stroke-linejoin="round"/>` + arrow(b, { x: b.x - ux * 12, y: b.y - uy * 12 }, col, 12);
+      const T = trim(R, 11), N = T.length, Z = [];
+      T.forEach((q, i) => { const q2 = T[Math.min(N - 1, i + 1)], q1 = T[Math.max(0, i - 1)], dx = q2.x - q1.x, dy = q2.y - q1.y, d = Math.hypot(dx, dy) || 1, amp = Math.sin(i * 0.9) * 5 * Math.min(1, (N - 1 - i) / 3) * Math.min(1, i / 2); Z.push({ x: q.x - dy / d * amp, y: q.y + dx / d * amp }); });
+      body = line(Z, "", 3) + arrow(b, { x: b.x - ux * 12, y: b.y - uy * 12 }, col, 12);
     }
-    return `<g>${body}${hit}${selected ? `<circle cx="${f(q(.5).x)}" cy="${f(q(.5).y)}" r="9" fill="#fff" stroke="#FF6B35" stroke-width="3" data-h="c" style="cursor:grab"/>` : ""}</g>`;
+    let hs = "";
+    if (selected) {
+      if (g.via) {
+        const V = [a, ...g.via, b];
+        for (let i = 0; i < V.length - 1; i++) hs += `<circle cx="${f((V[i].x + V[i + 1].x) / 2)}" cy="${f((V[i].y + V[i + 1].y) / 2)}" r="6" fill="#fff" fill-opacity=".8" stroke="#FF6B35" stroke-width="2" stroke-dasharray="3 2" data-h="m${i}" style="cursor:copy"/>`;
+        g.via.forEach((v, i) => { hs += `<circle cx="${f(v.x)}" cy="${f(v.y)}" r="9" fill="#fff" stroke="#FF6B35" stroke-width="3" data-h="v${i}" style="cursor:grab"/>`; });
+      } else { const m = R[Math.floor(R.length / 2)]; hs += `<circle cx="${f(m.x)}" cy="${f(m.y)}" r="9" fill="#fff" stroke="#FF6B35" stroke-width="3" data-h="c" style="cursor:grab"/>`; }
+    }
+    return `<g>${body}${hit}${hs}</g>`;
   };
   let s = "";
   step.zones.forEach(z => { const fl = z.kind === "fluo"; s += `<rect x="${f(z.x)}" y="${f(z.y)}" width="${f(z.w)}" height="${f(z.h)}" rx="16" fill="${fl ? "rgba(255,235,0,.55)" : "rgba(110,120,140,.38)"}" stroke="${fl ? "#d4bf00" : "#6b7488"}" stroke-width="2" data-t="zone" data-id="${z.id}" style="cursor:move"/>`; });
   if (draft && draft.zone) { const z = draft.zone; s += `<rect x="${f(Math.min(z.x, z.x2))}" y="${f(Math.min(z.y, z.y2))}" width="${f(Math.abs(z.x2 - z.x))}" height="${f(Math.abs(z.y2 - z.y))}" rx="16" fill="rgba(255,107,53,.25)" stroke="#FF6B35" stroke-dasharray="6 4"/>`; }
   step.paths.forEach(p => { s += pathSvg(p, p.id, sel && sel.t === "path" && sel.id === p.id); });
-  if (draft && draft.path) s += pathSvg(draft.path, "draft", false);
+  if (draft && draft.path) s += draft.raw && draft.raw.length > 2 ? `<polyline points="${ptsStr(draft.raw)}" fill="none" stroke="#FF6B35" stroke-width="3" stroke-dasharray="6 4" stroke-linecap="round" stroke-linejoin="round"/>` : pathSvg(draft.path, "draft", false);
   step.cones.forEach(c => { s += `<polygon points="${f(c.x)},${f(c.y - 15)} ${f(c.x - 13)},${f(c.y + 11)} ${f(c.x + 13)},${f(c.y + 11)}" fill="#f97316" stroke="#9a3412" stroke-width="2" data-t="cone" data-id="${c.id}" style="cursor:move"/>`; });
   step.players.forEach(p => {
     const d = p.kind === "d", col = d ? "#dc2626" : "#111827", isSel = sel && sel.t === "player" && sel.id === p.id;
@@ -10916,6 +10948,11 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
     const p = pos(e), el = e.target.closest ? e.target.closest("[data-t],[data-h]") : null, t = el && el.getAttribute("data-t"), id = el && el.getAttribute("data-id"), h = el && el.getAttribute("data-h");
     try { svgRef.current.setPointerCapture(e.pointerId); } catch {}
     if (h === "c" && sel && sel.t === "path") { hist.current.push(JSON.stringify(stepsRef.current)); redo.current = []; drag.current = { k: "ctrl", id: sel.id }; return; }
+    if (h && /^[vm]\d+$/.test(h) && sel && sel.t === "path") {
+      hist.current.push(JSON.stringify(stepsRef.current)); redo.current = []; const i = +h.slice(1);
+      if (h[0] === "m") { stepsRef.current = stepsRef.current.map((s0, k) => k !== cur ? s0 : { ...s0, paths: s0.paths.map(x => x.id === sel.id ? { ...x, via: [...x.via.slice(0, i), { x: p.x, y: p.y }, ...x.via.slice(i)] } : x) }); setSteps(stepsRef.current); }
+      drag.current = { k: "via", id: sel.id, i }; return;
+    }
     if (tool === "eraser") {
       if (!t) return;
       setStep(s => { const gone = t === "player" ? id : null; return { ...s, players: s.players.filter(x => !(t === "player" && x.id === id)), cones: s.cones.filter(x => !(t === "cone" && x.id === id)), zones: s.zones.filter(x => !(t === "zone" && x.id === id)), texts: s.texts.filter(x => !(t === "text" && x.id === id)), paths: s.paths.filter(x => !(t === "path" && x.id === id) && !(gone && ((x.a && x.a.pid === gone) || (x.b && x.b.pid === gone)))) }; });
@@ -10936,7 +10973,8 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   const move = (e) => {
     const d = drag.current; if (!d) return; const p = pos(e);
     if (d.k === "zone") setDraftBoth(dr => dr && { zone: { ...dr.zone, x2: p.x, y2: p.y } });
-    else if (d.k === "path") { d.pts.push({ x: p.x, y: p.y }); setDraftBoth(dr => dr && { path: { ...dr.path, b: { x: p.x, y: p.y } } }); }
+    else if (d.k === "path") { d.pts.push({ x: p.x, y: p.y }); setDraftBoth(dr => dr && { path: { ...dr.path, b: { x: p.x, y: p.y } }, raw: d.pts.slice() }); }
+    else if (d.k === "via") setStep(s => ({ ...s, paths: s.paths.map(x => x.id === d.id ? { ...x, via: x.via.map((v, j) => j === d.i ? { x: p.x, y: p.y } : v) } : x) }), false);
     else if (d.k === "ctrl") setStep(s => ({ ...s, paths: s.paths.map(x => { if (x.id !== d.id) return x; const g = studioPathGeom({ ...x, c: undefined }, s); return { ...x, c: { x: 2 * p.x - (g.a.x + g.b.x) / 2, y: 2 * p.y - (g.a.y + g.b.y) / 2 } }; }) }), false);
     else if (d.k === "move") {
       const dx = p.x - d.sx, dy = p.y - d.sy, key = d.t === "player" ? "players" : d.t === "cone" ? "cones" : d.t === "zone" ? "zones" : d.t === "text" ? "texts" : null;
@@ -10953,7 +10991,11 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
         const A = { x: pa.a.x, y: pa.a.y }, B = ep && ep.id !== pa.a.pid ? { x: ep.x, y: ep.y } : { x: pe.x, y: pe.y }, cl = Math.hypot(B.x - A.x, B.y - A.y) || 1;
         let M = null, md = 0; (d.pts || []).forEach(q => { const dev = Math.abs((B.x - A.x) * (A.y - q.y) - (A.x - q.x) * (B.y - A.y)) / cl; if (dev > md) { md = dev; M = q; } });
         const c = M && md > 14 ? { x: 2 * M.x - (A.x + B.x) / 2, y: 2 * M.y - (A.y + B.y) / 2 } : undefined, nid = uid();
-        setStep(s => ({ ...s, paths: [...s.paths, { id: nid, kind: pa.kind, color: pa.color, a: pa.a, b: ep && ep.id !== (pa.a.pid) ? { pid: ep.id, x: ep.x, y: ep.y } : { x: pe.x, y: pe.y }, ...(c ? { c } : {}) }] })); setSel({ t: "path", id: nid });
+        // plusieurs changements de direction : on garde les coins du geste (ligne brisée aux angles arrondis) ; un simple arc reste une courbe
+        const raw = [A, ...(d.pts || []).slice(1, -1), B], V = studioSimplify(raw, 16); let via = null;
+        if (V.length >= 3) { const defl = (U, W, Z) => { const x1 = W.x - U.x, y1 = W.y - U.y, x2 = Z.x - W.x, y2 = Z.y - W.y, n = (Math.hypot(x1, y1) * Math.hypot(x2, y2)) || 1; return Math.acos(Math.max(-1, Math.min(1, (x1 * x2 + y1 * y2) / n))) * 180 / Math.PI; };
+          const isCurve = V.length === 3 && defl(V[0], V[1], V[2]) < 55; if (!isCurve) via = V.slice(1, -1).slice(0, 7).map(q => ({ x: q.x, y: q.y })); }
+        setStep(s => ({ ...s, paths: [...s.paths, { id: nid, kind: pa.kind, color: pa.color, a: pa.a, b: ep && ep.id !== (pa.a.pid) ? { pid: ep.id, x: ep.x, y: ep.y } : { x: pe.x, y: pe.y }, ...(via ? { via } : c ? { c } : {}) }] })); setSel({ t: "path", id: nid });
       }
       setDraftBoth(null);
     }
@@ -10982,11 +11024,11 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
         </div>
         <div className="bg-white rounded-2xl border border-[#1B2A4A]/10 p-3 mb-3">
           <div className="flex flex-wrap items-center gap-2 mb-2">
-            <div className="font-extrabold text-[#1B2A4A]" style={{ fontFamily: "'Barlow Condensed',Oswald,sans-serif" }}>ÉTAPE <span className="text-[#db2777]">{cur + 1}</span> / {steps.length}</div>
-            <button onClick={addStep} className="px-3 py-1.5 rounded-full text-xs font-bold text-white bg-[#db2777]">+ Étape suivante</button>
+            <div className="font-extrabold text-[#1B2A4A]" style={{ fontFamily: "'Barlow Condensed',Oswald,sans-serif" }}>ÉTAPE <span className="text-[#2563eb]">{cur + 1}</span> / {steps.length}</div>
+            <button onClick={addStep} className="px-3 py-1.5 rounded-full text-xs font-bold text-[#0f1626] bg-[#9db4ff] hover:bg-[#8aa5ff]">+ Étape suivante</button>
             <button onClick={dupStep} className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[#1B2A4A]/20">Dupliquer</button>
             <button onClick={() => swap(-1)} className="px-2.5 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20" title="Monter l'étape">↑</button><button onClick={() => swap(1)} className="px-2.5 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20" title="Descendre l'étape">↓</button>
-            <button onClick={delStep} className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[#db2777]/40 text-[#db2777]">Supprimer l'étape</button>
+            <button onClick={delStep} className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[#1B2A4A]/25 text-[#1B2A4A]">Supprimer l'étape</button>
             <div className="ml-auto flex gap-1 rounded-full bg-[#1B2A4A]/8 p-0.5">{[[true, "Demi-terrain"], [false, "Terrain entier"]].map(([v, l]) => <button key={l} onClick={() => setHalf(v)} className={`px-3 py-1 rounded-full text-xs font-semibold ${half === v ? "bg-[#111827] text-white" : "text-[#1B2A4A]/70"}`}>{l}</button>)}</div>
           </div>
           <div className="flex flex-wrap items-center gap-2 mb-2"><span className="text-[11px] font-bold tracking-wide text-[#1B2A4A]/50">FOND</span>{Object.entries(STUDIO_BGS).map(([k, v]) => <button key={k} onClick={() => setBg(k)} className={`px-3 py-1 rounded-full text-xs font-semibold border ${bg === k ? "bg-[#111827] text-white border-[#111827]" : "border-[#1B2A4A]/20 bg-white"}`}>{v.label}</button>)}</div>
@@ -11002,12 +11044,12 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
             <div className="ml-auto flex gap-2 items-center">{sel && <button onClick={removeSel} className="text-xs font-semibold text-red-600 underline">Supprimer la sélection</button>}
               <button onClick={undo} className="px-3 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20">↶ Annuler</button><button onClick={rdo} className="px-3 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20">↷ Rétablir</button></div>
           </div>
-          <p className="text-[11px] text-[#1B2A4A]/45 mt-2">Trace un mouvement en glissant d'un joueur à un autre (il s'accroche aux joueurs) : si ton geste est courbe, le trait l'est aussi. Après le tracé, tire la pastille orange pour ajuster la courbe (ou clique un trait en mode « Déplacer »). Double-clique un joueur pour lui donner la balle.</p>
+          <p className="text-[11px] text-[#1B2A4A]/45 mt-2">Trace un mouvement en glissant d'un joueur à un autre (il s'accroche aux joueurs) : si ton geste est courbe, le trait l'est aussi ; si tu changes de direction sans lever le doigt, chaque coin est gardé. Après le tracé, tire les pastilles orange pour ajuster (les petites pastilles pointillées ajoutent un coin). Double-clique un joueur pour lui donner la balle.</p>
         </div>
         <div className="flex gap-3 items-start">
           <div className="hidden sm:flex flex-col gap-2 w-28 shrink-0">
             {steps.map((s, i) => (
-              <button key={s.id} onClick={() => { setCur(i); setSel(null); }} className={`text-left rounded-xl p-1.5 border-2 bg-white ${i === cur ? "border-[#db2777]" : "border-[#1B2A4A]/10"}`}>
+              <button key={s.id} onClick={() => { setCur(i); setSel(null); }} className={`text-left rounded-xl p-1.5 border-2 bg-white ${i === cur ? "border-[#9db4ff] ring-2 ring-[#9db4ff]/40" : "border-[#1B2A4A]/10"}`}>
                 <div className="text-[10px] font-extrabold text-[#1B2A4A] mb-1">ÉTAPE {i + 1}</div>
                 <svg viewBox={`0 0 ${dims.w} ${dims.h}`} className="w-full rounded"><image href={bgSrc} width={dims.w} height={dims.h} /><g dangerouslySetInnerHTML={{ __html: studioInner(s) }} /></svg>
               </button>
@@ -11021,7 +11063,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
             </svg>
           </div>
         </div>
-        <div className="sm:hidden flex gap-2 overflow-auto mt-3">{steps.map((s, i) => <button key={s.id} onClick={() => { setCur(i); setSel(null); }} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border-2 ${i === cur ? "border-[#db2777] text-[#db2777]" : "border-[#1B2A4A]/15"} bg-white`}>Étape {i + 1}</button>)}</div>
+        <div className="sm:hidden flex gap-2 overflow-auto mt-3">{steps.map((s, i) => <button key={s.id} onClick={() => { setCur(i); setSel(null); }} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border-2 ${i === cur ? "border-[#9db4ff] text-[#2563eb]" : "border-[#1B2A4A]/15"} bg-white`}>Étape {i + 1}</button>)}</div>
       </div>
     </div>
   );
@@ -11290,7 +11332,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
         )}
         {editingSchemaIdx === null && courtType === "basketball" && (
           <button type="button" onClick={() => setStudioOpen(true)}
-            className="w-full py-2.5 mb-2 rounded-lg text-xs font-bold text-white" style={{ backgroundColor: "#db2777" }}>
+            className="w-full py-2.5 mb-2 rounded-full text-xs font-bold text-[#0f1626] hover:opacity-90" style={{ backgroundColor: "#9db4ff" }}>
             {studio ? "🎨 Rouvrir l'éditeur multi-étapes de ce play" : "🎨 Nouvel éditeur : dessiner un play en plusieurs étapes"}
           </button>
         )}
