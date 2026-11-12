@@ -4799,6 +4799,28 @@ function parsePnrRows(rows) {
   if (!out.length) throw new Error("aucun match trouvé");
   return out;
 }
+// Export Excel « Equipes - … » : une ligne par équipe, moyennes PAR MATCH du PnR (réussis / tentés) → statistiques de classement
+function parsePnrTeamsRows(rows) {
+  const nh = (c) => String(c ?? "").toLowerCase().replace(/\s+/g, " ").replace(/\s*-\s*/g, "-").trim();
+  const hIdx = rows.findIndex(r => r.some(c => /^[ée]quipe$|^team$/.test(nh(c))) && r.some(c => /^pnr handlers?-tirs$/.test(nh(c))));
+  if (hIdx === -1) throw new Error("colonnes « Equipe » et « PnR Handlers-Tirs » introuvables : il faut l'export Excel « Equipes - … »");
+  const H = rows[hIdx].map(nh), col = (...res) => H.findIndex(h => res.some(re => re.test(h)));
+  const C = { n: col(/^[ée]quipe$|^team$/), gp: col(/^matches? jou/), hm: col(/^pnr handlers?-tirs de champ marqu/), ha: col(/^pnr handlers?-tirs$/), rm: col(/^pnr rollers?-tirs de champ marqu/), ra: col(/^pnr rollers?-tirs$/),
+    pm: col(/^pnp-tirs effectu/), pa: col(/^pnp-tirs$/), fga: col(/^tirs de champ tent/) };
+  const num = (r, i) => { if (i < 0) return 0; const v = r[i]; const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", ".")); return isNaN(n) ? 0 : n; };
+  const pc = (m, a) => a ? Math.round(m / a * 1000) / 10 : null, r1 = (x) => Math.round(x * 10) / 10, out = [];
+  for (const r of rows.slice(hIdx + 1)) {
+    const name = String(r[C.n] ?? "").trim(); if (!name) continue; if (/average|moyenne|total/i.test(name)) break;
+    const hm = num(r, C.hm), ha = num(r, C.ha), rm = num(r, C.rm), ra = num(r, C.ra), pm = num(r, C.pm), pa = num(r, C.pa), att = ha + ra + pa;
+    if (!att) continue;
+    const stats = { pnrPct: pc(hm + rm + pm, att), pnrHand: pc(hm, ha), pnrRoll: pc(rm, ra), pnrPop: pc(pm, pa), pnrPG: r1(att) };
+    if (num(r, C.fga)) stats.pnrShare = pc(att, num(r, C.fga));
+    if (num(r, C.gp)) stats.gp = num(r, C.gp);
+    out.push({ name, stats });
+  }
+  if (!out.length) throw new Error("aucune équipe trouvée");
+  return out;
+}
 function leaguePnrAgg(games) {
   const z = () => [0, 0, 0, 0, 0, 0], A = { n: games.length, own: z(), opp: z(), fga: 0, fgaO: 0, poss: 0, possO: 0 };
   games.forEach(g => { for (let k = 0; k < 6; k++) { A.own[k] += g[3][k]; A.opp[k] += g[4][k]; } A.fga += g[5]; A.fgaO += g[6]; A.poss += g[7]; A.possO += g[8]; });
@@ -4826,7 +4848,7 @@ function leagueHtml(a) {
   const byId = new Map(L.teams.map(t => [t.id, t]));
   const badge = (t, big = false) => t ? `<span class="lg-t">${t.logo ? `<img class="lg-logo${big ? " lg-big" : ""}" src="${t.logo}" alt="" />` : ""}${esc(t.name)}${typeof L.stats?.gp?.[t.id] === "number" ? ` <small style="font-weight:400;opacity:.6">(${L.stats.gp[t.id]} match${L.stats.gp[t.id] > 1 ? "s" : ""})</small>` : ""}</span>` : "";
   const fmt = (S, v) => v === null || v === undefined ? "–" : S.pct ? v.toFixed(1).replace(".", ",") + " %" : v.toFixed(S.dec || 1).replace(".", ",");
-  const stats2 = { ...(L.stats || {}), ...leaguePnrStats(L) };
+  const pnrS = leaguePnrStats(L), stats2 = { ...(L.stats || {}) }; Object.keys(pnrS).forEach(k => { stats2[k] = { ...(stats2[k] || {}), ...pnrS[k] }; });
   const all = LEAGUE_STATS.concat(LEAGUE_PNR_STATS).map(S => {
     const m = stats2[S.key] || {}, entries = Object.entries(m).filter(([id, v]) => byId.has(id) && v !== null).map(([id, v]) => ({ t: byId.get(id), v }));
     if (entries.length < 3) return null;
@@ -12362,6 +12384,17 @@ function CoachingProBoost({ session }) {
               const games = parsePnrRows(await readXlsxFirstSheet(await f.arrayBuffer()));
               const nm = leagueNorm((f.name.match(/^Matchs\s*-\s*(.+?),/i) || [])[1] || ""), guess = LG.teams.find(t => nm && (leagueNorm(t.name) === nm || leagueNorm(t.name).includes(nm) || nm.includes(leagueNorm(t.name))));
               setTaLgPnr({ fileName: f.name, games, team: guess ? guess.id : "" });
+            } catch (err) { cpbAlert?.("Import impossible : " + err.message); }
+          }} />
+        </label>
+        <label className="inline-block ml-2 text-xs font-semibold text-white px-3 py-1.5 rounded-md cursor-pointer" style={{ backgroundColor: "#7c3aed" }}>📊 Excel de toutes les équipes d'une poule
+          <input type="file" accept=".xlsx" className="hidden" onChange={async e => {
+            const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+            try {
+              const rows = parsePnrTeamsRows(await readXlsxFirstSheet(await f.arrayBuffer()));
+              const { league, created } = mergeLeague(LG, rows);
+              setLG(league);
+              cpbAlert?.(`${rows.length} équipes lues (pick and roll par match)${created ? ` dont ${created} nouvelle${created > 1 ? "s" : ""} ajoutée${created > 1 ? "s" : ""} au comparatif` : ""}. Tu peux importer l'autre poule ensuite : les classements couvrent toutes les équipes importées.`);
             } catch (err) { cpbAlert?.("Import impossible : " + err.message); }
           }} />
         </label>
