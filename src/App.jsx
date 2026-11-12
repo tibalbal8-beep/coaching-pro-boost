@@ -10827,7 +10827,7 @@ const STUDIO_BGS = {
   clair: { label: "Parquet clair", half: "/basketball-clair-demi.png", full: "/basketball-clair-complet.png" },
   bleu: { label: "Bleu", half: "/basketball-bleu-pro-demi.png", full: "/basketball-bleu-pro-complet.png" },
 };
-const STUDIO_COLORS = ["#111827", "#0ea5e9", "#dc2626", "#d99a06", "#16a34a", "#2563eb", "#7c3aed"];
+const STUDIO_COLORS = ["#111827", "#facc15", "#0ea5e9", "#dc2626", "#d99a06", "#16a34a", "#2563eb", "#7c3aed"];
 const STUDIO_R = 17;
 const studioHash = (s) => { let h = 5381; for (let i = 0; i < s.length; i += 7) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return s.length + ":" + h; };
 const studioNewStep = () => ({ id: uid(), players: [], cones: [], paths: [], zones: [], texts: [] });
@@ -10902,8 +10902,15 @@ function studioInner(step, o = {}) {
     return `<g>${body}${hit}${hs}</g>`;
   };
   let s = "";
-  step.zones.forEach(z => { const fl = z.kind === "fluo"; s += `<rect x="${f(z.x)}" y="${f(z.y)}" width="${f(z.w)}" height="${f(z.h)}" rx="16" fill="${fl ? "rgba(255,235,0,.55)" : "rgba(110,120,140,.38)"}" stroke="${fl ? "#d4bf00" : "#6b7488"}" stroke-width="2" data-t="zone" data-id="${z.id}" style="cursor:move"/>`; });
-  if (draft && draft.zone) { const z = draft.zone; s += `<rect x="${f(Math.min(z.x, z.x2))}" y="${f(Math.min(z.y, z.y2))}" width="${f(Math.abs(z.x2 - z.x))}" height="${f(Math.abs(z.y2 - z.y))}" rx="16" fill="rgba(255,107,53,.25)" stroke="#FF6B35" stroke-dasharray="6 4"/>`; }
+  const zoneSvg = (z, extra) => {
+    const col = z.color || (z.kind === "gris" ? "#6b7488" : "#facc15"), sh = z.shape || "rect", x = Math.min(z.x, z.x + z.w), y = Math.min(z.y, z.y + z.h), w = Math.abs(z.w), h = Math.abs(z.h);
+    const at = extra || `fill="${col}" fill-opacity=".42" stroke="${col}" stroke-width="2.5"`;
+    if (sh === "round") return `<ellipse cx="${f(x + w / 2)}" cy="${f(y + h / 2)}" rx="${f(w / 2)}" ry="${f(h / 2)}" ${at}`;
+    if (sh === "tri") return `<polygon points="${f(x + w / 2)},${f(y)} ${f(x)},${f(y + h)} ${f(x + w)},${f(y + h)}" stroke-linejoin="round" ${at}`;
+    return `<rect x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" rx="${f(Math.min(18, w / 3, h / 3))}" ${at}`;
+  };
+  step.zones.forEach(z => { s += zoneSvg(z) + ` data-t="zone" data-id="${z.id}" style="cursor:move"/>`; });
+  if (draft && draft.zone) { const z = draft.zone; s += zoneSvg({ x: z.x, y: z.y, w: z.x2 - z.x, h: z.y2 - z.y, shape: z.shape }, 'fill="rgba(255,107,53,.2)" stroke="#FF6B35" stroke-width="2.5" stroke-dasharray="6 4"') + "/>"; }
   step.paths.forEach(p => { s += pathSvg(p, p.id, sel && sel.t === "path" && sel.id === p.id); });
   if (draft && draft.path) s += draft.raw && draft.raw.length > 2 ? `<polyline points="${ptsStr(draft.raw)}" fill="none" stroke="#FF6B35" stroke-width="3" stroke-dasharray="6 4" stroke-linecap="round" stroke-linejoin="round"/>` : pathSvg(draft.path, "draft", false);
   step.cones.forEach(c => { s += `<polygon points="${f(c.x)},${f(c.y - 15)} ${f(c.x - 13)},${f(c.y + 11)} ${f(c.x + 13)},${f(c.y + 11)}" fill="#f97316" stroke="#9a3412" stroke-width="2" data-t="cone" data-id="${c.id}" style="cursor:move"/>`; });
@@ -10929,7 +10936,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   const [steps, setSteps] = useState(() => initial && initial.steps && initial.steps.length ? initial.steps : [studioNewStep()]);
   const [cur, setCur] = useState(0), [tool, setTool] = useState("select"), [color, setColor] = useState("#111827");
   const [bg, setBg] = useState((initial && STUDIO_BGS[initial.bg] ? initial.bg : "clair")), [half, setHalf] = useState(initial ? initial.half !== false : true);
-  const [sel, setSel] = useState(null), [draft, setDraft] = useState(null), [dims, setDims] = useState({ w: 640, h: 480 }), [busy, setBusy] = useState(false);
+  const [sel, setSel] = useState(null), [zoneShape, setZoneShape] = useState("rect"), [zoneMenu, setZoneMenu] = useState(false), [draft, setDraft] = useState(null), [dims, setDims] = useState({ w: 640, h: 480 }), [busy, setBusy] = useState(false);
   const svgRef = useRef(null), drag = useRef(null), hist = useRef([]), redo = useRef([]), stepsRef = useRef(steps), draftRef = useRef(null);
   stepsRef.current = steps;
   const setDraftBoth = (d) => { draftRef.current = typeof d === "function" ? d(draftRef.current) : d; setDraft(draftRef.current); };
@@ -10968,7 +10975,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
     if (tool === "player" || tool === "defense") { const kind = tool === "defense" ? "d" : "o"; setStep(s => ({ ...s, players: [...s.players, { id: uid(), kind, n: nextLabel(kind), x: p.x, y: p.y, ball: false }] })); return; }
     if (tool === "cone") { setStep(s => ({ ...s, cones: [...s.cones, { id: uid(), x: p.x, y: p.y }] })); return; }
     if (tool === "text") { const txt = window.prompt("Texte à écrire sur le terrain :"); if (txt && txt.trim()) setStep(s => ({ ...s, texts: [...s.texts, { id: uid(), x: p.x, y: p.y, text: txt.trim(), color }] })); return; }
-    if (tool === "fluo" || tool === "gris") { drag.current = { k: "zone", kind: tool === "fluo" ? "fluo" : "gris" }; setDraftBoth({ zone: { x: p.x, y: p.y, x2: p.x, y2: p.y } }); return; }
+    if (tool === "zone") { drag.current = { k: "zone", shape: zoneShape, color }; setDraftBoth({ zone: { x: p.x, y: p.y, x2: p.x, y2: p.y, shape: zoneShape } }); return; }
     if (PATHS.includes(tool)) { const sp = snapPlayer(p); setSel(null); drag.current = { k: "path", pts: [{ x: p.x, y: p.y }] }; setDraftBoth({ path: { kind: tool, color, a: sp ? { pid: sp.id, x: sp.x, y: sp.y } : { x: p.x, y: p.y }, b: { x: p.x, y: p.y } } }); }
   };
   const move = (e) => {
@@ -10985,7 +10992,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   };
   const up = (e) => {
     const d = drag.current; drag.current = null; if (!d) return; const draft = draftRef.current;
-    if (d.k === "zone" && draft && draft.zone) { const z = draft.zone, w = Math.abs(z.x2 - z.x), h = Math.abs(z.y2 - z.y); if (w > 18 && h > 18) setStep(s => ({ ...s, zones: [...s.zones, { id: uid(), kind: d.kind, x: Math.min(z.x, z.x2), y: Math.min(z.y, z.y2), w, h }] })); setDraftBoth(null); }
+    if (d.k === "zone" && draft && draft.zone) { const z = draft.zone, w = Math.abs(z.x2 - z.x), h = Math.abs(z.y2 - z.y); if (w > 18 && h > 18) setStep(s => ({ ...s, zones: [...s.zones, { id: uid(), shape: d.shape, color: d.color, x: Math.min(z.x, z.x2), y: Math.min(z.y, z.y2), w, h }] })); setDraftBoth(null); }
     else if (d.k === "path" && draft && draft.path) {
       const pa = draft.path, pe = pos(e), ep = snapPlayer(pe), len = Math.hypot(pe.x - (pa.a.x), pe.y - (pa.a.y));
       if (len > 24) {
@@ -11004,7 +11011,9 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   const dbl = (e) => { const el = e.target.closest ? e.target.closest("[data-t='player']") : null; if (!el) return; const id = el.getAttribute("data-id"); setStep(s => ({ ...s, players: s.players.map(x => x.id === id ? { ...x, ball: !x.ball } : { ...x, ball: x.ball && false }) })); };
   const removeSel = () => { if (!sel) return; setStep(s => ({ ...s, players: s.players.filter(x => !(sel.t === "player" && x.id === sel.id)), cones: s.cones.filter(x => !(sel.t === "cone" && x.id === sel.id)), zones: s.zones.filter(x => !(sel.t === "zone" && x.id === sel.id)), texts: s.texts.filter(x => !(sel.t === "text" && x.id === sel.id)), paths: s.paths.filter(x => !(sel.t === "path" && x.id === sel.id) && !(sel.t === "player" && ((x.a && x.a.pid === sel.id) || (x.b && x.b.pid === sel.id)))) })); setSel(null); };
   useEffect(() => { const k = (e) => { if ((e.key === "Delete" || e.key === "Backspace") && sel && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || "")) { e.preventDefault(); removeSel(); } if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? rdo() : undo(); } }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); });
-  const recolorSel = (c) => { setColor(c); if (sel && sel.t === "path") setStep(s => ({ ...s, paths: s.paths.map(x => x.id === sel.id ? { ...x, color: c } : x) })); };
+  const recolorSel = (c) => { setColor(c); if (sel && sel.t === "path") setStep(s => ({ ...s, paths: s.paths.map(x => x.id === sel.id ? { ...x, color: c } : x) })); if (sel && sel.t === "zone") setStep(s => ({ ...s, zones: s.zones.map(x => x.id === sel.id ? { ...x, color: c } : x) })); };
+  const zoneTimer = useRef(null);
+  const pickZone = (shape) => { if (shape) setZoneShape(shape); if (color === "#111827") setColor("#facc15"); setTool("zone"); setDraftBoth(null); setZoneMenu(false); };
   const addStep = () => { const base = stepsRef.current[cur], ns = { ...studioNewStep(), players: base.players.map(p => ({ ...p })), cones: base.cones.map(c => ({ ...c })) }; const next = [...steps.slice(0, cur + 1), ns, ...steps.slice(cur + 1)]; commit(next); setCur(cur + 1); setSel(null); };
   const dupStep = () => { const ns = JSON.parse(JSON.stringify(stepsRef.current[cur])); const remap = {}; ns.id = uid(); ns.players.forEach(p => { const n = uid(); remap[p.id] = n; p.id = n; }); ["cones", "zones", "texts"].forEach(k => ns[k].forEach(x => { x.id = uid(); })); ns.paths.forEach(p => { p.id = uid(); if (p.a && p.a.pid) p.a.pid = remap[p.a.pid]; if (p.b && p.b.pid) p.b.pid = remap[p.b.pid]; }); commit([...steps.slice(0, cur + 1), ns, ...steps.slice(cur + 1)]); setCur(cur + 1); };
   const delStep = () => { if (steps.length < 2) { setStep(studioNewStep()); return; } const next = steps.filter((_, i) => i !== cur); commit(next); setCur(Math.max(0, cur - 1)); setSel(null); };
@@ -11038,14 +11047,27 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
             <span className="w-px bg-[#1B2A4A]/15 mx-1" />
             {T("cut", "↗", "Coupe")}{T("pass", "⇢", "Passe")}{T("dribble", "〰", "Dribble")}{T("screen", "⟂", "Écran")}{T("handoff", "⇉", "Handoff")}{T("shot", "➠", "Tir")}
             <span className="w-px bg-[#1B2A4A]/15 mx-1" />
-            {T("fluo", "▭", "Zone fluo")}{T("gris", "▬", "Zone grise")}{T("text", "Aa", "Texte")}{T("eraser", "⌫", "Gomme")}
+            <div className="relative">
+              <button onPointerDown={() => { clearTimeout(zoneTimer.current); zoneTimer.current = setTimeout(() => { zoneTimer.current = null; setZoneMenu(true); }, 420); }}
+                onPointerUp={() => { if (zoneTimer.current) { clearTimeout(zoneTimer.current); zoneTimer.current = null; pickZone(); } }}
+                onPointerLeave={() => { clearTimeout(zoneTimer.current); zoneTimer.current = null; }} onContextMenu={e => { e.preventDefault(); setZoneMenu(true); }}
+                title="Clic : dessiner une zone · appui long : choisir la forme" className={`flex flex-col items-center justify-center min-w-[58px] px-2 py-1.5 rounded-xl text-[11px] font-semibold border select-none ${tool === "zone" ? "bg-[#111827] text-white border-[#111827]" : "bg-white text-[#1B2A4A] border-[#1B2A4A]/15 hover:border-[#FF6B35]"}`}>
+                <span className="text-lg leading-none mb-0.5">{zoneShape === "round" ? "◯" : zoneShape === "tri" ? "△" : "▢"}</span>Zone
+              </button>
+              {zoneMenu && (
+                <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-[#1B2A4A]/15 rounded-xl shadow-xl p-1.5 flex gap-1">
+                  {[["rect", "▢", "Rectangle"], ["round", "◯", "Rond"], ["tri", "△", "Triangle"]].map(([k, ic, l]) => <button key={k} onClick={() => pickZone(k)} className={`flex flex-col items-center px-3 py-1.5 rounded-lg text-[11px] font-semibold ${zoneShape === k ? "bg-[#9db4ff] text-[#0f1626]" : "hover:bg-[#1B2A4A]/8"}`}><span className="text-xl leading-none">{ic}</span>{l}</button>)}
+                </div>
+              )}
+            </div>
+            {T("text", "Aa", "Texte")}{T("eraser", "⌫", "Gomme")}
           </div>
           <div className="flex flex-wrap items-center gap-2 mt-2"><span className="text-[11px] font-bold tracking-wide text-[#1B2A4A]/50">COULEUR</span>
             {STUDIO_COLORS.map(c => <button key={c} onClick={() => recolorSel(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "#fff", boxShadow: "0 0 0 1px #0002" }} />)}
             <div className="ml-auto flex gap-2 items-center">{sel && <button onClick={removeSel} className="text-xs font-semibold text-red-600 underline">Supprimer la sélection</button>}
               <button onClick={undo} className="px-3 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20">↶ Annuler</button><button onClick={rdo} className="px-3 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20">↷ Rétablir</button></div>
           </div>
-          <p className="text-[11px] text-[#1B2A4A]/45 mt-2">Trace un mouvement en glissant d'un joueur à un autre (il s'accroche aux joueurs) : si ton geste est courbe, le trait l'est aussi ; si tu changes de direction sans lever le doigt, chaque coin est gardé. Après le tracé, tire les pastilles orange pour ajuster (les pastilles « + » entre deux points ajoutent un point : tire-les à l'endroit voulu pour mieux arrondir). Double-clique un joueur pour lui donner la balle.</p>
+          <p className="text-[11px] text-[#1B2A4A]/45 mt-2">Zone : clic pour dessiner, appui long sur le bouton pour choisir la forme (rectangle, rond, triangle) ; la couleur se change avec les pastilles de couleur, même sur une zone déjà dessinée (clique-la en mode « Déplacer »). Trace un mouvement en glissant d'un joueur à un autre (il s'accroche aux joueurs) : si ton geste est courbe, le trait l'est aussi ; si tu changes de direction sans lever le doigt, chaque coin est gardé. Après le tracé, tire les pastilles orange pour ajuster (les pastilles « + » entre deux points ajoutent un point : tire-les à l'endroit voulu pour mieux arrondir). Double-clique un joueur pour lui donner la balle.</p>
         </div>
         <div className="flex gap-3 items-start">
           <div className="hidden sm:flex flex-col gap-2 w-28 shrink-0">
