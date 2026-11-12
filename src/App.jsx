@@ -2827,7 +2827,7 @@ function buildScoutReportHtml(r, logo = null, league = null, games = null) {
     </header>
     ${notes}
     ${bilan}
-    ${scoutFaceHtml(r, league)}
+    ${(() => { const fh = scoutFaceHtml(r, league); if (fh.includes('id="lg-pnr"')) return fh; let px = ""; try { const id = scoutFaceTeam(r, league); if (id && (league.pnr || {})[id]) px = leagueHtml({ league: { ...league, other: id, mine: null }, faceOnly: true }); } catch {} return fh + px; })()}
     ${(() => { try { return scoutInsightsHtml(r, league, games); } catch { return ""; } })()}
     ${teamTable}
     ${extraHtml}
@@ -4775,14 +4775,60 @@ document.getElementById('pk-q').addEventListener('input',function(){shown=12;ren
       <div class="sub-title">Statistiques poussées</div>${fullTable(advM)}<div class="sub-title">Statistiques classiques</div>${fullTable(claM)}</details></div>${printHtml}
     <script type="application/json" id="lgpl-data">${data}</script>${script}</section>`;
 }
+// ── Pick and roll : export Excel « Matchs - Équipe, date » (une ligne équipe + une ligne adversaires par match) ──
+// Stocké en tout petit : par match [date, adversaire, score, [PnR porteur réussis, tentés, rouleur r., t., pick-and-pop r., t.], [idem adversaires], tirs, tirs adv., possessions, poss. adv.]
+function parsePnrRows(rows) {
+  const nh = (c) => String(c ?? "").toLowerCase().replace(/\s+/g, " ").replace(/\s*-\s*/g, "-").trim();
+  const hIdx = rows.findIndex(r => r.some(c => /^adversaire$|^opponent$/.test(nh(c))) && r.some(c => /^pnr handlers?-tirs$/.test(nh(c))));
+  if (hIdx === -1) throw new Error("colonnes « adversaire » et « PnR Handlers-Tirs » introuvables : il faut l'export Excel « Matchs - … » de ton outil de stats");
+  const H = rows[hIdx].map(nh), col = (...res) => H.findIndex(h => res.some(re => re.test(h)));
+  const C = { d: col(/^date$/), o: col(/^adversaire$|^opponent$/), sc: col(/^score$/),
+    hm: col(/^pnr handlers?-tirs de champ marqu/), ha: col(/^pnr handlers?-tirs$/), rm: col(/^pnr rollers?-tirs de champ marqu/), ra: col(/^pnr rollers?-tirs$/),
+    pm: col(/^pnp-tirs effectu/), pa: col(/^pnp-tirs$/), fga: col(/^tirs de champ tent/), poss: col(/^possessions?$/) };
+  const num = (r, i) => { if (i < 0) return 0; const v = r[i]; const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", ".")); return isNaN(n) ? 0 : n; };
+  const side = (r) => [num(r, C.hm), num(r, C.ha), num(r, C.rm), num(r, C.ra), num(r, C.pm), num(r, C.pa)];
+  const out = [], body = rows.slice(hIdx + 1);
+  for (let i = 0; i < body.length; i++) {
+    const r = body[i], opp = String(r[C.o] ?? "").trim();
+    if (/moyenne|average|total/i.test(opp) || /moyenne|average/i.test(String(r[C.d] ?? ""))) break;
+    if (!opp || opp === "-") continue;
+    const q = body[i + 1]; if (!q) break;
+    out.push([String(r[C.d] ?? "").trim(), opp, String(r[C.sc] ?? "").trim(), side(r), side(q), num(r, C.fga), num(q, C.fga), num(r, C.poss), num(q, C.poss)]);
+    i++;
+  }
+  if (!out.length) throw new Error("aucun match trouvé");
+  return out;
+}
+function leaguePnrAgg(games) {
+  const z = () => [0, 0, 0, 0, 0, 0], A = { n: games.length, own: z(), opp: z(), fga: 0, fgaO: 0, poss: 0, possO: 0 };
+  games.forEach(g => { for (let k = 0; k < 6; k++) { A.own[k] += g[3][k]; A.opp[k] += g[4][k]; } A.fga += g[5]; A.fgaO += g[6]; A.poss += g[7]; A.possO += g[8]; });
+  const t = (v) => [v[0] + v[2] + v[4], v[1] + v[3] + v[5]];
+  A.ownT = t(A.own); A.oppT = t(A.opp);
+  return A;
+}
+const LEAGUE_PNR_STATS = [
+  { key: "pnrPct", label: "PnR : % de réussite (tous types)", hi: true, pct: true }, { key: "pnrHand", label: "PnR porteur de balle : % de réussite", hi: true, pct: true },
+  { key: "pnrRoll", label: "PnR rouleur : % de réussite", hi: true, pct: true }, { key: "pnrPop", label: "Pick and pop : % de réussite", hi: true, pct: true },
+  { key: "pnrShare", label: "Tirs sur PnR (% de ses tirs)", hi: true, pct: true }, { key: "pnrPG", label: "Tirs sur PnR par match", hi: true },
+  { key: "pnrOppPct", label: "PnR subi : % de réussite adverse", hi: false, pct: true }, { key: "pnrOppPG", label: "Tirs de PnR subis par match", hi: false }];
+function leaguePnrStats(L) {
+  const out = {}; LEAGUE_PNR_STATS.forEach(S => { out[S.key] = {}; });
+  Object.entries(L.pnr || {}).forEach(([id, d]) => {
+    const g = (d && d.games) || []; if (!g.length) return; const A = leaguePnrAgg(g), pc = (m, a) => a ? Math.round(m / a * 1000) / 10 : null;
+    out.pnrPct[id] = pc(A.ownT[0], A.ownT[1]); out.pnrHand[id] = pc(A.own[0], A.own[1]); out.pnrRoll[id] = pc(A.own[2], A.own[3]); out.pnrPop[id] = pc(A.own[4], A.own[5]);
+    out.pnrShare[id] = pc(A.ownT[1], A.fga); out.pnrPG[id] = Math.round(A.ownT[1] / A.n * 10) / 10; out.pnrOppPct[id] = pc(A.oppT[0], A.oppT[1]); out.pnrOppPG[id] = Math.round(A.oppT[1] / A.n * 10) / 10;
+  });
+  return out;
+}
 function leagueHtml(a) {
   const L = a.league; if (!L || !(L.teams || []).length) return "";
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const byId = new Map(L.teams.map(t => [t.id, t]));
   const badge = (t, big = false) => t ? `<span class="lg-t">${t.logo ? `<img class="lg-logo${big ? " lg-big" : ""}" src="${t.logo}" alt="" />` : ""}${esc(t.name)}${typeof L.stats?.gp?.[t.id] === "number" ? ` <small style="font-weight:400;opacity:.6">(${L.stats.gp[t.id]} match${L.stats.gp[t.id] > 1 ? "s" : ""})</small>` : ""}</span>` : "";
   const fmt = (S, v) => v === null || v === undefined ? "–" : S.pct ? v.toFixed(1).replace(".", ",") + " %" : v.toFixed(S.dec || 1).replace(".", ",");
-  const all = LEAGUE_STATS.map(S => {
-    const m = L.stats[S.key] || {}, entries = Object.entries(m).filter(([id, v]) => byId.has(id) && v !== null).map(([id, v]) => ({ t: byId.get(id), v }));
+  const stats2 = { ...(L.stats || {}), ...leaguePnrStats(L) };
+  const all = LEAGUE_STATS.concat(LEAGUE_PNR_STATS).map(S => {
+    const m = stats2[S.key] || {}, entries = Object.entries(m).filter(([id, v]) => byId.has(id) && v !== null).map(([id, v]) => ({ t: byId.get(id), v }));
     if (entries.length < 3) return null;
     entries.sort((x, y) => S.hi ? y.v - x.v : x.v - y.v);
     // Liste incomplète (ex. top 5 de la page d'accueil LNB) : ni moyenne ni rang fiables ; elle ne sert qu'à nommer les meilleures équipes (si « plus » = mieux)
@@ -4804,8 +4850,19 @@ function leagueHtml(a) {
   }
     return out;
   };
-  if (a.faceOnly) return faceSection0();
-  if (!all.length) return head("Comparatif championnat", `<p class="hint">Aucune statistique avec au moins 3 équipes pour l'instant.</p>`, "lg-compare") + "</section>" + leaguePlayersHtml(a);
+  const pnrSection = (t) => {
+    const d = (L.pnr || {})[t.id], g = (d && d.games) || []; if (!g.length) return "";
+    const A = leaguePnrAgg(g), pc = (m, x) => x ? Math.round(m / x * 100) + " %" : "–", mt = (v, k) => `${v[k]}/${v[k + 1]}`;
+    const rowOf = (lab, o, q, sub = "") => `<tr><td>${lab}${sub}</td><td class="num">${mt(o, 0)} <small>${pc(o[0], o[1])}</small></td><td class="num">${mt(o, 2)} <small>${pc(o[2], o[3])}</small></td><td class="num">${mt(o, 4)} <small>${pc(o[4], o[5])}</small></td><td class="num"><b>${o[0] + o[2] + o[4]}/${o[1] + o[3] + o[5]}</b> <small>${pc(o[0] + o[2] + o[4], o[1] + o[3] + o[5])}</small></td><td class="num">${q}</td></tr>`;
+    const tot = (o) => o[1] + o[3] + o[5];
+    const body = g.map(m => rowOf(`${esc(m[0])} ${esc(m[1])}`, m[3], m[5] ? Math.round(tot(m[3]) / m[5] * 100) + " %" : "–", ` <small>${esc(m[2])}</small>`) + rowOf(`<small style="opacity:.6">↳ subi</small>`, m[4], m[6] ? Math.round(tot(m[4]) / m[6] * 100) + " %" : "–")).join("");
+    return head(`Pick and roll : ${badge(t, true)}`, `<p class="hint">Tirs réussis/tentés pris à la suite d'un pick and roll, d'après ${A.n} match${A.n > 1 ? "s" : ""} (export Excel). C'est la réussite aux tirs : les points et les pertes de balle sur PnR ne sont pas dans ces fichiers.</p><div class="bs-table"><table class="pm-five lg"><thead><tr><th></th><th class="num">Porteur</th><th class="num">Rouleur</th><th class="num">Pick and pop</th><th class="num">Total</th><th class="num">Part des tirs</th></tr></thead><tbody>
+      ${rowOf("<b>Total " + esc(t.name) + "</b>", A.own, A.fga ? Math.round(tot(A.own) / A.fga * 100) + " %" : "–")}${rowOf("<b>Subi (adversaires)</b>", A.opp, A.fgaO ? Math.round(tot(A.opp) / A.fgaO * 100) + " %" : "–")}${body}
+      </tbody></table></div>`, "lg-pnr") + "</section>";
+  };
+  const pnrAll = () => { const pick = [mineT, otherT].filter(t => t && (L.pnr || {})[t.id]); const list = pick.length ? pick : L.teams.filter(t => (L.pnr || {})[t.id]); return list.map(pnrSection).join(""); };
+  if (a.faceOnly) return faceSection0() + [otherT, mineT].filter(t => t && (L.pnr || {})[t.id]).map(pnrSection).join("");
+  if (!all.length) return head("Comparatif championnat", `<p class="hint">Aucune statistique avec au moins 3 équipes pour l'instant.</p>`, "lg-compare") + "</section>" + pnrAll() + leaguePlayersHtml(a);
   let out = "";
   if (!full.length) {
     out += head("Comparatif championnat", `<p class="hint">Les classements importés sont des listes partielles (top 5) : colle les classements complets ou le tableau de toutes les équipes pour obtenir la moyenne du championnat et le rang de ton équipe.</p>`, "lg-compare") + "</section>";
@@ -4832,6 +4889,7 @@ function leagueHtml(a) {
   }).join("");
   out += head("Les meilleures équipes par statistique", `<p class="hint">Les 5 premières de chaque classement${mineT ? `, avec ${esc(mineT.name)} en surbrillance (ajoutée en bas si elle est hors du top 5)` : ""}.</p><div class="lg-grid">${tops}</div>`, "lg-tops") + "</section>";
   out += faceSection0();
+  out += pnrAll();
   return out + leaguePlayersHtml(a);
 }
 function buildTeamReportHtml(a, logo = null, opts = {}) {
@@ -12186,13 +12244,13 @@ function CoachingProBoost({ session }) {
   const [activeTeamAnalysisId, setActiveTeamAnalysisId] = useState(null);
   const [taMom, setTaMom] = useState({}), [taOpen, setTaOpen] = useState({});
   const [taLnbOpen, setTaLnbOpen] = useState(false), [taLnbText, setTaLnbText] = useState("");
-  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false), [taLgGamesOpen, setTaLgGamesOpen] = useState(false), [taLgStatsOpen, setTaLgStatsOpen] = useState(false), [taLgProg, setTaLgProg] = useState(""), [taLgTeamsOpen, setTaLgTeamsOpen] = useState(false), [taLgBirthTeam, setTaLgBirthTeam] = useState(""), [taLgBirthText, setTaLgBirthText] = useState(""), [taLgBoxText, setTaLgBoxText] = useState(""), [taLgBoxOpen, setTaLgBoxOpen] = useState(false);
+  const [taLgText, setTaLgText] = useState(""), [taLgStat, setTaLgStat] = useState(""), [taLgNew, setTaLgNew] = useState(""), [taLgOpen, setTaLgOpen] = useState(false), [taLgUrl, setTaLgUrl] = useState(""), [taLgBusy, setTaLgBusy] = useState(false), [taLgGamesOpen, setTaLgGamesOpen] = useState(false), [taLgStatsOpen, setTaLgStatsOpen] = useState(false), [taLgProg, setTaLgProg] = useState(""), [taLgTeamsOpen, setTaLgTeamsOpen] = useState(false), [taLgBirthTeam, setTaLgBirthTeam] = useState(""), [taLgBirthText, setTaLgBirthText] = useState(""), [taLgBoxText, setTaLgBoxText] = useState(""), [taLgBoxOpen, setTaLgBoxOpen] = useState(false), [taLgPnr, setTaLgPnr] = useState(null);
   // Éditeur du comparatif championnat (partagé : bloc de « Mon équipe » et onglet admin « Comparatif championnat »)
   const lgPlayers = (taId, teams) => { try { return leaguePlayersFromGames(leagueGames.filter(g => g.ta === taId), teams); } catch { return []; } };
   const renderLeagueEditor = (LG, setLG, taId) => {
     const updTeam = (id, patch) => setLG({ ...LG, teams: LG.teams.map(x => x.id === id ? { ...x, ...patch } : x) });
     const addTeam = () => { const n = taLgNew.trim(); if (!n) return; if (LG.teams.some(x => leagueNorm(x.name) === leagueNorm(n))) { cpbAlert?.("Cette équipe existe déjà."); return; } setLG({ ...LG, teams: [...LG.teams, { id: uid(), name: n }] }); setTaLgNew(""); };
-    const delTeam = async (x) => { const ok = await cpbAlert?.(`Retirer « ${x.name} » du comparatif ?`, { confirm: true }); if (!ok) return; const stats = {}; Object.entries(LG.stats).forEach(([k, m]) => { const c = { ...m }; delete c[x.id]; stats[k] = c; }); setLG({ ...LG, teams: LG.teams.filter(t2 => t2.id !== x.id), stats, mine: LG.mine === x.id ? null : LG.mine, other: LG.other === x.id ? null : LG.other }); };
+    const delTeam = async (x) => { const ok = await cpbAlert?.(`Retirer « ${x.name} » du comparatif ?`, { confirm: true }); if (!ok) return; const stats = {}; Object.entries(LG.stats).forEach(([k, m]) => { const c = { ...m }; delete c[x.id]; stats[k] = c; }); const pnr = { ...(LG.pnr || {}) }; delete pnr[x.id]; setLG({ ...LG, pnr, teams: LG.teams.filter(t2 => t2.id !== x.id), stats, mine: LG.mine === x.id ? null : LG.mine, other: LG.other === x.id ? null : LG.other }); };
     const readText = () => {
       try {
         const r = parseLeagueText(taLgText, taLgStat);
@@ -12295,6 +12353,27 @@ function CoachingProBoost({ session }) {
         <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Colle un ou plusieurs liens de matchs terminés (un par ligne, ou un texte qui en contient). Seuls les totaux des équipes et les chiffres de chaque joueur sont gardés (≈ 2 Ko par match). Ils donnent, pour chaque équipe, ses points encaissés, ses rebonds disponibles pris et la part de rebonds de l'adversaire sans estimation.</p>
         <textarea value={taLgUrl} onChange={e => setTaLgUrl(e.target.value)} rows={3} placeholder="Colle un ou plusieurs liens de matchs LiveStats (un par ligne)" className="w-full border border-[#1B2A4A]/20 rounded-md px-2 py-1.5 text-xs bg-white/60 font-mono" />
         <button disabled={taLgBusy || !taLgUrl.trim()} onClick={addGame} className="mt-2 text-xs font-semibold text-white px-3 py-1.5 rounded-md disabled:opacity-40" style={{ backgroundColor: "#7c3aed" }}>{taLgBusy ? (taLgProg || "Lecture…") : "Ajouter le ou les matchs"}</button>
+        <div className="mt-5 text-xs font-semibold text-[#1B2A4A] mb-1">4. Pick and roll (export Excel « Matchs - … »)</div>
+        <p className="text-[11px] text-[#1B2A4A]/50 mb-2">Importe l'Excel d'une équipe : on garde seulement les tirs de PnR (porteur, rouleur, pick and pop) de chaque match, pour l'équipe et ses adversaires. Un nouvel import remplace le précédent de cette équipe.</p>
+        <label className="inline-block text-xs font-semibold text-white px-3 py-1.5 rounded-md cursor-pointer" style={{ backgroundColor: "#7c3aed" }}>📊 Choisir le fichier Excel
+          <input type="file" accept=".xlsx" className="hidden" onChange={async e => {
+            const f = e.target.files?.[0]; e.target.value = ""; if (!f) return;
+            try {
+              const games = parsePnrRows(await readXlsxFirstSheet(await f.arrayBuffer()));
+              const nm = leagueNorm((f.name.match(/^Matchs\s*-\s*(.+?),/i) || [])[1] || ""), guess = LG.teams.find(t => nm && (leagueNorm(t.name) === nm || leagueNorm(t.name).includes(nm) || nm.includes(leagueNorm(t.name))));
+              setTaLgPnr({ fileName: f.name, games, team: guess ? guess.id : "" });
+            } catch (err) { cpbAlert?.("Import impossible : " + err.message); }
+          }} />
+        </label>
+        {taLgPnr && (
+          <div className="mt-2 p-3 rounded-lg bg-[#7c3aed]/10 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-[#1B2A4A]">{taLgPnr.games.length} match{taLgPnr.games.length > 1 ? "s" : ""} lus dans <b>{taLgPnr.fileName}</b>. De quelle équipe ?</span>
+            <select value={taLgPnr.team} onChange={e => setTaLgPnr({ ...taLgPnr, team: e.target.value })} className="border border-[#1B2A4A]/20 rounded-md px-2 py-1 text-xs bg-white"><option value="">Choisir…</option>{LG.teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select>
+            <button disabled={!taLgPnr.team} onClick={() => { setLG({ ...LG, pnr: { ...(LG.pnr || {}), [taLgPnr.team]: { games: taLgPnr.games, file: taLgPnr.fileName } } }); setTaLgPnr(null); cpbAlert?.("Pick and roll ajouté : il apparaît dans le comparatif, le face-à-face et le scouting report."); }} className="text-xs font-semibold text-white px-3 py-1 rounded-md disabled:opacity-40" style={{ backgroundColor: "var(--sport-accent)" }}>Importer</button>
+            <button onClick={() => setTaLgPnr(null)} className="text-xs text-[#1B2A4A]/50">Annuler</button>
+          </div>
+        )}
+        {Object.keys(LG.pnr || {}).length > 0 && <div className="mt-2 text-[11px] text-[#1B2A4A]/60">Déjà importé : {Object.entries(LG.pnr).map(([id, d]) => { const t = LG.teams.find(x => x.id === id); return t ? `${t.name} (${d.games.length} matchs)` : null; }).filter(Boolean).join(" · ")} <button onClick={async () => { const ok = await cpbAlert?.("Effacer tous les pick and roll importés ?", { confirm: true }); if (ok) { const n = { ...LG }; delete n.pnr; setLG(n); } }} className="text-red-600 underline ml-1">effacer</button></div>}
         <button onClick={() => setTaLgBoxOpen(o => !o)} className="mt-3 text-[11px] font-semibold text-[#1B2A4A]/70 hover:underline text-left block">{taLgBoxOpen ? "▾" : "▸"} Pas de LiveStats ? Coller les deux tableaux de stats du match</button>
         {taLgBoxOpen && (
           <div className="mt-2">
