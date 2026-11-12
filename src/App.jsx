@@ -12583,7 +12583,7 @@ function CoachingProBoost({ session }) {
   const [vsAnnounceType, setVsAnnounceType] = useState("");
   // Système remonté en haut de la liste (et surligné) après un clic sur une suggestion, pour
   // pouvoir enchaîner tout de suite sur les boutons de score sans avoir à le rechercher.
-  const [vsHighlightPlayId, setVsHighlightPlayId] = useState(null);
+  const [vsHighlightPlayId, setVsHighlightPlayId] = useState(null), [vsSideOpen, setVsSideOpen] = useState(false), [vsSideQ, setVsSideQ] = useState("");
   // Import XML Sportscode : aperçu avant d'importer { fileName, instances, labels, excluded }
   const [vsImportPreview, setVsImportPreview] = useState(null);
   // Recherche dans les attaques importées (texte libre + libellés cliqués, ex. TOP52, Stagger)
@@ -15703,6 +15703,35 @@ function CoachingProBoost({ session }) {
                         </div>
                       )}
                     </div>
+                  );
+                })()}
+                {(() => {
+                  const sq = vsSideQ.trim().toLowerCase();
+                  const list = [...teamPlays].filter(p => !sq || (p.titre || "").toLowerCase().includes(sq) || (p.type || "").toLowerCase().includes(sq)).sort((a, b) => (a.titre || "").localeCompare(b.titre || "", "fr", { numeric: true }));
+                  const go = (p) => { setVsTfFilters([]); setVsTypeFilters([]); setVsHighlightPlayId(p.id); setVsAnnounceName(p.titre); setTimeout(() => document.getElementById(`vs-play-${p.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 60); };
+                  return (
+                    <>
+                      <button onClick={() => setVsSideOpen(o => !o)} className="fixed right-0 top-1/3 z-[60] text-white text-xs font-bold px-2 py-3 rounded-l-xl shadow-lg" style={{ backgroundColor: "var(--sport-accent)", writingMode: "vertical-rl" }} title="Retrouver un système par son annonce">{vsSideOpen ? "✕ Fermer" : "📋 Annonces (" + teamPlays.length + ")"}</button>
+                      {vsSideOpen && (
+                        <aside className="fixed right-0 top-0 bottom-0 z-[59] w-72 max-w-[85vw] bg-white border-l border-[#1B2A4A]/15 shadow-2xl flex flex-col">
+                          <div className="p-3 border-b border-[#1B2A4A]/10 pt-4">
+                            <div className="text-xs uppercase tracking-wide text-[#1B2A4A]/50 font-semibold mb-1.5">Annonces de {activeVs.opponent}</div>
+                            <input value={vsSideQ} onChange={e => setVsSideQ(e.target.value)} placeholder="Chercher une annonce (ex : Ram 21)…" autoFocus className="w-full border border-[#1B2A4A]/20 rounded-md px-3 py-2 text-sm outline-none focus:border-[#FF6B35]" />
+                          </div>
+                          <div className="flex-1 overflow-auto p-2">
+                            {list.length === 0 ? <p className="text-xs text-[#1B2A4A]/40 p-2">Aucune annonce ne correspond.</p> : list.map(p => {
+                              const n = playedOf(activeVs.tally?.[p.id]);
+                              return (
+                                <button key={p.id} onClick={() => go(p)} className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between gap-2 hover:bg-[#FF6B35]/10 ${p.id === vsHighlightPlayId ? "bg-[#FF6B35]/15" : ""}`}>
+                                  <span className="min-w-0"><span className="font-semibold text-[#1B2A4A] block truncate">{p.titre}</span>{p.type && <span className="text-[10px] text-[#1B2A4A]/45">{p.type}</span>}</span>
+                                  {n > 0 && <span className="text-[11px] font-bold text-[#FF6B35] shrink-0">{n}×</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </aside>
+                      )}
+                    </>
                   );
                 })()}
                 <div className="sticky top-0 z-30 border-2 border-[#FF6B35]/30 rounded-xl bg-white shadow-md p-4 mb-4">
