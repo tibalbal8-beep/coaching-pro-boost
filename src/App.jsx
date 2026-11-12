@@ -10824,6 +10824,7 @@ function PlayImageSlot({ img, playId, onChange, onRemove }) {
 // ── Éditeur de play multi-étapes (« Studio ») : un outil par mouvement, joueurs numérotés, défense, plots, zones, étapes avec miniatures ──
 // Chaque étape est exportée en image dans les schémas du play ; les éléments sont gardés (play.studio) pour pouvoir le rouvrir et le modifier.
 const STUDIO_BGS = {
+  design: { label: "Nouveau design", half: "/basketball-design-demi.png", full: "/basketball-design-complet.png" },
   clair: { label: "Parquet clair", half: "/basketball-clair-demi.png", full: "/basketball-clair-complet.png" },
   bleu: { label: "Bleu", half: "/basketball-bleu-pro-demi.png", full: "/basketball-bleu-pro-complet.png" },
 };
@@ -10935,7 +10936,7 @@ async function studioStepPng(step, bgSrc, dims) {
 function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   const [steps, setSteps] = useState(() => initial && initial.steps && initial.steps.length ? initial.steps : [studioNewStep()]);
   const [cur, setCur] = useState(0), [tool, setTool] = useState("select"), [color, setColor] = useState("#111827");
-  const [bg, setBg] = useState((initial && STUDIO_BGS[initial.bg] ? initial.bg : "clair")), [half, setHalf] = useState(initial ? initial.half !== false : true);
+  const [bg, setBg] = useState((initial && STUDIO_BGS[initial.bg] ? initial.bg : "design")), [half, setHalf] = useState(initial ? initial.half !== false : true);
   const [sel, setSel] = useState(null), [zoneShape, setZoneShape] = useState("rect"), [zoneMenu, setZoneMenu] = useState(false), [draft, setDraft] = useState(null), [dims, setDims] = useState({ w: 640, h: 480 }), [busy, setBusy] = useState(false);
   const svgRef = useRef(null), drag = useRef(null), hist = useRef([]), redo = useRef([]), stepsRef = useRef(steps), draftRef = useRef(null);
   stepsRef.current = steps;
