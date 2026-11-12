@@ -10821,6 +10821,201 @@ function PlayImageSlot({ img, playId, onChange, onRemove }) {
   );
 }
 
+// ── Éditeur de play multi-étapes (« Studio ») : un outil par mouvement, joueurs numérotés, défense, plots, zones, étapes avec miniatures ──
+// Chaque étape est exportée en image dans les schémas du play ; les éléments sont gardés (play.studio) pour pouvoir le rouvrir et le modifier.
+const STUDIO_BGS = {
+  parquet: { label: "Parquet", half: "/basketball-parquet-demi-haut.jpg", full: "/basketball-parquet-complet.jpg" },
+  bleu: { label: "Bleu", half: "/basketball-bleu-demi-haut.png", full: "/basketball-bleu-complet.png" },
+  classique: { label: "Classique", half: "/basketball-demi-terrain-haut.png", full: "/basketball-terrain-complet.png" },
+};
+const STUDIO_COLORS = ["#111827", "#db2777", "#dc2626", "#d99a06", "#16a34a", "#2563eb", "#7c3aed"];
+const STUDIO_R = 17;
+const studioHash = (s) => { let h = 5381; for (let i = 0; i < s.length; i += 7) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return s.length + ":" + h; };
+const studioNewStep = () => ({ id: uid(), players: [], cones: [], paths: [], zones: [], texts: [] });
+function studioPathGeom(p, step) {
+  const pl = (ep) => ep && ep.pid ? step.players.find(q => q.id === ep.pid) : null;
+  const pa = pl(p.a), pb = pl(p.b), A0 = pa ? { x: pa.x, y: pa.y } : { x: p.a.x, y: p.a.y }, B0 = pb ? { x: pb.x, y: pb.y } : { x: p.b.x, y: p.b.y };
+  const C = p.c || { x: (A0.x + B0.x) / 2, y: (A0.y + B0.y) / 2 };
+  const off = (P, toward, has) => { if (!has) return P; const dx = toward.x - P.x, dy = toward.y - P.y, d = Math.hypot(dx, dy) || 1; return { x: P.x + dx / d * STUDIO_R, y: P.y + dy / d * STUDIO_R }; };
+  return { a: off(A0, C, !!pa), b: off(B0, C, !!pb), c: C };
+}
+// Dessine tous les éléments d'une étape en SVG (chaîne) : sert à l'éditeur, aux miniatures et à l'export image
+function studioInner(step, o = {}) {
+  const { sel = null, draft = null } = o, f = (n) => Math.round(n * 10) / 10;
+  const arrow = (tip, from, col, size = 13) => { const dx = tip.x - from.x, dy = tip.y - from.y, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d, px = -uy, py = ux;
+    return `<polygon points="${f(tip.x)},${f(tip.y)} ${f(tip.x - ux * size + px * size * .55)},${f(tip.y - uy * size + py * size * .55)} ${f(tip.x - ux * size - px * size * .55)},${f(tip.y - uy * size - py * size * .55)}" fill="${col}"/>`; };
+  const pathSvg = (p, id, selected) => {
+    const g = studioPathGeom(p, step), { a, b, c } = g, col = p.color || "#111827", q = (t) => ({ x: (1 - t) * (1 - t) * a.x + 2 * (1 - t) * t * c.x + t * t * b.x, y: (1 - t) * (1 - t) * a.y + 2 * (1 - t) * t * c.y + t * t * b.y });
+    const len = Math.hypot(c.x - a.x, c.y - a.y) + Math.hypot(b.x - c.x, b.y - c.y), tipFrom = { x: b.x - (c.x - b.x) * 0 - (b.x - c.x), y: b.y - (b.y - c.y) };
+    const dir = { x: b.x - c.x, y: b.y - c.y }; if (Math.hypot(dir.x, dir.y) < 1) { dir.x = b.x - a.x; dir.y = b.y - a.y; }
+    const dl = Math.hypot(dir.x, dir.y) || 1, ux = dir.x / dl, uy = dir.y / dl, back = { x: b.x - ux * 13, y: b.y - uy * 13 }, from = { x: b.x - ux * 20, y: b.y - uy * 20 };
+    const hit = `<path d="M${f(a.x)},${f(a.y)} Q${f(c.x)},${f(c.y)} ${f(b.x)},${f(b.y)}" fill="none" stroke="transparent" stroke-width="22" data-t="path" data-id="${id}" style="cursor:pointer"/>`;
+    let body = "";
+    const sw = p.kind === "shot" ? 6 : 3.2;
+    const curve = (extra = "", end = back) => `<path d="M${f(a.x)},${f(a.y)} Q${f(c.x)},${f(c.y)} ${f(end.x)},${f(end.y)}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="round" ${extra}/>`;
+    if (p.kind === "cut") body = curve() + arrow(b, from, col);
+    else if (p.kind === "pass") body = curve('stroke-dasharray="9 7"') + arrow(b, from, col);
+    else if (p.kind === "shot") body = curve("", { x: b.x - ux * 16, y: b.y - uy * 16 }) + arrow(b, from, col, 20);
+    else if (p.kind === "handoff") { const m = q(.5); body = curve() + arrow(b, from, col) + [-5, 5].map(s => `<line x1="${f(m.x - uy * 11 + ux * s)}" y1="${f(m.y + ux * 11 + uy * s)}" x2="${f(m.x + uy * 11 + ux * s)}" y2="${f(m.y - ux * 11 + uy * s)}" stroke="${col}" stroke-width="3"/>`).join(""); }
+    else if (p.kind === "screen") body = curve("", b) + `<line x1="${f(b.x - uy * 13)}" y1="${f(b.y + ux * 13)}" x2="${f(b.x + uy * 13)}" y2="${f(b.y - ux * 13)}" stroke="${col}" stroke-width="5" stroke-linecap="round"/>`;
+    else if (p.kind === "dribble") {
+      const N = Math.max(12, Math.round(len / 5)), pts = [];
+      for (let i = 0; i <= N; i++) { const t = i / N, P = q(t), t2 = Math.min(1, t + .01), P2 = q(t2), dx = P2.x - P.x, dy = P2.y - P.y, d = Math.hypot(dx, dy) || 1, amp = Math.sin(i * 1.5) * 5 * (i > N - 3 ? 0 : 1); pts.push(`${f(P.x - dy / d * amp)},${f(P.y + dx / d * amp)}`); }
+      body = `<polyline points="${pts.join(" ")}" fill="none" stroke="${col}" stroke-width="3" stroke-linejoin="round"/>` + arrow(b, from, col);
+    }
+    return `<g>${body}${hit}${selected ? `<circle cx="${f(c.x)}" cy="${f(c.y)}" r="9" fill="#fff" stroke="#FF6B35" stroke-width="3" data-h="c" style="cursor:grab"/>` : ""}</g>`;
+  };
+  let s = "";
+  step.zones.forEach(z => { const fl = z.kind === "fluo"; s += `<rect x="${f(z.x)}" y="${f(z.y)}" width="${f(z.w)}" height="${f(z.h)}" rx="16" fill="${fl ? "rgba(255,235,0,.55)" : "rgba(110,120,140,.38)"}" stroke="${fl ? "#d4bf00" : "#6b7488"}" stroke-width="2" data-t="zone" data-id="${z.id}" style="cursor:move"/>`; });
+  if (draft && draft.zone) { const z = draft.zone; s += `<rect x="${f(Math.min(z.x, z.x2))}" y="${f(Math.min(z.y, z.y2))}" width="${f(Math.abs(z.x2 - z.x))}" height="${f(Math.abs(z.y2 - z.y))}" rx="16" fill="rgba(255,107,53,.25)" stroke="#FF6B35" stroke-dasharray="6 4"/>`; }
+  step.paths.forEach(p => { s += pathSvg(p, p.id, sel && sel.t === "path" && sel.id === p.id); });
+  if (draft && draft.path) s += pathSvg(draft.path, "draft", false);
+  step.cones.forEach(c => { s += `<polygon points="${f(c.x)},${f(c.y - 15)} ${f(c.x - 13)},${f(c.y + 11)} ${f(c.x + 13)},${f(c.y + 11)}" fill="#f97316" stroke="#9a3412" stroke-width="2" data-t="cone" data-id="${c.id}" style="cursor:move"/>`; });
+  step.players.forEach(p => {
+    const d = p.kind === "d", col = d ? "#dc2626" : "#111827", isSel = sel && sel.t === "player" && sel.id === p.id;
+    s += `<g data-t="player" data-id="${p.id}" style="cursor:move">${isSel ? `<circle cx="${f(p.x)}" cy="${f(p.y)}" r="${STUDIO_R + 6}" fill="none" stroke="#FF6B35" stroke-width="3" stroke-dasharray="5 4"/>` : ""}<circle cx="${f(p.x)}" cy="${f(p.y)}" r="${STUDIO_R}" fill="#fff" stroke="${col}" stroke-width="3"/><text x="${f(p.x)}" y="${f(p.y + 6)}" text-anchor="middle" font-family="Arial,sans-serif" font-weight="800" font-size="${String(p.n).length > 1 ? 14 : 18}" fill="${col}" style="pointer-events:none">${String(p.n).replace(/[<>&]/g, "")}</text>${p.ball ? `<circle cx="${f(p.x + 15)}" cy="${f(p.y - 15)}" r="7" fill="#f97316" stroke="#7c2d12" stroke-width="2"/>` : ""}</g>`;
+  });
+  step.texts.forEach(t => { s += `<text x="${f(t.x)}" y="${f(t.y)}" font-family="Arial,sans-serif" font-weight="800" font-size="${t.size || 24}" fill="${t.color || "#111827"}" stroke="#fff" stroke-width="4" paint-order="stroke" data-t="text" data-id="${t.id}" style="cursor:move">${String(t.text).replace(/[<>&]/g, "")}</text>`; });
+  return s;
+}
+async function studioStepPng(step, bgSrc, dims) {
+  const sc = Math.min(1, 1100 / dims.w), W = Math.round(dims.w * sc), H = Math.round(dims.h * sc);
+  const load = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const ctx = cv.getContext("2d");
+  ctx.drawImage(await load(bgSrc), 0, 0, W, H);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${dims.w} ${dims.h}" width="${W}" height="${H}">${studioInner(step)}</svg>`;
+  ctx.drawImage(await load("data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)), 0, 0, W, H);
+  return cv.toDataURL("image/jpeg", 0.9);
+}
+function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
+  const [steps, setSteps] = useState(() => initial && initial.steps && initial.steps.length ? initial.steps : [studioNewStep()]);
+  const [cur, setCur] = useState(0), [tool, setTool] = useState("select"), [color, setColor] = useState("#111827");
+  const [bg, setBg] = useState((initial && initial.bg) || "parquet"), [half, setHalf] = useState(initial ? initial.half !== false : true);
+  const [sel, setSel] = useState(null), [draft, setDraft] = useState(null), [dims, setDims] = useState({ w: 900, h: 700 }), [busy, setBusy] = useState(false);
+  const svgRef = useRef(null), drag = useRef(null), hist = useRef([]), redo = useRef([]), stepsRef = useRef(steps), draftRef = useRef(null);
+  stepsRef.current = steps;
+  const setDraftBoth = (d) => { draftRef.current = typeof d === "function" ? d(draftRef.current) : d; setDraft(draftRef.current); };
+  const bgSrc = STUDIO_BGS[bg][half ? "half" : "full"];
+  useEffect(() => { const im = new Image(); im.onload = () => setDims({ w: im.naturalWidth, h: im.naturalHeight }); im.src = bgSrc; }, [bgSrc]);
+  const step = steps[cur] || steps[0], curStep = () => stepsRef.current[cur] || stepsRef.current[0];
+  const commit = (next) => { hist.current.push(JSON.stringify(stepsRef.current)); if (hist.current.length > 60) hist.current.shift(); redo.current = []; stepsRef.current = next; setSteps(next); };
+  const setStep = (patch, snap = true) => { const next = stepsRef.current.map((s, i) => i === cur ? (typeof patch === "function" ? patch(s) : { ...s, ...patch }) : s); if (snap) commit(next); else { stepsRef.current = next; setSteps(next); } };
+  const undo = () => { if (!hist.current.length) return; redo.current.push(JSON.stringify(stepsRef.current)); const prev = JSON.parse(hist.current.pop()); stepsRef.current = prev; setSteps(prev); setCur(c => Math.min(c, prev.length - 1)); setSel(null); };
+  const rdo = () => { if (!redo.current.length) return; hist.current.push(JSON.stringify(stepsRef.current)); const nx = JSON.parse(redo.current.pop()); stepsRef.current = nx; setSteps(nx); setCur(c => Math.min(c, nx.length - 1)); setSel(null); };
+  const pos = (e) => { const svg = svgRef.current, pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const m = svg.getScreenCTM(); const r = pt.matrixTransform(m.inverse()); return { x: r.x, y: r.y }; };
+  const snapPlayer = (p) => { let best = null, bd = 30; curStep().players.forEach(q => { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bd) { bd = d; best = q; } }); return best; };
+  const nextLabel = (kind) => { const used = new Set(curStep().players.filter(p => p.kind === kind).map(p => String(p.n))); for (let i = 1; i <= 9; i++) { const l = kind === "d" ? "X" + i : String(i); if (!used.has(l)) return l; } return kind === "d" ? "X" : "6"; };
+  const PATHS = ["cut", "pass", "dribble", "screen", "handoff", "shot"];
+  const down = (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const p = pos(e), el = e.target.closest ? e.target.closest("[data-t],[data-h]") : null, t = el && el.getAttribute("data-t"), id = el && el.getAttribute("data-id"), h = el && el.getAttribute("data-h");
+    try { svgRef.current.setPointerCapture(e.pointerId); } catch {}
+    if (tool === "eraser") {
+      if (!t) return;
+      setStep(s => { const gone = t === "player" ? id : null; return { ...s, players: s.players.filter(x => !(t === "player" && x.id === id)), cones: s.cones.filter(x => !(t === "cone" && x.id === id)), zones: s.zones.filter(x => !(t === "zone" && x.id === id)), texts: s.texts.filter(x => !(t === "text" && x.id === id)), paths: s.paths.filter(x => !(t === "path" && x.id === id) && !(gone && ((x.a && x.a.pid === gone) || (x.b && x.b.pid === gone)))) }; });
+      return;
+    }
+    if (tool === "select") {
+      if (h === "c" && sel && sel.t === "path") { hist.current.push(JSON.stringify(stepsRef.current)); redo.current = []; drag.current = { k: "ctrl", id: sel.id }; return; }
+      if (t) { setSel({ t, id }); hist.current.push(JSON.stringify(stepsRef.current)); redo.current = []; const cs = curStep(), o = t === "player" ? cs.players.find(x => x.id === id) : t === "cone" ? cs.cones.find(x => x.id === id) : t === "zone" ? cs.zones.find(x => x.id === id) : t === "text" ? cs.texts.find(x => x.id === id) : null; drag.current = { k: "move", t, id, sx: p.x, sy: p.y, ox: o ? o.x : 0, oy: o ? o.y : 0, ps: t === "path" ? JSON.stringify(cs.paths.find(x => x.id === id)) : null }; }
+      else setSel(null);
+      return;
+    }
+    if (tool === "player" || tool === "defense") { const kind = tool === "defense" ? "d" : "o"; setStep(s => ({ ...s, players: [...s.players, { id: uid(), kind, n: nextLabel(kind), x: p.x, y: p.y, ball: false }] })); return; }
+    if (tool === "cone") { setStep(s => ({ ...s, cones: [...s.cones, { id: uid(), x: p.x, y: p.y }] })); return; }
+    if (tool === "text") { const txt = window.prompt("Texte à écrire sur le terrain :"); if (txt && txt.trim()) setStep(s => ({ ...s, texts: [...s.texts, { id: uid(), x: p.x, y: p.y, text: txt.trim(), color }] })); return; }
+    if (tool === "fluo" || tool === "gris") { drag.current = { k: "zone", kind: tool === "fluo" ? "fluo" : "gris" }; setDraftBoth({ zone: { x: p.x, y: p.y, x2: p.x, y2: p.y } }); return; }
+    if (PATHS.includes(tool)) { const sp = snapPlayer(p); drag.current = { k: "path" }; setDraftBoth({ path: { kind: tool, color, a: sp ? { pid: sp.id, x: sp.x, y: sp.y } : { x: p.x, y: p.y }, b: { x: p.x, y: p.y } } }); }
+  };
+  const move = (e) => {
+    const d = drag.current; if (!d) return; const p = pos(e);
+    if (d.k === "zone") setDraftBoth(dr => dr && { zone: { ...dr.zone, x2: p.x, y2: p.y } });
+    else if (d.k === "path") setDraftBoth(dr => dr && { path: { ...dr.path, b: { x: p.x, y: p.y } } });
+    else if (d.k === "ctrl") setStep(s => ({ ...s, paths: s.paths.map(x => x.id === d.id ? { ...x, c: { x: p.x, y: p.y } } : x) }), false);
+    else if (d.k === "move") {
+      const dx = p.x - d.sx, dy = p.y - d.sy, key = d.t === "player" ? "players" : d.t === "cone" ? "cones" : d.t === "zone" ? "zones" : d.t === "text" ? "texts" : null;
+      if (key) setStep(s => ({ ...s, [key]: s[key].map(x => x.id === d.id ? { ...x, x: d.ox + dx, y: d.oy + dy } : x) }), false);
+      else if (d.t === "path" && d.ps) { const o = JSON.parse(d.ps), sh = (q) => q && !q.pid ? { ...q, x: q.x + dx, y: q.y + dy } : q; setStep(s => ({ ...s, paths: s.paths.map(x => x.id === d.id ? { ...o, a: sh(o.a), b: sh(o.b), c: o.c ? { x: o.c.x + dx, y: o.c.y + dy } : o.c } : x) }), false); }
+    }
+  };
+  const up = (e) => {
+    const d = drag.current; drag.current = null; if (!d) return; const draft = draftRef.current;
+    if (d.k === "zone" && draft && draft.zone) { const z = draft.zone, w = Math.abs(z.x2 - z.x), h = Math.abs(z.y2 - z.y); if (w > 18 && h > 18) setStep(s => ({ ...s, zones: [...s.zones, { id: uid(), kind: d.kind, x: Math.min(z.x, z.x2), y: Math.min(z.y, z.y2), w, h }] })); setDraftBoth(null); }
+    else if (d.k === "path" && draft && draft.path) {
+      const pa = draft.path, pe = pos(e), ep = snapPlayer(pe), len = Math.hypot(pe.x - (pa.a.x), pe.y - (pa.a.y));
+      if (len > 24) setStep(s => ({ ...s, paths: [...s.paths, { id: uid(), kind: pa.kind, color: pa.color, a: pa.a, b: ep && ep.id !== (pa.a.pid) ? { pid: ep.id, x: ep.x, y: ep.y } : { x: pe.x, y: pe.y } }] }));
+      setDraftBoth(null);
+    }
+  };
+  const dbl = (e) => { const el = e.target.closest ? e.target.closest("[data-t='player']") : null; if (!el) return; const id = el.getAttribute("data-id"); setStep(s => ({ ...s, players: s.players.map(x => x.id === id ? { ...x, ball: !x.ball } : { ...x, ball: x.ball && false }) })); };
+  const removeSel = () => { if (!sel) return; setStep(s => ({ ...s, players: s.players.filter(x => !(sel.t === "player" && x.id === sel.id)), cones: s.cones.filter(x => !(sel.t === "cone" && x.id === sel.id)), zones: s.zones.filter(x => !(sel.t === "zone" && x.id === sel.id)), texts: s.texts.filter(x => !(sel.t === "text" && x.id === sel.id)), paths: s.paths.filter(x => !(sel.t === "path" && x.id === sel.id) && !(sel.t === "player" && ((x.a && x.a.pid === sel.id) || (x.b && x.b.pid === sel.id)))) })); setSel(null); };
+  useEffect(() => { const k = (e) => { if ((e.key === "Delete" || e.key === "Backspace") && sel && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || "")) { e.preventDefault(); removeSel(); } if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? rdo() : undo(); } }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); });
+  const recolorSel = (c) => { setColor(c); if (sel && sel.t === "path") setStep(s => ({ ...s, paths: s.paths.map(x => x.id === sel.id ? { ...x, color: c } : x) })); };
+  const addStep = () => { const base = stepsRef.current[cur], ns = { ...studioNewStep(), players: base.players.map(p => ({ ...p })), cones: base.cones.map(c => ({ ...c })) }; const next = [...steps.slice(0, cur + 1), ns, ...steps.slice(cur + 1)]; commit(next); setCur(cur + 1); setSel(null); };
+  const dupStep = () => { const ns = JSON.parse(JSON.stringify(stepsRef.current[cur])); const remap = {}; ns.id = uid(); ns.players.forEach(p => { const n = uid(); remap[p.id] = n; p.id = n; }); ["cones", "zones", "texts"].forEach(k => ns[k].forEach(x => { x.id = uid(); })); ns.paths.forEach(p => { p.id = uid(); if (p.a && p.a.pid) p.a.pid = remap[p.a.pid]; if (p.b && p.b.pid) p.b.pid = remap[p.b.pid]; }); commit([...steps.slice(0, cur + 1), ns, ...steps.slice(cur + 1)]); setCur(cur + 1); };
+  const delStep = () => { if (steps.length < 2) { setStep(studioNewStep()); return; } const next = steps.filter((_, i) => i !== cur); commit(next); setCur(Math.max(0, cur - 1)); setSel(null); };
+  const swap = (dir) => { const j = cur + dir; if (j < 0 || j >= steps.length) return; const next = [...steps]; [next[cur], next[j]] = [next[j], next[cur]]; commit(next); setCur(j); };
+  const save = async () => {
+    setBusy(true);
+    try { const imgs = []; for (const s of steps) imgs.push(await studioStepPng(s, bgSrc, dims)); onSave(imgs, { v: 1, bg, half, steps, hashes: imgs.map(studioHash) }); }
+    catch (err) { cpbAlert?.("Export impossible : " + (err?.message || err)); setBusy(false); }
+  };
+  const T = (k, ico, lab) => <button key={k} onClick={() => { setTool(k); setDraftBoth(null); }} className={`flex flex-col items-center justify-center min-w-[58px] px-2 py-1.5 rounded-xl text-[11px] font-semibold border ${tool === k ? "bg-[#111827] text-white border-[#111827]" : "bg-white text-[#1B2A4A] border-[#1B2A4A]/15 hover:border-[#FF6B35]"}`}><span className="text-lg leading-none mb-0.5">{ico}</span>{lab}</button>;
+  return (
+    <div className="fixed inset-0 z-[330] bg-[#F2EDE4] overflow-auto p-3 sm:p-5">
+      <div className="max-w-6xl mx-auto">
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <div className="font-extrabold text-2xl text-[#1B2A4A] uppercase" style={{ fontFamily: "'Barlow Condensed',Oswald,sans-serif" }}>Dessiner le play</div>
+          <div className="flex gap-2"><button onClick={onCancel} className="px-4 py-2 text-sm font-semibold rounded-full border border-[#1B2A4A]/20 bg-white text-[#1B2A4A]">Annuler</button>
+            <button disabled={busy} onClick={save} className="px-4 py-2 text-sm font-bold rounded-full text-white disabled:opacity-50" style={{ backgroundColor: "var(--sport-accent)" }}>{busy ? "Export…" : `Enregistrer (${steps.length} étape${steps.length > 1 ? "s" : ""})`}</button></div>
+        </div>
+        <div className="bg-white rounded-2xl border border-[#1B2A4A]/10 p-3 mb-3">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <div className="font-extrabold text-[#1B2A4A]" style={{ fontFamily: "'Barlow Condensed',Oswald,sans-serif" }}>ÉTAPE <span className="text-[#db2777]">{cur + 1}</span> / {steps.length}</div>
+            <button onClick={addStep} className="px-3 py-1.5 rounded-full text-xs font-bold text-white bg-[#db2777]">+ Étape suivante</button>
+            <button onClick={dupStep} className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[#1B2A4A]/20">Dupliquer</button>
+            <button onClick={() => swap(-1)} className="px-2.5 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20" title="Monter l'étape">↑</button><button onClick={() => swap(1)} className="px-2.5 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20" title="Descendre l'étape">↓</button>
+            <button onClick={delStep} className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[#db2777]/40 text-[#db2777]">Supprimer l'étape</button>
+            <div className="ml-auto flex gap-1 rounded-full bg-[#1B2A4A]/8 p-0.5">{[[true, "Demi-terrain"], [false, "Terrain entier"]].map(([v, l]) => <button key={l} onClick={() => setHalf(v)} className={`px-3 py-1 rounded-full text-xs font-semibold ${half === v ? "bg-[#111827] text-white" : "text-[#1B2A4A]/70"}`}>{l}</button>)}</div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mb-2"><span className="text-[11px] font-bold tracking-wide text-[#1B2A4A]/50">FOND</span>{Object.entries(STUDIO_BGS).map(([k, v]) => <button key={k} onClick={() => setBg(k)} className={`px-3 py-1 rounded-full text-xs font-semibold border ${bg === k ? "bg-[#111827] text-white border-[#111827]" : "border-[#1B2A4A]/20 bg-white"}`}>{v.label}</button>)}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {T("select", "↖", "Déplacer")}{T("player", "①", "Joueur(se)")}{T("defense", "✕", "Défense")}{T("cone", "▲", "Plot")}
+            <span className="w-px bg-[#1B2A4A]/15 mx-1" />
+            {T("cut", "↗", "Coupe")}{T("pass", "⇢", "Passe")}{T("dribble", "〰", "Dribble")}{T("screen", "⟂", "Écran")}{T("handoff", "⇉", "Handoff")}{T("shot", "➠", "Tir")}
+            <span className="w-px bg-[#1B2A4A]/15 mx-1" />
+            {T("fluo", "▭", "Zone fluo")}{T("gris", "▬", "Zone grise")}{T("text", "Aa", "Texte")}{T("eraser", "⌫", "Gomme")}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mt-2"><span className="text-[11px] font-bold tracking-wide text-[#1B2A4A]/50">COULEUR</span>
+            {STUDIO_COLORS.map(c => <button key={c} onClick={() => recolorSel(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "#fff", boxShadow: "0 0 0 1px #0002" }} />)}
+            <div className="ml-auto flex gap-2 items-center">{sel && <button onClick={removeSel} className="text-xs font-semibold text-red-600 underline">Supprimer la sélection</button>}
+              <button onClick={undo} className="px-3 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20">↶ Annuler</button><button onClick={rdo} className="px-3 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20">↷ Rétablir</button></div>
+          </div>
+          <p className="text-[11px] text-[#1B2A4A]/45 mt-2">Trace un mouvement en glissant d'un joueur à un autre (il s'accroche aux joueurs). En mode « Déplacer » : clique un trait pour le courber avec la pastille orange, double-clique un joueur pour lui donner la balle.</p>
+        </div>
+        <div className="flex gap-3 items-start">
+          <div className="hidden sm:flex flex-col gap-2 w-28 shrink-0">
+            {steps.map((s, i) => (
+              <button key={s.id} onClick={() => { setCur(i); setSel(null); }} className={`text-left rounded-xl p-1.5 border-2 bg-white ${i === cur ? "border-[#db2777]" : "border-[#1B2A4A]/10"}`}>
+                <div className="text-[10px] font-extrabold text-[#1B2A4A] mb-1">ÉTAPE {i + 1}</div>
+                <svg viewBox={`0 0 ${dims.w} ${dims.h}`} className="w-full rounded"><image href={bgSrc} width={dims.w} height={dims.h} /><g dangerouslySetInnerHTML={{ __html: studioInner(s) }} /></svg>
+              </button>
+            ))}
+          </div>
+          <div className="flex-1 min-w-0 bg-white rounded-2xl border border-[#1B2A4A]/10 p-2 flex justify-center">
+            <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onDoubleClick={dbl}
+              style={{ width: "100%", maxHeight: "74vh", touchAction: "none", cursor: tool === "select" ? "default" : "crosshair" }} className="rounded-lg select-none">
+              <image href={bgSrc} width={dims.w} height={dims.h} />
+              <g dangerouslySetInnerHTML={{ __html: studioInner(step, { sel, draft }) }} />
+            </svg>
+          </div>
+        </div>
+        <div className="sm:hidden flex gap-2 overflow-auto mt-3">{steps.map((s, i) => <button key={s.id} onClick={() => { setCur(i); setSel(null); }} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border-2 ${i === cur ? "border-[#db2777] text-[#db2777]" : "border-[#1B2A4A]/15"} bg-white`}>Étape {i + 1}</button>)}</div>
+      </div>
+    </div>
+  );
+}
+
 function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes = PLAY_TYPES, savePlayTypes, courtType = "basketball", cpbAlert, autoOpenDraw = false, allTempsForts = [] }) {
   const [titre, setTitre] = useState(initial?.titre || "");
   const [type, setType] = useState(initial?.type || playTypes[0]);
@@ -10841,6 +11036,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
   );
   const [schemas, setSchemas] = useState(initial?.schemas || []);
   const [editingSchemaIdx, setEditingSchemaIdx] = useState(autoOpenDraw ? 0 : null);
+  const [studio, setStudio] = useState(initial?.studio || null), [studioOpen, setStudioOpen] = useState(false);
   const [selectedTags, setSelectedTags] = useState(initial?.tags || []);
   const [newTagInput, setNewTagInput] = useState("");
   const [tagsOpen, setTagsOpen] = useState(false);
@@ -11081,6 +11277,22 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
             }}
           />
         )}
+        {editingSchemaIdx === null && courtType === "basketball" && (
+          <button type="button" onClick={() => setStudioOpen(true)}
+            className="w-full py-2.5 mb-2 rounded-lg text-xs font-bold text-white" style={{ backgroundColor: "#db2777" }}>
+            {studio ? "🎨 Rouvrir l'éditeur multi-étapes de ce play" : "🎨 Nouvel éditeur : dessiner un play en plusieurs étapes"}
+          </button>
+        )}
+        {studioOpen && (
+          <PlayStudio initial={studio} cpbAlert={cpbAlert} onCancel={() => setStudioOpen(false)}
+            onSave={(imgs, data) => {
+              setSchemas(prev => {
+                const old = new Set((studio && studio.hashes) || []), keep = prev.filter(x => !old.has(studioHash(x)));
+                return [...keep, ...imgs];
+              });
+              setStudio(data); setStudioOpen(false);
+            }} />
+        )}
         {editingSchemaIdx === null && (
           <button type="button"
             onClick={() => setEditingSchemaIdx(schemas.length)}
@@ -11107,7 +11319,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
             const ok = await cpbAlert?.("Un schéma est en cours de dessin et n'a pas été validé (bouton \"Utiliser ce schéma\") — il sera perdu si tu enregistres maintenant. Continuer sans le sauvegarder ?", { confirm: true });
             if (!ok) return;
           }
-          onSave({ ...(initial || {}), id: initial?.id || uid(), titre, type, scoutedTeam: scoutedTeam.trim(), tempsFort, intention: intention.trim(), description, notes, tags: selectedTags, images, schemas, createdAt: initial?.createdAt || new Date().toISOString() });
+          onSave({ ...(initial || {}), id: initial?.id || uid(), titre, type, scoutedTeam: scoutedTeam.trim(), tempsFort, intention: intention.trim(), description, notes, tags: selectedTags, images, schemas, ...(studio ? { studio } : {}), createdAt: initial?.createdAt || new Date().toISOString() });
         }} className="px-5 py-2 text-sm font-medium rounded-md bg-[#FF6B35] text-white hover:bg-[#e85a28]">Enregistrer</button>
       </div>
     </div>
