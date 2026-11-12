@@ -2700,6 +2700,34 @@ function scoutFaceHtml(r, league) {
   const other = scoutFaceTeam(r, league); if (!other || other === league.mine) return "";
   try { return leagueHtml({ league: { ...league, other }, faceOnly: true }); } catch { return ""; }
 }
+// Bilan forces / faiblesses : rang de l'équipe scoutée sur toutes les statistiques du comparatif championnat
+function scoutStrengthsHtml(r, league) {
+  if (!league || r.strengthsOn === false) return "";
+  const id = scoutFaceTeam(r, league); if (!id) return "";
+  const T = league.teams.find(t => t.id === id); if (!T) return "";
+  const esc = (str) => String(str ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const pnrS = leaguePnrStats(league), stats = { ...(league.stats || {}) }; Object.keys(pnrS).forEach(k => { stats[k] = { ...(stats[k] || {}), ...pnrS[k] }; });
+  const skip = new Set(["reb", "eval", "pm", "tpm", "tpa", "poss", "diff", "fgAdj", "efgAdj", "orebShare", "drebShare", "pSecond", "pSecondAgainst", "pnrPG", "pnrOppPG", "pnrShare"]);
+  const ids = new Set(league.teams.map(t => t.id)), minN = Math.max(6, Math.round(league.teams.length * 0.6));
+  const fmt = (S, v) => v === null || v === undefined ? "–" : S.pct ? v.toFixed(1).replace(".", ",") + " %" : v.toFixed(S.dec || 1).replace(".", ",");
+  const rows = [];
+  LEAGUE_STATS.concat(LEAGUE_PNR_STATS).forEach(S => {
+    if (skip.has(S.key)) return;
+    const m = stats[S.key] || {}, E = Object.entries(m).filter(([i, v]) => ids.has(i) && typeof v === "number");
+    if (E.length < minN || typeof m[id] !== "number") return;
+    E.sort((x, y) => S.hi ? y[1] - x[1] : x[1] - y[1]);
+    const rank = E.findIndex(e => e[0] === id) + 1, n = E.length, avg = E.reduce((a, e) => a + e[1], 0) / n;
+    rows.push({ S, rank, n, p: n > 1 ? (rank - 1) / (n - 1) : 0.5, v: m[id], avg });
+  });
+  if (rows.length < 6) return "";
+  const best = rows.filter(x => x.p <= 0.25).sort((a, b) => a.p - b.p).slice(0, 6), worst = rows.filter(x => x.p >= 0.75).sort((a, b) => b.p - a.p).slice(0, 6);
+  if (!best.length && !worst.length) return "";
+  const line = (x, col) => `<div class="sw-r"><div class="sw-l">${esc(x.S.label.replace(/ \(.*$/, ""))}<small>${fmt(x.S, x.v)} · moy. ${fmt(x.S, x.avg)}</small></div><div class="sw-t"><i style="width:${Math.max(6, Math.round((1 - x.p) * 100))}%;background:${col}"></i></div><div class="sw-k" style="color:${col}">${x.rank}ᵉ<small>/${x.n}</small></div></div>`;
+  const css = `<style>.sw-g{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media (max-width:700px){.sw-g{grid-template-columns:1fr}}.sw-b{border-radius:16px;padding:14px;break-inside:avoid}.sw-b h3{margin:0 0 8px;font-size:13px;letter-spacing:.5px;text-transform:uppercase}.sw-r{display:grid;grid-template-columns:minmax(0,52%) 1fr 46px;gap:8px;align-items:center;margin:6px 0}.sw-l{font-size:12px;font-weight:600;line-height:1.2}.sw-l small{display:block;font-weight:400;font-size:10px;color:#1B2A4A80}.sw-t{height:10px;border-radius:99px;background:#1B2A4A12;overflow:hidden}.sw-t i{display:block;height:100%;border-radius:99px}.sw-k{font-size:14px;font-weight:800;text-align:right}.sw-k small{font-size:10px;font-weight:500;color:#1B2A4A80}</style>`;
+  return `<section class="card"><h2><i></i>Forces et faiblesses de ${esc(T.name)}</h2><p class="muted" style="font-size:12px;margin:0 0 10px">Rang dans le championnat sur les statistiques du comparatif (1ᵉʳ = meilleur ; pour les balles perdues, fautes et points encaissés, moins = mieux).</p>${css}<div class="sw-g">
+    <div class="sw-b" style="background:#16a34a14"><h3 style="color:#15803d">Forces : ce qu'elle fait bien</h3>${best.length ? best.map(x => line(x, "#16a34a")).join("") : `<p class="muted" style="font-size:12px">Aucun point fort net dans le top 25 %.</p>`}</div>
+    <div class="sw-b" style="background:#dc262614"><h3 style="color:#b91c1c">Faiblesses : où l'attaquer</h3>${worst.length ? worst.map(x => line(x, "#dc2626")).join("") : `<p class="muted" style="font-size:12px">Aucune faiblesse nette dans le bas 25 %.</p>`}</div></div></section>`;
+}
 // Tendances de l'équipe adverse d'après les matchs LiveStats du comparatif : qui prend les tirs / les 3 points, qui va au rebond offensif, sur qui faire faute
 function scoutInsightsHtml(r, league, games) {
   if (!league || !games || !games.length || r.insightsOn === false) return "";
@@ -2826,6 +2854,7 @@ function buildScoutReportHtml(r, logo = null, league = null, games = null) {
       <div class="meta">${esc(dateStr) || "Date non précisée"}</div>
     </header>
     ${notes}
+    ${(() => { try { return scoutStrengthsHtml(r, league); } catch { return ""; } })()}
     ${bilan}
     ${(() => { const fh = scoutFaceHtml(r, league); if (fh.includes('id="lg-pnr"')) return fh; let px = ""; try { const id = scoutFaceTeam(r, league); if (id && (league.pnr || {})[id]) px = leagueHtml({ league: { ...league, other: id, mine: null }, faceOnly: true }); } catch {} return fh + px; })()}
     ${(() => { try { return scoutInsightsHtml(r, league, games); } catch { return ""; } })()}
