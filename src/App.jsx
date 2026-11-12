@@ -10855,15 +10855,20 @@ function studioInner(step, o = {}) {
     const curve = (extra = "", end = back) => `<path d="M${f(a.x)},${f(a.y)} Q${f(c.x)},${f(c.y)} ${f(end.x)},${f(end.y)}" fill="none" stroke="${col}" stroke-width="${sw}" stroke-linecap="round" ${extra}/>`;
     if (p.kind === "cut") body = curve() + arrow(b, from, col);
     else if (p.kind === "pass") body = curve('stroke-dasharray="9 7"') + arrow(b, from, col);
-    else if (p.kind === "shot") body = curve("", { x: b.x - ux * 16, y: b.y - uy * 16 }) + arrow(b, from, col, 20);
+    else if (p.kind === "shot") {
+      const tb = Math.max(.2, 1 - 16 / Math.max(len, 40)), N = Math.max(10, Math.round(len * tb / 6)), L1 = [], L2 = [];
+      for (let i = 0; i <= N; i++) { const t = i / N * tb, P = q(t), P2 = q(Math.min(1, t + .01)), dx = P2.x - P.x, dy = P2.y - P.y, d = Math.hypot(dx, dy) || 1, nx = -dy / d * 4, ny = dx / d * 4; L1.push(`${f(P.x + nx)},${f(P.y + ny)}`); L2.push(`${f(P.x - nx)},${f(P.y - ny)}`); }
+      body = `<polyline points="${L1.join(" ")}" fill="none" stroke="${col}" stroke-width="2.6" stroke-linecap="round"/><polyline points="${L2.join(" ")}" fill="none" stroke="${col}" stroke-width="2.6" stroke-linecap="round"/>` + arrow(b, { x: b.x - ux * 16, y: b.y - uy * 16 }, col, 17);
+    }
     else if (p.kind === "handoff") { const m = q(.5); body = curve() + arrow(b, from, col) + [-5, 5].map(s => `<line x1="${f(m.x - uy * 11 + ux * s)}" y1="${f(m.y + ux * 11 + uy * s)}" x2="${f(m.x + uy * 11 + ux * s)}" y2="${f(m.y - ux * 11 + uy * s)}" stroke="${col}" stroke-width="3"/>`).join(""); }
     else if (p.kind === "screen") body = curve("", b) + `<line x1="${f(b.x - uy * 13)}" y1="${f(b.y + ux * 13)}" x2="${f(b.x + uy * 13)}" y2="${f(b.y - ux * 13)}" stroke="${col}" stroke-width="5" stroke-linecap="round"/>`;
     else if (p.kind === "dribble") {
-      const N = Math.max(12, Math.round(len / 5)), pts = [];
-      for (let i = 0; i <= N; i++) { const t = i / N, P = q(t), t2 = Math.min(1, t + .01), P2 = q(t2), dx = P2.x - P.x, dy = P2.y - P.y, d = Math.hypot(dx, dy) || 1, amp = Math.sin(i * 1.5) * 5 * (i > N - 3 ? 0 : 1); pts.push(`${f(P.x - dy / d * amp)},${f(P.y + dx / d * amp)}`); }
-      body = `<polyline points="${pts.join(" ")}" fill="none" stroke="${col}" stroke-width="3" stroke-linejoin="round"/>` + arrow(b, from, col);
+      const tb = Math.max(.2, 1 - 11 / Math.max(len, 30)), N = Math.max(12, Math.round(len * tb / 5)), pts = [];
+      for (let i = 0; i <= N; i++) { const t = i / N * tb, P = q(t), P2 = q(Math.min(1, t + .01)), dx = P2.x - P.x, dy = P2.y - P.y, d = Math.hypot(dx, dy) || 1, amp = Math.sin(i * 1.5) * 5 * Math.min(1, (N - i) / 3) * Math.min(1, i / 2); pts.push(`${f(P.x - dy / d * amp)},${f(P.y + dx / d * amp)}`); }
+      const Pe = q(tb); pts.push(`${f(Pe.x)},${f(Pe.y)}`);
+      body = `<polyline points="${pts.join(" ")}" fill="none" stroke="${col}" stroke-width="3" stroke-linejoin="round"/>` + arrow(b, { x: b.x - ux * 12, y: b.y - uy * 12 }, col, 12);
     }
-    return `<g>${body}${hit}${selected ? `<circle cx="${f(c.x)}" cy="${f(c.y)}" r="9" fill="#fff" stroke="#FF6B35" stroke-width="3" data-h="c" style="cursor:grab"/>` : ""}</g>`;
+    return `<g>${body}${hit}${selected ? `<circle cx="${f(q(.5).x)}" cy="${f(q(.5).y)}" r="9" fill="#fff" stroke="#FF6B35" stroke-width="3" data-h="c" style="cursor:grab"/>` : ""}</g>`;
   };
   let s = "";
   step.zones.forEach(z => { const fl = z.kind === "fluo"; s += `<rect x="${f(z.x)}" y="${f(z.y)}" width="${f(z.w)}" height="${f(z.h)}" rx="16" fill="${fl ? "rgba(255,235,0,.55)" : "rgba(110,120,140,.38)"}" stroke="${fl ? "#d4bf00" : "#6b7488"}" stroke-width="2" data-t="zone" data-id="${z.id}" style="cursor:move"/>`; });
@@ -10879,7 +10884,7 @@ function studioInner(step, o = {}) {
   return s;
 }
 async function studioStepPng(step, bgSrc, dims) {
-  const sc = Math.min(1, 1100 / dims.w), W = Math.round(dims.w * sc), H = Math.round(dims.h * sc);
+  const sc = 1100 / dims.w, W = Math.round(dims.w * sc), H = Math.round(dims.h * sc);
   const load = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const ctx = cv.getContext("2d");
   ctx.drawImage(await load(bgSrc), 0, 0, W, H);
@@ -10891,12 +10896,12 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   const [steps, setSteps] = useState(() => initial && initial.steps && initial.steps.length ? initial.steps : [studioNewStep()]);
   const [cur, setCur] = useState(0), [tool, setTool] = useState("select"), [color, setColor] = useState("#111827");
   const [bg, setBg] = useState((initial && initial.bg) || "parquet"), [half, setHalf] = useState(initial ? initial.half !== false : true);
-  const [sel, setSel] = useState(null), [draft, setDraft] = useState(null), [dims, setDims] = useState({ w: 900, h: 700 }), [busy, setBusy] = useState(false);
+  const [sel, setSel] = useState(null), [draft, setDraft] = useState(null), [dims, setDims] = useState({ w: 640, h: 511 }), [busy, setBusy] = useState(false);
   const svgRef = useRef(null), drag = useRef(null), hist = useRef([]), redo = useRef([]), stepsRef = useRef(steps), draftRef = useRef(null);
   stepsRef.current = steps;
   const setDraftBoth = (d) => { draftRef.current = typeof d === "function" ? d(draftRef.current) : d; setDraft(draftRef.current); };
   const bgSrc = STUDIO_BGS[bg][half ? "half" : "full"];
-  useEffect(() => { const im = new Image(); im.onload = () => setDims({ w: im.naturalWidth, h: im.naturalHeight }); im.src = bgSrc; }, [bgSrc]);
+  useEffect(() => { const im = new Image(); im.onload = () => setDims({ w: 640, h: Math.round(640 * im.naturalHeight / im.naturalWidth) }); im.src = bgSrc; }, [bgSrc]);
   const step = steps[cur] || steps[0], curStep = () => stepsRef.current[cur] || stepsRef.current[0];
   const commit = (next) => { hist.current.push(JSON.stringify(stepsRef.current)); if (hist.current.length > 60) hist.current.shift(); redo.current = []; stepsRef.current = next; setSteps(next); };
   const setStep = (patch, snap = true) => { const next = stepsRef.current.map((s, i) => i === cur ? (typeof patch === "function" ? patch(s) : { ...s, ...patch }) : s); if (snap) commit(next); else { stepsRef.current = next; setSteps(next); } };
@@ -10910,6 +10915,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
     if (e.button !== undefined && e.button !== 0) return;
     const p = pos(e), el = e.target.closest ? e.target.closest("[data-t],[data-h]") : null, t = el && el.getAttribute("data-t"), id = el && el.getAttribute("data-id"), h = el && el.getAttribute("data-h");
     try { svgRef.current.setPointerCapture(e.pointerId); } catch {}
+    if (h === "c" && sel && sel.t === "path") { hist.current.push(JSON.stringify(stepsRef.current)); redo.current = []; drag.current = { k: "ctrl", id: sel.id }; return; }
     if (tool === "eraser") {
       if (!t) return;
       setStep(s => { const gone = t === "player" ? id : null; return { ...s, players: s.players.filter(x => !(t === "player" && x.id === id)), cones: s.cones.filter(x => !(t === "cone" && x.id === id)), zones: s.zones.filter(x => !(t === "zone" && x.id === id)), texts: s.texts.filter(x => !(t === "text" && x.id === id)), paths: s.paths.filter(x => !(t === "path" && x.id === id) && !(gone && ((x.a && x.a.pid === gone) || (x.b && x.b.pid === gone)))) }; });
@@ -10925,13 +10931,13 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
     if (tool === "cone") { setStep(s => ({ ...s, cones: [...s.cones, { id: uid(), x: p.x, y: p.y }] })); return; }
     if (tool === "text") { const txt = window.prompt("Texte à écrire sur le terrain :"); if (txt && txt.trim()) setStep(s => ({ ...s, texts: [...s.texts, { id: uid(), x: p.x, y: p.y, text: txt.trim(), color }] })); return; }
     if (tool === "fluo" || tool === "gris") { drag.current = { k: "zone", kind: tool === "fluo" ? "fluo" : "gris" }; setDraftBoth({ zone: { x: p.x, y: p.y, x2: p.x, y2: p.y } }); return; }
-    if (PATHS.includes(tool)) { const sp = snapPlayer(p); drag.current = { k: "path" }; setDraftBoth({ path: { kind: tool, color, a: sp ? { pid: sp.id, x: sp.x, y: sp.y } : { x: p.x, y: p.y }, b: { x: p.x, y: p.y } } }); }
+    if (PATHS.includes(tool)) { const sp = snapPlayer(p); setSel(null); drag.current = { k: "path", pts: [{ x: p.x, y: p.y }] }; setDraftBoth({ path: { kind: tool, color, a: sp ? { pid: sp.id, x: sp.x, y: sp.y } : { x: p.x, y: p.y }, b: { x: p.x, y: p.y } } }); }
   };
   const move = (e) => {
     const d = drag.current; if (!d) return; const p = pos(e);
     if (d.k === "zone") setDraftBoth(dr => dr && { zone: { ...dr.zone, x2: p.x, y2: p.y } });
-    else if (d.k === "path") setDraftBoth(dr => dr && { path: { ...dr.path, b: { x: p.x, y: p.y } } });
-    else if (d.k === "ctrl") setStep(s => ({ ...s, paths: s.paths.map(x => x.id === d.id ? { ...x, c: { x: p.x, y: p.y } } : x) }), false);
+    else if (d.k === "path") { d.pts.push({ x: p.x, y: p.y }); setDraftBoth(dr => dr && { path: { ...dr.path, b: { x: p.x, y: p.y } } }); }
+    else if (d.k === "ctrl") setStep(s => ({ ...s, paths: s.paths.map(x => { if (x.id !== d.id) return x; const g = studioPathGeom({ ...x, c: undefined }, s); return { ...x, c: { x: 2 * p.x - (g.a.x + g.b.x) / 2, y: 2 * p.y - (g.a.y + g.b.y) / 2 } }; }) }), false);
     else if (d.k === "move") {
       const dx = p.x - d.sx, dy = p.y - d.sy, key = d.t === "player" ? "players" : d.t === "cone" ? "cones" : d.t === "zone" ? "zones" : d.t === "text" ? "texts" : null;
       if (key) setStep(s => ({ ...s, [key]: s[key].map(x => x.id === d.id ? { ...x, x: d.ox + dx, y: d.oy + dy } : x) }), false);
@@ -10943,7 +10949,12 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
     if (d.k === "zone" && draft && draft.zone) { const z = draft.zone, w = Math.abs(z.x2 - z.x), h = Math.abs(z.y2 - z.y); if (w > 18 && h > 18) setStep(s => ({ ...s, zones: [...s.zones, { id: uid(), kind: d.kind, x: Math.min(z.x, z.x2), y: Math.min(z.y, z.y2), w, h }] })); setDraftBoth(null); }
     else if (d.k === "path" && draft && draft.path) {
       const pa = draft.path, pe = pos(e), ep = snapPlayer(pe), len = Math.hypot(pe.x - (pa.a.x), pe.y - (pa.a.y));
-      if (len > 24) setStep(s => ({ ...s, paths: [...s.paths, { id: uid(), kind: pa.kind, color: pa.color, a: pa.a, b: ep && ep.id !== (pa.a.pid) ? { pid: ep.id, x: ep.x, y: ep.y } : { x: pe.x, y: pe.y } }] }));
+      if (len > 24) {
+        const A = { x: pa.a.x, y: pa.a.y }, B = ep && ep.id !== pa.a.pid ? { x: ep.x, y: ep.y } : { x: pe.x, y: pe.y }, cl = Math.hypot(B.x - A.x, B.y - A.y) || 1;
+        let M = null, md = 0; (d.pts || []).forEach(q => { const dev = Math.abs((B.x - A.x) * (A.y - q.y) - (A.x - q.x) * (B.y - A.y)) / cl; if (dev > md) { md = dev; M = q; } });
+        const c = M && md > 14 ? { x: 2 * M.x - (A.x + B.x) / 2, y: 2 * M.y - (A.y + B.y) / 2 } : undefined, nid = uid();
+        setStep(s => ({ ...s, paths: [...s.paths, { id: nid, kind: pa.kind, color: pa.color, a: pa.a, b: ep && ep.id !== (pa.a.pid) ? { pid: ep.id, x: ep.x, y: ep.y } : { x: pe.x, y: pe.y }, ...(c ? { c } : {}) }] })); setSel({ t: "path", id: nid });
+      }
       setDraftBoth(null);
     }
   };
@@ -10991,7 +11002,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
             <div className="ml-auto flex gap-2 items-center">{sel && <button onClick={removeSel} className="text-xs font-semibold text-red-600 underline">Supprimer la sélection</button>}
               <button onClick={undo} className="px-3 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20">↶ Annuler</button><button onClick={rdo} className="px-3 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20">↷ Rétablir</button></div>
           </div>
-          <p className="text-[11px] text-[#1B2A4A]/45 mt-2">Trace un mouvement en glissant d'un joueur à un autre (il s'accroche aux joueurs). En mode « Déplacer » : clique un trait pour le courber avec la pastille orange, double-clique un joueur pour lui donner la balle.</p>
+          <p className="text-[11px] text-[#1B2A4A]/45 mt-2">Trace un mouvement en glissant d'un joueur à un autre (il s'accroche aux joueurs) : si ton geste est courbe, le trait l'est aussi. Après le tracé, tire la pastille orange pour ajuster la courbe (ou clique un trait en mode « Déplacer »). Double-clique un joueur pour lui donner la balle.</p>
         </div>
         <div className="flex gap-3 items-start">
           <div className="hidden sm:flex flex-col gap-2 w-28 shrink-0">
