@@ -12272,6 +12272,14 @@ function CoachingProBoost({ session }) {
   const renderLeagueEditor = (LG, setLG, taId) => {
     const updTeam = (id, patch) => setLG({ ...LG, teams: LG.teams.map(x => x.id === id ? { ...x, ...patch } : x) });
     const addTeam = () => { const n = taLgNew.trim(); if (!n) return; if (LG.teams.some(x => leagueNorm(x.name) === leagueNorm(n))) { cpbAlert?.("Cette équipe existe déjà."); return; } setLG({ ...LG, teams: [...LG.teams, { id: uid(), name: n }] }); setTaLgNew(""); };
+    // Fusionne le doublon `from` dans `to` : on garde le nom, le logo et les chiffres de `to` ; ce qui lui manque est repris de `from`
+    const mergeTeam = async (from, to) => {
+      if (!from || !to || from.id === to.id) return;
+      const ok = await cpbAlert?.(`Fusionner « ${from.name} » dans « ${to.name} » ? « ${from.name} » disparaît ; ses statistiques manquantes chez « ${to.name} » sont reprises.`, { confirm: true }); if (!ok) return;
+      const stats = {}; Object.entries(LG.stats).forEach(([k, m]) => { const c = { ...m }; if (c[from.id] !== undefined && (c[to.id] === undefined || c[to.id] === null)) c[to.id] = c[from.id]; delete c[from.id]; stats[k] = c; });
+      const pnr = { ...(LG.pnr || {}) }; if (pnr[from.id] && !pnr[to.id]) pnr[to.id] = pnr[from.id]; delete pnr[from.id];
+      setLG({ ...LG, stats, pnr, teams: LG.teams.filter(t2 => t2.id !== from.id).map(t2 => t2.id === to.id && !t2.logo && from.logo ? { ...t2, logo: from.logo } : t2), mine: LG.mine === from.id ? to.id : LG.mine, other: LG.other === from.id ? to.id : LG.other });
+    };
     const delTeam = async (x) => { const ok = await cpbAlert?.(`Retirer « ${x.name} » du comparatif ?`, { confirm: true }); if (!ok) return; const stats = {}; Object.entries(LG.stats).forEach(([k, m]) => { const c = { ...m }; delete c[x.id]; stats[k] = c; }); const pnr = { ...(LG.pnr || {}) }; delete pnr[x.id]; setLG({ ...LG, pnr, teams: LG.teams.filter(t2 => t2.id !== x.id), stats, mine: LG.mine === x.id ? null : LG.mine, other: LG.other === x.id ? null : LG.other }); };
     const readText = () => {
       try {
@@ -12347,6 +12355,7 @@ function CoachingProBoost({ session }) {
                 <input type="file" accept="image/*" className="hidden" onChange={async e => { const f = e.target.files?.[0]; e.target.value = ""; if (!f) return; try { updTeam(x.id, { logo: await readImageAsJpeg(f, 120, 0.85) }); } catch { cpbAlert?.("Image illisible."); } }} />
               </label>
               <input value={x.name} onChange={e => updTeam(x.id, { name: e.target.value })} className="flex-1 min-w-0 border border-[#1B2A4A]/15 rounded px-2 py-1 text-sm bg-white/60" />
+              <select value="" onChange={e => { const t2 = LG.teams.find(y => y.id === e.target.value); e.target.value = ""; mergeTeam(x, t2); }} title="Fusionner ce doublon dans une autre équipe" className="w-[74px] shrink-0 border border-[#1B2A4A]/15 rounded px-1 py-1 text-[11px] bg-white/60 text-[#1B2A4A]/70"><option value="">⇄ Fusionner</option>{LG.teams.filter(y => y.id !== x.id).map(y => <option key={y.id} value={y.id}>dans {y.name}</option>)}</select>
               <button onClick={() => delTeam(x)} className="text-[#1B2A4A]/30 hover:text-red-600" title="Retirer"><X size={13} /></button>
             </div>
           ))}
