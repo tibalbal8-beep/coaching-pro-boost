@@ -10919,7 +10919,9 @@ async function studioStepPng(step, bgSrc, dims) {
   const sc = 1100 / dims.w, W = Math.round(dims.w * sc), H = Math.round(dims.h * sc);
   const load = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const ctx = cv.getContext("2d");
-  ctx.drawImage(await load(bgSrc), 0, 0, W, H);
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+  const bi = await load(bgSrc), k = Math.max(W / bi.naturalWidth, H / bi.naturalHeight), sw = W / k, sh = H / k;
+  ctx.drawImage(bi, (bi.naturalWidth - sw) / 2, (bi.naturalHeight - sh) / 2, sw, sh, 0, 0, W, H);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${dims.w} ${dims.h}" width="${W}" height="${H}">${studioInner(step)}</svg>`;
   ctx.drawImage(await load("data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)), 0, 0, W, H);
   return cv.toDataURL("image/jpeg", 0.9);
@@ -10928,12 +10930,12 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   const [steps, setSteps] = useState(() => initial && initial.steps && initial.steps.length ? initial.steps : [studioNewStep()]);
   const [cur, setCur] = useState(0), [tool, setTool] = useState("select"), [color, setColor] = useState("#111827");
   const [bg, setBg] = useState((initial && initial.bg) || "parquet"), [half, setHalf] = useState(initial ? initial.half !== false : true);
-  const [sel, setSel] = useState(null), [draft, setDraft] = useState(null), [dims, setDims] = useState({ w: 640, h: 511 }), [busy, setBusy] = useState(false);
+  const [sel, setSel] = useState(null), [draft, setDraft] = useState(null), [dims, setDims] = useState({ w: 640, h: 533 }), [busy, setBusy] = useState(false);
   const svgRef = useRef(null), drag = useRef(null), hist = useRef([]), redo = useRef([]), stepsRef = useRef(steps), draftRef = useRef(null);
   stepsRef.current = steps;
   const setDraftBoth = (d) => { draftRef.current = typeof d === "function" ? d(draftRef.current) : d; setDraft(draftRef.current); };
   const bgSrc = STUDIO_BGS[bg][half ? "half" : "full"];
-  useEffect(() => { const im = new Image(); im.onload = () => setDims({ w: 640, h: Math.round(640 * im.naturalHeight / im.naturalWidth) }); im.src = bgSrc; }, [bgSrc]);
+  useEffect(() => { setDims({ w: 640, h: half ? 533 : 960 }); }, [half]);
   const step = steps[cur] || steps[0], curStep = () => stepsRef.current[cur] || stepsRef.current[0];
   const commit = (next) => { hist.current.push(JSON.stringify(stepsRef.current)); if (hist.current.length > 60) hist.current.shift(); redo.current = []; stepsRef.current = next; setSteps(next); };
   const setStep = (patch, snap = true) => { const next = stepsRef.current.map((s, i) => i === cur ? (typeof patch === "function" ? patch(s) : { ...s, ...patch }) : s); if (snap) commit(next); else { stepsRef.current = next; setSteps(next); } };
@@ -11051,14 +11053,14 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
             {steps.map((s, i) => (
               <button key={s.id} onClick={() => { setCur(i); setSel(null); }} className={`text-left rounded-xl p-1.5 border-2 bg-white ${i === cur ? "border-[#9db4ff] ring-2 ring-[#9db4ff]/40" : "border-[#1B2A4A]/10"}`}>
                 <div className="text-[10px] font-extrabold text-[#1B2A4A] mb-1">ÉTAPE {i + 1}</div>
-                <svg viewBox={`0 0 ${dims.w} ${dims.h}`} className="w-full rounded"><image href={bgSrc} width={dims.w} height={dims.h} /><g dangerouslySetInnerHTML={{ __html: studioInner(s) }} /></svg>
+                <svg viewBox={`0 0 ${dims.w} ${dims.h}`} className="w-full rounded"><image href={bgSrc} width={dims.w} height={dims.h} preserveAspectRatio="xMidYMid slice" /><g dangerouslySetInnerHTML={{ __html: studioInner(s) }} /></svg>
               </button>
             ))}
           </div>
           <div className="flex-1 min-w-0 bg-white rounded-2xl border border-[#1B2A4A]/10 p-2 flex justify-center">
             <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onDoubleClick={dbl}
               style={{ width: "100%", maxHeight: "74vh", touchAction: "none", cursor: tool === "select" ? "default" : "crosshair" }} className="rounded-lg select-none">
-              <image href={bgSrc} width={dims.w} height={dims.h} />
+              <image href={bgSrc} width={dims.w} height={dims.h} preserveAspectRatio="xMidYMid slice" />
               <g dangerouslySetInnerHTML={{ __html: studioInner(step, { sel, draft }) }} />
             </svg>
           </div>
