@@ -8869,6 +8869,8 @@ function DrawTacticalView({ onValidate, onCancel, courtType = "basketball", init
       { label: "Terrain complet", file: "/volleyball-terrain-complet.png" },
     ],
     basketball: [
+      { label: "Plan blanc complet", file: "/basketball-plan-complet-brut.png" },
+      { label: "Plan blanc demi", file: "/basketball-plan-demi-brut.png" },
       { label: "Terrain complet", file: "/basketball-terrain-complet.png" },
       { label: "Demi-terrain ↑", file: "/basketball-demi-terrain-haut.png" },
       { label: "Demi-terrain ↓", file: "/basketball-demi-terrain-bas.png" },
@@ -10842,6 +10844,7 @@ function PlayImageSlot({ img, playId, onChange, onRemove }) {
 // Chaque étape est exportée en image dans les schémas du play ; les éléments sont gardés (play.studio) pour pouvoir le rouvrir et le modifier.
 const STUDIO_BGS = {
   clair: { label: "Parquet clair", half: "/basketball-clair-demi.png", full: "/basketball-clair-complet.png" },
+  plan: { label: "Plan blanc", half: "/basketball-plan-demi.png", full: "/basketball-plan-complet.png" },
   bleu: { label: "Bleu", half: "/basketball-bleu-pro-demi.png", full: "/basketball-bleu-pro-complet.png" },
 };
 const STUDIO_COLORS = ["#111827", "#facc15", "#0ea5e9", "#dc2626", "#d99a06", "#16a34a", "#2563eb", "#7c3aed"];
