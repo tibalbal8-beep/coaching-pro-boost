@@ -6099,7 +6099,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
 
       {/* Outil de dessin, séparé : schéma tactique dessiné par-dessus le terrain */}
       <div>
-        {!showDraw && (
+        {!showDraw && courtType !== "basketball" && (
           <button type="button" onClick={() => { setShowDraw(true); setEditingSchemaIdx(schemas.length); }}
             className="w-full border-2 border-dashed border-[#1B2A4A]/30 rounded-lg py-3 flex items-center justify-center gap-2 text-[#1B2A4A]/60 hover:border-[#FF6B35] hover:text-[#FF6B35] transition-colors">
             <span className="text-lg leading-none">{Object.values(SPORTS_CONFIG).find(s => s.court === courtType)?.emoji || "🏀"}</span>
@@ -11435,7 +11435,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
               setStudio(data); setStudioOpen(false);
             }} />
         )}
-        {editingSchemaIdx === null && (
+        {editingSchemaIdx === null && courtType !== "basketball" && (
           <button type="button"
             onClick={() => setEditingSchemaIdx(schemas.length)}
             className="w-full py-2 rounded-lg text-xs font-semibold border-2 border-dashed border-[#FF6B35]/40 text-[#FF6B35] hover:border-[#FF6B35] hover:bg-[#FF6B35]/5 transition-colors">
