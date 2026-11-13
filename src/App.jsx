@@ -10969,6 +10969,12 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   const [sel, setSel] = useState(null), [zoneShape, setZoneShape] = useState("rect"), [equip, setEquip] = useState("plot"), [equipMenu, setEquipMenu] = useState(false), [helpOpen, setHelpOpen] = useState(false), equipTimer = useRef(null), [zoneMenu, setZoneMenu] = useState(false), [draft, setDraft] = useState(null), [dims, setDims] = useState({ w: 640, h: 480 }), [busy, setBusy] = useState(false);
   const svgRef = useRef(null), drag = useRef(null), hist = useRef([]), redo = useRef([]), stepsRef = useRef(steps), draftRef = useRef(null);
   stepsRef.current = steps;
+  // Barre du bas masquée pendant le dessin : elle cachait le bas du terrain.
+  useEffect(() => {
+    const st = document.createElement("style"); st.textContent = "nav.fixed.bottom-0{display:none!important}";
+    document.head.appendChild(st);
+    return () => { st.remove(); };
+  }, []);
   // Bouton retour (téléphone/navigateur) : ferme l'éditeur au lieu de quitter la page.
   const onCancelRef = useRef(onCancel); onCancelRef.current = onCancel;
   useEffect(() => {
@@ -11067,7 +11073,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   };
   const T = (k, ico, lab) => <button key={k} onClick={() => { setTool(k); setDraftBoth(null); }} className={`flex flex-col items-center justify-center min-w-[58px] px-2 py-1.5 rounded-xl text-[11px] font-semibold border ${tool === k ? "bg-[#111827] text-white border-[#111827]" : "bg-white text-[#1B2A4A] border-[#1B2A4A]/15 hover:border-[#FF6B35]"}`}><span className="text-lg leading-none mb-0.5">{ico}</span>{lab}</button>;
   return (
-    <div className="fixed inset-0 z-[330] bg-[#F2EDE4] overflow-auto p-3 sm:p-5">
+    <div className="fixed inset-0 z-[330] bg-[#F2EDE4] overflow-auto p-3 sm:p-5" style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}>
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
           <div className="font-extrabold text-2xl text-[#1B2A4A] uppercase" style={{ fontFamily: "'Barlow Condensed',Oswald,sans-serif" }}>Dessiner le play</div>
