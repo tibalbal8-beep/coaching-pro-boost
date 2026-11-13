@@ -6109,7 +6109,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
         {!showDraw && courtType === "basketball" && (
           <button type="button" onClick={() => setStudioOpen(true)}
             className="w-full mt-2 py-2.5 rounded-full text-xs font-bold text-[#0f1626] hover:opacity-90" style={{ backgroundColor: "#9db4ff" }}>
-            {studio ? "🎨 Rouvrir l'éditeur multi-étapes" : "🎨 Éditeur multi-étapes : dessiner en plusieurs étapes"}
+            {studio ? "🎨 Schéma tactique (modifier)" : "🎨 Schéma tactique"}
           </button>
         )}
         {studioOpen && (
@@ -11422,7 +11422,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
         {editingSchemaIdx === null && courtType === "basketball" && (
           <button type="button" onClick={() => setStudioOpen(true)}
             className="w-full py-2.5 mb-2 rounded-full text-xs font-bold text-[#0f1626] hover:opacity-90" style={{ backgroundColor: "#9db4ff" }}>
-            {studio ? "🎨 Rouvrir l'éditeur multi-étapes de ce play" : "🎨 Nouvel éditeur : dessiner un play en plusieurs étapes"}
+            {studio ? "🎨 Schéma tactique (modifier)" : "🎨 Schéma tactique"}
           </button>
         )}
         {studioOpen && (
