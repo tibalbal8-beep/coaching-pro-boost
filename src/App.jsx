@@ -5930,6 +5930,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
   const [extraCropSource, setExtraCropSource] = useState(null);
   const hasFilePhoto = file?.type?.startsWith("image/") && !!file?.data;
   const [editingSchemaIdx, setEditingSchemaIdx] = useState(autoOpenDraw ? 0 : null);
+  const [studio, setStudio] = useState(initial?.studio || null), [studioOpen, setStudioOpen] = useState(false);
   const [lastMaterial, setLastMaterial] = useState(null);
   const [newTheme, setNewTheme] = useState("");
   const [themesOpen, setThemesOpen] = useState(false);
@@ -6105,6 +6106,22 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
             <span className="text-xs font-semibold">Dessiner un schéma tactique</span>
           </button>
         )}
+        {!showDraw && courtType === "basketball" && (
+          <button type="button" onClick={() => setStudioOpen(true)}
+            className="w-full mt-2 py-2.5 rounded-full text-xs font-bold text-[#0f1626] hover:opacity-90" style={{ backgroundColor: "#9db4ff" }}>
+            {studio ? "🎨 Rouvrir l'éditeur multi-étapes" : "🎨 Éditeur multi-étapes : dessiner en plusieurs étapes"}
+          </button>
+        )}
+        {studioOpen && (
+          <PlayStudio initial={studio} cpbAlert={cpbAlert} onCancel={() => setStudioOpen(false)}
+            onSave={(imgs, data) => {
+              setSchemas(prev => {
+                const old = new Set((studio && studio.hashes) || []), keep = prev.filter(x => !old.has(studioHash(x)));
+                return [...keep, ...imgs];
+              });
+              setStudio(data); setStudioOpen(false);
+            }} />
+        )}
         {showDraw && (
           <div className="border-2 border-dashed border-[#1B2A4A]/30 rounded-lg p-3">
             <button type="button" onClick={() => { setShowDraw(false); setEditingSchemaIdx(null); }}
@@ -6143,7 +6160,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
               const ok = await cpbAlert?.("Un schéma est en cours de dessin et n'a pas été validé (bouton \"Utiliser ce schéma\") — il sera perdu si tu enregistres maintenant. Continuer sans le sauvegarder ?", { confirm: true });
               if (!ok) return;
             }
-            onSave({ id: initial?.id || uid(), titre, themes: sel, phases, format, niveau, categorie, duree, objectif, notes, file, schemas, diagram: initial?.diagram, avis: initial?.avis, createdAt: initial?.createdAt || new Date().toISOString() });
+            onSave({ id: initial?.id || uid(), titre, themes: sel, phases, format, niveau, categorie, duree, objectif, notes, file, schemas, ...(studio ? { studio } : {}), diagram: initial?.diagram, avis: initial?.avis, createdAt: initial?.createdAt || new Date().toISOString() });
           }}
           className="px-5 py-2 text-sm font-medium rounded-md bg-[#FF6B35] text-white hover:bg-[#e85a28]"
         >Enregistrer</button>
@@ -10828,6 +10845,19 @@ const STUDIO_BGS = {
   bleu: { label: "Bleu", half: "/basketball-bleu-pro-demi.png", full: "/basketball-bleu-pro-complet.png" },
 };
 const STUDIO_COLORS = ["#111827", "#facc15", "#0ea5e9", "#dc2626", "#d99a06", "#16a34a", "#2563eb", "#7c3aed"];
+const STUDIO_EQUIP = [["plot", "🔶", "Plot"], ["coupelle", "🟠", "Coupelle"], ["jalon", "📍", "Jalon"], ["chaise", "🪑", "Chaise"], ["cerceau", "⭕", "Cerceau"], ["haie", "🚧", "Haie"], ["ballonbasket", "🏀", "Ballon"]];
+const studioEquipSvg = (c) => {
+  const x = +c.x.toFixed(1), y = +c.y.toFixed(1), k = c.kind || "plot", at = `data-t="cone" data-id="${c.id}" style="cursor:move"`;
+  let g = `<rect x="${x - 17}" y="${y - 17}" width="34" height="34" fill="transparent"/>`;
+  if (k === "coupelle") g += `<ellipse cx="${x}" cy="${y + 3}" rx="15" ry="7" fill="#f97316" stroke="#9a3412" stroke-width="2"/><ellipse cx="${x}" cy="${y + 1}" rx="7" ry="3" fill="#fdba74"/>`;
+  else if (k === "jalon") g += `<rect x="${x - 2.5}" y="${y - 16}" width="5" height="32" rx="2" fill="#fff" stroke="#b91c1c" stroke-width="2"/><rect x="${x - 2.5}" y="${y - 8}" width="5" height="7" fill="#dc2626"/><rect x="${x - 2.5}" y="${y + 6}" width="5" height="7" fill="#dc2626"/>`;
+  else if (k === "chaise") g += `<rect x="${x - 11}" y="${y - 2}" width="22" height="14" rx="3" fill="#a16207" stroke="#422006" stroke-width="2"/><rect x="${x - 11}" y="${y - 16}" width="22" height="10" rx="3" fill="#ca8a04" stroke="#422006" stroke-width="2"/>`;
+  else if (k === "cerceau") g += `<circle cx="${x}" cy="${y}" r="15" fill="rgba(14,165,233,.12)" stroke="#0ea5e9" stroke-width="4"/>`;
+  else if (k === "haie") g += `<line x1="${x - 14}" y1="${y + 12}" x2="${x - 14}" y2="${y - 10}" stroke="#374151" stroke-width="4" stroke-linecap="round"/><line x1="${x + 14}" y1="${y + 12}" x2="${x + 14}" y2="${y - 10}" stroke="#374151" stroke-width="4" stroke-linecap="round"/><line x1="${x - 14}" y1="${y - 10}" x2="${x + 14}" y2="${y - 10}" stroke="#f97316" stroke-width="5" stroke-linecap="round"/>`;
+  else if (k === "ballonbasket") g += `<circle cx="${x}" cy="${y}" r="13" fill="#f97316" stroke="#7c2d12" stroke-width="2"/><path d="M ${x - 13} ${y} H ${x + 13} M ${x} ${y - 13} V ${y + 13} M ${x - 9} ${y - 9} Q ${x} ${y} ${x - 9} ${y + 9} M ${x + 9} ${y - 9} Q ${x} ${y} ${x + 9} ${y + 9}" fill="none" stroke="#7c2d12" stroke-width="1.5"/>`;
+  else g += `<polygon points="${x},${y - 15} ${x - 13},${y + 11} ${x + 13},${y + 11}" fill="#f97316" stroke="#9a3412" stroke-width="2"/>`;
+  return `<g ${at}>${g}</g>`;
+};
 const STUDIO_R = 17;
 const studioHash = (s) => { let h = 5381; for (let i = 0; i < s.length; i += 7) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return s.length + ":" + h; };
 const studioNewStep = () => ({ id: uid(), players: [], cones: [], paths: [], zones: [], texts: [] });
@@ -10913,7 +10943,7 @@ function studioInner(step, o = {}) {
   if (draft && draft.zone) { const z = draft.zone; s += zoneSvg({ x: z.x, y: z.y, w: z.x2 - z.x, h: z.y2 - z.y, shape: z.shape }, 'fill="rgba(255,107,53,.2)" stroke="#FF6B35" stroke-width="2.5" stroke-dasharray="6 4"') + "/>"; }
   step.paths.forEach(p => { s += pathSvg(p, p.id, sel && sel.t === "path" && sel.id === p.id); });
   if (draft && draft.path) s += draft.raw && draft.raw.length > 2 ? `<polyline points="${ptsStr(draft.raw)}" fill="none" stroke="#FF6B35" stroke-width="3" stroke-dasharray="6 4" stroke-linecap="round" stroke-linejoin="round"/>` : pathSvg(draft.path, "draft", false);
-  step.cones.forEach(c => { s += `<polygon points="${f(c.x)},${f(c.y - 15)} ${f(c.x - 13)},${f(c.y + 11)} ${f(c.x + 13)},${f(c.y + 11)}" fill="#f97316" stroke="#9a3412" stroke-width="2" data-t="cone" data-id="${c.id}" style="cursor:move"/>`; });
+  step.cones.forEach(c => { s += studioEquipSvg(c); });
   step.players.forEach(p => {
     const d = p.kind === "d", col = d ? "#dc2626" : "#111827", isSel = sel && sel.t === "player" && sel.id === p.id;
     s += `<g data-t="player" data-id="${p.id}" style="cursor:move">${isSel ? `<circle cx="${f(p.x)}" cy="${f(p.y)}" r="${STUDIO_R + 6}" fill="none" stroke="#FF6B35" stroke-width="3" stroke-dasharray="5 4"/>` : ""}<circle cx="${f(p.x)}" cy="${f(p.y)}" r="${STUDIO_R}" fill="#fff" stroke="${col}" stroke-width="3"/><text x="${f(p.x)}" y="${f(p.y + 6)}" text-anchor="middle" font-family="Arial,sans-serif" font-weight="800" font-size="${String(p.n).length > 1 ? 14 : 18}" fill="${col}" style="pointer-events:none">${String(p.n).replace(/[<>&]/g, "")}</text>${p.ball ? `<circle cx="${f(p.x + 15)}" cy="${f(p.y - 15)}" r="7" fill="#f97316" stroke="#7c2d12" stroke-width="2"/>` : ""}</g>`;
@@ -10936,7 +10966,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   const [steps, setSteps] = useState(() => initial && initial.steps && initial.steps.length ? initial.steps : [studioNewStep()]);
   const [cur, setCur] = useState(0), [tool, setTool] = useState("select"), [color, setColor] = useState("#111827");
   const [bg, setBg] = useState((initial && STUDIO_BGS[initial.bg] ? initial.bg : "clair")), [half, setHalf] = useState(initial ? initial.half !== false : true);
-  const [sel, setSel] = useState(null), [zoneShape, setZoneShape] = useState("rect"), [zoneMenu, setZoneMenu] = useState(false), [draft, setDraft] = useState(null), [dims, setDims] = useState({ w: 640, h: 480 }), [busy, setBusy] = useState(false);
+  const [sel, setSel] = useState(null), [zoneShape, setZoneShape] = useState("rect"), [equip, setEquip] = useState("plot"), [equipMenu, setEquipMenu] = useState(false), [helpOpen, setHelpOpen] = useState(false), equipTimer = useRef(null), [zoneMenu, setZoneMenu] = useState(false), [draft, setDraft] = useState(null), [dims, setDims] = useState({ w: 640, h: 480 }), [busy, setBusy] = useState(false);
   const svgRef = useRef(null), drag = useRef(null), hist = useRef([]), redo = useRef([]), stepsRef = useRef(steps), draftRef = useRef(null);
   stepsRef.current = steps;
   // Bouton retour (téléphone/navigateur) : ferme l'éditeur au lieu de quitter la page.
@@ -10985,7 +11015,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
       return;
     }
     if (tool === "player" || tool === "defense") { const kind = tool === "defense" ? "d" : "o"; setStep(s => ({ ...s, players: [...s.players, { id: uid(), kind, n: nextLabel(kind), x: p.x, y: p.y, ball: false }] })); return; }
-    if (tool === "cone") { setStep(s => ({ ...s, cones: [...s.cones, { id: uid(), x: p.x, y: p.y }] })); return; }
+    if (tool === "cone") { setStep(s => ({ ...s, cones: [...s.cones, { id: uid(), x: p.x, y: p.y, kind: equip }] })); return; }
     if (tool === "text") { const txt = window.prompt("Texte à écrire sur le terrain :"); if (txt && txt.trim()) setStep(s => ({ ...s, texts: [...s.texts, { id: uid(), x: p.x, y: p.y, text: txt.trim(), color }] })); return; }
     if (tool === "zone") { drag.current = { k: "zone", shape: zoneShape, color }; setDraftBoth({ zone: { x: p.x, y: p.y, x2: p.x, y2: p.y, shape: zoneShape } }); return; }
     if (PATHS.includes(tool)) { const sp = snapPlayer(p); setSel(null); drag.current = { k: "path", pts: [{ x: p.x, y: p.y }] }; setDraftBoth({ path: { kind: tool, color, a: sp ? { pid: sp.id, x: sp.x, y: sp.y } : { x: p.x, y: p.y }, b: { x: p.x, y: p.y } } }); }
@@ -11055,7 +11085,19 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
           </div>
           <div className="flex flex-wrap items-center gap-2 mb-2"><span className="text-[11px] font-bold tracking-wide text-[#1B2A4A]/50">FOND</span>{Object.entries(STUDIO_BGS).map(([k, v]) => <button key={k} onClick={() => setBg(k)} className={`px-3 py-1 rounded-full text-xs font-semibold border ${bg === k ? "bg-[#111827] text-white border-[#111827]" : "border-[#1B2A4A]/20 bg-white"}`}>{v.label}</button>)}</div>
           <div className="flex flex-wrap gap-1.5">
-            {T("select", "↖", "Déplacer")}{T("player", "①", "Joueur(se)")}{T("defense", "✕", "Défense")}{T("cone", "▲", "Plot")}
+            {T("select", "↖", "Déplacer")}{T("player", "①", "Joueur(se)")}{T("defense", "✕", "Défense")}<div className="relative">
+              <button onPointerDown={() => { clearTimeout(equipTimer.current); equipTimer.current = setTimeout(() => { equipTimer.current = null; setEquipMenu(true); }, 420); }}
+                onPointerUp={() => { if (equipTimer.current) { clearTimeout(equipTimer.current); equipTimer.current = null; setTool("cone"); setDraftBoth(null); setEquipMenu(false); } }}
+                onPointerLeave={() => { clearTimeout(equipTimer.current); equipTimer.current = null; }} onContextMenu={e => { e.preventDefault(); setEquipMenu(true); }}
+                title="Clic : poser du matériel · appui long : choisir le matériel" className={`flex flex-col items-center justify-center min-w-[58px] px-2 py-1.5 rounded-xl text-[11px] font-semibold border select-none ${tool === "cone" ? "bg-[#111827] text-white border-[#111827]" : "bg-white text-[#1B2A4A] border-[#1B2A4A]/15 hover:border-[#FF6B35]"}`}>
+                <span className="text-lg leading-none mb-0.5">{(STUDIO_EQUIP.find(e => e[0] === equip) || STUDIO_EQUIP[0])[1]}</span>{(STUDIO_EQUIP.find(e => e[0] === equip) || STUDIO_EQUIP[0])[2]}
+              </button>
+              {equipMenu && (
+                <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-[#1B2A4A]/15 rounded-xl shadow-xl p-1.5 flex flex-wrap gap-1 w-[260px]">
+                  {STUDIO_EQUIP.map(([k, ic, l]) => <button key={k} onClick={() => { setEquip(k); setTool("cone"); setDraftBoth(null); setEquipMenu(false); }} className={`flex flex-col items-center px-2.5 py-1.5 rounded-lg text-[11px] font-semibold ${equip === k ? "bg-[#9db4ff] text-[#0f1626]" : "hover:bg-[#1B2A4A]/8"}`}><span className="text-xl leading-none">{ic}</span>{l}</button>)}
+                </div>
+              )}
+            </div>
             <span className="w-px bg-[#1B2A4A]/15 mx-1" />
             {T("cut", "↗", "Coupe")}{T("pass", "⇢", "Passe")}{T("dribble", "〰", "Dribble")}{T("screen", "⟂", "Écran")}{T("handoff", "⇉", "Handoff")}{T("shot", "➠", "Tir")}
             <span className="w-px bg-[#1B2A4A]/15 mx-1" />
@@ -11079,7 +11121,10 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
             <div className="ml-auto flex gap-2 items-center">{sel && <button onClick={removeSel} className="text-xs font-semibold text-red-600 underline">Supprimer la sélection</button>}
               <button onClick={undo} className="px-3 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20">↶ Annuler</button><button onClick={rdo} className="px-3 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20">↷ Rétablir</button></div>
           </div>
-          <p className="text-[11px] text-[#1B2A4A]/45 mt-2">Zone : clic pour dessiner, appui long sur le bouton pour choisir la forme (rectangle, rond, triangle) ; la couleur se change avec les pastilles de couleur, même sur une zone déjà dessinée (clique-la en mode « Déplacer »). Trace un mouvement en glissant d'un joueur à un autre (il s'accroche aux joueurs) : si ton geste est courbe, le trait l'est aussi ; si tu changes de direction sans lever le doigt, chaque coin est gardé. Après le tracé, tire les pastilles orange pour ajuster (les pastilles « + » entre deux points ajoutent un point : tire-les à l'endroit voulu pour mieux arrondir). Double-clique un joueur pour lui donner la balle.</p>
+          <div className="mt-2 flex items-start gap-2">
+            <button type="button" onClick={() => setHelpOpen(h => !h)} title="Comment ça marche ?" aria-label="Comment ça marche ?" className={`shrink-0 w-6 h-6 rounded-full border text-xs font-bold leading-none ${helpOpen ? "bg-[#9db4ff] border-[#9db4ff] text-[#0f1626]" : "border-[#1B2A4A]/30 text-[#1B2A4A]/60 hover:border-[#FF6B35] hover:text-[#FF6B35]"}`}>i</button>
+            {helpOpen && <p className="text-[11px] text-[#1B2A4A]/70 bg-[#9db4ff]/15 rounded-lg px-3 py-2">Zone : clic pour dessiner, appui long sur le bouton pour choisir la forme (rectangle, rond, triangle) ; la couleur se change avec les pastilles de couleur, même sur une zone déjà dessinée (clique-la en mode « Déplacer »). Trace un mouvement en glissant d'un joueur à un autre (il s'accroche aux joueurs) : si ton geste est courbe, le trait l'est aussi ; si tu changes de direction sans lever le doigt, chaque coin est gardé. Après le tracé, tire les pastilles orange pour ajuster (les pastilles « + » entre deux points ajoutent un point : tire-les à l'endroit voulu pour mieux arrondir). Double-clique un joueur pour lui donner la balle. Matériel : un clic sur le bouton pose l'objet affiché, un appui long ouvre la liste (plot, coupelle, jalon, chaise, cerceau, haie, ballon).</p>}
+          </div>
         </div>
         <div className="flex gap-3 items-start">
           <div className="hidden sm:flex flex-col gap-2 w-28 shrink-0">
