@@ -11002,7 +11002,13 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   const snapPlayer = (p) => { let best = null, bd = 30; curStep().players.forEach(q => { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bd) { bd = d; best = q; } }); return best; };
   const nextLabel = (kind) => { const used = new Set(curStep().players.filter(p => p.kind === kind).map(p => String(p.n))); for (let i = 1; i <= 9; i++) { const l = kind === "d" ? "X" + i : String(i); if (!used.has(l)) return l; } return kind === "d" ? "X" : "6"; };
   const PATHS = ["cut", "pass", "dribble", "screen", "handoff", "shot"];
+  // Outil de placement actif + clic sur un élément déjà posé : on le déplace au lieu d'en poser un autre.
   const down = (e) => {
+    const el0 = e.target && e.target.closest ? e.target.closest("[data-t]") : null, t0 = el0 && el0.getAttribute("data-t");
+    const eff = (t0 && ["player", "defense", "cone", "text"].includes(tool) && ["player", "cone", "text", "zone"].includes(t0)) ? "select" : tool;
+    return downT(e, eff);
+  };
+  const downT = (e, tool) => {
     if (e.button !== undefined && e.button !== 0) return;
     const p = pos(e), el = e.target.closest ? e.target.closest("[data-t],[data-h]") : null, t = el && el.getAttribute("data-t"), id = el && el.getAttribute("data-id"), h = el && el.getAttribute("data-h");
     try { svgRef.current.setPointerCapture(e.pointerId); } catch {}
