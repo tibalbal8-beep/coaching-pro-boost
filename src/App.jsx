@@ -6184,6 +6184,17 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
             <span className="text-xs font-semibold">Dessiner un schéma tactique</span>
           </button>
         )}
+        {editingSchemaIdx === null && courtType === "basketball" && !studio && !schemas.length && !initial?.id && !showDraw && (
+          <button type="button" onClick={() => {
+              setTitre(t => t || "Contre-attaque en vagues (3 contre 1)"); setSel(v => v.includes("Transition") ? v : [...v, "Transition"]);
+              setObjectif(v => v || "Travailler la transition sur tout le terrain : fixer le défenseur, finir en passes, enchaîner les vagues.");
+              setNotes(v => v || "MISE EN SITUATION\n- Travail sur tout le terrain\n- 2 lignes de joueurs en zone arrière avec 1 ballon à l'une des ailes\n- 1 défenseur en zone avant\n\nDÉROULEMENT\n1. Dans notre cas (voir schéma), l'ailier (n°2) démarre.\n2. La 1ère vague de 3 joueurs évolue en passes jusqu'à la ligne médiane, puis le meneur (n°1) fixe le défenseur et fait la passe à l'un des ailiers, qui va marquer.\n3. En phase 2, l'ailier qui tire défend sur le défenseur qui devient meneur.\n4. L'ailier qui était au rebond (n°2) fait la remise en jeu et prend le couloir opposé.\n5. Le meneur dirige ensuite la contre-attaque.\n6. Le meneur fait la passe à un des ailiers qui prolonge sur l'ailier de la vague suivante.");
+              setStudio(studioTemplateVagues()); setStudioOpen(true);
+            }}
+            className="w-full py-2 mb-2 rounded-full text-xs font-semibold border border-[#9db4ff] text-[#1B2A4A] hover:bg-[#9db4ff]/20">
+            ⚡ Charger le modèle « Contre-attaque en vagues »
+          </button>
+        )}
         {!showDraw && courtType === "basketball" && (
           <button type="button" onClick={() => setStudioOpen(true)}
             className="w-full mt-2 py-2.5 rounded-full text-xs font-bold text-[#0f1626] hover:opacity-90" style={{ backgroundColor: "#9db4ff" }}>
@@ -11536,17 +11547,6 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
           <button type="button" onClick={() => setStudioOpen(true)}
             className="w-full py-2.5 mb-2 rounded-full text-xs font-bold text-[#0f1626] hover:opacity-90" style={{ backgroundColor: "#9db4ff" }}>
             {studio ? "🎨 Schéma tactique (modifier)" : "🎨 Schéma tactique"}
-          </button>
-        )}
-        {editingSchemaIdx === null && courtType === "basketball" && !studio && !schemas.length && !initial?.id && (
-          <button type="button" onClick={() => {
-              setTitre(t => t || "Contre-attaque en vagues (3 contre 1)"); setType("Transition");
-              setIntention(v => v || "Travailler la transition sur tout le terrain : fixer le défenseur, finir en passes, enchaîner les vagues.");
-              setDescription(v => v || "MISE EN SITUATION\n- Travail sur tout le terrain\n- 2 lignes de joueurs en zone arrière avec 1 ballon à l'une des ailes\n- 1 défenseur en zone avant\n\nDÉROULEMENT\n1. Dans notre cas (voir schéma), l'ailier (n°2) démarre.\n2. La 1ère vague de 3 joueurs évolue en passes jusqu'à la ligne médiane, puis le meneur (n°1) fixe le défenseur et fait la passe à l'un des ailiers, qui va marquer.\n3. En phase 2, l'ailier qui tire défend sur le défenseur qui devient meneur.\n4. L'ailier qui était au rebond (n°2) fait la remise en jeu et prend le couloir opposé.\n5. Le meneur dirige ensuite la contre-attaque.\n6. Le meneur fait la passe à un des ailiers qui prolonge sur l'ailier de la vague suivante.");
-              setStudio(studioTemplateVagues()); setStudioOpen(true);
-            }}
-            className="w-full py-2 mb-2 rounded-full text-xs font-semibold border border-[#9db4ff] text-[#1B2A4A] hover:bg-[#9db4ff]/20">
-            ⚡ Charger le modèle « Contre-attaque en vagues »
           </button>
         )}
         {studioOpen && (
