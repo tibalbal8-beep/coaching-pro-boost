@@ -338,20 +338,13 @@ async function openBillingPortal() {
   else throw new Error("Impossible d'ouvrir le portail client.");
 }
 
-function PackPaywall({ isPremium }) {
+function PackBuy({ isPremium }) {
   const [loading, setLoading] = useState(false);
   const [understood, setUnderstood] = useState(false);
   const cpbAlert = useAlert();
   return (
-    <div className="max-w-xl mx-auto px-4 py-10">
-      <div className="bg-white rounded-3xl shadow-lg overflow-hidden border border-[#1B2A4A]/10">
-        <div className="bg-[#1B2A4A] px-6 py-6 text-center">
-          <div className="text-white/60 text-xs uppercase tracking-widest mb-1">Pack prêt à l'emploi</div>
-          <div className="text-white font-bold text-2xl" style={{ fontFamily: "Oswald, sans-serif" }}>30 EXERCICES + 15 PLAYS</div>
-        </div>
-        <div className="px-6 py-6">
-          <p className="text-sm text-[#1B2A4A]/70 mb-4 text-center">Une sélection d'exercices et de systèmes de jeu, déjà dessinés, à ajouter en un clic à ta bibliothèque et à ton Playbook.</p>
-          <div className="space-y-2 mb-5">
+    <div>
+                    <div className="space-y-2 mb-5">
             {["30 exercices avec schémas, à modifier et réutiliser dans tes séances", "15 plays avec schémas, à intégrer à ton Playbook", "Ajout en un clic : ils deviennent tes exercices et tes plays", "Achat unique : le pack est à toi pour toujours"].map(f => (
               <div key={f} className="flex items-start gap-2 text-sm text-[#1B2A4A]"><Check size={15} className="text-[#FF6B35] flex-shrink-0 mt-0.5" />{f}</div>
             ))}
@@ -373,8 +366,74 @@ function PackPaywall({ isPremium }) {
             {loading ? <><Loader2 size={16} className="animate-spin" /> Chargement...</> : "ACHETER LE PACK — 10 €"}
           </button>
           <p className="text-[11px] text-[#1B2A4A]/40 text-center mt-3">Paiement sécurisé par Stripe, sans abonnement.</p>
+    </div>
+  );
+}
+
+// ── Boutique : catalogue de cahiers / packs (ajoute une entrée dans ShopPage pour en proposer d'autres) ──
+const SHOP_COVERS = {
+  pack: { c1: "#25386b", c2: "#0f1a33", accent: "#FF6B35", kicker: "CAHIER D'EXERCICES", l1: "30 EXERCICES", l2: "+ 15 PLAYS", icon: "🏀" },
+  analyse: { c1: "#ff8a57", c2: "#c2410c", accent: "#1B2A4A", kicker: "PACK ANALYSE", l1: "SCOUTING", l2: "& MON ÉQUIPE", icon: "📊" },
+};
+function ShopBook({ k, w = 150 }) {
+  const c = SHOP_COVERS[k] || SHOP_COVERS.pack;
+  return (
+    <div style={{ width: w, height: w * 1.38, perspective: 700, flexShrink: 0 }}>
+      <div style={{ position: "relative", width: "100%", height: "100%", transform: "rotateY(-14deg) rotateZ(-1deg)", transformStyle: "preserve-3d", borderRadius: "4px 10px 10px 4px", background: `linear-gradient(145deg, ${c.c1}, ${c.c2})`, boxShadow: "14px 16px 28px rgba(15,26,51,.38), inset -3px 0 0 rgba(255,255,255,.12)", overflow: "hidden", color: "#fff", display: "flex", flexDirection: "column", alignItems: "center", padding: `${w * 0.1}px ${w * 0.08}px ${w * 0.08}px ${w * 0.14}px`, textAlign: "center" }}>
+        <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: w * 0.07, background: "linear-gradient(90deg, rgba(0,0,0,.35), rgba(255,255,255,.08))" }} />
+        <div style={{ fontSize: w * 0.065, letterSpacing: ".16em", fontWeight: 700, opacity: .85 }}>{c.kicker}</div>
+        <div style={{ width: w * 0.3, height: 3, background: c.accent, margin: `${w * 0.05}px 0`, borderRadius: 2 }} />
+        <div style={{ fontFamily: "Oswald, sans-serif", fontWeight: 700, fontSize: w * 0.17, lineHeight: 1.05 }}>{c.l1}</div>
+        <div style={{ fontFamily: "Oswald, sans-serif", fontWeight: 700, fontSize: w * 0.15, lineHeight: 1.1, color: c.accent === "#1B2A4A" ? "#1B2A4A" : c.accent, marginTop: 2 }}>{c.l2}</div>
+        <div style={{ fontSize: w * 0.3, marginTop: "auto", marginBottom: "auto", filter: "drop-shadow(0 4px 6px rgba(0,0,0,.35))" }}>{c.icon}</div>
+        <div style={{ fontSize: w * 0.055, letterSpacing: ".14em", opacity: .8, fontWeight: 600 }}>COACHING PRO BOOST</div>
+      </div>
+    </div>
+  );
+}
+function ShopItem({ cover, title, tagline, owned, ownedLabel, children }) {
+  return (
+    <div className="bg-white rounded-3xl border border-[#1B2A4A]/10 shadow-sm p-5 sm:p-6 mb-5">
+      <div className="flex gap-5 items-start flex-col sm:flex-row">
+        <div className="mx-auto sm:mx-0 pt-1 pr-3"><ShopBook k={cover} /></div>
+        <div className="flex-1 min-w-0 w-full">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <h3 className="text-xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>{title}</h3>
+            {owned && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full text-white" style={{ background: "#16a34a" }}>✓ {ownedLabel || "Acheté"}</span>}
+          </div>
+          <p className="text-sm text-[#1B2A4A]/60 mb-3">{tagline}</p>
+          {children}
         </div>
       </div>
+    </div>
+  );
+}
+function ShopPage({ isPremium, hasPack, isAdmin, analysisOk, analysisUntil, onOpenExercises, onOpenPlays }) {
+  const [loading, setLoading] = useState(false);
+  const cpbAlert = useAlert();
+  const packOwned = isAdmin || hasPack;
+  const feats = (arr) => <div className="space-y-1.5 mb-4">{arr.map(f => <div key={f} className="flex items-start gap-2 text-sm text-[#1B2A4A]"><Check size={15} className="text-[#FF6B35] flex-shrink-0 mt-0.5" />{f}</div>)}</div>;
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-8">
+      <h2 className="text-3xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>BOUTIQUE</h2>
+      <p className="text-sm text-[#1B2A4A]/60 mb-6">Des cahiers et des packs prêts à l'emploi pour gagner du temps avec ton équipe.</p>
+      <ShopItem cover="pack" title="Cahier 30 exercices + 15 plays" tagline="Une sélection d'exercices et de systèmes de jeu déjà dessinés, à ajouter en un clic à ta bibliothèque et à ton Playbook." owned={packOwned} ownedLabel={isAdmin && !hasPack ? "Accès admin" : "Acheté"}>
+        {packOwned ? <PackPage onOpenExercises={onOpenExercises} onOpenPlays={onOpenPlays} /> : <PackBuy isPremium={isPremium} />}
+      </ShopItem>
+      <ShopItem cover="analyse" title="Pack Analyse" tagline="Pour les staffs qui préparent leurs matchs : Scouting report et Mon équipe." owned={!!analysisOk} ownedLabel={analysisUntil ? "Actif jusqu'au " + new Date(analysisUntil).toLocaleDateString("fr-FR") : "Actif"}>
+        {feats(["Scouting report : fiches joueurs adverses en PDF A4", "Mon équipe : box score, rotations, +/- par joueur, face-à-face", "Imports LiveStats, StatsPro, play-by-play LNB, Excel et XML de tirs"])}
+        {!analysisOk && (
+          <>
+            <div className="mb-3"><span className="text-3xl font-bold text-[#1B2A4A]" style={{ fontFamily: "Oswald, sans-serif" }}>200 €</span><span className="text-[#1B2A4A]/50 text-sm"> / an</span></div>
+            <button disabled={loading} onClick={async () => { setLoading(true); try { await startCheckout(PRICE_ANALYSIS_YEARLY, "analysis"); } catch (e) { await cpbAlert(e.message); } setLoading(false); }}
+              className="w-full bg-[#FF6B35] text-white font-bold py-3 rounded-xl text-sm hover:bg-[#e85a28] transition-colors disabled:opacity-60 flex items-center justify-center gap-2" style={{ fontFamily: "Oswald, sans-serif" }}>
+              {loading ? <><Loader2 size={16} className="animate-spin" /> Chargement...</> : "S'ABONNER — 200 € / AN"}
+            </button>
+            <p className="text-[11px] text-[#1B2A4A]/40 text-center mt-2">Engagement annuel, résiliable pour l'échéance suivante. Paiement sécurisé par Stripe.</p>
+          </>
+        )}
+      </ShopItem>
+      <p className="text-center text-xs text-[#1B2A4A]/40 mt-6">D'autres cahiers arrivent bientôt.</p>
     </div>
   );
 }
@@ -409,12 +468,11 @@ function PackPage({ onOpenExercises, onOpenPlays }) {
     } catch (e) { await cpbAlert(e.message); }
     setBusy("");
   };
-  if (!info) return <div className="max-w-xl mx-auto px-4 py-10 text-center text-sm text-[#1B2A4A]/50">Chargement…</div>;
-  if (info.error) return <div className="max-w-xl mx-auto px-4 py-10 text-center text-sm text-red-600">{info.error}</div>;
+  if (!info) return <div className="py-4 text-center text-sm text-[#1B2A4A]/50">Chargement…</div>;
+  if (info.error) return <div className="py-4 text-center text-sm text-red-600">{info.error}</div>;
   return (
-    <div className="max-w-xl mx-auto px-4 py-8">
-      <h2 className="text-2xl font-bold text-[#1B2A4A] mb-1" style={{ fontFamily: "Oswald, sans-serif" }}>{(info.title || "Pack").toUpperCase()}</h2>
-      <p className="text-sm text-[#1B2A4A]/60 mb-5">Ajoute le contenu du pack à ta bibliothèque et à ton Playbook. Tu peux ensuite le modifier librement.</p>
+    <div>
+      <p className="text-sm text-[#1B2A4A]/60 mb-3">Ajoute le contenu du cahier à ta bibliothèque et à ton Playbook. Tu peux ensuite le modifier librement.</p>
       <div className="grid gap-3">
         <button disabled={busy === "ex" || !info.configured.exercises} onClick={() => open("ex")} className="text-left bg-white border border-[#1B2A4A]/15 rounded-2xl p-4 hover:border-[#FF6B35] disabled:opacity-50">
           <div className="font-bold text-[#1B2A4A]">🏀 Les 30 exercices</div>
@@ -13939,7 +13997,7 @@ function CoachingProBoost({ session }) {
               { key: "playbook", label: "Play Book", icon: BookOpen },
               ...(isAdmin ? [{ key: "themes", label: "Thèmes de jeu (admin)", icon: Layers }] : []),
               { key: "stats", label: "Stats", icon: BarChart3 },
-              { key: "pack", label: isAdmin || hasPack ? "Pack exercices & plays" : "Pack exercices & plays 🔒", icon: Library },
+              { key: "pack", label: "Boutique", icon: Library },
               ...(isAdmin ? [{ key: "suivi", label: "Suivi individuel (admin)", icon: UserCheck }] : []),
               ...(isAdmin || canUseMatchmode ? [{ key: "matchmode", label: isAdmin ? "Mode match (admin)" : "Mode match", icon: Zap }] : []),
               ...(isAdmin ? [{ key: "videoscout", label: "Scouting vidéo (admin)", icon: Video }] : []),
@@ -16849,8 +16907,7 @@ function CoachingProBoost({ session }) {
           );
         })()}
 
-        {view === "pack" && !(isAdmin || hasPack) && <PackPaywall isPremium={isPremium} />}
-        {view === "pack" && (isAdmin || hasPack) && <PackPage onOpenExercises={(d) => setSharedExerciseCollection({ ...d, fromPack: true })} onOpenPlays={setSharedPlayCollection} />}
+        {view === "pack" && <ShopPage isPremium={isPremium} hasPack={hasPack} isAdmin={isAdmin} analysisOk={canAnalysis} analysisUntil={analysisUntil} onOpenExercises={(d) => setSharedExerciseCollection({ ...d, fromPack: true })} onOpenPlays={setSharedPlayCollection} />}
         {view === "themes" && isAdmin && (() => {
           const T = gameThemes.find(t => t.id === gtOpenId) || null;
           const norm2 = (x) => String(x || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
