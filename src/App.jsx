@@ -11251,6 +11251,26 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   );
 }
 
+// Modèle prêt à charger : contre-attaque en vagues (coordonnées du terrain entier 640x960)
+function studioTemplateVagues() {
+  const X = (x) => Math.round(x * 0.952), Y = (y) => Math.round(y * 0.99), P = (x, y) => ({ x: X(x), y: Y(y) });
+  const mk = (n, x, y, kind = "o", ball = false) => ({ id: uid(), kind, n, ...P(x, y), ball });
+  const p1 = mk("1", 358, 722), p2 = mk("2", 145, 722, "o", true), p3 = mk("3", 572, 722), p4 = mk("4", 572, 797), p5 = mk("5", 358, 797), p6 = mk("6", 145, 797), d = mk("X1", 362, 374, "d");
+  const path = (kind, a, b, c) => ({ id: uid(), kind, color: "#111827", a: a.id ? { pid: a.id, x: a.x, y: a.y } : a, b: b.id ? { pid: b.id, x: b.x, y: b.y } : b, ...(c ? { c } : {}) });
+  const step = { id: uid(), players: [p1, p2, p3, p4, p5, p6, d], cones: [], zones: [], texts: [{ id: uid(), x: X(285), y: Y(122), text: "REB.", color: "#111827" }, { id: uid(), x: X(552), y: Y(122), text: "Tir", color: "#16a34a" }],
+    paths: [
+      path("pass", p2, p1),
+      path("cut", p1, P(358, 500)),
+      path("cut", p3, P(572, 585)),
+      path("pass", p1, P(555, 565)),
+      path("pass", P(558, 545), P(385, 462)),
+      path("cut", p2, P(250, 140), P(60, 420)),
+      path("dribble", P(305, 450), P(355, 322), P(235, 360)),
+      path("pass", P(375, 310), P(525, 165)),
+      path("cut", P(572, 540), P(545, 150), P(650, 330)),
+    ] };
+  return { steps: [step], bg: "clair", half: false };
+}
 function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes = PLAY_TYPES, savePlayTypes, courtType = "basketball", cpbAlert, autoOpenDraw = false, allTempsForts = [] }) {
   const [titre, setTitre] = useState(initial?.titre || "");
   const [type, setType] = useState(initial?.type || playTypes[0]);
@@ -11516,6 +11536,17 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
           <button type="button" onClick={() => setStudioOpen(true)}
             className="w-full py-2.5 mb-2 rounded-full text-xs font-bold text-[#0f1626] hover:opacity-90" style={{ backgroundColor: "#9db4ff" }}>
             {studio ? "🎨 Schéma tactique (modifier)" : "🎨 Schéma tactique"}
+          </button>
+        )}
+        {editingSchemaIdx === null && courtType === "basketball" && !studio && !schemas.length && !initial?.id && (
+          <button type="button" onClick={() => {
+              setTitre(t => t || "Contre-attaque en vagues (3 contre 1)"); setType("Transition");
+              setIntention(v => v || "Travailler la transition sur tout le terrain : fixer le défenseur, finir en passes, enchaîner les vagues.");
+              setDescription(v => v || "MISE EN SITUATION\n- Travail sur tout le terrain\n- 2 lignes de joueurs en zone arrière avec 1 ballon à l'une des ailes\n- 1 défenseur en zone avant\n\nDÉROULEMENT\n1. Dans notre cas (voir schéma), l'ailier (n°2) démarre.\n2. La 1ère vague de 3 joueurs évolue en passes jusqu'à la ligne médiane, puis le meneur (n°1) fixe le défenseur et fait la passe à l'un des ailiers, qui va marquer.\n3. En phase 2, l'ailier qui tire défend sur le défenseur qui devient meneur.\n4. L'ailier qui était au rebond (n°2) fait la remise en jeu et prend le couloir opposé.\n5. Le meneur dirige ensuite la contre-attaque.\n6. Le meneur fait la passe à un des ailiers qui prolonge sur l'ailier de la vague suivante.");
+              setStudio(studioTemplateVagues()); setStudioOpen(true);
+            }}
+            className="w-full py-2 mb-2 rounded-full text-xs font-semibold border border-[#9db4ff] text-[#1B2A4A] hover:bg-[#9db4ff]/20">
+            ⚡ Charger le modèle « Contre-attaque en vagues »
           </button>
         )}
         {studioOpen && (
