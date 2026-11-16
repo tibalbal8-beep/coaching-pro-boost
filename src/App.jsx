@@ -2803,7 +2803,27 @@ function scoutBoxFromLeague(r, league, games) {
     out.push({ date: "", opponent: g.t[1 - i].n, score: `${me.pts}-${op.pts}`, ...me, oppPts: op.pts, opp: op }); });
   return out.length ? out : null;
 }
+// Joueurs (moyennes par match) repris des matchs LiveStats du comparatif pour l'équipe scoutée
+function scoutPlayersFromLeague(r, league, games) {
+  if (!league || !games || !games.length) return null;
+  const id = scoutFaceTeam(r, league); const T = id && league.teams.find(t => t.id === id); if (!T) return null;
+  const { find } = leagueTeamClusters(games, league.teams), key = find(leagueNorm(T.name));
+  const by = new Map();
+  games.forEach(g => { const i = [0, 1].find(k => g.t[k] && find(leagueNorm(g.t[k].n)) === key); if (i === undefined) return;
+    (g.t[i].pl || []).forEach(p => { const k = leagueNorm(p.n); let e = by.get(k); if (!e) { e = { name: p.n, gp: 0, min: 0, v: Array(14).fill(0) }; by.set(k, e); }
+      e.gp++; e.min += p.m || 0; (p.v || []).forEach((x, j) => { e.v[j] += x || 0; }); }); });
+  const out = [...by.values()].map(e => {
+    const n = e.gp, av = (x) => x / n, [pts, fgm, fga, t3m, t3a, ftm, fta, or, dr, ast, tov, stl, blk, pf] = e.v;
+    const nm = String(e.name).split(" "), name = nm.map(w => w.length > 1 && w === w.toUpperCase() ? w.charAt(0) + w.slice(1).toLowerCase() : w).join(" ");
+    const o = { name, gp: n, min: av(e.min), pts: av(pts), reb: av(or + dr), oreb: av(or), dreb: av(dr), ast: av(ast), tov: av(tov), stl: av(stl), blk: av(blk), pf: av(pf),
+      fgm: av(fgm), fga: av(fga), tpm: av(t3m), tpa: av(t3a), twom: av(fgm - t3m), twoa: av(fga - t3a), ftm: av(ftm), fta: av(fta) };
+    if (fga) { const d = 2 * (fga + 0.44 * fta); if (d > 0) o.ts = pts / d; o.efg = (fgm + 0.5 * t3m) / fga; }
+    if (tov) o.astTo = ast / tov;
+    return o; });
+  return out.length ? out : null;
+}
 function buildScoutReportHtml(r, logo = null, league = null, games = null) {
+  if (!(r.boxPlayers || []).length && !(r.lnbPlayers || []).length && !(r.excelPlayers || []).length) { try { const pl = scoutPlayersFromLeague(r, league, games); if (pl) r = { ...r, boxPlayers: pl }; } catch {} }
   if (!r.boxScore) { try { const d = scoutBoxFromLeague(r, league, games); if (d) r = { ...r, boxScore: { fileName: "LiveStats du comparatif", games: d, excluded: [] } }; } catch {} }
   const esc = (str) => String(str ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const merged = mergeScoutPlayers(r);
@@ -17632,7 +17652,8 @@ function CoachingProBoost({ session }) {
             );
           }
 
-          const merged = mergeScoutPlayers(activeSr);
+          const srLg = (() => { if ((activeSr.boxPlayers || []).length || (activeSr.lnbPlayers || []).length || (activeSr.excelPlayers || []).length) return activeSr; try { const pl = scoutPlayersFromLeague(activeSr, leagueData, leagueGames); return pl ? { ...activeSr, boxPlayers: pl } : activeSr; } catch { return activeSr; } })();
+          const merged = mergeScoutPlayers(srLg);
           const setMan = (p, patch) => updateActiveSr(r => ({ manual: { ...(r.manual || {}), [scoutKey(p)]: { ...((r.manual || {})[scoutKey(p)] || {}), ...patch } } }));
           const handleExcel = async (file) => {
             if (!file) return;
