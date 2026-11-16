@@ -10944,6 +10944,10 @@ const studioEquipSvg = (c) => {
   return `<g ${at}>${g}</g>`;
 };
 const STUDIO_R = 17;
+const STUDIO_M = 64;   // marge autour du terrain (pour poser des joueurs hors du terrain)
+const STUDIO_PAD = { clair: "#f6f1e6", plan: "#ffffff", bleu: "#c8d5f6" };
+const studioVB = (d) => `${-STUDIO_M} ${-STUDIO_M} ${d.w + 2 * STUDIO_M} ${d.h + 2 * STUDIO_M}`;
+const studioBgEl = (src, d, bg) => `<rect x="${-STUDIO_M}" y="${-STUDIO_M}" width="${d.w + 2 * STUDIO_M}" height="${d.h + 2 * STUDIO_M}" fill="${STUDIO_PAD[bg] || "#fff"}"/><image href="${src}" width="${d.w}" height="${d.h}" preserveAspectRatio="xMidYMid slice"/>`;
 const studioHash = (s) => { let h = 5381; for (let i = 0; i < s.length; i += 7) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return s.length + ":" + h; };
 const studioNewStep = () => ({ id: uid(), players: [], cones: [], paths: [], zones: [], texts: [] });
 function studioPathGeom(p, step) {
@@ -11037,14 +11041,14 @@ function studioInner(step, o = {}) {
   step.texts.forEach(t => { s += `<text x="${f(t.x)}" y="${f(t.y)}" font-family="Arial,sans-serif" font-weight="800" font-size="${t.size || 24}" fill="${t.color || "#111827"}" stroke="#fff" stroke-width="4" paint-order="stroke" data-t="text" data-id="${t.id}" style="cursor:move">${String(t.text).replace(/[<>&]/g, "")}</text>`; });
   return s;
 }
-async function studioStepPng(step, bgSrc, dims) {
-  const sc = 1100 / dims.w, W = Math.round(dims.w * sc), H = Math.round(dims.h * sc);
+async function studioStepPng(step, bgSrc, dims, bg) {
+  const M = STUDIO_M, TW = dims.w + 2 * M, TH = dims.h + 2 * M, sc = 1100 / TW, W = Math.round(TW * sc), H = Math.round(TH * sc), CW = Math.round(dims.w * sc), CH = Math.round(dims.h * sc), OX = Math.round(M * sc), OY = Math.round(M * sc);
   const load = (src) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const ctx = cv.getContext("2d");
-  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
-  const bi = await load(bgSrc), k = Math.max(W / bi.naturalWidth, H / bi.naturalHeight), sw = W / k, sh = H / k;
-  ctx.drawImage(bi, (bi.naturalWidth - sw) / 2, (bi.naturalHeight - sh) / 2, sw, sh, 0, 0, W, H);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${dims.w} ${dims.h}" width="${W}" height="${H}">${studioInner(step)}</svg>`;
+  ctx.fillStyle = STUDIO_PAD[bg] || "#fff"; ctx.fillRect(0, 0, W, H);
+  const bi = await load(bgSrc), k = Math.max(CW / bi.naturalWidth, CH / bi.naturalHeight), sw = CW / k, sh = CH / k;
+  ctx.drawImage(bi, (bi.naturalWidth - sw) / 2, (bi.naturalHeight - sh) / 2, sw, sh, OX, OY, CW, CH);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${studioVB(dims)}" width="${W}" height="${H}">${studioInner(step)}</svg>`;
   ctx.drawImage(await load("data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)), 0, 0, W, H);
   return cv.toDataURL("image/jpeg", 0.9);
 }
@@ -11167,7 +11171,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   const swap = (dir) => { const j = cur + dir; if (j < 0 || j >= steps.length) return; const next = [...steps]; [next[cur], next[j]] = [next[j], next[cur]]; commit(next); setCur(j); };
   const save = async () => {
     setBusy(true);
-    try { const imgs = []; for (const s of steps) imgs.push(await studioStepPng(s, bgSrc, dims)); onSave(imgs, { v: 1, bg, half, steps, hashes: imgs.map(studioHash) }); }
+    try { const imgs = []; for (const s of steps) imgs.push(await studioStepPng(s, bgSrc, dims, bg)); onSave(imgs, { v: 1, bg, half, steps, hashes: imgs.map(studioHash) }); }
     catch (err) { cpbAlert?.("Export impossible : " + (err?.message || err)); setBusy(false); }
   };
   const T = (k, ico, lab) => <button key={k} onClick={() => { setTool(k); setDraftBoth(null); }} className={`flex flex-col items-center justify-center min-w-[58px] px-2 py-1.5 rounded-xl text-[11px] font-semibold border ${tool === k ? "bg-[#111827] text-white border-[#111827]" : "bg-white text-[#1B2A4A] border-[#1B2A4A]/15 hover:border-[#FF6B35]"}`}><span className="text-lg leading-none mb-0.5">{ico}</span>{lab}</button>;
@@ -11236,14 +11240,14 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
             {steps.map((s, i) => (
               <button key={s.id} onClick={() => { setCur(i); setSel(null); }} className={`text-left rounded-xl p-1.5 border-2 bg-white ${i === cur ? "border-[#9db4ff] ring-2 ring-[#9db4ff]/40" : "border-[#1B2A4A]/10"}`}>
                 <div className="text-[10px] font-extrabold text-[#1B2A4A] mb-1">ÉTAPE {i + 1}</div>
-                <svg viewBox={`0 0 ${dims.w} ${dims.h}`} className="w-full rounded"><image href={bgSrc} width={dims.w} height={dims.h} preserveAspectRatio="xMidYMid slice" /><g dangerouslySetInnerHTML={{ __html: studioInner(s) }} /></svg>
+                <svg viewBox={studioVB(dims)} className="w-full rounded"><g dangerouslySetInnerHTML={{ __html: studioBgEl(bgSrc, dims, bg) }} /><g dangerouslySetInnerHTML={{ __html: studioInner(s) }} /></svg>
               </button>
             ))}
           </div>
           <div className="flex-1 min-w-0 bg-white rounded-2xl border border-[#1B2A4A]/10 p-2 flex justify-center">
-            <svg ref={svgRef} viewBox={`0 0 ${dims.w} ${dims.h}`} onPointerDown={down} onPointerMove={move} onPointerUp={up} onDoubleClick={dbl}
+            <svg ref={svgRef} viewBox={studioVB(dims)} onPointerDown={down} onPointerMove={move} onPointerUp={up} onDoubleClick={dbl}
               style={{ width: "100%", maxHeight: "74vh", touchAction: "none", cursor: tool === "select" ? "default" : "crosshair" }} className="rounded-lg select-none">
-              <image href={bgSrc} width={dims.w} height={dims.h} preserveAspectRatio="xMidYMid slice" />
+              <g dangerouslySetInnerHTML={{ __html: studioBgEl(bgSrc, dims, bg) }} />
               <g dangerouslySetInnerHTML={{ __html: studioInner(step, { sel, draft }) }} />
             </svg>
           </div>
