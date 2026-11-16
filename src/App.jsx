@@ -6163,6 +6163,9 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
               className="flex-1 py-1.5 rounded-lg text-xs font-semibold border-2 border-dashed border-[#FF6B35]/40 text-[#FF6B35] hover:border-[#FF6B35] hover:bg-[#FF6B35]/5 transition-colors">
               + Ajouter une photo
             </button>
+            {!isFileSlide && studio && (studio.hashes || []).includes(studioHash(allPhotos[photoIdx] || "")) && (
+              <button type="button" onClick={() => setStudioOpen(true)} className="py-1.5 px-3 rounded-lg text-xs font-semibold text-[#0f1626]" style={{ backgroundColor: "#9db4ff" }}>✏️ Modifier le schéma</button>
+            )}
             {!isFileSlide && (
               <button type="button" onClick={() => {
                 const schemaIdx = hasFilePhoto ? photoIdx - 1 : photoIdx;
@@ -11532,7 +11535,7 @@ function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes
           <div className="flex gap-2 flex-wrap mb-2">
             {schemas.map((dataUrl, i) => (
               <div key={i} className="relative group">
-                <img src={dataUrl} className="w-28 h-20 object-cover rounded-lg border border-[#1B2A4A]/15 cursor-pointer" onClick={() => setEditingSchemaIdx(i)} />
+                <img src={dataUrl} className="w-28 h-20 object-cover rounded-lg border border-[#1B2A4A]/15 cursor-pointer" onClick={() => { if (studio && (studio.hashes || []).includes(studioHash(dataUrl))) setStudioOpen(true); else setEditingSchemaIdx(i); }} />
                 <button type="button" onClick={() => setSchemas(s => s.filter((_, j) => j !== i))}
                   className="absolute -top-1.5 -right-1.5 bg-red-500 text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
               </div>
