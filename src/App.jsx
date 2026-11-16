@@ -6188,7 +6188,7 @@ function ExerciseForm({ themes, onSave, onCancel, initial, cpbAlert, saveThemes,
           <button type="button" onClick={() => {
               setTitre(t => t || "Contre-attaque en vagues (3 contre 1)"); setSel(v => v.includes("Transition") ? v : [...v, "Transition"]);
               setObjectif(v => v || "Travailler la transition sur tout le terrain : fixer le défenseur, finir en passes, enchaîner les vagues.");
-              setNotes(v => v || "MISE EN SITUATION\n- Travail sur tout le terrain\n- 2 lignes de joueurs en zone arrière avec 1 ballon à l'une des ailes\n- 1 défenseur en zone avant\n\nDÉROULEMENT\n1. Dans notre cas (voir schéma), l'ailier (n°2) démarre.\n2. La 1ère vague de 3 joueurs évolue en passes jusqu'à la ligne médiane, puis le meneur (n°1) fixe le défenseur et fait la passe à l'un des ailiers, qui va marquer.\n3. En phase 2, l'ailier qui tire défend sur le défenseur qui devient meneur.\n4. L'ailier qui était au rebond (n°2) fait la remise en jeu et prend le couloir opposé.\n5. Le meneur dirige ensuite la contre-attaque.\n6. Le meneur fait la passe à un des ailiers qui prolonge sur l'ailier de la vague suivante.");
+              setNotes(v => v || "MISE EN SITUATION\n- Travail sur tout le terrain\n- 2 lignes de joueurs en zone arrière avec 1 ballon à l'une des ailes\n- 1 défenseur en zone avant\n\nDÉROULEMENT\n1. Dans notre cas (voir schéma), l'ailier (n°2) démarre.\n2. La 1ère vague de 3 joueurs évolue en passes jusqu'à la ligne médiane, puis le meneur (n°1) fixe le défenseur et fait la passe à l'un des ailiers, qui va marquer.\n3. En phase 2, l'ailier qui tire défend sur le défenseur qui devient meneur.\n4. L'ailier qui était au rebond (n°2) fait la remise en jeu et prend le couloir opposé.\n5. Le meneur dirige ensuite la contre-attaque.\n6. Le meneur fait la passe à un des ailiers qui prolonge sur l'ailier de la vague suivante.\n\nCRITÈRES DE RÉUSSITE POUR UNE BONNE SORTIE DE BALLE\n- Le porteur évite l'opposition physique du défenseur en choisissant le type de passe le plus adapté.\n- L'ailier améliore la ligne de passe.\n- Lors de la sortie de balle, chercher les passes en triangle si les passes directes sont contestées.\n- Baisser le centre de gravité à l'approche de l'attaquant.\n- Le joueur qui tire améliore le statut du passage d'attaquant à celui de défenseur.");
               setStudio(studioTemplateVagues()); setStudioOpen(true);
             }}
             className="w-full py-2 mb-2 rounded-full text-xs font-semibold border border-[#9db4ff] text-[#1B2A4A] hover:bg-[#9db4ff]/20">
@@ -11280,7 +11280,26 @@ function studioTemplateVagues() {
       path("pass", P(375, 310), P(525, 165)),
       path("cut", P(572, 540), P(545, 150), P(650, 330)),
     ] };
-  return { steps: [step], bg: "clair", half: false };
+  // Phase 2 (visuel 2 : mêmes repères, décalés de 17/16 px)
+  const Q = (x, y) => P(x - 17, y - 16), mq = (n, x, y, kind = "o") => ({ id: uid(), kind, n, ...Q(x, y), ball: false });
+  const q2 = mq("2", 253, 40), q3 = mq("3", 352, 150), q1 = mq("1", 337, 380), q5 = mq("5", 352, 730), q6 = mq("6", 141, 735), q4 = mq("4", 567, 735);
+  const pq = (kind, a, b, c) => ({ id: uid(), kind, color: "#111827", a: a.id ? { pid: a.id, x: a.x, y: a.y } : a, b: b.id ? { pid: b.id, x: b.x, y: b.y } : b, ...(c ? { c } : {}) });
+  const zx = Q(407, 265);
+  const step2 = { id: uid(), players: [q1, q2, q3, q4, q5, q6], cones: [], texts: [{ id: uid(), x: Q(520, 960).x, y: Q(520, 960).y, text: "Jaune = défenseur devenu meneur", color: "#d99a06" }],
+    zones: [{ id: uid(), shape: "round", color: "#facc15", x: zx.x - 24, y: zx.y - 24, w: 48, h: 48 }],
+    paths: [
+      pq("pass", Q(245, 75), Q(148, 225)),
+      pq("pass", Q(157, 243), Q(248, 283)),
+      pq("cut", Q(375, 272), Q(283, 285)),
+      pq("cut", q1, Q(135, 243), Q(140, 370)),
+      pq("dribble", Q(267, 305), Q(267, 478)),
+      pq("pass", Q(280, 488), Q(540, 555)),
+      pq("pass", Q(560, 578), q4),
+      pq("cut", Q(272, 525), Q(325, 845)),
+      pq("cut", Q(105, 240), Q(105, 585)),
+      pq("cut", Q(470, 45), Q(575, 550), Q(640, 250)),
+    ] };
+  return { steps: [step, step2], bg: "clair", half: false };
 }
 function PlayForm({ onSave, onCancel, initial, playTags, savePlayTags, playTypes = PLAY_TYPES, savePlayTypes, courtType = "basketball", cpbAlert, autoOpenDraw = false, allTempsForts = [] }) {
   const [titre, setTitre] = useState(initial?.titre || "");
