@@ -10952,6 +10952,7 @@ function studioInner(step, o = {}) {
         for (let i = 0; i < V.length - 1; i++) hs += `<circle cx="${f((V[i].x + V[i + 1].x) / 2)}" cy="${f((V[i].y + V[i + 1].y) / 2)}" r="8" fill="#fff" fill-opacity=".9" stroke="#FF6B35" stroke-width="2" stroke-dasharray="3 2" data-h="m${i}" style="cursor:copy"/><text x="${f((V[i].x + V[i + 1].x) / 2)}" y="${f((V[i].y + V[i + 1].y) / 2 + 4.5)}" text-anchor="middle" font-family="Arial,sans-serif" font-weight="800" font-size="13" fill="#FF6B35" style="pointer-events:none">+</text>`;
         g.via.forEach((v, i) => { hs += `<circle cx="${f(v.x)}" cy="${f(v.y)}" r="9" fill="#fff" stroke="#FF6B35" stroke-width="3" data-h="v${i}" style="cursor:grab"/>`; });
       } else { const m = R[Math.floor(R.length / 2)]; hs += `<circle cx="${f(m.x)}" cy="${f(m.y)}" r="9" fill="#fff" stroke="#FF6B35" stroke-width="3" data-h="c" style="cursor:grab"/>`; }
+      hs += `<circle cx="${f(b.x)}" cy="${f(b.y)}" r="10" fill="#FF6B35" fill-opacity=".85" stroke="#fff" stroke-width="2.5" data-h="eb" style="cursor:crosshair"/>`;
     }
     return `<g>${body}${hit}${hs}</g>`;
   };
@@ -11034,6 +11035,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
     const p = pos(e), el = e.target.closest ? e.target.closest("[data-t],[data-h]") : null, t = el && el.getAttribute("data-t"), id = el && el.getAttribute("data-id"), h = el && el.getAttribute("data-h");
     try { svgRef.current.setPointerCapture(e.pointerId); } catch {}
     if (h === "c" && sel && sel.t === "path") { hist.current.push(JSON.stringify(stepsRef.current)); redo.current = []; drag.current = { k: "ctrl", id: sel.id }; return; }
+    if (h === "eb" && sel && sel.t === "path") { hist.current.push(JSON.stringify(stepsRef.current)); redo.current = []; const o = curStep().paths.find(x => x.id === sel.id); drag.current = { k: "end", id: sel.id, o: o ? JSON.stringify(o) : null }; return; }
     if (h && /^[vm]\d+$/.test(h) && sel && sel.t === "path") {
       hist.current.push(JSON.stringify(stepsRef.current)); redo.current = []; const i = +h.slice(1);
       if (h[0] === "m") { stepsRef.current = stepsRef.current.map((s0, k) => k !== cur ? s0 : { ...s0, paths: s0.paths.map(x => x.id === sel.id ? { ...x, via: [...x.via.slice(0, i), { x: p.x, y: p.y }, ...x.via.slice(i)] } : x) }); setSteps(stepsRef.current); }
@@ -11061,6 +11063,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
     const d = drag.current; if (!d) return; const p = pos(e);
     if (d.k === "zone") setDraftBoth(dr => dr && { zone: { ...dr.zone, x2: p.x, y2: p.y } });
     else if (d.k === "path") { d.pts.push({ x: p.x, y: p.y }); setDraftBoth(dr => dr && { path: { ...dr.path, b: { x: p.x, y: p.y } }, raw: d.pts.slice() }); }
+    else if (d.k === "end" && d.o) { const o = JSON.parse(d.o), g0 = studioPathGeom(o, curStep()), sp = snapPlayer(p); setStep(s => ({ ...s, paths: s.paths.map(x => { if (x.id !== d.id) return x; const nb = sp && !(o.a && o.a.pid === sp.id) ? { pid: sp.id, x: sp.x, y: sp.y } : { x: p.x, y: p.y }; const n = { ...o, b: nb }; if (o.c && !o.via) { const ob = o.b.pid ? { x: g0.b.x, y: g0.b.y } : o.b; n.c = { x: o.c.x + (p.x - ob.x) / 2, y: o.c.y + (p.y - ob.y) / 2 }; } return n; }) }), false); }
     else if (d.k === "via") setStep(s => ({ ...s, paths: s.paths.map(x => x.id === d.id ? { ...x, via: x.via.map((v, j) => j === d.i ? { x: p.x, y: p.y } : v) } : x) }), false);
     else if (d.k === "ctrl") setStep(s => ({ ...s, paths: s.paths.map(x => { if (x.id !== d.id) return x; const g = studioPathGeom({ ...x, c: undefined }, s); return { ...x, c: { x: 2 * p.x - (g.a.x + g.b.x) / 2, y: 2 * p.y - (g.a.y + g.b.y) / 2 } }; }) }), false);
     else if (d.k === "move") {
