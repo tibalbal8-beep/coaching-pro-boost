@@ -10877,6 +10877,7 @@ const studioEquipSvg = (c) => {
   else if (k === "chaise") g += `<rect x="${x - 11}" y="${y - 2}" width="22" height="14" rx="3" fill="#a16207" stroke="#422006" stroke-width="2"/><rect x="${x - 11}" y="${y - 16}" width="22" height="10" rx="3" fill="#ca8a04" stroke="#422006" stroke-width="2"/>`;
   else if (k === "cerceau") g += `<circle cx="${x}" cy="${y}" r="15" fill="rgba(14,165,233,.12)" stroke="#0ea5e9" stroke-width="4"/>`;
   else if (k === "haie") g += `<line x1="${x - 14}" y1="${y + 12}" x2="${x - 14}" y2="${y - 10}" stroke="#374151" stroke-width="4" stroke-linecap="round"/><line x1="${x + 14}" y1="${y + 12}" x2="${x + 14}" y2="${y - 10}" stroke="#374151" stroke-width="4" stroke-linecap="round"/><line x1="${x - 14}" y1="${y - 10}" x2="${x + 14}" y2="${y - 10}" stroke="#f97316" stroke-width="5" stroke-linecap="round"/>`;
+  else if (k === "handoff") { const col = c.color || "#111827", r = (c.rot || 0) * Math.PI / 180, ux = Math.cos(r), uy = Math.sin(r), nx = -uy, ny = ux, L = 15, G = 6, ln = (o) => `<line x1="${(x + nx * o - ux * L).toFixed(1)}" y1="${(y + ny * o - uy * L).toFixed(1)}" x2="${(x + nx * o + ux * L).toFixed(1)}" y2="${(y + ny * o + uy * L).toFixed(1)}" stroke="${col}" stroke-width="5" stroke-linecap="round"/>`; g += ln(-G) + ln(G); }
   else if (k === "ballonbasket") g += `<circle cx="${x}" cy="${y}" r="13" fill="#f97316" stroke="#7c2d12" stroke-width="2"/><path d="M ${x - 13} ${y} H ${x + 13} M ${x} ${y - 13} V ${y + 13} M ${x - 9} ${y - 9} Q ${x} ${y} ${x - 9} ${y + 9} M ${x + 9} ${y - 9} Q ${x} ${y} ${x + 9} ${y + 9}" fill="none" stroke="#7c2d12" stroke-width="1.5"/>`;
   else g += `<polygon points="${x},${y - 15} ${x - 13},${y + 11} ${x + 13},${y + 11}" fill="#f97316" stroke="#9a3412" stroke-width="2"/>`;
   return `<g ${at}>${g}</g>`;
@@ -11021,11 +11022,11 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   const pos = (e) => { const svg = svgRef.current, pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const m = svg.getScreenCTM(); const r = pt.matrixTransform(m.inverse()); return { x: r.x, y: r.y }; };
   const snapPlayer = (p) => { let best = null, bd = 30; curStep().players.forEach(q => { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bd) { bd = d; best = q; } }); return best; };
   const nextLabel = (kind) => { const used = new Set(curStep().players.filter(p => p.kind === kind).map(p => String(p.n))); for (let i = 1; i <= 9; i++) { const l = kind === "d" ? "X" + i : String(i); if (!used.has(l)) return l; } return kind === "d" ? "X" : "6"; };
-  const PATHS = ["cut", "pass", "dribble", "screen", "handoff", "shot"];
+  const PATHS = ["cut", "pass", "dribble", "screen", "shot"];
   // Outil de placement actif + clic sur un élément déjà posé : on le déplace au lieu d'en poser un autre.
   const down = (e) => {
     const el0 = e.target && e.target.closest ? e.target.closest("[data-t]") : null, t0 = el0 && el0.getAttribute("data-t");
-    const eff = (t0 && ["player", "defense", "cone", "text"].includes(tool) && ["player", "cone", "text", "zone"].includes(t0)) ? "select" : tool;
+    const eff = (t0 && ["player", "defense", "cone", "text", "handoff"].includes(tool) && ["player", "cone", "text", "zone"].includes(t0)) ? "select" : tool;
     return downT(e, eff);
   };
   const downT = (e, tool) => {
@@ -11050,6 +11051,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
       return;
     }
     if (tool === "player" || tool === "defense") { const kind = tool === "defense" ? "d" : "o"; setStep(s => ({ ...s, players: [...s.players, { id: uid(), kind, n: nextLabel(kind), x: p.x, y: p.y, ball: false }] })); return; }
+    if (tool === "handoff") { setStep(s => ({ ...s, cones: [...s.cones, { id: uid(), x: p.x, y: p.y, kind: "handoff", rot: 0, color }] })); return; }
     if (tool === "cone") { setStep(s => ({ ...s, cones: [...s.cones, { id: uid(), x: p.x, y: p.y, kind: equip }] })); return; }
     if (tool === "text") { const txt = window.prompt("Texte à écrire sur le terrain :"); if (txt && txt.trim()) setStep(s => ({ ...s, texts: [...s.texts, { id: uid(), x: p.x, y: p.y, text: txt.trim(), color }] })); return; }
     if (tool === "zone") { drag.current = { k: "zone", shape: zoneShape, color }; setDraftBoth({ zone: { x: p.x, y: p.y, x2: p.x, y2: p.y, shape: zoneShape } }); return; }
@@ -11090,7 +11092,9 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
   const selPlayer = sel && sel.t === "player" ? (curStep().players.find(x => x.id === sel.id) || null) : null;
   const removeSel = () => { if (!sel) return; setStep(s => ({ ...s, players: s.players.filter(x => !(sel.t === "player" && x.id === sel.id)), cones: s.cones.filter(x => !(sel.t === "cone" && x.id === sel.id)), zones: s.zones.filter(x => !(sel.t === "zone" && x.id === sel.id)), texts: s.texts.filter(x => !(sel.t === "text" && x.id === sel.id)), paths: s.paths.filter(x => !(sel.t === "path" && x.id === sel.id) && !(sel.t === "player" && ((x.a && x.a.pid === sel.id) || (x.b && x.b.pid === sel.id)))) })); setSel(null); };
   useEffect(() => { const k = (e) => { if ((e.key === "Delete" || e.key === "Backspace") && sel && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || "")) { e.preventDefault(); removeSel(); } if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? rdo() : undo(); } }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); });
-  const recolorSel = (c) => { setColor(c); if (sel && sel.t === "path") setStep(s => ({ ...s, paths: s.paths.map(x => x.id === sel.id ? { ...x, color: c } : x) })); if (sel && sel.t === "zone") setStep(s => ({ ...s, zones: s.zones.map(x => x.id === sel.id ? { ...x, color: c } : x) })); };
+  const recolorSel = (c) => { setColor(c); if (sel && sel.t === "path") setStep(s => ({ ...s, paths: s.paths.map(x => x.id === sel.id ? { ...x, color: c } : x) })); if (sel && sel.t === "zone") setStep(s => ({ ...s, zones: s.zones.map(x => x.id === sel.id ? { ...x, color: c } : x) })); if (sel && sel.t === "cone") setStep(s => ({ ...s, cones: s.cones.map(x => x.id === sel.id && x.kind === "handoff" ? { ...x, color: c } : x) })); };
+  const rotSel = (d) => { if (!sel || sel.t !== "cone") return; setStep(s => ({ ...s, cones: s.cones.map(x => x.id === sel.id ? { ...x, rot: ((x.rot || 0) + d + 360) % 360 } : x) })); };
+  const selHand = sel && sel.t === "cone" ? (curStep().cones.find(x => x.id === sel.id && x.kind === "handoff") || null) : null;
   const zoneTimer = useRef(null);
   const pickZone = (shape) => { if (shape) setZoneShape(shape); if (color === "#111827") setColor("#facc15"); setTool("zone"); setDraftBoth(null); setZoneMenu(false); };
   const addStep = () => { const base = stepsRef.current[cur], ns = { ...studioNewStep(), players: base.players.map(p => ({ ...p })), cones: base.cones.map(c => ({ ...c })) }; const next = [...steps.slice(0, cur + 1), ns, ...steps.slice(cur + 1)]; commit(next); setCur(cur + 1); setSel(null); };
@@ -11136,7 +11140,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
               )}
             </div>
             <span className="w-px bg-[#1B2A4A]/15 mx-1" />
-            {T("cut", "↗", "Coupe")}{T("pass", "⇢", "Passe")}{T("dribble", "〰", "Dribble")}{T("screen", "⟂", "Écran")}{T("handoff", "⇉", "Handoff")}{T("shot", "➠", "Tir")}
+            {T("cut", "↗", "Coupe")}{T("pass", "⇢", "Passe")}{T("dribble", "〰", "Dribble")}{T("screen", "⟂", "Écran")}{T("handoff", "＝", "Handoff")}{T("shot", "➠", "Tir")}
             <span className="w-px bg-[#1B2A4A]/15 mx-1" />
             <div className="relative">
               <button onPointerDown={() => { clearTimeout(zoneTimer.current); zoneTimer.current = setTimeout(() => { zoneTimer.current = null; setZoneMenu(true); }, 420); }}
@@ -11155,7 +11159,7 @@ function PlayStudio({ initial, onSave, onCancel, cpbAlert }) {
           </div>
           <div className="flex flex-wrap items-center gap-2 mt-2"><span className="text-[11px] font-bold tracking-wide text-[#1B2A4A]/50">COULEUR</span>
             {STUDIO_COLORS.map(c => <button key={c} onClick={() => recolorSel(c)} className="w-7 h-7 rounded-full border-2" style={{ backgroundColor: c, borderColor: color === c ? "#FF6B35" : "#fff", boxShadow: "0 0 0 1px #0002" }} />)}
-            <div className="ml-auto flex gap-2 items-center">{selPlayer && <button onClick={toggleBall} className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${selPlayer.ball ? "bg-[#FF6B35] text-white border-[#FF6B35]" : "border-[#FF6B35] text-[#FF6B35]"}`}>🏀 {selPlayer.ball ? "Retirer la balle" : "Donner la balle"}</button>}{sel && <button onClick={removeSel} className="text-xs font-semibold text-red-600 underline">Supprimer la sélection</button>}
+            <div className="ml-auto flex gap-2 items-center">{selHand && <><button onClick={() => rotSel(-45)} className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[#1B2A4A]/25">↺ 45°</button><button onClick={() => rotSel(45)} className="px-3 py-1.5 rounded-full text-xs font-semibold border border-[#1B2A4A]/25">↻ 45°</button></>}{selPlayer && <button onClick={toggleBall} className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${selPlayer.ball ? "bg-[#FF6B35] text-white border-[#FF6B35]" : "border-[#FF6B35] text-[#FF6B35]"}`}>🏀 {selPlayer.ball ? "Retirer la balle" : "Donner la balle"}</button>}{sel && <button onClick={removeSel} className="text-xs font-semibold text-red-600 underline">Supprimer la sélection</button>}
               <button onClick={undo} className="px-3 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20">↶ Annuler</button><button onClick={rdo} className="px-3 py-1.5 rounded-full text-xs border border-[#1B2A4A]/20">↷ Rétablir</button></div>
           </div>
           <div className="mt-2 flex items-start gap-2">
