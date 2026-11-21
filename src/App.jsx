@@ -2492,7 +2492,7 @@ function BoardPageStatic({ page, width }) {
 }
 function bdNewBoard(kind = "blank", name = "Nouveau tableau") {
   const t = (o) => ({ id: uid(), type: "text", x: 80, y: 60, w: 1120, h: 90, text: "Titre", size: 56, bold: true, italic: false, color: "#1B2A4A", align: "left", bg: "transparent", radius: 12, ...o });
-  const im = (o) => ({ id: uid(), type: "image", x: 80, y: 180, w: 360, h: 480, src: "/basketball-bleu-complet.png", radius: 18, ...o });
+  const im = (o) => ({ id: uid(), type: "image", x: 80, y: 180, w: 360, h: 480, src: "/basketball-bleu-pro-complet.png", radius: 18, ...o });
   let els = [t({ text: name })];
   if (kind === "colonnes") els = [t({ text: name }), t({ x: 80, y: 190, w: 540, h: 60, text: "Principes", size: 34, bold: true, color: "#ffffff", bg: "#1B2A4A" }), t({ x: 80, y: 260, w: 540, h: 380, text: "- \n- \n- ", size: 28, bg: "#dfe7ff" }), t({ x: 660, y: 190, w: 540, h: 60, text: "Consignes", size: 34, bold: true, color: "#ffffff", bg: "#FF6B35" }), t({ x: 660, y: 260, w: 540, h: 380, text: "- \n- \n- ", size: 28, bg: "#fff1ea" })];
   if (kind === "schema") els = [t({ text: name }), im({ x: 80, y: 170, w: 360, h: 540 }), t({ x: 480, y: 190, w: 720, h: 60, text: "Lecture du jeu", size: 34, bold: true, color: "#ffffff", bg: "#1B2A4A" }), t({ x: 480, y: 260, w: 720, h: 400, text: "- \n- \n- ", size: 28, bg: "#dfe7ff" })];
@@ -2616,7 +2616,7 @@ function BoardEditor({ board, onChange, onClose, cpbAlert, toast, courtType = "b
         <button onClick={() => setDraw(true)} className={tb}>✏️ Schéma</button>
         <select value="" onChange={e => { const v = e.target.value; if (!v) return; const [src, w, h] = v.split("|"); const [fw, fh] = fitSize(+w, +h, 480, 520); addEl({ id: uid(), type: "image", x: 100, y: 100, w: fw, h: fh, src, radius: 18 }); }} className={tb}>
           <option value="">🏀 Terrain…</option>
-          <option value="/basketball-bleu-complet.png|800|1200">Terrain entier</option><option value="/basketball-bleu-demi-haut.png|1024|770">Demi-terrain haut</option><option value="/basketball-bleu-demi-bas.png|1024|768">Demi-terrain bas</option>
+          <optgroup label="Parquet clair"><option value="/basketball-clair-complet.png|1024|1536">Terrain entier</option><option value="/basketball-clair-demi.png|1024|764">Demi-terrain</option></optgroup><optgroup label="Plan blanc"><option value="/basketball-plan-complet-brut.png|1110|2000">Terrain entier</option><option value="/basketball-plan-demi-brut.png|1620|1463">Demi-terrain</option></optgroup><optgroup label="Bleu"><option value="/basketball-bleu-pro-complet.png|1024|1536">Terrain entier</option><option value="/basketball-bleu-pro-demi.png|1024|764">Demi-terrain</option></optgroup>
         </select>
         <button onClick={() => addShape("rect")} className={tb}>▭ Rectangle</button>
         <button onClick={() => addShape("round")} className={tb}>▢ Arrondi</button>
@@ -2692,7 +2692,9 @@ function BoardEditor({ board, onChange, onClose, cpbAlert, toast, courtType = "b
       </div>
       {draw && (
         <div className="fixed inset-0 z-[340] bg-[#F2EDE4] overflow-auto p-3 sm:p-5">
-          <DrawTacticalView courtType={courtType} initialImage={null} allSchemas={[]} currentSchemaIdx={0} referencePhotoOptions={[]} onCancel={() => setDraw(false)} onValidate={(dataUrl) => { addImageSrc(dataUrl, { radius: 18 }); setDraw(false); }} />
+          {courtType === "basketball"
+            ? <PlayStudio initial={null} cpbAlert={cpbAlert} onCancel={() => setDraw(false)} onSave={(imgs) => { imgs.forEach((src, i) => { const im = new Image(); im.onload = () => { const [w, h] = fitSize(im.naturalWidth, im.naturalHeight, 560, 520); addEl({ id: uid(), type: "image", x: 60 + i * 40, y: 60 + i * 30, w, h, src, radius: 18 }); }; im.src = src; }); setDraw(false); }} />
+            : <DrawTacticalView courtType={courtType} initialImage={null} allSchemas={[]} currentSchemaIdx={0} referencePhotoOptions={[]} onCancel={() => setDraw(false)} onValidate={(dataUrl) => { addImageSrc(dataUrl, { radius: 18 }); setDraw(false); }} />}
         </div>
       )}
       {crop && sel && sel.type === "image" && (
